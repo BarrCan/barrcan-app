@@ -1,89 +1,85 @@
 // ══════════════════════════════════════════════
-// BarrCan Service Worker
-// Estrategia: Cache First + Background Update
+// BarrCan Service Worker v4 — Offline First
+// Estrategia: Cache First para app shell
+// Supabase y APIs externas: Network Only
 // ══════════════════════════════════════════════
 
-const CACHE_VERSION = 'barrcan-v2';
+const CACHE_VERSION = 'barrcan-v4';
 
-// Recursos que se cachean en la primera carga
 const RECURSOS_CORE = [
   './barrcan_app.html',
-  './barrcan_sw.js',
 ];
 
-// URLs de fuentes de Google — se cachean la primera vez que se piden
 const DOMINIOS_CACHEABLE = [
   'fonts.googleapis.com',
   'fonts.gstatic.com',
+  'cdn.jsdelivr.net',
 ];
 
-// ── INSTALL: precachea el HTML principal ──────
+// Dominios que NUNCA se cachean (siempre network)
+const DOMINIOS_NETWORK_ONLY = [
+  'supabase.co',
+  'supabase.com',
+];
+
+// ── INSTALL ───────────────────────────────────
 self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_VERSION).then(cache => {
-      return cache.addAll(RECURSOS_CORE);
-    }).then(() => {
-      // Activa inmediatamente sin esperar a que cierren otras pestañas
-      return self.skipWaiting();
-    })
+    caches.open(CACHE_VERSION)
+      .then(cache => cache.addAll(RECURSOS_CORE))
+      .then(() => self.skipWaiting())
   );
 });
 
-// ── ACTIVATE: limpia cachés viejas ────────────
+// ── ACTIVATE ──────────────────────────────────
 self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then(claves => {
-      return Promise.all(
+    caches.keys().then(claves =>
+      Promise.all(
         claves
-          .filter(clave => clave !== CACHE_VERSION)
-          .map(clave => {
-            console.log('[BarrCan SW] Eliminando caché antigua:', clave);
-            return caches.delete(clave);
+          .filter(c => c !== CACHE_VERSION)
+          .map(c => {
+            console.log('[BarrCan SW] Eliminando caché antigua:', c);
+            return caches.delete(c);
           })
-      );
-    }).then(() => {
-      // Toma control de todas las pestañas abiertas inmediatamente
-      return self.clients.claim();
-    })
+      )
+    ).then(() => self.clients.claim())
   );
 });
 
-// ── FETCH: Cache First con actualización en fondo ──
+// ── FETCH ─────────────────────────────────────
 self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
-
-  // Solo manejamos GET
+  // Solo GET
   if (event.request.method !== 'GET') return;
 
-  // Recursos locales (el HTML y el SW mismo)
-  const esLocal = url.origin === self.location.origin;
+  const url = new URL(event.request.url);
 
-  // Fuentes de Google
-  const esFuente = DOMINIOS_CACHEABLE.some(d => url.hostname.includes(d));
+  // NETWORK ONLY — Supabase y APIs externas nunca se cachean
+  const esNetworkOnly = DOMINIOS_NETWORK_ONLY.some(d => url.hostname.includes(d));
+  if (esNetworkOnly) return; // deja pasar sin interceptar
 
-  if (esLocal || esFuente) {
-    event.respondWith(cachePrimeroConActualizacion(event.request));
+  // CACHE FIRST — app shell y fuentes
+  const esLocal     = url.origin === self.location.origin;
+  const esCacheable = DOMINIOS_CACHEABLE.some(d => url.hostname.includes(d));
+
+  if (esLocal || esCacheable) {
+    event.respondWith(cachePrimero(event.request));
   }
-  // Cualquier otra petición (APIs, etc.) va directo a red
 });
 
-// ── Estrategia Cache First + Background Update ──
-async function cachePrimeroConActualizacion(request) {
-  const cache     = await caches.open(CACHE_VERSION);
-  const cached    = await cache.match(request);
+async function cachePrimero(request) {
+  const cache  = await caches.open(CACHE_VERSION);
+  const cached = await cache.match(request);
 
-  // Lanzamos fetch en paralelo sin esperar (actualización en fondo)
+  // Actualizar en background
   const fetchPromise = fetch(request)
-    .then(respuesta => {
-      if (respuesta && respuesta.status === 200) {
-        // Guardamos la versión fresca en caché para la próxima vez
-        cache.put(request, respuesta.clone());
+    .then(response => {
+      if (response && response.status === 200) {
+        cache.put(request, response.clone());
       }
-      return respuesta;
+      return response;
     })
-    .catch(() => null); // Sin internet: el fetch falla silenciosamente
+    .catch(() => null);
 
-  // Si tenemos caché, la devolvemos de inmediato (rápido)
-  // Si no hay caché (primera vez), esperamos la red
   return cached || fetchPromise;
 }
