@@ -315,23 +315,65 @@ function renderMedia() {
   ).join('');
 }
 
+// Convierte dataURL a Blob para subir a Storage
+function dataURLtoBlob(dataUrl) {
+  const [header, data] = dataUrl.split(',');
+  const mime = header.match(/:(.*?);/)[1];
+  const bytes = atob(data);
+  const arr = new Uint8Array(bytes.length);
+  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+
+async function subirFotos(folio) {
+  if (!MEDIA.length) return [];
+  const urls = [];
+  for (let i = 0; i < MEDIA.length; i++) {
+    const m = MEDIA[i];
+    try {
+      const ext  = m.tipo.startsWith('video') ? 'mp4' : m.tipo.split('/')[1] || 'jpg';
+      const path = `${folio}/foto_${i + 1}.${ext}`;
+      const blob = dataURLtoBlob(m.dataUrl);
+      const { error } = await sb().storage
+        .from('garantias')
+        .upload(path, blob, { contentType: m.tipo, upsert: true });
+      if (error) { console.warn('Upload error foto', i, error.message); continue; }
+      const { data } = sb().storage.from('garantias').getPublicUrl(path);
+      if (data?.publicUrl) urls.push(data.publicUrl);
+    } catch(e) {
+      console.warn('Error subiendo foto', i, e.message);
+    }
+  }
+  return urls;
+}
+
 async function enviarReporte() {
   const nombre = document.getElementById('g-nombre').value.trim();
   const tel    = document.getElementById('g-tel').value.trim();
   const desc   = document.getElementById('g-desc').value.trim();
   const errEl  = document.getElementById('g-error');
 
-  if (!nombre) { mostrarError('⚠️ Tu nombre es obligatorio'); return; }
-  if (!tel)    { mostrarError('⚠️ Tu teléfono es obligatorio'); return; }
+  if (!nombre)  { mostrarError('⚠️ Tu nombre es obligatorio'); return; }
+  if (!tel)     { mostrarError('⚠️ Tu teléfono es obligatorio'); return; }
   if (!TIPO_SEL){ mostrarError('⚠️ Selecciona el tipo de problema'); return; }
-  if (!desc)   { mostrarError('⚠️ Describe el problema con más detalle'); return; }
+  if (!desc)    { mostrarError('⚠️ Describe el problema con más detalle'); return; }
   errEl.style.display = 'none';
 
   const btn = document.getElementById('g-btn-enviar');
   btn.disabled = true;
-  btn.innerHTML = '<span style="font-size:18px">⏳</span> Enviando…';
 
   const folio = 'GTI-' + Date.now().toString().slice(-6);
+
+  // Subir fotos si las hay
+  let fotosUrls = [];
+  if (MEDIA.length > 0) {
+    btn.innerHTML = `<span style="font-size:18px">📤</span> Subiendo fotos (0/${MEDIA.length})…`;
+    fotosUrls = await subirFotos(folio);
+    btn.innerHTML = `<span style="font-size:18px">⏳</span> Guardando reporte…`;
+  } else {
+    btn.innerHTML = `<span style="font-size:18px">⏳</span> Enviando…`;
+  }
+
   const payload = {
     cliente_nombre:    nombre,
     cliente_tel:       tel,
@@ -343,7 +385,8 @@ async function enviarReporte() {
     disponibilidad:    document.getElementById('g-disponibilidad').value,
     estado:            'nuevo',
     registrado_por:    'cliente_web',
-    num_evidencias:    MEDIA.length
+    num_evidencias:    MEDIA.length,
+    fotos_urls:        fotosUrls
   };
 
   try {
@@ -351,7 +394,6 @@ async function enviarReporte() {
     if (error) throw error;
     mostrarEnviado(folio, nombre, tel, payload);
   } catch(e) {
-    // Si falla Supabase, igual notificar por WhatsApp
     console.warn('Supabase error:', e.message);
     mostrarEnviado(folio, nombre, tel, payload);
   }
