@@ -10499,6 +10499,7 @@ async function gtiaDetGuardar() {
   const estado         = document.getElementById('gtia-det-estado').value;
   const tecnico        = document.getElementById('gtia-det-tecnico').value.trim();
   const fechaVis       = document.getElementById('gtia-det-fecha-vis').value;
+  const horaVis        = document.getElementById('gtia-det-hora-vis').value;
   const costoRep       = parseFloat(document.getElementById('gtia-det-costo').value) || null;
   const notasInt       = document.getElementById('gtia-det-notas').value.trim();
   const errEl          = document.getElementById('gtia-det-error');
@@ -10507,6 +10508,7 @@ async function gtiaDetGuardar() {
     estado,
     tecnico_asignado:       tecnico || null,
     fecha_visita_agendada:  fechaVis || null,
+    hora_visita_agendada:   horaVis || null,
     costo_reparacion:       costoRep,
     notas_internas:         notasInt || null
   };
@@ -10526,11 +10528,12 @@ async function gtiaDetGuardar() {
     // Si se agendó visita → notificar WhatsApp al cliente
     if (fechaVis && estado === 'visita_agendada') {
       const g = GARANTIAS_CACHE[idx];
+      const horaStr = horaVis ? ` a las ${horaVis}` : '';
       const msg = encodeURIComponent(
         `🛡️ *BarrCan · Visita de garantía agendada*\n` +
         `Hola ${g?.cliente_nombre || ''}, agendamos una visita para revisar tu reporte.\n` +
-        `📅 Fecha: ${fechaVis}\n` +
-        `👷 Técnico: ${tecnico || 'Por confirmar'}\n` +
+        `📅 Fecha: ${fechaVis}${horaStr}\n` +
+        `👷 Técnico: ${tecnico ? (USUARIOS[tecnico]?.apodo || tecnico) : 'Por confirmar'}\n` +
         `¿Tienes alguna pregunta? Escríbenos aquí.`
       );
       window.open(`https://wa.me/52${g?.cliente_tel?.replace(/\D/g,'')}?text=${msg}`, '_blank');
@@ -10543,6 +10546,80 @@ async function gtiaDetGuardar() {
     errEl.textContent = '❌ ' + e.message;
     errEl.style.display = 'block';
   }
+}
+
+// ── WhatsApp al técnico asignado ───────────────────────────────
+function gtiaWATecnico() {
+  const id      = document.getElementById('gtia-det-id').value;
+  const tecnico = document.getElementById('gtia-det-tecnico').value;
+  const fecha   = document.getElementById('gtia-det-fecha-vis').value;
+  const hora    = document.getElementById('gtia-det-hora-vis').value;
+  const g       = GARANTIAS_CACHE.find(x => x.id === id);
+
+  if (!tecnico) { toast('⚠️ Selecciona un técnico primero'); return; }
+
+  const uTec = USUARIOS[tecnico];
+  if (!uTec?.tel) {
+    toast('⚠️ El técnico aún no tiene número registrado');
+    return;
+  }
+
+  const horaStr  = hora  ? ` a las ${hora}` : '';
+  const fechaStr = fecha ? `📅 Fecha: ${fecha}${horaStr}\n` : '';
+  const msg = encodeURIComponent(
+    `🔧 *BarrCan · Visita asignada*\n` +
+    `Hola ${uTec.apodo}, tienes una visita de garantía asignada.\n\n` +
+    `👤 Cliente: ${g?.cliente_nombre || '—'}\n` +
+    `📞 Tel: ${g?.cliente_tel || '—'}\n` +
+    `🔩 Problema: ${g?.tipo_problema || '—'}\n` +
+    `📝 ${(g?.descripcion || '').slice(0, 100)}\n` +
+    `${fechaStr}` +
+    `\nCualquier duda consulta la app BarrCan.`
+  );
+  window.open(`https://wa.me/52${uTec.tel.replace(/\D/g,'')}?text=${msg}`, '_blank');
+}
+
+// ── Agregar evento a Google Calendar ───────────────────────────
+function gtiaAgregarCalendario() {
+  const id      = document.getElementById('gtia-det-id').value;
+  const fecha   = document.getElementById('gtia-det-fecha-vis').value;
+  const hora    = document.getElementById('gtia-det-hora-vis').value;
+  const tecnico = document.getElementById('gtia-det-tecnico').value;
+  const g       = GARANTIAS_CACHE.find(x => x.id === id);
+
+  if (!fecha) { toast('⚠️ Selecciona una fecha primero'); return; }
+
+  // Construir fechas para Calendar (formato: YYYYMMDDTHHMMSS)
+  const fechaBase = fecha.replace(/-/g, '');
+  let dtStart, dtEnd;
+  if (hora) {
+    const [hh, mm] = hora.split(':');
+    dtStart = `${fechaBase}T${hh}${mm}00`;
+    // Duración estimada: 2 horas
+    const endHour = String(parseInt(hh) + 2).padStart(2, '0');
+    dtEnd   = `${fechaBase}T${endHour}${mm}00`;
+  } else {
+    dtStart = fechaBase;
+    dtEnd   = fechaBase;
+  }
+
+  const tecNombre = tecnico ? (USUARIOS[tecnico]?.apodo || tecnico) : 'Por confirmar';
+  const titulo    = encodeURIComponent(`🛡️ Garantía · ${g?.cliente_nombre || 'Cliente'}`);
+  const detalle   = encodeURIComponent(
+    `Cliente: ${g?.cliente_nombre || '—'}\n` +
+    `Tel: ${g?.cliente_tel || '—'}\n` +
+    `Problema: ${g?.tipo_problema || '—'}\n` +
+    `Descripción: ${(g?.descripcion || '').slice(0, 150)}\n` +
+    `Técnico asignado: ${tecNombre}`
+  );
+
+  const url = `https://calendar.google.com/calendar/render?action=TEMPLATE` +
+    `&text=${titulo}` +
+    `&dates=${dtStart}/${dtEnd}` +
+    `&details=${detalle}`;
+
+  window.open(url, '_blank');
+  toast('📅 Abriendo Google Calendar...');
 }
 
 function gtiaDetWhatsApp() {
@@ -11916,6 +11993,20 @@ function visitasGuardadasAbrir() {
         <input type="date" id="gtia-det-fecha-vis" class="form-input">
       </div>
     </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Hora de visita</label>
+        <input type="time" id="gtia-det-hora-vis" class="form-input">
+      </div>
+      <div class="form-group" style="display:flex;align-items:flex-end">
+        <button onclick="gtiaAgregarCalendario()"
+          style="width:100%;padding:11px;background:rgba(66,133,244,0.1);color:#4285F4;
+                 border:1.5px solid rgba(66,133,244,0.3);border-radius:var(--radius-sm);
+                 font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer">
+          📅 Agregar a Calendar
+        </button>
+      </div>
+    </div>
 
     <div class="form-group">
       <label class="form-label">Costo de reparación (si aplica)</label>
@@ -11939,13 +12030,20 @@ function visitasGuardadasAbrir() {
       padding:8px 12px;background:rgba(192,57,43,0.08);border-radius:var(--radius-sm);margin-bottom:12px"></div>
 
     <!-- Botones -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
       <button onclick="gtiaDetWhatsApp()"
         style="padding:12px;background:rgba(37,211,102,0.1);color:#25D366;border:1.5px solid rgba(37,211,102,0.3);
                border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer">
-        💬 WhatsApp cliente
+        💬 WA Cliente
       </button>
-      <button onclick="gtiaDetGuardar()" class="btn-calcular" style="margin:0;padding:12px">
+      <button onclick="gtiaWATecnico()"
+        style="padding:12px;background:rgba(230,126,34,0.1);color:#E67E22;border:1.5px solid rgba(230,126,34,0.3);
+               border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer">
+        👷 WA Técnico
+      </button>
+    </div>
+    <div style="margin-bottom:10px">
+      <button onclick="gtiaDetGuardar()" class="btn-calcular" style="margin:0;padding:12px;width:100%">
         💾 Guardar cambios
       </button>
     </div>
@@ -12587,6 +12685,7 @@ const USUARIOS = {
     rol:    'admin',
     emoji:  '👔',
     color:  '#2E6DA4',
+    tel:    '5615158415',
     pinKey: 'barrcan_pin_MAU'
   },
   'HER': {
@@ -12595,6 +12694,7 @@ const USUARIOS = {
     rol:    'admin',
     emoji:  '👔',
     color:  '#27AE60',
+    tel:    '',
     pinKey: 'barrcan_pin_HER'
   },
   'TEC1': {
@@ -12603,6 +12703,7 @@ const USUARIOS = {
     rol:    'tecnico',
     emoji:  '🔧',
     color:  '#E67E22',
+    tel:    '',           // agregar cuando tengas el chip
     pinKey: 'barrcan_pin_TEC1'
   },
   'TEC2': {
@@ -12611,6 +12712,7 @@ const USUARIOS = {
     rol:    'tecnico',
     emoji:  '🔧',
     color:  '#8E44AD',
+    tel:    '',           // agregar cuando tengas el chip
     pinKey: 'barrcan_pin_TEC2'
   }
 };
