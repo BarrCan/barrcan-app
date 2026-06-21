@@ -10412,20 +10412,41 @@ function garantiasRenderLista() {
   const lista = document.getElementById('garantias-lista');
   if (!lista) return;
   let filtradas = GARANTIAS_CACHE;
-  if (GARANTIA_FILTRO !== 'todos') filtradas = GARANTIAS_CACHE.filter(g => g.prioridad === GARANTIA_FILTRO);
-  if (!filtradas.length) { lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--gray-400)"><div style="font-size:40px;margin-bottom:10px">🛡️</div><div>Sin tickets</div></div>`; return; }
+  if (GARANTIA_FILTRO !== 'todos') filtradas = GARANTIAS_CACHE.filter(g =>
+    GARANTIA_FILTRO === 'resuelto' ? g.estado === 'resuelto' : g.prioridad === GARANTIA_FILTRO);
+  if (!filtradas.length) {
+    lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--gray-400)">
+      <div style="font-size:40px;margin-bottom:10px">🛡️</div>
+      <div>Sin tickets en esta categoría</div></div>`;
+    return;
+  }
+
+  const estadoLabels = {
+    nuevo:'🆕 Nuevo', en_revision:'🔍 En revisión',
+    visita_agendada:'📅 Visita agendada', resuelto:'✅ Resuelto', cerrado:'🔒 Cerrado'
+  };
+
   lista.innerHTML = filtradas.map(g => {
     const st = GTIA_PRIOR_STYLE[g.prioridad] || GTIA_PRIOR_STYLE.normal;
-    return `<div style="background:var(--white);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;box-shadow:var(--shadow-sm);border-left:5px solid ${st.color}">
+    const estLabel = estadoLabels[g.estado] || g.estado;
+    return `
+    <div onclick="gtiaAbrirDetalle('${g.id}')"
+      style="background:var(--white);border-radius:var(--radius);padding:14px 16px;
+             margin-bottom:10px;box-shadow:var(--shadow-sm);border-left:5px solid ${st.color};cursor:pointer">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
         <div style="font-size:15px;font-weight:700;color:var(--navy)">${g.cliente_nombre}</div>
-        <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;background:${st.bg};color:${st.color}">${st.emoji} ${(g.prioridad||'').toUpperCase()}</span>
+        <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;
+               background:${st.bg};color:${st.color}">${st.emoji} ${(g.prioridad||'').toUpperCase()}</span>
       </div>
       <div style="font-size:12px;color:var(--gray-600);margin-bottom:4px">${g.tipo_problema || '—'}</div>
       <div style="font-size:11px;color:var(--gray-400)">${(g.descripcion||'').slice(0,80)}${(g.descripcion?.length||0)>80?'…':''}</div>
-      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
-        ${g.cliente_tel?`<span style="font-size:11px;background:var(--gray-100);color:var(--gray-600);padding:2px 7px;border-radius:4px">📞 ${g.cliente_tel}</span>`:''}
-        <button onclick="gtiaNotificarWhatsApp(${JSON.stringify(g).replace(/"/g,"'")})" style="font-size:11px;background:rgba(37,211,102,0.1);color:#25D366;padding:2px 8px;border-radius:4px;border:none;cursor:pointer;font-weight:600">WhatsApp →</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+        <span style="font-size:10px;color:var(--gray-400)">${estLabel}</span>
+        <div style="display:flex;gap:6px">
+          ${g.cliente_tel?`<span style="font-size:11px;background:var(--gray-100);color:var(--gray-600);padding:2px 7px;border-radius:4px">📞 ${g.cliente_tel}</span>`:''}
+          ${g.fecha_visita_agendada?`<span style="font-size:11px;background:rgba(46,109,164,0.08);color:var(--blue);padding:2px 7px;border-radius:4px">📅 ${g.fecha_visita_agendada}</span>`:''}
+          ${g.costo_reparacion?`<span style="font-size:11px;background:rgba(39,174,96,0.08);color:var(--green);padding:2px 7px;border-radius:4px">$${fmt(g.costo_reparacion)}</span>`:''}
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -10440,6 +10461,95 @@ function garantiasFiltrar(btn) {
 
 function garantiasAbrir() { document.getElementById('garantias-overlay').style.display='block'; garantiasCargar(); }
 function garantiasCerrar() { document.getElementById('garantias-overlay').style.display='none'; }
+
+// ── Detalle / Gestión de ticket ────────────────
+function gtiaAbrirDetalle(id) {
+  const g = GARANTIAS_CACHE.find(x => x.id === id);
+  if (!g) return;
+  const st = GTIA_PRIOR_STYLE[g.prioridad] || GTIA_PRIOR_STYLE.normal;
+
+  document.getElementById('gtia-det-id').value     = g.id;
+  document.getElementById('gtia-det-nombre').textContent  = g.cliente_nombre || '—';
+  document.getElementById('gtia-det-tel').textContent     = g.cliente_tel || '—';
+  document.getElementById('gtia-det-folio').textContent   = g.folio_contrato || '—';
+  document.getElementById('gtia-det-tipo').textContent    = g.tipo_problema || '—';
+  document.getElementById('gtia-det-prior').textContent   = st.emoji + ' ' + (g.prioridad||'').toUpperCase();
+  document.getElementById('gtia-det-prior').style.color   = st.color;
+  document.getElementById('gtia-det-desc').textContent    = g.descripcion || '—';
+  document.getElementById('gtia-det-disp').textContent    = g.disponibilidad || '—';
+  document.getElementById('gtia-det-fecha-inst').textContent = g.fecha_instalacion || '—';
+  document.getElementById('gtia-det-estado').value        = g.estado || 'nuevo';
+  document.getElementById('gtia-det-tecnico').value       = g.tecnico_asignado || '';
+  document.getElementById('gtia-det-fecha-vis').value     = g.fecha_visita_agendada || '';
+  document.getElementById('gtia-det-costo').value         = g.costo_reparacion || '';
+  document.getElementById('gtia-det-notas').value         = g.notas_internas || '';
+  document.getElementById('gtia-det-error').style.display = 'none';
+
+  document.getElementById('gtia-det-overlay').style.display = 'block';
+  document.getElementById('gtia-det-modal').style.display   = 'block';
+}
+
+function gtiaDetCerrar() {
+  document.getElementById('gtia-det-overlay').style.display = 'none';
+  document.getElementById('gtia-det-modal').style.display   = 'none';
+}
+
+async function gtiaDetGuardar() {
+  const id             = document.getElementById('gtia-det-id').value;
+  const estado         = document.getElementById('gtia-det-estado').value;
+  const tecnico        = document.getElementById('gtia-det-tecnico').value.trim();
+  const fechaVis       = document.getElementById('gtia-det-fecha-vis').value;
+  const costoRep       = parseFloat(document.getElementById('gtia-det-costo').value) || null;
+  const notasInt       = document.getElementById('gtia-det-notas').value.trim();
+  const errEl          = document.getElementById('gtia-det-error');
+
+  const cambios = {
+    estado,
+    tecnico_asignado:       tecnico || null,
+    fecha_visita_agendada:  fechaVis || null,
+    costo_reparacion:       costoRep,
+    notas_internas:         notasInt || null
+  };
+
+  try {
+    if (SYNC.online) {
+      const { error } = await sb().from('garantias').update(cambios).eq('id', id);
+      if (error) throw error;
+    }
+    // Actualizar cache local
+    const idx = GARANTIAS_CACHE.findIndex(x => x.id === id);
+    if (idx >= 0) {
+      GARANTIAS_CACHE[idx] = { ...GARANTIAS_CACHE[idx], ...cambios };
+      localStorage.setItem('barrcan_garantias_cache', JSON.stringify(GARANTIAS_CACHE));
+    }
+
+    // Si se agendó visita → notificar WhatsApp al cliente
+    if (fechaVis && estado === 'visita_agendada') {
+      const g = GARANTIAS_CACHE[idx];
+      const msg = encodeURIComponent(
+        `🛡️ *BarrCan · Visita de garantía agendada*\n` +
+        `Hola ${g?.cliente_nombre || ''}, agendamos una visita para revisar tu reporte.\n` +
+        `📅 Fecha: ${fechaVis}\n` +
+        `👷 Técnico: ${tecnico || 'Por confirmar'}\n` +
+        `¿Tienes alguna pregunta? Escríbenos aquí.`
+      );
+      window.open(`https://wa.me/52${g?.cliente_tel?.replace(/\D/g,'')}?text=${msg}`, '_blank');
+    }
+
+    toast(`✅ Ticket actualizado · ${estado}`);
+    gtiaDetCerrar();
+    garantiasRenderLista();
+  } catch(e) {
+    errEl.textContent = '❌ ' + e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+function gtiaDetWhatsApp() {
+  const id = document.getElementById('gtia-det-id').value;
+  const g  = GARANTIAS_CACHE.find(x => x.id === id);
+  if (g) gtiaNotificarWhatsApp(g);
+}
 
 function garantiaAbrir() {
   GTIA_PRIOR_SEL = 'urgente'; GTIA_EVIDENCIAS = [];
@@ -11739,8 +11849,115 @@ function visitasGuardadasAbrir() {
 </div>
 
 <!-- ══════════════════════════════════════════
-     MODAL PRESUPUESTO ATRASADO
+     MODAL DETALLE / GESTIÓN TICKET GARANTÍA
      ══════════════════════════════════════════ -->
+<div id="gtia-det-overlay" onclick="gtiaDetCerrar()"
+  style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;backdrop-filter:blur(3px)"></div>
+
+<div id="gtia-det-modal" style="display:none;position:fixed;bottom:0;left:0;right:0;
+  background:var(--white);border-radius:20px 20px 0 0;z-index:1001;
+  max-height:92vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(0,0,0,0.3)">
+  <input type="hidden" id="gtia-det-id">
+  <div style="padding:16px 20px 40px">
+    <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 16px"></div>
+
+    <!-- Header -->
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+      <div>
+        <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--navy)" id="gtia-det-nombre">—</div>
+        <div style="font-size:12px;color:var(--gray-400);margin-top:2px" id="gtia-det-tel">—</div>
+      </div>
+      <span id="gtia-det-prior" style="font-size:12px;font-weight:700"></span>
+    </div>
+
+    <!-- Datos del reporte (solo lectura) -->
+    <div style="background:var(--off-white);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--gray-400);margin-bottom:8px">Reporte del cliente</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px">
+        <div><span style="color:var(--gray-400)">Tipo: </span><span id="gtia-det-tipo" style="font-weight:600;color:var(--navy)">—</span></div>
+        <div><span style="color:var(--gray-400)">Folio: </span><span id="gtia-det-folio" style="font-weight:600;color:var(--blue);font-family:'DM Mono',monospace">—</span></div>
+        <div><span style="color:var(--gray-400)">Instalación: </span><span id="gtia-det-fecha-inst" style="font-weight:600;color:var(--navy)">—</span></div>
+        <div><span style="color:var(--gray-400)">Disponibilidad: </span><span id="gtia-det-disp" style="font-weight:600;color:var(--navy)">—</span></div>
+      </div>
+      <div style="margin-top:8px;font-size:12px;color:var(--gray-600);line-height:1.5" id="gtia-det-desc">—</div>
+    </div>
+
+    <!-- Gestión interna -->
+    <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--blue);margin-bottom:10px">Gestión interna</div>
+
+    <div class="form-group">
+      <label class="form-label">Estado del ticket</label>
+      <div class="form-select-wrap">
+        <select id="gtia-det-estado" class="form-select">
+          <option value="nuevo">🆕 Nuevo</option>
+          <option value="en_revision">🔍 En revisión</option>
+          <option value="visita_agendada">📅 Visita agendada</option>
+          <option value="resuelto">✅ Resuelto</option>
+          <option value="cerrado">🔒 Cerrado</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Técnico asignado</label>
+        <div class="form-select-wrap">
+          <select id="gtia-det-tecnico" class="form-select">
+            <option value="">— Sin asignar —</option>
+            <option value="TEC1">TEC1</option>
+            <option value="TEC2">TEC2</option>
+            <option value="MAU">MAU</option>
+            <option value="HER">HER</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fecha de visita</label>
+        <input type="date" id="gtia-det-fecha-vis" class="form-input">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Costo de reparación (si aplica)</label>
+      <div class="input-unit">
+        <input type="number" id="gtia-det-costo" class="form-input"
+          placeholder="0" min="0" inputmode="numeric">
+        <span class="input-unit-label">$</span>
+      </div>
+      <div style="font-size:10px;color:var(--gray-400);margin-top:3px">
+        Dejar vacío si está cubierto por garantía
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Notas internas</label>
+      <textarea id="gtia-det-notas" class="form-input" rows="3"
+        placeholder="Diagnóstico, materiales usados, acciones realizadas..." style="resize:none"></textarea>
+    </div>
+
+    <div id="gtia-det-error" style="display:none;color:var(--red);font-size:12px;
+      padding:8px 12px;background:rgba(192,57,43,0.08);border-radius:var(--radius-sm);margin-bottom:12px"></div>
+
+    <!-- Botones -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <button onclick="gtiaDetWhatsApp()"
+        style="padding:12px;background:rgba(37,211,102,0.1);color:#25D366;border:1.5px solid rgba(37,211,102,0.3);
+               border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer">
+        💬 WhatsApp cliente
+      </button>
+      <button onclick="gtiaDetGuardar()" class="btn-calcular" style="margin:0;padding:12px">
+        💾 Guardar cambios
+      </button>
+    </div>
+
+    <button onclick="gtiaDetCerrar()"
+      style="width:100%;padding:11px;background:none;border:1px solid var(--gray-200);
+             border-radius:var(--radius-sm);color:var(--gray-400);font-family:'DM Sans',sans-serif;
+             font-size:13px;cursor:pointer">
+      Cerrar
+    </button>
+  </div>
+</div>
 <div id="pres-modal-overlay" onclick="presAtrasadoCerrarModal()"
   style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:600;backdrop-filter:blur(3px)"></div>
 
