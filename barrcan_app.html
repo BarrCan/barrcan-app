@@ -1164,6 +1164,21 @@ select.form-select { padding-right: 36px; cursor: pointer; }
               <input type="number" class="form-input" id="inp-mdo" value="500" min="0" inputmode="numeric">
             </div>
           </div>
+
+          <!-- Descuento -->
+          <div style="height:1px;background:var(--gray-100);margin:10px 0"></div>
+          <div class="form-group">
+            <label class="form-label" style="display:flex;justify-content:space-between">
+              <span>Descuento al cliente</span>
+              <span id="inp-descuento-label" style="color:var(--red);font-weight:700">0%</span>
+            </label>
+            <input type="range" id="inp-descuento" min="0" max="30" step="1" value="0"
+              style="width:100%;margin:4px 0"
+              oninput="document.getElementById('inp-descuento-label').textContent=this.value+'%'">
+            <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--gray-400)">
+              <span>Sin descuento</span><span>5%</span><span>10%</span><span>15%</span><span>20%</span><span>30% máx</span>
+            </div>
+          </div>
         </div>
 
         <!-- Logística -->
@@ -1775,6 +1790,17 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     <div class="screen" id="screen-historial">
       <p class="section-title">Historial</p>
       <p class="section-sub">Cotizaciones guardadas · toca ✏️ para editar</p>
+
+      <!-- Botón presupuesto atrasado -->
+      <button onclick="presAtrasadoAbrirModal()" style="
+        width:100%;padding:13px;margin-bottom:14px;
+        background:none;border:1.5px dashed var(--blue);
+        border-radius:var(--radius);color:var(--blue);
+        font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;
+        cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+        <span style="font-size:18px">📋</span> + Capturar Presupuesto Anterior
+      </button>
+
       <div id="historial-lista"></div>
     </div>
 
@@ -4150,34 +4176,38 @@ const DB = {
     // ══ CANCEL FRAMELESS 9mm ══
     {
       id:"CB_FRAMELESS_9MM", nombre:"Cancel Frameless Puerta Sola 9mm", serie:"Canceles de Baño", emoji:"🔳",
-      tipo:"Cancel Frameless 9mm", holgura:0, factorGIF:1.15, esCancelBano:true,
-      esFrameless:true,
+      tipo:"Cancel Frameless 9mm", holgura:0, factorGIF:1.15, esCancelBano:true, esFrameless:true,
+      herrajes:[
+        {cod:"OPT-BIS",desc:"Bisagra inox 304 (o zamak)",cant:2,precio:0},
+        {cod:"OPT-JAL",desc:"Jaladera doble cristal inox",cant:1,precio:0},
+        {cod:"OPT-CLP",desc:"Clips fijación piso/techo",cant:2,precio:0},
+        {cod:"POL-BW2",desc:"Policarbonato botaguas doble aleta",cant:1,precio:0}
+      ],
       perfiles:{},
-      herrajes:[],
       formulas:{ cortes:[], vidrio:{ tipo:"Cristal Templado 9mm", cant:1,
         ancho:(L,H)=>L, alto:(L,H)=>H } }
     },
     {
-      id:"CB_BACALAR_OX", nombre:"Bacalar Frameless OX — Fijo+Corredizo 9mm", serie:"Canceles de Baño", emoji:"🔳",
-      tipo:"Cancel Frameless Corredizo 9mm", holgura:0, factorGIF:1.15, esCancelBano:true,
-      esFrameless:true,
+      id:"CB_BACALAR_OX", nombre:"Bacalar OX — Fijo+Corredizo 9mm", serie:"Canceles de Baño", emoji:"🔳",
+      tipo:"Cancel Frameless Corredizo 9mm", holgura:0, factorGIF:1.15, esCancelBano:true, esFrameless:true,
       herrajes:[
-        {cod:"AQ-150/200/300",desc:"Kit AQUOS (según ancho)",cant:1,precio:0},
-        {cod:"CV-08",desc:"Clip CV-08",cant:3,precio:0},
-        {cod:"POL-005",desc:"Policarbonato",cant:1,precio:0}
+        {cod:"AQ-150/200/300",desc:"Kit AQUOS (según ancho total)",cant:1,precio:0},
+        {cod:"CV-08",desc:"Clip fijo CV-08 inox",cant:3,precio:0},
+        {cod:"POL-005",desc:"Policarbonato aleta suave vertical",cant:1,precio:0},
+        {cod:"OPT-JAL",desc:"Jaladera doble cristal inox",cant:1,precio:0}
       ],
       perfiles:{},
       formulas:{ cortes:[], vidrio:{ tipo:"Cristal Templado 9mm", cant:2,
         ancho:(L,H)=>L/2, alto:(L,H)=>H } }
     },
     {
-      id:"CB_BACALAR_XO", nombre:"Bacalar Frameless XO — Corredizo+Fijo 9mm", serie:"Canceles de Baño", emoji:"🔳",
-      tipo:"Cancel Frameless Corredizo 9mm", holgura:0, factorGIF:1.15, esCancelBano:true,
-      esFrameless:true,
+      id:"CB_BACALAR_XO", nombre:"Bacalar XO — Corredizo+Fijo 9mm", serie:"Canceles de Baño", emoji:"🔳",
+      tipo:"Cancel Frameless Corredizo 9mm", holgura:0, factorGIF:1.15, esCancelBano:true, esFrameless:true,
       herrajes:[
-        {cod:"AQ-150/200/300",desc:"Kit AQUOS (según ancho)",cant:1,precio:0},
-        {cod:"CV-08",desc:"Clip CV-08",cant:3,precio:0},
-        {cod:"POL-005",desc:"Policarbonato",cant:1,precio:0}
+        {cod:"AQ-150/200/300",desc:"Kit AQUOS (según ancho total)",cant:1,precio:0},
+        {cod:"CV-08",desc:"Clip fijo CV-08 inox",cant:3,precio:0},
+        {cod:"POL-005",desc:"Policarbonato aleta suave vertical",cant:1,precio:0},
+        {cod:"OPT-JAL",desc:"Jaladera doble cristal inox",cant:1,precio:0}
       ],
       perfiles:{},
       formulas:{ cortes:[], vidrio:{ tipo:"Cristal Templado 9mm", cant:2,
@@ -4185,44 +4215,103 @@ const DB = {
     },
     {
       id:"CB_BACALAR_ESCUADRA", nombre:"Bacalar Escuadra 90° Frameless 9mm", serie:"Canceles de Baño", emoji:"🔳",
-      tipo:"Cancel Frameless Escuadra 9mm", holgura:0, factorGIF:1.15, esCancelBano:true,
-      esFrameless:true,
+      tipo:"Cancel Frameless Escuadra 9mm", holgura:0, factorGIF:1.15, esCancelBano:true, esFrameless:true,
       herrajes:[
         {cod:"AQ-150/200/300",desc:"Kit AQUOS (según ancho)",cant:1,precio:0},
-        {cod:"AQ-07/AQ-07-N",desc:"Herraje unión 90° cristal-tubo",cant:2,precio:0},
-        {cod:"CV-08",desc:"Clip CV-08",cant:3,precio:0}
+        {cod:"AQ-07",desc:"Herraje unión 90° cristal-tubo inox",cant:2,precio:0},
+        {cod:"CV-08",desc:"Clip fijo CV-08 inox",cant:3,precio:0},
+        {cod:"OPT-JAL",desc:"Jaladera doble cristal inox",cant:1,precio:0}
       ],
       perfiles:{},
       formulas:{ cortes:[], vidrio:{ tipo:"Cristal Templado 9mm", cant:2,
         ancho:(L,H)=>L/2, alto:(L,H)=>H } }
     },
+    // ── Escuadra abatible — clips 90° ──
     {
-      id:"CB_LUJO_CORREDIZO_XO", nombre:"Cancel Baño Acuario Lujo XO 6mm", serie:"Canceles de Baño", emoji:"🚿",
+      id:"CB_ESC_CLIPS90", nombre:"Escuadra Abatible Clips 90°", serie:"Canceles de Baño", emoji:"🔳",
+      tipo:"Cancel Frameless Escuadra Abatible", holgura:0, factorGIF:1.15, esCancelBano:true, esFrameless:true,
+      herrajes:[
+        {cod:"CV-08",desc:"Clip fijo piso/techo (fijos)",cant:4,precio:0},
+        {cod:"AQ-07",desc:"Clip unión 90° cristal-cristal",cant:2,precio:0},
+        {cod:"OPT-BIS",desc:"Bisagra inox 304 puerta",cant:2,precio:0},
+        {cod:"OPT-JAL",desc:"Jaladera doble cristal inox",cant:1,precio:0},
+        {cod:"POL-005",desc:"Policarbonato aleta suave vertical (fijo junto a puerta)",cant:1,precio:0},
+        {cod:"POL-BW2",desc:"Policarbonato botaguas doble aleta (ancho puerta)",cant:1,precio:0}
+      ],
+      perfiles:{},
+      formulas:{ cortes:[
+        {clave:"F1",nombre:"Fijo 1 (lateral)",cant:1,f:(L,H)=>L},
+        {clave:"F2",nombre:"Fijo 2 (frontal)",cant:1,f:(L1,L2,P)=>L2-10-P-18},
+        {clave:"PUERTA",nombre:"Puerta batiente",cant:1,f:(L,H)=>H-9}
+      ], vidrio:{ tipo:"Cristal Templado 9mm", cant:3,
+        ancho:(L,H)=>L, alto:(L,H)=>H } }
+    },
+    // ── Escuadra abatible — bisagras 90° + barra estabilizadora ──
+    {
+      id:"CB_ESC_BIS90", nombre:"Escuadra Abatible Bisagras 90°", serie:"Canceles de Baño", emoji:"🔳",
+      tipo:"Cancel Frameless Escuadra Abatible", holgura:0, factorGIF:1.15, esCancelBano:true, esFrameless:true,
+      herrajes:[
+        {cod:"CV-08",desc:"Clip fijo piso/techo (fijos)",cant:4,precio:0},
+        {cod:"OPT-BIS90",desc:"Bisagra 90° cristal-cristal inox",cant:2,precio:0},
+        {cod:"OPT-JAL",desc:"Jaladera doble cristal inox",cant:1,precio:0},
+        {cod:"POL-005",desc:"Policarbonato aleta suave vertical (fijo junto a puerta)",cant:1,precio:0},
+        {cod:"POL-BW2",desc:"Policarbonato botaguas doble aleta (ancho puerta)",cant:1,precio:0},
+        {cod:"BE-205",desc:"Tubo inox Ø19mm barra estabilizadora",cant:1,precio:0},
+        {cod:"BE-201",desc:"Conector final cristal-tubo Ø19mm",cant:2,precio:0}
+      ],
+      perfiles:{},
+      formulas:{ cortes:[
+        {clave:"F1",nombre:"Fijo 1 (lateral)",cant:1,f:(L,H)=>L},
+        {clave:"F2",nombre:"Fijo 2 (frontal)",cant:1,f:(L1,L2,P)=>L2-L1-P-18},
+        {clave:"PUERTA",nombre:"Puerta batiente",cant:1,f:(L,H)=>H-9}
+      ], vidrio:{ tipo:"Cristal Templado 9mm", cant:3,
+        ancho:(L,H)=>L, alto:(L,H)=>H } }
+    },
+    // ── Canceles aluminio XO / OX / XX ──
+    {
+      id:"CB_LUJO_CORREDIZO_XO", nombre:"Acuario Lujo XO 6mm", serie:"Canceles de Baño", emoji:"🚿",
       tipo:"Cancel Baño Corredizo XO 6mm", holgura:0, factorGIF:1.15, esCancelBano:true,
-      perfiles:{}, herrajes:[],
-      formulas:{ cortes:[], vidrio:{ tipo:"Cristal Templado 6mm", cant:2,
-        ancho:(L,H)=>L/2, alto:(L,H)=>H } }
+      herrajes:[
+        {cod:"CARR-CB",desc:"Carretilla corrediza inox",cant:2,precio:0},
+        {cod:"POL-003",desc:"Polietileno 3mm / Vidrio 4mm templado",cant:1,precio:0}
+      ],
+      perfiles:{}, formulas:{ cortes:[], vidrio:{ tipo:"Polietileno 3mm / Cristal Templado 4mm", cant:2, ancho:(L,H)=>L/2, alto:(L,H)=>H } }
     },
     {
-      id:"CB_LIGERO_CORREDIZO_XO", nombre:"Cancel Baño Virgo Plus XO 6mm", serie:"Canceles de Baño", emoji:"🚿",
+      id:"CB_LIGERO_CORREDIZO_XO", nombre:"Virgo Plus XO 6mm", serie:"Canceles de Baño", emoji:"🚿",
       tipo:"Cancel Baño Corredizo XO 6mm", holgura:0, factorGIF:1.15, esCancelBano:true,
-      perfiles:{}, herrajes:[],
-      formulas:{ cortes:[], vidrio:{ tipo:"Cristal Templado 6mm", cant:2,
-        ancho:(L,H)=>L/2, alto:(L,H)=>H } }
+      herrajes:[
+        {cod:"CARR-CB",desc:"Carretilla corrediza inox",cant:2,precio:0},
+        {cod:"POL-003",desc:"Polietileno 3mm / Vidrio 4mm templado",cant:1,precio:0}
+      ],
+      perfiles:{}, formulas:{ cortes:[], vidrio:{ tipo:"Polietileno 3mm / Cristal Templado 4mm", cant:2, ancho:(L,H)=>L/2, alto:(L,H)=>H } }
     },
     {
-      id:"CB_ALU_XO", nombre:"Cancel Aluminio XO Corredizo 6mm", serie:"Canceles de Baño", emoji:"🚿",
-      tipo:"Cancel Baño Aluminio XO 6mm", holgura:0, factorGIF:1.15, esCancelBano:true,
-      perfiles:{}, herrajes:[],
-      formulas:{ cortes:[], vidrio:{ tipo:"Cristal Templado 6mm", cant:2,
-        ancho:(L,H)=>L/2, alto:(L,H)=>H } }
+      id:"CB_ALU_XO", nombre:"Cancel Aluminio XO", serie:"Canceles de Baño", emoji:"🚿",
+      tipo:"Cancel Baño Aluminio XO", holgura:0, factorGIF:1.15, esCancelBano:true,
+      herrajes:[
+        {cod:"CARR-CB",desc:"Carretilla corrediza",cant:2,precio:0},
+        {cod:"POL-003",desc:"Polietileno 3mm / Vidrio 4mm templado",cant:1,precio:0}
+      ],
+      perfiles:{}, formulas:{ cortes:[], vidrio:{ tipo:"Polietileno 3mm / Cristal Templado 4mm", cant:2, ancho:(L,H)=>L/2, alto:(L,H)=>H } }
     },
     {
-      id:"CB_ALU_OX", nombre:"Cancel Aluminio OX Corredizo 6mm", serie:"Canceles de Baño", emoji:"🚿",
-      tipo:"Cancel Baño Aluminio OX 6mm", holgura:0, factorGIF:1.15, esCancelBano:true,
-      perfiles:{}, herrajes:[],
-      formulas:{ cortes:[], vidrio:{ tipo:"Cristal Templado 6mm", cant:2,
-        ancho:(L,H)=>L/2, alto:(L,H)=>H } }
+      id:"CB_ALU_OX", nombre:"Cancel Aluminio OX", serie:"Canceles de Baño", emoji:"🚿",
+      tipo:"Cancel Baño Aluminio OX", holgura:0, factorGIF:1.15, esCancelBano:true,
+      herrajes:[
+        {cod:"CARR-CB",desc:"Carretilla corrediza",cant:2,precio:0},
+        {cod:"POL-003",desc:"Polietileno 3mm / Vidrio 4mm templado",cant:1,precio:0}
+      ],
+      perfiles:{}, formulas:{ cortes:[], vidrio:{ tipo:"Polietileno 3mm / Cristal Templado 4mm", cant:2, ancho:(L,H)=>L/2, alto:(L,H)=>H } }
+    },
+    {
+      id:"CB_ALU_XX", nombre:"Cancel Aluminio XX — Dos Hojas", serie:"Canceles de Baño", emoji:"🚿",
+      tipo:"Cancel Baño Aluminio XX", holgura:0, factorGIF:1.15, esCancelBano:true,
+      herrajes:[
+        {cod:"CARR-CB",desc:"Carretilla corrediza",cant:4,precio:0},
+        {cod:"POL-003",desc:"Polietileno 3mm / Vidrio 4mm templado",cant:2,precio:0}
+      ],
+      perfiles:{}, formulas:{ cortes:[], vidrio:{ tipo:"Polietileno 3mm / Cristal Templado 4mm", cant:2, ancho:(L,H)=>L/2, alto:(L,H)=>H } }
     },
 
     // ══ DOMO ══
@@ -5177,65 +5266,92 @@ function svgPorTipo(tipo, serie, id) {
     // ════════════════════════════════════════
 
     'CB_FRAMELESS_9MM': () => wrap(
-      `<rect x="8" y="5" width="104" height="70" fill="rgba(140,205,255,0.22)" stroke="rgba(100,180,255,0.7)" stroke-width="1.8" rx="0.5"/>` +
-      `<circle cx="8" cy="22" r="3.5" fill="${c}" opacity="0.7"/>` +
-      `<circle cx="8" cy="55" r="3.5" fill="${c}" opacity="0.7"/>` +
-      `<rect x="55" y="30" width="3" height="20" rx="1.5" fill="${c2}"/>` +
-      arcoApertura(8,75,75,-72,-8)+
-      `<text x="60" y="76" text-anchor="middle" font-size="6" fill="${c2}" font-family="Arial" font-weight="700">FRAMELESS 9mm — PUERTA SOLA</text>`),
+      `<rect x="25" y="3" width="70" height="70" fill="rgba(140,205,255,0.22)" stroke="rgba(100,180,255,0.7)" stroke-width="2"/>` +
+      `<rect x="23" y="14" width="4" height="8" rx="1" fill="${c}" opacity="0.8"/>` +
+      `<rect x="23" y="50" width="4" height="8" rx="1" fill="${c}" opacity="0.8"/>` +
+      `<rect x="84" y="30" width="3" height="14" rx="1.5" fill="${c2}"/>` +
+      `<rect x="25" y="0" width="70" height="3" fill="${c}" rx="1" opacity="0.5"/>` +
+      `<rect x="25" y="73" width="70" height="3" fill="${c}" rx="1" opacity="0.5"/>` +
+      arcoApertura(25,73,52,-78,-5)+
+      `<text x="60" y="76" text-anchor="middle" font-size="6" fill="${c2}" font-family="Arial" font-weight="700">FRAMELESS 9mm · PUERTA SOLA</text>`),
 
-    // Bacalar — Frameless corredizo con sistema AQUOS
     'CB_BACALAR_OX': () => wrap(
-      // Panel fijo izquierdo
-      `<rect x="5" y="5" width="52" height="70" fill="rgba(140,205,255,0.15)" stroke="rgba(100,180,255,0.5)" stroke-width="1.5"/>` +
-      `<line x1="5" y1="5" x2="57" y2="75" stroke="${gb}" stroke-width="0.7"/>` +
-      `<text x="31" y="37" text-anchor="middle" font-size="8" fill="${c2}" font-family="Arial" font-weight="700">O</text>` +
-      // Panel corredizo derecho
-      `<rect x="62" y="5" width="53" height="70" fill="rgba(140,205,255,0.25)" stroke="rgba(100,180,255,0.7)" stroke-width="1.8"/>` +
-      flecha(82,37,'l')+
-      `<text x="88" y="37" text-anchor="middle" font-size="8" fill="${c2}" font-family="Arial" font-weight="700">X</text>` +
-      // Tubo AQUOS superior
-      `<rect x="5" y="2" width="110" height="4" fill="${c}" rx="1" opacity="0.6"/>` +
-      // Carretillas
-      `<circle cx="72" cy="4" r="3" fill="${c2}" opacity="0.8"/>` +
-      `<circle cx="95" cy="4" r="3" fill="${c2}" opacity="0.8"/>` +
-      // Clips CV-08
-      `<rect x="57" y="20" width="5" height="8" rx="1" fill="${c2}" opacity="0.7"/>` +
-      `<rect x="57" y="42" width="5" height="8" rx="1" fill="${c2}" opacity="0.7"/>` +
-      `<rect x="57" y="55" width="5" height="8" rx="1" fill="${c2}" opacity="0.7"/>` +
-      `<text x="60" y="76" text-anchor="middle" font-size="6" fill="${c2}" font-family="Arial" font-weight="700">BACALAR OX — AQUOS 9mm</text>`),
+      `<rect x="5" y="1" width="110" height="5" fill="${c}" rx="1" opacity="0.7"/>` +
+      `<rect x="68" y="1" width="8" height="5" rx="1" fill="${c2}" opacity="0.9"/>` +
+      `<rect x="90" y="1" width="8" height="5" rx="1" fill="${c2}" opacity="0.9"/>` +
+      `<rect x="5" y="6" width="50" height="67" fill="rgba(140,205,255,0.12)" stroke="rgba(100,180,255,0.5)" stroke-width="1.5"/>` +
+      `<rect x="3" y="16" width="4" height="8" rx="1" fill="${c2}" opacity="0.7"/>` +
+      `<rect x="3" y="44" width="4" height="8" rx="1" fill="${c2}" opacity="0.7"/>` +
+      `<line x1="55" y1="6" x2="55" y2="73" stroke="${c2}" stroke-width="2.5" opacity="0.5"/>` +
+      `<text x="30" y="40" text-anchor="middle" font-size="9" fill="${c2}" font-family="Arial" font-weight="700">O</text>` +
+      `<rect x="60" y="6" width="55" height="67" fill="rgba(140,205,255,0.25)" stroke="rgba(100,180,255,0.7)" stroke-width="2"/>` +
+      flecha(80,37,'l')+
+      `<text x="88" y="40" text-anchor="middle" font-size="9" fill="${c2}" font-family="Arial" font-weight="700">X</text>` +
+      `<rect x="62" y="30" width="3" height="14" rx="1.5" fill="${c2}"/>` +
+      `<text x="60" y="76" text-anchor="middle" font-size="6" fill="${c2}" font-family="Arial" font-weight="700">BACALAR OX · AQUOS 9mm</text>`),
 
     'CB_BACALAR_XO': () => wrap(
-      // Panel corredizo izquierdo
-      `<rect x="5" y="5" width="53" height="70" fill="rgba(140,205,255,0.25)" stroke="rgba(100,180,255,0.7)" stroke-width="1.8"/>` +
-      flecha(38,37,'r')+
-      `<text x="32" y="37" text-anchor="middle" font-size="8" fill="${c2}" font-family="Arial" font-weight="700">X</text>` +
-      // Panel fijo derecho
-      `<rect x="63" y="5" width="52" height="70" fill="rgba(140,205,255,0.15)" stroke="rgba(100,180,255,0.5)" stroke-width="1.5"/>` +
-      `<line x1="63" y1="5" x2="115" y2="75" stroke="${gb}" stroke-width="0.7"/>` +
-      `<text x="89" y="37" text-anchor="middle" font-size="8" fill="${c2}" font-family="Arial" font-weight="700">O</text>` +
-      // Tubo AQUOS superior
-      `<rect x="5" y="2" width="110" height="4" fill="${c}" rx="1" opacity="0.6"/>` +
-      `<circle cx="25" cy="4" r="3" fill="${c2}" opacity="0.8"/>` +
-      `<circle cx="48" cy="4" r="3" fill="${c2}" opacity="0.8"/>` +
-      `<rect x="58" y="20" width="5" height="8" rx="1" fill="${c2}" opacity="0.7"/>` +
-      `<rect x="58" y="42" width="5" height="8" rx="1" fill="${c2}" opacity="0.7"/>` +
-      `<rect x="58" y="55" width="5" height="8" rx="1" fill="${c2}" opacity="0.7"/>` +
-      `<text x="60" y="76" text-anchor="middle" font-size="6" fill="${c2}" font-family="Arial" font-weight="700">BACALAR XO — AQUOS 9mm</text>`),
+      `<rect x="5" y="1" width="110" height="5" fill="${c}" rx="1" opacity="0.7"/>` +
+      `<rect x="22" y="1" width="8" height="5" rx="1" fill="${c2}" opacity="0.9"/>` +
+      `<rect x="44" y="1" width="8" height="5" rx="1" fill="${c2}" opacity="0.9"/>` +
+      `<rect x="5" y="6" width="53" height="67" fill="rgba(140,205,255,0.25)" stroke="rgba(100,180,255,0.7)" stroke-width="2"/>` +
+      flecha(36,37,'r')+
+      `<text x="30" y="40" text-anchor="middle" font-size="9" fill="${c2}" font-family="Arial" font-weight="700">X</text>` +
+      `<rect x="50" y="30" width="3" height="14" rx="1.5" fill="${c2}"/>` +
+      `<line x1="58" y1="6" x2="58" y2="73" stroke="${c2}" stroke-width="2.5" opacity="0.5"/>` +
+      `<rect x="63" y="6" width="52" height="67" fill="rgba(140,205,255,0.12)" stroke="rgba(100,180,255,0.5)" stroke-width="1.5"/>` +
+      `<rect x="113" y="16" width="4" height="8" rx="1" fill="${c2}" opacity="0.7"/>` +
+      `<rect x="113" y="44" width="4" height="8" rx="1" fill="${c2}" opacity="0.7"/>` +
+      `<text x="89" y="40" text-anchor="middle" font-size="9" fill="${c2}" font-family="Arial" font-weight="700">O</text>` +
+      `<text x="60" y="76" text-anchor="middle" font-size="6" fill="${c2}" font-family="Arial" font-weight="700">BACALAR XO · AQUOS 9mm</text>`),
 
     'CB_BACALAR_ESCUADRA': () => wrap(
-      // Vista en planta — escuadra 90°
-      `<rect x="5" y="5" width="52" height="70" fill="rgba(140,205,255,0.20)" stroke="rgba(100,180,255,0.6)" stroke-width="1.5"/>` +
-      `<text x="31" y="40" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial" font-weight="700">FIJO</text>` +
-      `<rect x="62" y="5" width="53" height="70" fill="rgba(140,205,255,0.25)" stroke="rgba(100,180,255,0.7)" stroke-width="1.8"/>` +
-      flecha(82,37,'l')+
-      `<text x="88" y="37" text-anchor="middle" font-size="8" fill="${c2}" font-family="Arial" font-weight="700">X</text>` +
-      `<rect x="5" y="2" width="110" height="4" fill="${c}" rx="1" opacity="0.6"/>` +
-      `<circle cx="72" cy="4" r="3" fill="${c2}" opacity="0.8"/>` +
-      `<circle cx="95" cy="4" r="3" fill="${c2}" opacity="0.8"/>` +
-      // Ángulo 90° indicador
-      `<path d="M57,40 L57,60 L77,60" stroke="${c2}" stroke-width="1.5" fill="none" stroke-dasharray="3,2"/>` +
-      `<text x="60" y="76" text-anchor="middle" font-size="6" fill="${c2}" font-family="Arial" font-weight="700">BACALAR ESCUADRA 90°</text>`),
+      `<rect x="30" y="1" width="85" height="5" fill="${c}" rx="1" opacity="0.7"/>` +
+      `<rect x="5" y="1" width="5" height="55" fill="${c}" rx="1" opacity="0.7"/>` +
+      `<rect x="10" y="6" width="18" height="50" fill="rgba(140,205,255,0.12)" stroke="rgba(100,180,255,0.5)" stroke-width="1.5"/>` +
+      `<text x="19" y="32" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial" font-weight="700">O</text>` +
+      `<rect x="28" y="5" width="6" height="6" fill="${c2}" opacity="0.7" rx="1"/>` +
+      `<rect x="35" y="6" width="75" height="60" fill="rgba(140,205,255,0.25)" stroke="rgba(100,180,255,0.7)" stroke-width="2"/>` +
+      `<rect x="62" y="1" width="8" height="5" rx="1" fill="${c2}" opacity="0.9"/>` +
+      `<rect x="90" y="1" width="8" height="5" rx="1" fill="${c2}" opacity="0.9"/>` +
+      flecha(72,32,'l')+
+      `<text x="73" y="37" text-anchor="middle" font-size="8" fill="${c2}" font-family="Arial" font-weight="700">X</text>` +
+      `<text x="60" y="76" text-anchor="middle" font-size="6" fill="${c2}" font-family="Arial" font-weight="700">BACALAR ESCUADRA · AQUOS</text>`),
+
+    'CB_ESC_CLIPS90': () => wrap(
+      `<rect x="5" y="5" width="18" height="68" fill="rgba(140,205,255,0.15)" stroke="rgba(100,180,255,0.5)" stroke-width="1.5"/>` +
+      `<rect x="3" y="14" width="4" height="7" rx="1" fill="${c2}" opacity="0.7"/>` +
+      `<rect x="3" y="47" width="4" height="7" rx="1" fill="${c2}" opacity="0.7"/>` +
+      `<rect x="22" y="5" width="5" height="5" fill="${c2}" rx="1" opacity="0.85"/>` +
+      `<rect x="22" y="68" width="5" height="5" fill="${c2}" rx="1" opacity="0.85"/>` +
+      `<rect x="27" y="5" width="33" height="68" fill="rgba(140,205,255,0.15)" stroke="rgba(100,180,255,0.5)" stroke-width="1.5"/>` +
+      `<line x1="60" y1="5" x2="60" y2="73" stroke="${c2}" stroke-width="2.5" opacity="0.5"/>` +
+      `<rect x="63" y="5" width="47" height="68" fill="rgba(140,205,255,0.28)" stroke="rgba(100,180,255,0.8)" stroke-width="2"/>` +
+      `<rect x="61" y="13" width="4" height="7" rx="1" fill="${c}" opacity="0.8"/>` +
+      `<rect x="61" y="50" width="4" height="7" rx="1" fill="${c}" opacity="0.8"/>` +
+      `<rect x="103" y="29" width="3" height="14" rx="1.5" fill="${c2}"/>` +
+      arcoApertura(63,73,40,-38,12)+
+      `<text x="60" y="76" text-anchor="middle" font-size="5.5" fill="${c2}" font-family="Arial" font-weight="700">ESC. ABATIBLE · CLIPS 90°</text>`),
+
+    'CB_ESC_BIS90': () => wrap(
+      // Barra estabilizadora BE-205 superior
+      `<rect x="5" y="1" width="110" height="3" fill="${c2}" rx="1" opacity="0.6"/>` +
+      `<circle cx="5" cy="2.5" r="3" fill="${c2}" opacity="0.8"/>` +
+      `<circle cx="115" cy="2.5" r="3" fill="${c2}" opacity="0.8"/>` +
+      `<rect x="5" y="5" width="18" height="68" fill="rgba(140,205,255,0.15)" stroke="rgba(100,180,255,0.5)" stroke-width="1.5"/>` +
+      `<rect x="3" y="14" width="4" height="7" rx="1" fill="${c2}" opacity="0.7"/>` +
+      `<rect x="3" y="47" width="4" height="7" rx="1" fill="${c2}" opacity="0.7"/>` +
+      // Bisagras 90° en esquina (más grandes que clips)
+      `<rect x="21" y="6" width="7" height="11" rx="1" fill="${c}" opacity="0.9"/>` +
+      `<rect x="21" y="56" width="7" height="11" rx="1" fill="${c}" opacity="0.9"/>` +
+      `<rect x="27" y="5" width="33" height="68" fill="rgba(140,205,255,0.15)" stroke="rgba(100,180,255,0.5)" stroke-width="1.5"/>` +
+      `<line x1="60" y1="5" x2="60" y2="73" stroke="${c2}" stroke-width="2.5" opacity="0.5"/>` +
+      `<rect x="63" y="5" width="47" height="68" fill="rgba(140,205,255,0.28)" stroke="rgba(100,180,255,0.8)" stroke-width="2"/>` +
+      `<rect x="61" y="13" width="4" height="7" rx="1" fill="${c}" opacity="0.8"/>` +
+      `<rect x="61" y="50" width="4" height="7" rx="1" fill="${c}" opacity="0.8"/>` +
+      `<rect x="103" y="29" width="3" height="14" rx="1.5" fill="${c2}"/>` +
+      arcoApertura(63,73,40,-38,12)+
+      `<text x="60" y="76" text-anchor="middle" font-size="5.5" fill="${c2}" font-family="Arial" font-weight="700">ESC. ABATIBLE · BIS 90° + BARRA</text>`),
 
     // ════════════════════════════════════════
     // CANCELES DE BAÑO — ALUMINIO BATIENTE
@@ -5271,7 +5387,7 @@ function svgPorTipo(tipo, serie, id) {
       `<line x1="63" y1="5" x2="113" y2="71" stroke="${gb}" stroke-width="0.7"/>` +
       `<text x="88" y="37" text-anchor="middle" font-size="8" fill="${c2}" font-family="Arial" font-weight="700">O</text>` +
       riel(5,113,74)+
-      `<text x="60" y="76" text-anchor="middle" font-size="6" fill="${c2}" font-family="Arial" font-weight="700">CANCEL ALU XO</text>`),
+      `<text x="60" y="76" text-anchor="middle" font-size="6" fill="${c2}" font-family="Arial" font-weight="700">CANCEL ALU XO · POLIE 3mm</text>`),
 
     'CB_ALU_OX': () => wrap(
       marco(5,3,110,74)+div(60,3,77)+
@@ -5282,7 +5398,18 @@ function svgPorTipo(tipo, serie, id) {
       flecha(74,37,'r')+
       `<text x="88" y="37" text-anchor="middle" font-size="8" fill="${c2}" font-family="Arial" font-weight="700">X</text>` +
       riel(5,113,74)+
-      `<text x="60" y="76" text-anchor="middle" font-size="6" fill="${c2}" font-family="Arial" font-weight="700">CANCEL ALU OX</text>`),
+      `<text x="60" y="76" text-anchor="middle" font-size="6" fill="${c2}" font-family="Arial" font-weight="700">CANCEL ALU OX · POLIE 3mm</text>`),
+
+    'CB_ALU_XX': () => wrap(
+      marco(5,3,110,74)+div(60,3,77)+
+      `<rect x="7" y="5" width="51" height="66" fill="rgba(150,210,255,0.18)" stroke="rgba(100,180,255,0.55)" stroke-width="1"/>` +
+      flecha(44,37,'l')+
+      `<text x="32" y="37" text-anchor="middle" font-size="8" fill="${c2}" font-family="Arial" font-weight="700">X</text>` +
+      `<rect x="63" y="5" width="50" height="66" fill="rgba(150,210,255,0.18)" stroke="rgba(100,180,255,0.55)" stroke-width="1"/>` +
+      flecha(74,37,'r')+
+      `<text x="88" y="37" text-anchor="middle" font-size="8" fill="${c2}" font-family="Arial" font-weight="700">X</text>` +
+      riel(5,113,74)+
+      `<text x="60" y="76" text-anchor="middle" font-size="6" fill="${c2}" font-family="Arial" font-weight="700">CANCEL ALU XX · POLIE 3mm</text>`),
 
     // ════════════════════════════════════════
     // ESPEJOS
@@ -5500,14 +5627,14 @@ const FAMILIAS = [
     nombre: 'Vidrio 9mm Frameless',
     emoji: '🔳',
     desc: 'Cristal templado 9mm sin marco · Herrajes SELECTA acero inox · 6 configuraciones',
-    ids: ['CB_FRAMELESS_9MM','CB_BACALAR_OX','CB_BACALAR_XO','CB_BACALAR_ESCUADRA']
+    ids: ['CB_FRAMELESS_9MM','CB_BACALAR_OX','CB_BACALAR_XO','CB_BACALAR_ESCUADRA','CB_ESC_CLIPS90','CB_ESC_BIS90']
   },
   {
     id: 'banoalum',
     nombre: 'Aluminio',
     emoji: '🚿',
     desc: 'Batiente 1 Luz · Batiente + Fijo · Aluminio con polietileno',
-    ids: ['CB_BATIENTE_UNA_LUZ_X','CB_BATIENTE_CON_FIJO_FX','CB_ALU_XO','CB_ALU_OX']
+    ids: ['CB_BATIENTE_UNA_LUZ_X','CB_BATIENTE_CON_FIJO_FX','CB_ALU_XO','CB_ALU_OX','CB_ALU_XX']
   },
 
   // ══════════════════════════════════════
@@ -5996,10 +6123,14 @@ function calcular() {
   const utilidad = precioSinUtilidad * utilidadPct;
   const precioBase = precioSinUtilidad * (1 + utilidadPct) + costoVisita;
 
-  // ─── 6. Película / Vinilo (opcional) ───
+  // ─── 6. Descuento ───
+  const descuentoPct = parseFloat(document.getElementById('inp-descuento')?.value || 0) / 100;
+  const descuentoMonto = precioBase * descuentoPct;
+
+  // ─── 7. Película / Vinilo (opcional) ───
   const pelData = calcularPelicula(L, H);
   const pelExtra = (pelData && !isNaN(pelData.totalVenta)) ? pelData.totalVenta : 0;
-  const precioFinal = precioBase + pelExtra;
+  const precioFinal = precioBase - descuentoMonto + pelExtra;
 
   const resultado = {
     sistema: sistema.nombre,
@@ -6026,6 +6157,8 @@ function calcular() {
     precioBase,
     pelData,
     precioFinal,
+    descuentoPct,
+    descuentoMonto,
     factorAcabado,
     ts: new Date().toLocaleString('es-MX')
   };
@@ -6241,6 +6374,12 @@ function renderVista(r) {
         ${renderFilaCosto('Logística de campo', r.costoLogistica)}
         ${r.costoVisita > 0 ? renderFilaCosto('Visita técnica previa', r.costoVisita) : ''}
         ${renderFilaCosto('Utilidad', r.utilidad, false, true)}
+        ${r.descuentoMonto > 0 ? `
+        <div style="height:1px;background:var(--gray-100)"></div>
+        <div class="costo-row" style="background:rgba(192,57,43,0.04)">
+          <span style="color:var(--red)">🏷️ Descuento cliente (${Math.round((r.descuentoPct||0)*100)}%)</span>
+          <span class="costo-monto" style="color:var(--red)">−$${fmt(r.descuentoMonto)}</span>
+        </div>` : ''}
         ${r.pelData ? `
         <div style=height:1px;background:var(--gray-100)></div>
         <div class=costo-row style=background:rgba(46,109,164,0.04)>
@@ -6394,7 +6533,12 @@ const SELECCION = new Set(); // ids seleccionados
 
 function renderHistorial() {
   const el = document.getElementById('historial-lista');
-  if (STATE.historial.length === 0) {
+
+  // Cargar presupuestos atrasados
+  presAtrasadosCargar();
+  const atrasados = PRES_ATRASADOS || [];
+
+  if (STATE.historial.length === 0 && atrasados.length === 0) {
     el.innerHTML = `<div class=historial-empty><div class=historial-empty-icon>📋</div><p>Sin cotizaciones guardadas</p><p style=font-size:12px;margin-top:8px;color:var(--gray-400)>Calcula una cotización y presiona 💾</p></div>`;
     actualizarBarraSeleccion();
     return;
@@ -6402,7 +6546,51 @@ function renderHistorial() {
 
   const haySeleccion = SELECCION.size > 0;
 
-  el.innerHTML = `
+  // Renderizar presupuestos atrasados primero si hay
+  const atrasadosHTML = atrasados.length ? `
+    <div style="margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
+                  color:var(--blue);margin-bottom:8px;padding:4px 0;border-bottom:1px solid var(--gray-200)">
+        📋 Presupuestos Anteriores (${atrasados.length})
+      </div>
+      ${atrasados.map(p => {
+        const estadoColors = {
+          activo:'#2E6DA4', aprobado:'#27AE60', en_produccion:'#E67E22',
+          pendiente_entrega:'#8E44AD', entregado:'#C0392B'
+        };
+        const estadoLabels = {
+          activo:'Activo', aprobado:'Aprobado ✓', en_produccion:'En producción',
+          pendiente_entrega:'Pendiente entrega', entregado:'Entregado'
+        };
+        const color = estadoColors[p.estado] || 'var(--gray-400)';
+        return `
+        <div style="background:var(--white);border-radius:var(--radius);padding:12px 14px;
+                    margin-bottom:8px;box-shadow:var(--shadow-sm);border-left:4px solid ${color}">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div style="font-size:12px;font-family:'DM Mono',monospace;color:var(--blue);font-weight:700">${p.folio}</div>
+              <div style="font-size:14px;font-weight:700;color:var(--navy);margin-top:2px">${p.cliente}</div>
+              ${p.descripcion ? `<div style="font-size:11px;color:var(--gray-400);margin-top:2px">${p.descripcion.slice(0,60)}${p.descripcion.length>60?'…':''}</div>` : ''}
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:15px;font-weight:700;color:var(--gold)">$${fmt(p.monto)}</div>
+              ${p.saldo > 0 ? `<div style="font-size:10px;color:var(--red);font-weight:600">Saldo: $${fmt(p.saldo)}</div>` : ''}
+            </div>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;
+                         background:${color}15;color:${color}">${estadoLabels[p.estado]||p.estado}</span>
+            <button onclick="ordenAbrirDesdePresAtrasado('${p.id}')"
+              style="font-size:11px;padding:4px 10px;background:var(--navy);color:white;
+                     border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">
+              + Orden de instalación
+            </button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>` : '';
+
+  el.innerHTML = atrasadosHTML + `
     <div style=display:flex;justify-content:space-between;align-items:center;margin-bottom:10px>
       <p style=font-size:11px;color:var(--gray-400)>${STATE.historial.length} cotización(es)</p>
       ${haySeleccion
@@ -9236,7 +9424,12 @@ function flCalcular() {
       <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--navy)">Reporte de Visita</div>
       <div style="font-size:11px;color:var(--gray-400)" id="visita-folio-label">Medición · $1,000</div>
     </div>
-    <div style="margin-left:auto">
+    <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+      <button onclick="visitasGuardadasAbrir()"
+        style="font-size:11px;padding:5px 10px;background:none;border:1px solid var(--gray-200);
+               border-radius:var(--radius-sm);color:var(--gray-600);cursor:pointer;font-weight:600">
+        📋 Ver guardadas
+      </button>
       <span id="visita-folio-badge" style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:var(--blue);background:rgba(46,109,164,0.08);padding:4px 10px;border-radius:8px">—</span>
     </div>
   </div>
@@ -10503,6 +10696,80 @@ function garantiaWizCalcular() {
 
 let PRES_ATRASADOS = [];
 
+function ordenAbrirDesdePresAtrasado(presId) {
+  const p = (JSON.parse(localStorage.getItem('barrcan_pres_atrasados')||'[]')).find(x=>x.id===presId);
+  if (!p) return;
+  switchTab('ordenes');
+  setTimeout(() => {
+    ordenAbrir();
+    document.getElementById('orden-folio-buscar').value = p.folio;
+    document.getElementById('orden-cliente').value      = p.cliente;
+    document.getElementById('orden-tel').value          = p.tel || '';
+    document.getElementById('orden-dir').value          = p.dir || '';
+    document.getElementById('orden-desc').value         = p.descripcion || '';
+    document.getElementById('orden-saldo').value        = p.saldo || '';
+    const info = document.getElementById('orden-info-cotizacion');
+    info.style.display = 'block';
+    info.innerHTML = `<div style="font-weight:700;color:var(--navy)">${p.folio}</div>
+      <div style="color:var(--gray-400);font-size:11px">$${fmt(p.monto)}</div>
+      <div style="font-size:10px;color:var(--green);margin-top:4px">✅ Datos de presupuesto atrasado cargados</div>`;
+  }, 300);
+}
+
+function presAtrasadoAbrirModal() {
+  ['pres-folio','pres-cliente','pres-tel','pres-dir','pres-desc'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('pres-monto').value  = '';
+  document.getElementById('pres-saldo').value  = '';
+  document.getElementById('pres-fecha').value  = new Date().toISOString().split('T')[0];
+  document.getElementById('pres-estado').value = 'activo';
+  document.getElementById('pres-error').style.display = 'none';
+  document.getElementById('pres-modal-overlay').style.display = 'block';
+  document.getElementById('pres-modal').style.display = 'block';
+}
+
+function presAtrasadoCerrarModal() {
+  document.getElementById('pres-modal-overlay').style.display = 'none';
+  document.getElementById('pres-modal').style.display = 'none';
+}
+
+async function presAtrasadoGuardarModal() {
+  const folio   = document.getElementById('pres-folio').value.trim();
+  const cliente = document.getElementById('pres-cliente').value.trim();
+  const errEl   = document.getElementById('pres-error');
+
+  if (!folio)   { errEl.textContent='⚠️ El folio es obligatorio'; errEl.style.display='block'; return; }
+  if (!cliente) { errEl.textContent='⚠️ El cliente es obligatorio'; errEl.style.display='block'; return; }
+  errEl.style.display = 'none';
+
+  const datos = {
+    folio,
+    cliente,
+    tel:         document.getElementById('pres-tel').value.trim(),
+    dir:         document.getElementById('pres-dir').value.trim(),
+    monto:       parseFloat(document.getElementById('pres-monto').value) || 0,
+    saldo:       parseFloat(document.getElementById('pres-saldo').value) || 0,
+    descripcion: document.getElementById('pres-desc').value.trim(),
+    estado:      document.getElementById('pres-estado').value,
+    fecha:       document.getElementById('pres-fecha').value
+  };
+
+  const nuevo = presAtrasadoAgregar(datos);
+
+  // Mostrar en historial con badge "Retroactivo"
+  toast(`✅ Presupuesto ${folio} registrado`);
+  presAtrasadoCerrarModal();
+
+  // Crear orden de trabajo automáticamente si tiene saldo
+  if (datos.saldo > 0) {
+    toast(`💡 Puedes crear una orden de entrega desde "Órdenes"`);
+  }
+
+  renderHistorial();
+}
+
 function presAtrasadosCargar() {
   PRES_ATRASADOS = JSON.parse(localStorage.getItem('barrcan_pres_atrasados') || '[]');
 }
@@ -10990,20 +11257,80 @@ async function visitaGenerarPDF() {
 </body>
 </html>`;
 
-  // Abrir en nueva ventana e imprimir/guardar como PDF
-  const win = window.open('', '_blank');
-  win.document.write(html);
-  win.document.close();
-  win.onload = () => {
-    setTimeout(() => {
-      win.print();
-    }, 500);
-  };
+  // Usar html2pdf para generar el PDF directamente
+  const contenedor = document.createElement('div');
+  contenedor.innerHTML = html;
+  document.body.appendChild(contenedor);
 
-  // También guardar en BD
+  const nombreArchivo = `${folio}.pdf`;
+  try {
+    await html2pdf().set({
+      margin: [10, 10, 10, 10],
+      filename: nombreArchivo,
+      image: { type: 'jpeg', quality: 0.92 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' }
+    }).from(contenedor).save();
+    toast(`✅ PDF generado: ${nombreArchivo}`);
+  } catch(e) {
+    // Fallback: abrir en nueva ventana
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+      win.onload = () => setTimeout(() => win.print(), 500);
+    } else {
+      toast('⚠️ Permite ventanas emergentes para generar el PDF');
+    }
+  } finally {
+    document.body.removeChild(contenedor);
+  }
+
+  // Guardar en BD y en lista de visitas
   await visitaGuardar();
 }
+
+// ══════════════════════════════════════════════
+// VISITAS GUARDADAS — dónde se almacenan
+// ══════════════════════════════════════════════
+
+function visitasGuardadasAbrir() {
+  const visitas = JSON.parse(localStorage.getItem('barrcan_visitas') || '[]');
+  const overlay = document.getElementById('visitas-guardadas-overlay');
+  const lista   = document.getElementById('visitas-guardadas-lista');
+
+  if (!visitas.length) {
+    lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--gray-400)">
+      <div style="font-size:40px;margin-bottom:10px">📋</div>
+      <div>Sin visitas guardadas</div>
+    </div>`;
+  } else {
+    lista.innerHTML = visitas.slice().reverse().map(v => `
+      <div style="background:var(--white);border-radius:var(--radius);padding:14px 16px;
+                  margin-bottom:10px;box-shadow:var(--shadow-sm)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div>
+            <div style="font-family:'DM Mono',monospace;font-size:12px;color:var(--blue);font-weight:700">${v.folio}</div>
+            <div style="font-size:14px;font-weight:700;color:var(--navy);margin-top:2px">${v.cliente_nombre || 'Sin cliente'}</div>
+            <div style="font-size:11px;color:var(--gray-400)">${v.dir_obra || ''}</div>
+          </div>
+          <div style="text-align:right;font-size:11px;color:var(--gray-400)">${v.fecha_visita || ''}</div>
+        </div>
+      </div>`).join('');
+  }
+  overlay.style.display = 'block';
+}
 </script>
+
+<!-- Overlay visitas guardadas -->
+<div id="visitas-guardadas-overlay" style="display:none;position:fixed;inset:0;background:var(--off-white);z-index:400;overflow-y:auto;padding:16px 16px 120px">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+    <button onclick="document.getElementById('visitas-guardadas-overlay').style.display='none'"
+      style="width:36px;height:36px;border-radius:50%;border:none;background:var(--gray-100);font-size:18px;cursor:pointer">←</button>
+    <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--navy)">Visitas Guardadas</div>
+  </div>
+  <div id="visitas-guardadas-lista"></div>
+</div>
 
 <!-- ══════════════════════════════════════════
      MÓDULO ÓRDENES DE TRABAJO
@@ -11410,6 +11737,99 @@ async function visitaGenerarPDF() {
     </button>
   </div>
 </div>
+
+<!-- ══════════════════════════════════════════
+     MODAL PRESUPUESTO ATRASADO
+     ══════════════════════════════════════════ -->
+<div id="pres-modal-overlay" onclick="presAtrasadoCerrarModal()"
+  style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:600;backdrop-filter:blur(3px)"></div>
+
+<div id="pres-modal" style="display:none;position:fixed;bottom:0;left:0;right:0;
+  background:var(--white);border-radius:20px 20px 0 0;z-index:700;
+  max-height:92vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(0,0,0,0.3)">
+  <div style="padding:16px 20px 40px">
+    <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 16px"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div>
+        <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--navy)">📋 Presupuesto Anterior</div>
+        <div style="font-size:11px;color:var(--gray-400);margin-top:2px">Captura presupuestos existentes para darles seguimiento</div>
+      </div>
+      <button onclick="presAtrasadoCerrarModal()" style="width:32px;height:32px;border-radius:50%;border:none;background:var(--gray-100);color:var(--gray-600);font-size:16px;cursor:pointer">✕</button>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Folio del presupuesto *</label>
+      <input type="text" id="pres-folio" class="form-input" placeholder="Ej: CACN-094B-260610-32J">
+      <div style="font-size:10px;color:var(--gray-400);margin-top:3px">Tal como aparece en el documento original</div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Cliente *</label>
+      <input type="text" id="pres-cliente" class="form-input" placeholder="Nombre del cliente">
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Teléfono</label>
+        <input type="tel" id="pres-tel" class="form-input" placeholder="55 1234 5678" inputmode="tel">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fecha del presupuesto</label>
+        <input type="date" id="pres-fecha" class="form-input">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Dirección de la obra</label>
+      <input type="text" id="pres-dir" class="form-input" placeholder="Calle, colonia, municipio">
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Monto total</label>
+        <div class="input-unit">
+          <input type="number" id="pres-monto" class="form-input" placeholder="0" min="0" inputmode="numeric">
+          <span class="input-unit-label">$</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Saldo pendiente</label>
+        <div class="input-unit">
+          <input type="number" id="pres-saldo" class="form-input" placeholder="0" min="0" inputmode="numeric">
+          <span class="input-unit-label">$</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Descripción del trabajo</label>
+      <textarea id="pres-desc" class="form-input" rows="3"
+        placeholder="Ej: 3 ventanas OX 2&quot; aluminio negro, cancel baño frameless 9mm..." style="resize:none"></textarea>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Estado actual</label>
+      <div class="form-select-wrap">
+        <select id="pres-estado" class="form-select">
+          <option value="activo">Activo — en proceso</option>
+          <option value="aprobado">Aprobado — con anticipo</option>
+          <option value="en_produccion">En producción</option>
+          <option value="pendiente_entrega">Pendiente de entrega</option>
+          <option value="entregado">Entregado — pendiente liquidar</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="pres-error" style="display:none;color:var(--red);font-size:12px;
+      padding:8px 12px;background:rgba(192,57,43,0.08);border-radius:var(--radius-sm);margin-bottom:12px"></div>
+
+    <button onclick="presAtrasadoGuardarModal()" class="btn-calcular"
+      style="background:linear-gradient(135deg,var(--navy),#2A4F7A)">
+      <span>💾</span> GUARDAR PRESUPUESTO
+    </button>
+  </div>
+</div>
+
 <div id="cli-modal-overlay" onclick="cliCerrarFormulario()"
   style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:600;backdrop-filter:blur(3px)"></div>
 
@@ -11857,13 +12277,26 @@ async function cliGuardar() {
   try {
     if (cliEditandoId) {
       // ── UPDATE ──
-      if (!SYNC.online) throw new Error('Sin conexión — edición requiere internet');
-      const { error } = await sb()
-        .from('clientes')
-        .update({ nombre, telefono, email, empresa, cargo, direccion, notas, canal, num_cliente: num_raw })
-        .eq('id', cliEditandoId);
-      if (error) throw error;
-      toast('✅ Cliente actualizado · ' + num_raw);
+      const datosActualizados = { nombre, telefono, email, empresa, cargo, direccion, notas, canal, num_cliente: num_raw };
+      if (SYNC.online) {
+        const { error } = await sb()
+          .from('clientes')
+          .update(datosActualizados)
+          .eq('id', cliEditandoId);
+        if (error) throw error;
+      }
+      // Actualizar cache local siempre (online o no)
+      const idx = cliListaCache.findIndex(x => x.id === cliEditandoId);
+      if (idx >= 0) {
+        cliListaCache[idx] = { ...cliListaCache[idx], ...datosActualizados };
+        clientesGuardarCache(cliListaCache);
+      }
+      if (!SYNC.online) {
+        await encolarPendiente('cliente_update', { id: cliEditandoId, ...datosActualizados });
+        toast('💾 Cliente actualizado localmente · ' + num_raw + ' (se sincronizará con señal)');
+      } else {
+        toast('✅ Cliente actualizado · ' + num_raw);
+      }
     } else {
       // ── INSERT (offline-first) ──
       const nuevoCliente = {
