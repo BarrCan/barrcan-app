@@ -1065,6 +1065,9 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     <div class="tab" onclick="switchTab('ordenes')" id="tab-ordenes">
       <span class="tab-icon">📦</span>Órdenes
     </div>
+    <div class="tab" onclick="garantiasAbrir()" id="tab-garantias">
+      <span class="tab-icon">🛡️</span>Garantías
+    </div>
     <div class="tab" onclick="switchTab('entrega')" id="tab-entrega">
       <span class="tab-icon">🚚</span>Entrega
     </div>
@@ -1653,6 +1656,104 @@ select.form-select { padding-right: 36px; cursor: pointer; }
 
         <div style="height:80px"></div>
       </div><!-- /wizard-espejo -->
+
+      <!-- ══════════ WIZARD SERVICIO / MANTENIMIENTO ══════════ -->
+      <div id="wizard-servicio" style="display:none">
+        <div class="wizard-card">
+          <div class="wizard-title" id="serv-titulo">🔧 Servicio</div>
+          <div id="serv-desc" style="font-size:12px;color:var(--gray-400);margin-bottom:14px;line-height:1.5"></div>
+
+          <div class="form-group">
+            <label class="form-label" id="serv-label-cant">Cantidad</label>
+            <div class="input-unit">
+              <input type="number" id="serv-cantidad" class="form-input" min="1" value="1"
+                placeholder="1" inputmode="numeric" oninput="servicioActualizar()">
+              <span class="input-unit-label" id="serv-unidad">pza</span>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Precio unitario</label>
+            <div class="input-unit">
+              <input type="number" id="serv-precio" class="form-input" min="0"
+                placeholder="0" inputmode="numeric" oninput="servicioActualizar()">
+              <span class="input-unit-label">$</span>
+            </div>
+            <div style="font-size:10px;color:var(--gray-400);margin-top:3px">Precio sugerido — editable</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Notas / descripción adicional</label>
+            <textarea id="serv-notas" class="form-input" rows="2"
+              placeholder="Detalles del servicio, observaciones..." style="resize:none"
+              oninput="servicioActualizar()"></textarea>
+          </div>
+        </div>
+
+        <div id="serv-resultado" class="wizard-card" style="display:none">
+          <div class="wizard-title">💰 Resumen</div>
+          <div class="desglose-card">
+            <div class="desglose-header">Desglose</div>
+            <div class="costo-row"><span id="serv-label-sub">Servicio × 1</span><span class="costo-monto" id="serv-c-sub"></span></div>
+            <div class="costo-row"><span>GIF 15%</span><span class="costo-monto" id="serv-c-gif"></span></div>
+            <div class="costo-row total"><span>PRECIO FINAL</span><span class="costo-monto" id="serv-c-total"></span></div>
+          </div>
+        </div>
+
+        <button class="btn-calcular" onclick="servicioCalcular()">
+          <span>🔧</span> CALCULAR SERVICIO
+        </button>
+        <div style="height:80px"></div>
+      </div><!-- /wizard-servicio -->
+
+      <!-- ══════════ WIZARD GARANTÍA EXTENDIDA ══════════ -->
+      <div id="wizard-garantia" style="display:none">
+        <div class="wizard-card">
+          <div class="wizard-title" id="gtia-wiz-titulo">🛡️ Garantía Extendida</div>
+          <div id="gtia-wiz-desc" style="font-size:12px;color:var(--gray-400);margin-bottom:14px;line-height:1.5"></div>
+
+          <div class="form-group">
+            <label class="form-label">Costo total del cancel / producto *</label>
+            <div class="input-unit">
+              <input type="number" id="gtia-wiz-costo" class="form-input" min="0"
+                placeholder="Ej: 14000" inputmode="numeric" oninput="garantiaWizActualizar()">
+              <span class="input-unit-label">$</span>
+            </div>
+            <div style="font-size:10px;color:var(--gray-400);margin-top:3px">
+              Monto del presupuesto aprobado del producto a cubrir
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Descripción del producto a cubrir</label>
+            <input type="text" id="gtia-wiz-producto" class="form-input"
+              placeholder="Ej: Cancel de baño templado 9mm herrajes cromo">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Vigencia — inicio</label>
+            <input type="date" id="gtia-wiz-inicio" class="form-input">
+          </div>
+        </div>
+
+        <div id="gtia-wiz-resultado" class="wizard-card" style="display:none">
+          <div class="wizard-title">🛡️ Resumen Garantía</div>
+          <div class="desglose-card">
+            <div class="desglose-header">Desglose</div>
+            <div class="costo-row"><span>Costo del producto</span><span class="costo-monto" id="gtia-wiz-c-prod"></span></div>
+            <div class="costo-row"><span id="gtia-wiz-label-prima">Prima (20%)</span><span class="costo-monto" id="gtia-wiz-c-prima"></span></div>
+            <div class="costo-row"><span>Deducible por evento</span><span class="costo-monto" id="gtia-wiz-c-ded"></span></div>
+            <div class="costo-row total"><span>PRIMA A PAGAR</span><span class="costo-monto" id="gtia-wiz-c-total"></span></div>
+          </div>
+          <div id="gtia-wiz-vigencia" style="font-size:11px;color:var(--gray-400);margin-top:8px;text-align:center"></div>
+        </div>
+
+        <button class="btn-calcular" onclick="garantiaWizCalcular()"
+          style="background:linear-gradient(135deg,#1B3A5C,#2A4F7A)">
+          <span>🛡️</span> CALCULAR GARANTÍA
+        </button>
+        <div style="height:80px"></div>
+      </div><!-- /wizard-garantia -->
 
 
       </div><!-- /wizard-form -->
@@ -4098,6 +4199,70 @@ const DB = {
       precioBase:1800,  // $/m²
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[],
       formulas:{ cortes:[], vidrio:{tipo:"Espejo 4–6mm con luz LED/Neón",cant:1,ancho:(L,H)=>L,alto:(L,H)=>H} }
+    },
+
+    // ══════════════════════════════════════
+    // MANTENIMIENTO Y SERVICIOS
+    // ══════════════════════════════════════
+    {
+      id:"MANT_LIMPIEZA_VEN", nombre:"Limpieza Profunda Ventanas", serie:"Mantenimiento", emoji:"🪟",
+      tipo:"Servicio", esServicio:true, precioBase:350, unidad:'pieza',
+      desc:'Limpieza profunda de perfiles, vidrios y rieles. Lubricación de carretillas y revisión general.',
+      holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
+      id:"MANT_AJUSTE_HER", nombre:"Ajuste de Herrajes y Carretillas", serie:"Mantenimiento", emoji:"🔧",
+      tipo:"Servicio", esServicio:true, precioBase:200, unidad:'pieza',
+      desc:'Ajuste y lubricación de carretillas, cierres y broches. No incluye reemplazo.',
+      holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
+      id:"MANT_CAMBIO_FELPA", nombre:"Cambio de Felpa / Burlete", serie:"Mantenimiento", emoji:"🔧",
+      tipo:"Servicio", esServicio:true, precioBase:180, unidad:'ml',
+      desc:'Cambio de felpa de sellado perimetral. Precio por metro lineal instalado.',
+      holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
+      id:"MANT_CAMBIO_CARRETILLA", nombre:"Cambio de Carretillas", serie:"Mantenimiento", emoji:"🔧",
+      tipo:"Servicio", esServicio:true, precioBase:280, unidad:'par',
+      desc:'Reemplazo de carretillas. Precio por par instalado. Material incluido.',
+      holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
+      id:"MANT_CANCEL_LIMPIEZA", nombre:"Limpieza Profunda Cancel Baño", serie:"Mantenimiento", emoji:"🚿",
+      tipo:"Servicio", esServicio:true, precioBase:600, unidad:'pieza',
+      desc:'Limpieza profunda de vidrio templado, perfiles y herrajes con desmantelado parcial.',
+      holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
+      id:"MANT_CANCEL_SELLADO", nombre:"Sellado y Silicón Cancel Baño", serie:"Mantenimiento", emoji:"🚿",
+      tipo:"Servicio", esServicio:true, precioBase:450, unidad:'pieza',
+      desc:'Retiro de silicón viejo y aplicación de silicón neutro perimetral. Garantía de impermeabilidad 1 año.',
+      holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
+      id:"MANT_CANCEL_HULES", nombre:"Cambio de Hules y Sellos Cancel", serie:"Mantenimiento", emoji:"🚿",
+      tipo:"Servicio", esServicio:true, precioBase:380, unidad:'pieza',
+      desc:'Reemplazo de hules de sello perimetral y tapones. Material e instalación incluidos.',
+      holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
+      id:"MANT_CANCEL_BISAGRAS", nombre:"Cambio/Ajuste Bisagras Cancel", serie:"Mantenimiento", emoji:"🚿",
+      tipo:"Servicio", esServicio:true, precioBase:520, unidad:'juego',
+      desc:'Reemplazo o ajuste de bisagras de cancel de baño. Material incluido.',
+      holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
+      id:"GTIA_ESTANDAR", nombre:"Garantía Extendida Estándar 1 año", serie:"Garantía Extendida", emoji:"🛡️",
+      tipo:"Garantia", esGarantia:true, primaPorc:0.20, deducible:1100,
+      desc:'Cobertura de reemplazo ante fallas estructurales. 2 intervenciones MO en CDMX. No cubre fuerza mayor.',
+      holgura:0, factorGIF:1.0, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
+      id:"GTIA_PREMIUM", nombre:"Garantía Extendida Premium + Sísmica", serie:"Garantía Extendida", emoji:"🛡️",
+      tipo:"Garantia", esGarantia:true, primaPorc:0.35, deducible:1400,
+      desc:'Cobertura Estándar + daños por sismo, temblor e inundación sobre vidrio templado.',
+      holgura:0, factorGIF:1.0, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     }
   ]
 };
@@ -5006,6 +5171,21 @@ function svgPorTipo(tipo, serie, id) {
       `<circle cx="60" cy="74" r="2" fill="#FFD700" opacity="0.9"/>` +
       label(60,42,'ESPEJO',8,c)+
       `<text x="60" y="3" text-anchor="middle" font-size="6" fill="#C8923A" font-family="Arial" font-weight="700">LED / NEÓN</text>`),
+
+    // ════════════════════════════════════════
+    // MANTENIMIENTO Y SERVICIOS
+    // ════════════════════════════════════════
+    'MANT_LIMPIEZA_VEN':      () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🪟</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">LIMPIEZA VENTANAS</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">$350/pieza</text>`),
+    'MANT_AJUSTE_HER':        () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🔧</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">AJUSTE HERRAJES</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">$200/pieza</text>`),
+    'MANT_CAMBIO_FELPA':      () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🔧</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">CAMBIO FELPA</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">$180/ml</text>`),
+    'MANT_CAMBIO_CARRETILLA': () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">⚙️</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">CAMBIO CARRETILLAS</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">$280/par</text>`),
+    'MANT_CANCEL_LIMPIEZA':   () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🚿</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">LIMPIEZA CANCEL</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">$600/pieza</text>`),
+    'MANT_CANCEL_SELLADO':    () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🔒</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">SELLADO CANCEL</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">$450/pieza</text>`),
+    'MANT_CANCEL_HULES':      () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🔄</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">CAMBIO HULES</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">$380/pieza</text>`),
+    'MANT_CANCEL_BISAGRAS':   () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🔩</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">BISAGRAS CANCEL</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">$520/juego</text>`),
+    'GTIA_ESTANDAR':          () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🛡️</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">GE ESTÁNDAR</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">20% · Ded.$1,100</text>`),
+    'GTIA_PREMIUM':           () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🏆</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="#C8923A" font-family="Arial" font-weight="700">GE PREMIUM</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">35% · Ded.$1,400</text>`),
+
     // ════════════════════════════════════════
 
     'DOMO_STANDARD': () => wrap(
@@ -5202,6 +5382,31 @@ const FAMILIAS = [
     desc: 'Sistemas de fachada · Bancos · Muros cortina — próximamente',
     ids: [],
     vacia: true
+  },
+
+  // ══════════════════════════════════════
+  { id:'sec-mantenimiento', seccion: true, nombre: 'Mantenimiento y Servicios' },
+  // ══════════════════════════════════════
+  {
+    id: 'mant-ventanas',
+    nombre: 'Limpieza de Ventanas',
+    emoji: '🪟',
+    desc: 'Limpieza profunda · Lubricación · Ajuste de herrajes · Cambio de felpa',
+    ids: ['MANT_LIMPIEZA_VEN','MANT_AJUSTE_HER','MANT_CAMBIO_FELPA','MANT_CAMBIO_CARRETILLA']
+  },
+  {
+    id: 'mant-canceles',
+    nombre: 'Mantenimiento de Canceles de Baño',
+    emoji: '🚿',
+    desc: 'Limpieza profunda · Sellado · Cambio de hules · Ajuste de bisagras · Cambio de herrajes',
+    ids: ['MANT_CANCEL_LIMPIEZA','MANT_CANCEL_SELLADO','MANT_CANCEL_HULES','MANT_CANCEL_BISAGRAS']
+  },
+  {
+    id: 'mant-garantia',
+    nombre: 'Garantía Extendida',
+    emoji: '🛡️',
+    desc: 'Certificado de Garantía Extendida · Plan Estándar 1 año · Plan Premium con cobertura sísmica',
+    ids: ['GTIA_ESTANDAR','GTIA_PREMIUM']
   }
 
 ];
@@ -5307,16 +5512,22 @@ function seleccionarSistema(id) {
   const esDomo      = sistema && sistema.esDomo;
   const esFrameless = sistema && sistema.esFrameless;
   const esEspejo    = sistema && sistema.esEspejo;
+  const esServicio  = sistema && sistema.esServicio;
+  const esGarantia  = sistema && sistema.esGarantia;
 
   document.getElementById('wizard-form').style.display      = 'block';
-  document.getElementById('wizard-normal').style.display    = (esDomo || esFrameless || esEspejo) ? 'none' : 'block';
+  document.getElementById('wizard-normal').style.display    = (esDomo || esFrameless || esEspejo || esServicio || esGarantia) ? 'none' : 'block';
   document.getElementById('wizard-domo').style.display      = esDomo      ? 'block' : 'none';
   document.getElementById('wizard-frameless').style.display = esFrameless  ? 'block' : 'none';
   document.getElementById('wizard-espejo').style.display    = esEspejo     ? 'block' : 'none';
+  document.getElementById('wizard-servicio').style.display  = esServicio   ? 'block' : 'none';
+  document.getElementById('wizard-garantia').style.display  = esGarantia   ? 'block' : 'none';
 
   if (esDomo)      domoActualizarVista();
   if (esFrameless) framelessReset();
   if (esEspejo)    espReset(sistema);
+  if (esServicio)  servicioReset(sistema);
+  if (esGarantia)  garantiaWizReset(sistema);
 
   document.getElementById('wizard-form').scrollIntoView({ behavior:'smooth', block:'start' });
   setTimeout(() => {
@@ -5672,7 +5883,72 @@ let vistaActual = 'cliente';
 function renderResultado(r) {
   const el = document.getElementById('resultado-contenido');
 
-  // ── Caso especial: ESPEJO ──
+  // ── Caso especial: SERVICIO / MANTENIMIENTO ──
+  if (STATE.ultimoResultado && STATE.ultimoResultado.esServicio) {
+    const s = STATE.ultimoResultado;
+    el.innerHTML = `
+      <div class="slide-up">
+        <div class="resultado-header">
+          <div class="res-label">Servicio · ${s.serie}</div>
+          <div class="res-diseno">${s.sistemaNombre}</div>
+          <div class="res-medidas">${s.servCantidad} ${s.servUnidad} × $${fmt(s.servPrecio)}</div>
+          <div class="res-precio-final">
+            <div class="res-precio-label">Precio Final</div>
+            <div class="res-precio-monto">$${fmt(s.precioFinal)}<span class="res-precio-mxn">MXN</span></div>
+          </div>
+        </div>
+        <div class="desglose-card fade-in" style="margin-top:16px">
+          <div class="desglose-header">💰 Desglose</div>
+          <div class="desglose-row"><span>${s.sistemaNombre} × ${s.servCantidad} ${s.servUnidad}</span><span>$${fmt(s.subtotal)}</span></div>
+          <div class="desglose-row"><span>GIF 15%</span><span>$${fmt(s.gif)}</span></div>
+          <div class="desglose-row total-row"><span>PRECIO FINAL</span><span>$${fmt(s.precioFinal)}</span></div>
+        </div>
+        ${s.servNotas ? `<div class="wizard-card fade-in" style="margin-top:12px"><div style="font-size:12px;color:var(--navy)">${s.servNotas}</div></div>` : ''}
+      </div>`;
+    document.getElementById('export-bar').classList.add('visible');
+    document.querySelector('.content').style.paddingBottom = '80px';
+    return;
+  }
+
+  // ── Caso especial: GARANTÍA EXTENDIDA ──
+  if (STATE.ultimoResultado && STATE.ultimoResultado.esGarantia) {
+    const g = STATE.ultimoResultado;
+    const porcLabel = (g.gtiaPrimaPorc * 100) + '%';
+    el.innerHTML = `
+      <div class="slide-up">
+        <div class="resultado-header">
+          <div class="res-label">Garantía Extendida · ${g.serie}</div>
+          <div class="res-diseno">${g.sistemaNombre}</div>
+          ${g.gtiaProducto ? `<div class="res-medidas">${g.gtiaProducto}</div>` : ''}
+          <div class="res-precio-final">
+            <div class="res-precio-label">Prima a pagar</div>
+            <div class="res-precio-monto">$${fmt(g.precioFinal)}<span class="res-precio-mxn">MXN</span></div>
+          </div>
+        </div>
+        <div class="desglose-card fade-in" style="margin-top:16px">
+          <div class="desglose-header">🛡️ Desglose Garantía</div>
+          <div class="desglose-row"><span>Costo del producto</span><span>$${fmt(g.gtiaCostoCancel)}</span></div>
+          <div class="desglose-row"><span>Prima (${porcLabel})</span><span>$${fmt(g.precioFinal)}</span></div>
+          <div class="desglose-row"><span>Deducible por evento</span><span>$${fmt(g.gtiaDeducible)}</span></div>
+          <div class="desglose-row"><span>Límite de responsabilidad</span><span>$${fmt(g.gtiaCostoCancel)}</span></div>
+          <div class="desglose-row total-row"><span>PRIMA A PAGAR</span><span>$${fmt(g.precioFinal)}</span></div>
+        </div>
+        ${g.gtiaInicio ? `<div class="wizard-card fade-in" style="margin-top:12px;text-align:center">
+          <div style="font-size:11px;color:var(--gray-400)">Vigencia de la garantía</div>
+          <div style="font-size:14px;font-weight:700;color:var(--navy);margin-top:4px">${g.gtiaInicio} → ${g.gtiaFin}</div>
+        </div>` : ''}
+        <div class="wizard-card fade-in" style="margin-top:12px;background:rgba(27,58,92,0.04)">
+          <div style="font-size:11px;color:var(--gray-400);line-height:1.6">
+            <div>📋 Máx. 2 intervenciones de MO en CDMX y Área Metropolitana</div>
+            <div>🔑 Deducible aplica por cada evento de reclamación</div>
+            ${g.id === 'GTIA_PREMIUM' ? '<div>🌍 Cubre daños por sismo, temblor e inundación (solo vidrio templado)</div>' : ''}
+          </div>
+        </div>
+      </div>`;
+    document.getElementById('export-bar').classList.add('visible');
+    document.querySelector('.content').style.paddingBottom = '80px';
+    return;
+  }
   if (STATE.ultimoResultado && STATE.ultimoResultado.esEspejo) {
     const esp = STATE.ultimoResultado;
     const formaIcon = { rect:'▭', circ:'⬤', libre:'✦' };
@@ -9215,6 +9491,10 @@ function ordenAbrir(id = null) {
     const el = document.getElementById(f);
     if (el) el.value = '';
   });
+  document.getElementById('orden-num-piezas').value  = '';
+  document.getElementById('orden-retroactiva').checked = false;
+  document.getElementById('orden-piezas-container').style.display = 'none';
+  document.getElementById('orden-piezas-lista').innerHTML = '';
   document.getElementById('orden-tecnico').value = '';
   document.getElementById('orden-saldo').value   = '';
   document.getElementById('orden-hora').value    = '09:00';
@@ -9259,7 +9539,33 @@ function ordenCerrar() {
   ORDEN_EDITANDO = null;
 }
 
-// ── Buscar cotización por folio ───────────────
+// Generar campos de descripción por pieza
+function ordenGenerarPiezas() {
+  const n = parseInt(document.getElementById('orden-num-piezas').value) || 0;
+  const cont = document.getElementById('orden-piezas-container');
+  const lista = document.getElementById('orden-piezas-lista');
+
+  if (n < 1) { cont.style.display = 'none'; lista.innerHTML = ''; return; }
+  cont.style.display = 'block';
+
+  lista.innerHTML = Array.from({length: n}, (_, i) => `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+      <div style="width:24px;height:24px;border-radius:50%;background:var(--navy);
+                  color:white;font-size:11px;font-weight:700;display:flex;
+                  align-items:center;justify-content:center;flex-shrink:0">${i+1}</div>
+      <input type="text" id="orden-pieza-${i}" class="form-input"
+        placeholder="Ej: Ventana sala OX 1.20×1.50m" style="flex:1">
+    </div>`).join('');
+}
+
+// Obtener descripciones de piezas
+function ordenGetPiezas() {
+  const n = parseInt(document.getElementById('orden-num-piezas').value) || 0;
+  return Array.from({length: n}, (_, i) => {
+    const el = document.getElementById(`orden-pieza-${i}`);
+    return el ? el.value.trim() : '';
+  });
+}
 function ordenBuscarCotizacion() {
   const folio = document.getElementById('orden-folio-buscar').value.trim();
   if (!folio) return;
@@ -9310,6 +9616,10 @@ async function ordenGuardar() {
   const btn = document.getElementById('orden-btn-guardar');
   btn.disabled = true;
 
+  const numPiezas   = parseInt(document.getElementById('orden-num-piezas').value) || 1;
+  const retroactiva = document.getElementById('orden-retroactiva').checked;
+  const piezasDesc  = ordenGetPiezas();
+
   const payload = {
     folio_cotizacion:    document.getElementById('orden-folio-buscar').value.trim() || null,
     cliente_nombre:      cliente,
@@ -9322,6 +9632,9 @@ async function ordenGuardar() {
     saldo_pendiente:     parseFloat(document.getElementById('orden-saldo').value) || 0,
     notas_tecnico:       document.getElementById('orden-notas').value.trim(),
     asignado_por:        USUARIO_ACTIVO.id,
+    num_piezas:          numPiezas,
+    piezas_desc:         JSON.stringify(piezasDesc),
+    retroactiva:         retroactiva,
     estado:              'pendiente'
   };
 
@@ -9428,6 +9741,21 @@ function ordenDetalleAbrir(id) {
       ✅ Trabajo liquidado — sin saldo pendiente
     </div>`}
 
+    <!-- Pagos registrados -->
+    <div class="wizard-card" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div class="wizard-title" style="margin-bottom:0">💳 Registro de Pagos</div>
+        <button onclick="pagoAbrir('${id}')"
+          style="padding:5px 12px;background:var(--blue);color:white;border:none;
+                 border-radius:var(--radius-sm);font-size:12px;font-weight:700;cursor:pointer">
+          + Pago
+        </button>
+      </div>
+      <div id="orden-pagos-lista-${id}" style="font-size:12px;color:var(--gray-400)">
+        Cargando pagos…
+      </div>
+    </div>
+
     <!-- Cambiar estado -->
     <div style="margin-bottom:12px">
       <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--gray-400);margin-bottom:8px">Cambiar estado</div>
@@ -9531,6 +9859,559 @@ function visitaToggleCobro() {
   document.getElementById('visita-sin-cobro').style.display     = aplica ? 'none'  : 'block';
 }
 
+// ══════════════════════════════════════════════
+// MÓDULO DE PAGOS
+// ══════════════════════════════════════════════
+
+let PAGO_ORDEN_ID   = null;
+let PAGO_FORMA_SEL  = 'efectivo';
+let PAGO_COMPROBANTE= null;
+
+function pagoAbrir(ordenId) {
+  PAGO_ORDEN_ID    = ordenId;
+  PAGO_FORMA_SEL   = 'efectivo';
+  PAGO_COMPROBANTE = null;
+  document.getElementById('pago-monto').value  = '';
+  document.getElementById('pago-notas').value  = '';
+  document.getElementById('pago-fecha').value  = new Date().toISOString().split('T')[0];
+  document.getElementById('pago-concepto').value = 'anticipo';
+  document.getElementById('pago-comprobante-preview').innerHTML = '';
+  document.getElementById('pago-comprobante-group').style.display = 'none';
+  document.getElementById('pago-error').style.display = 'none';
+  document.querySelectorAll('.pago-forma-btn').forEach(b => {
+    const activo = b.dataset.forma === 'efectivo';
+    b.style.borderColor = activo ? 'var(--blue)' : 'var(--gray-200)';
+    b.style.background  = activo ? 'rgba(46,109,164,0.08)' : 'none';
+    b.style.color       = activo ? 'var(--blue)' : 'var(--gray-400)';
+  });
+  document.getElementById('pago-modal-overlay').style.display = 'block';
+  document.getElementById('pago-modal').style.display = 'block';
+}
+
+function pagoCerrar() {
+  document.getElementById('pago-modal-overlay').style.display = 'none';
+  document.getElementById('pago-modal').style.display = 'none';
+  PAGO_ORDEN_ID = null;
+}
+
+function pagoSelForma(btn) {
+  PAGO_FORMA_SEL = btn.dataset.forma;
+  document.querySelectorAll('.pago-forma-btn').forEach(b => {
+    const activo = b === btn;
+    b.style.borderColor = activo ? 'var(--blue)' : 'var(--gray-200)';
+    b.style.background  = activo ? 'rgba(46,109,164,0.08)' : 'none';
+    b.style.color       = activo ? 'var(--blue)' : 'var(--gray-400)';
+  });
+  document.getElementById('pago-comprobante-group').style.display =
+    PAGO_FORMA_SEL === 'transferencia' ? 'block' : 'none';
+}
+
+function pagoCargarComprobante(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    PAGO_COMPROBANTE = e.target.result;
+    document.getElementById('pago-comprobante-preview').innerHTML =
+      `<img src="${e.target.result}" style="width:100%;max-height:150px;object-fit:cover;border-radius:6px;margin-top:6px">`;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function pagoGuardar() {
+  const monto   = parseFloat(document.getElementById('pago-monto').value) || 0;
+  const fecha   = document.getElementById('pago-fecha').value;
+  const concepto= document.getElementById('pago-concepto').value;
+  const notas   = document.getElementById('pago-notas').value.trim();
+  const errEl   = document.getElementById('pago-error');
+  if (!monto || monto <= 0) { errEl.textContent='⚠️ Ingresa el monto recibido'; errEl.style.display='block'; return; }
+  if (!fecha) { errEl.textContent='⚠️ La fecha es obligatoria'; errEl.style.display='block'; return; }
+  errEl.style.display = 'none';
+
+  const payload = {
+    orden_id: PAGO_ORDEN_ID, monto, fecha_pago: fecha,
+    forma_pago: PAGO_FORMA_SEL, concepto, notas,
+    registrado_por: USUARIO_ACTIVO.id,
+    comprobante_img: PAGO_COMPROBANTE || null
+  };
+
+  try {
+    const { error } = await sb().from('pagos').insert([payload]);
+    if (error) throw error;
+    const o = ORDENES_CACHE.find(x => x.id === PAGO_ORDEN_ID);
+    if (o) {
+      const nuevoSaldo = Math.max(0, (o.saldo_pendiente || 0) - monto);
+      await sb().from('ordenes_trabajo').update({ saldo_pendiente: nuevoSaldo }).eq('id', PAGO_ORDEN_ID);
+      o.saldo_pendiente = nuevoSaldo;
+      localStorage.setItem('barrcan_ordenes_cache', JSON.stringify(ORDENES_CACHE));
+    }
+    toast(`✅ Pago de $${fmt(monto)} registrado`);
+    pagoCerrar();
+    pagoCargarLista(PAGO_ORDEN_ID);
+    ordenesRenderLista();
+  } catch(e) {
+    const pagosLocal = JSON.parse(localStorage.getItem('barrcan_pagos_local') || '[]');
+    pagosLocal.push({ ...payload, id: crypto.randomUUID(), created_at: new Date().toISOString() });
+    localStorage.setItem('barrcan_pagos_local', JSON.stringify(pagosLocal));
+    toast(`💾 Pago guardado localmente · $${fmt(monto)}`);
+    pagoCerrar();
+  }
+}
+
+async function pagoCargarLista(ordenId) {
+  const cont = document.getElementById(`orden-pagos-lista-${ordenId}`);
+  if (!cont) return;
+  try {
+    const { data, error } = await sb().from('pagos').select('*').eq('orden_id', ordenId).order('fecha_pago', { ascending: false });
+    if (error) throw error;
+    if (!data || !data.length) { cont.innerHTML = '<div style="color:var(--gray-400);font-size:12px;text-align:center;padding:8px">Sin pagos registrados</div>'; return; }
+    const total = data.reduce((s, p) => s + (p.monto || 0), 0);
+    cont.innerHTML = data.map(p => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--gray-100)">
+        <div>
+          <div style="font-size:12px;font-weight:600;color:var(--navy)">${p.forma_pago === 'efectivo' ? '💵' : '📲'} $${fmt(p.monto)}</div>
+          <div style="font-size:10px;color:var(--gray-400)">${p.concepto} · ${p.fecha_pago}</div>
+        </div>
+        ${p.comprobante_img ? `<img src="${p.comprobante_img}" style="width:40px;height:40px;object-fit:cover;border-radius:4px">` : ''}
+      </div>`).join('') +
+      `<div style="display:flex;justify-content:space-between;padding-top:8px;font-weight:700;font-size:13px">
+        <span>Total pagado:</span><span style="color:#27AE60">$${fmt(total)}</span>
+      </div>`;
+  } catch(e) { cont.innerHTML = `<div style="color:var(--gray-400);font-size:11px">Sin conexión</div>`; }
+}
+
+// ══════════════════════════════════════════════
+// MÓDULO DE GARANTÍAS / POSTVENTA
+// ══════════════════════════════════════════════
+
+let GARANTIAS_CACHE = [];
+let GARANTIA_FILTRO = 'todos';
+let GTIA_PRIOR_SEL  = 'urgente';
+let GTIA_EVIDENCIAS = [];
+
+const GTIA_PRIORIDAD_MAP = {
+  filtracion:'urgente', vidrio_roto:'urgente', no_cierra:'urgente', seguridad:'urgente',
+  herraje_dañado:'medio', ruido:'medio', mosquitero:'medio', condensacion:'medio',
+  ajuste:'normal', silicón:'normal', limpieza:'normal', revision:'normal'
+};
+
+const GTIA_PRIOR_STYLE = {
+  urgente: { emoji:'🔴', color:'#E74C3C', bg:'rgba(231,76,60,0.1)'  },
+  medio:   { emoji:'🟡', color:'#F39C12', bg:'rgba(243,156,18,0.1)' },
+  normal:  { emoji:'🟢', color:'#27AE60', bg:'rgba(39,174,96,0.1)'  },
+  resuelto:{ emoji:'✅', color:'#27AE60', bg:'rgba(39,174,96,0.08)' }
+};
+
+function gtiaActualizarPrioridad() {
+  const tipo = document.getElementById('gtia-tipo').value;
+  gtiaSelPrioridadById(GTIA_PRIORIDAD_MAP[tipo] || 'normal');
+}
+
+function gtiaSelPrioridadById(prior) {
+  const btn = document.querySelector(`.gtia-prior-btn[data-prior="${prior}"]`);
+  if (btn) gtiaSelPrioridad(btn);
+}
+
+function gtiaSelPrioridad(btn) {
+  GTIA_PRIOR_SEL = btn.dataset.prior;
+  const st = GTIA_PRIOR_STYLE[GTIA_PRIOR_SEL] || GTIA_PRIOR_STYLE.normal;
+  document.querySelectorAll('.gtia-prior-btn').forEach(b => {
+    const activo = b === btn;
+    b.style.borderColor = activo ? st.color : 'var(--gray-200)';
+    b.style.background  = activo ? st.bg    : 'none';
+    b.style.color       = activo ? st.color : 'var(--gray-400)';
+  });
+}
+
+function gtiaAgregarEvidencia(input) {
+  Array.from(input.files).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => { GTIA_EVIDENCIAS.push({ dataUrl: e.target.result, tipo: file.type }); gtiaRenderEvidencias(); };
+    reader.readAsDataURL(file);
+  });
+  input.value = '';
+}
+
+function gtiaRenderEvidencias() {
+  const cont = document.getElementById('gtia-evidencia-preview');
+  cont.innerHTML = GTIA_EVIDENCIAS.map((e, i) =>
+    `<div style="position:relative">
+      ${e.tipo.startsWith('video') ? `<video src="${e.dataUrl}" style="width:100%;height:80px;object-fit:cover;border-radius:6px"></video>` : `<img src="${e.dataUrl}" style="width:100%;height:80px;object-fit:cover;border-radius:6px">`}
+      <button onclick="GTIA_EVIDENCIAS.splice(${i},1);gtiaRenderEvidencias()" style="position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,0.6);color:white;font-size:11px;cursor:pointer">✕</button>
+    </div>`
+  ).join('');
+}
+
+async function garantiasCargar() {
+  const cache = JSON.parse(localStorage.getItem('barrcan_garantias_cache') || '[]');
+  if (cache.length) { GARANTIAS_CACHE = cache; garantiasRenderLista(); }
+  if (!SYNC.online) return;
+  try {
+    const { data, error } = await sb().from('garantias').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    GARANTIAS_CACHE = data || [];
+    localStorage.setItem('barrcan_garantias_cache', JSON.stringify(GARANTIAS_CACHE));
+    garantiasRenderLista();
+  } catch(e) { console.warn('[Garantias]', e.message); }
+}
+
+function garantiasRenderLista() {
+  const lista = document.getElementById('garantias-lista');
+  if (!lista) return;
+  let filtradas = GARANTIAS_CACHE;
+  if (GARANTIA_FILTRO !== 'todos') filtradas = GARANTIAS_CACHE.filter(g => g.prioridad === GARANTIA_FILTRO);
+  if (!filtradas.length) { lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--gray-400)"><div style="font-size:40px;margin-bottom:10px">🛡️</div><div>Sin tickets</div></div>`; return; }
+  lista.innerHTML = filtradas.map(g => {
+    const st = GTIA_PRIOR_STYLE[g.prioridad] || GTIA_PRIOR_STYLE.normal;
+    return `<div style="background:var(--white);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;box-shadow:var(--shadow-sm);border-left:5px solid ${st.color}">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+        <div style="font-size:15px;font-weight:700;color:var(--navy)">${g.cliente_nombre}</div>
+        <span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;background:${st.bg};color:${st.color}">${st.emoji} ${(g.prioridad||'').toUpperCase()}</span>
+      </div>
+      <div style="font-size:12px;color:var(--gray-600);margin-bottom:4px">${g.tipo_problema || '—'}</div>
+      <div style="font-size:11px;color:var(--gray-400)">${(g.descripcion||'').slice(0,80)}${(g.descripcion?.length||0)>80?'…':''}</div>
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+        ${g.cliente_tel?`<span style="font-size:11px;background:var(--gray-100);color:var(--gray-600);padding:2px 7px;border-radius:4px">📞 ${g.cliente_tel}</span>`:''}
+        <button onclick="gtiaNotificarWhatsApp(${JSON.stringify(g).replace(/"/g,"'")})" style="font-size:11px;background:rgba(37,211,102,0.1);color:#25D366;padding:2px 8px;border-radius:4px;border:none;cursor:pointer;font-weight:600">WhatsApp →</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function garantiasFiltrar(btn) {
+  GARANTIA_FILTRO = btn.dataset.filtro;
+  document.querySelectorAll('#garantias-overlay .orden-filtro-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  garantiasRenderLista();
+}
+
+function garantiasAbrir() { document.getElementById('garantias-overlay').style.display='block'; garantiasCargar(); }
+function garantiasCerrar() { document.getElementById('garantias-overlay').style.display='none'; }
+
+function garantiaAbrir() {
+  GTIA_PRIOR_SEL = 'urgente'; GTIA_EVIDENCIAS = [];
+  ['gtia-cliente','gtia-tel','gtia-folio','gtia-desc'].forEach(f => document.getElementById(f).value='');
+  document.getElementById('gtia-fecha-inst').value='';
+  document.getElementById('gtia-evidencia-preview').innerHTML='';
+  document.getElementById('gtia-error').style.display='none';
+  gtiaSelPrioridadById('urgente');
+  document.getElementById('garantia-modal-overlay').style.display='block';
+  document.getElementById('garantia-modal').style.display='block';
+}
+
+function garantiaCerrar() {
+  document.getElementById('garantia-modal-overlay').style.display='none';
+  document.getElementById('garantia-modal').style.display='none';
+}
+
+async function gtiaGuardar() {
+  const cliente=document.getElementById('gtia-cliente').value.trim();
+  const tel=document.getElementById('gtia-tel').value.trim();
+  const desc=document.getElementById('gtia-desc').value.trim();
+  const errEl=document.getElementById('gtia-error');
+  if (!cliente){errEl.textContent='⚠️ Nombre obligatorio';errEl.style.display='block';return;}
+  if (!tel){errEl.textContent='⚠️ Teléfono obligatorio';errEl.style.display='block';return;}
+  if (!desc){errEl.textContent='⚠️ Describe el problema';errEl.style.display='block';return;}
+  errEl.style.display='none';
+  const payload={
+    cliente_nombre:cliente, cliente_tel:tel,
+    folio_contrato:document.getElementById('gtia-folio').value.trim()||null,
+    tipo_problema:document.getElementById('gtia-tipo').value,
+    prioridad:GTIA_PRIOR_SEL, descripcion:desc,
+    fecha_instalacion:document.getElementById('gtia-fecha-inst').value||null,
+    disponibilidad:document.getElementById('gtia-disponibilidad').value,
+    estado:'nuevo', registrado_por:USUARIO_ACTIVO.id
+  };
+  try {
+    const {error}=await sb().from('garantias').insert([payload]);
+    if(error) throw error;
+    toast(`🛡️ Ticket creado — prioridad ${GTIA_PRIOR_SEL}`);
+    garantiaCerrar(); await garantiasCargar();
+    gtiaNotificarWhatsApp(payload);
+  } catch(e) {
+    const local=JSON.parse(localStorage.getItem('barrcan_garantias_cache')||'[]');
+    local.unshift({...payload,id:crypto.randomUUID(),created_at:new Date().toISOString()});
+    localStorage.setItem('barrcan_garantias_cache',JSON.stringify(local));
+    GARANTIAS_CACHE=local; garantiasRenderLista();
+    toast('💾 Ticket guardado localmente'); garantiaCerrar();
+  }
+}
+
+function gtiaNotificarWhatsApp(g) {
+  const st = GTIA_PRIOR_STYLE[g.prioridad] || GTIA_PRIOR_STYLE.normal;
+  const msg = encodeURIComponent(
+    `${st.emoji} *TICKET GARANTÍA BarrCan*\n` +
+    `Cliente: ${g.cliente_nombre} · ${g.cliente_tel}\n` +
+    `Problema: ${g.tipo_problema}\n` +
+    `${g.descripcion}\n` +
+    `${g.folio_contrato?'Folio: '+g.folio_contrato+'\n':''}` +
+    `Disponibilidad: ${g.disponibilidad}\n` +
+    `Prioridad: ${(g.prioridad||'').toUpperCase()}`
+  );
+  window.open(`https://wa.me/525615158415?text=${msg}`, '_blank');
+}
+
+// ══════════════════════════════════════════════
+// MÓDULO INVENTARIO — QR y sobrantes
+// ══════════════════════════════════════════════
+
+let INV_CACHE = [];
+
+async function invCargar() {
+  const cache = JSON.parse(localStorage.getItem('barrcan_inv_cache') || '[]');
+  if (cache.length) INV_CACHE = cache;
+  if (!SYNC.online) return;
+  try {
+    const { data, error } = await sb().from('inventario_perfiles').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    INV_CACHE = data || [];
+    localStorage.setItem('barrcan_inv_cache', JSON.stringify(INV_CACHE));
+  } catch(e) { console.warn('[Inv]', e.message); }
+}
+
+function invReglasVenta(metros) {
+  if (metros < 2) return { puedePartir:false, msg:`📦 Se vende completo (${metros}m)`, maxVenta:metros };
+  const maxVenta = Math.floor((metros/2)*100)/100;
+  return { puedePartir:true, msg:`✂️ Puede partir — máx ${maxVenta}m`, maxVenta };
+}
+
+async function invRegistrarSalida(id, metros, motivo) {
+  const item = INV_CACHE.find(x => x.id === id);
+  if (!item) return;
+  const restante = (item.metros_disponibles || 0) - metros;
+  const nuevoEstado = restante <= 0 ? 'agotado' : 'disponible';
+  try {
+    const { error } = await sb().from('inventario_perfiles')
+      .update({ metros_disponibles: Math.max(0, restante), estado: nuevoEstado }).eq('id', id);
+    if (error) throw error;
+    await invCargar();
+    toast(`✅ ${metros}m descontados · Quedan ${Math.max(0, restante).toFixed(2)}m`);
+  } catch(e) { toast('❌ Error: ' + e.message); }
+}
+
+// ══════════════════════════════════════════════
+// WIZARD SERVICIO / MANTENIMIENTO
+// ══════════════════════════════════════════════
+
+let SERV_SISTEMA = null;
+
+function servicioReset(sistema) {
+  SERV_SISTEMA = sistema;
+  document.getElementById('serv-titulo').textContent = sistema.emoji + ' ' + sistema.nombre;
+  document.getElementById('serv-desc').textContent   = sistema.desc || '';
+  document.getElementById('serv-unidad').textContent = sistema.unidad || 'pza';
+  document.getElementById('serv-label-cant').textContent =
+    sistema.unidad === 'ml' ? 'Metros lineales' :
+    sistema.unidad === 'par' ? 'Pares' :
+    sistema.unidad === 'juego' ? 'Juegos' : 'Cantidad (piezas)';
+  document.getElementById('serv-cantidad').value = '1';
+  document.getElementById('serv-precio').value   = sistema.precioBase || '';
+  document.getElementById('serv-notas').value    = '';
+  document.getElementById('serv-resultado').style.display = 'none';
+}
+
+function servicioActualizar() {
+  const cant   = parseFloat(document.getElementById('serv-cantidad').value) || 0;
+  const precio = parseFloat(document.getElementById('serv-precio').value)   || 0;
+  if (cant > 0 && precio > 0) servicioCalcPreview(cant, precio);
+}
+
+function servicioCalcPreview(cant, precio) {
+  const subtotal = cant * precio;
+  const gif      = subtotal * (SERV_SISTEMA?.factorGIF - 1 || 0.15);
+  const total    = subtotal + gif;
+  const unidad   = SERV_SISTEMA?.unidad || 'pza';
+
+  const res = document.getElementById('serv-resultado');
+  res.style.display = 'block';
+  document.getElementById('serv-label-sub').textContent = `${SERV_SISTEMA?.nombre} × ${cant} ${unidad}`;
+  document.getElementById('serv-c-sub').textContent   = fmt(subtotal);
+  document.getElementById('serv-c-gif').textContent   = fmt(gif);
+  document.getElementById('serv-c-total').textContent = fmt(total);
+}
+
+function servicioCalcular() {
+  if (!SERV_SISTEMA) return;
+  const cant   = parseFloat(document.getElementById('serv-cantidad').value) || 0;
+  const precio = parseFloat(document.getElementById('serv-precio').value)   || 0;
+  if (!cant || !precio) { toast('⚠️ Ingresa cantidad y precio'); return; }
+
+  const subtotal = cant * precio;
+  const gif      = subtotal * (SERV_SISTEMA.factorGIF - 1 || 0.15);
+  const total    = subtotal + gif;
+  const unidad   = SERV_SISTEMA.unidad || 'pza';
+
+  servicioCalcPreview(cant, precio);
+
+  STATE.ultimoResultado = {
+    sistemaId:     SERV_SISTEMA.id,
+    sistemaNombre: SERV_SISTEMA.nombre,
+    serie:         SERV_SISTEMA.serie,
+    tipo:          SERV_SISTEMA.tipo,
+    esServicio:    true,
+    servCantidad:  cant,
+    servUnidad:    unidad,
+    servPrecio:    precio,
+    servNotas:     document.getElementById('serv-notas').value.trim(),
+    subtotal,
+    gif,
+    precioFinal:   total
+  };
+
+  toast('✅ Servicio calculado');
+  switchTab('resultado');
+  renderResultado();
+}
+
+// ══════════════════════════════════════════════
+// WIZARD GARANTÍA EXTENDIDA
+// ══════════════════════════════════════════════
+
+let GTIA_WIZ_SISTEMA = null;
+
+function garantiaWizReset(sistema) {
+  GTIA_WIZ_SISTEMA = sistema;
+  document.getElementById('gtia-wiz-titulo').textContent = sistema.emoji + ' ' + sistema.nombre;
+  document.getElementById('gtia-wiz-desc').textContent   = sistema.desc || '';
+  document.getElementById('gtia-wiz-costo').value        = '';
+  document.getElementById('gtia-wiz-producto').value     = '';
+  document.getElementById('gtia-wiz-inicio').value       = new Date().toISOString().split('T')[0];
+  document.getElementById('gtia-wiz-resultado').style.display = 'none';
+}
+
+function garantiaWizActualizar() {
+  const costo = parseFloat(document.getElementById('gtia-wiz-costo').value) || 0;
+  if (costo > 0) garantiaWizCalcPreview(costo);
+}
+
+function garantiaWizCalcPreview(costo) {
+  if (!GTIA_WIZ_SISTEMA) return;
+  const prima    = costo * GTIA_WIZ_SISTEMA.primaPorc;
+  const deducible= GTIA_WIZ_SISTEMA.deducible;
+  const inicio   = document.getElementById('gtia-wiz-inicio').value;
+  const fin      = inicio ? new Date(new Date(inicio).getTime() + 365*24*3600*1000).toISOString().split('T')[0] : '';
+  const porcLabel= (GTIA_WIZ_SISTEMA.primaPorc * 100) + '%';
+
+  const res = document.getElementById('gtia-wiz-resultado');
+  res.style.display = 'block';
+  document.getElementById('gtia-wiz-c-prod').textContent   = '$' + fmt(costo);
+  document.getElementById('gtia-wiz-label-prima').textContent = `Prima (${porcLabel})`;
+  document.getElementById('gtia-wiz-c-prima').textContent  = '$' + fmt(prima);
+  document.getElementById('gtia-wiz-c-ded').textContent    = '$' + fmt(deducible);
+  document.getElementById('gtia-wiz-c-total').textContent  = '$' + fmt(prima);
+  document.getElementById('gtia-wiz-vigencia').textContent =
+    inicio && fin ? `Vigencia: ${inicio} → ${fin}` : '';
+}
+
+function garantiaWizCalcular() {
+  if (!GTIA_WIZ_SISTEMA) return;
+  const costo    = parseFloat(document.getElementById('gtia-wiz-costo').value) || 0;
+  const producto = document.getElementById('gtia-wiz-producto').value.trim();
+  const inicio   = document.getElementById('gtia-wiz-inicio').value;
+
+  if (!costo) { toast('⚠️ Ingresa el costo del producto'); return; }
+  garantiaWizCalcPreview(costo);
+
+  const prima = costo * GTIA_WIZ_SISTEMA.primaPorc;
+  const fin   = inicio ? new Date(new Date(inicio).getTime() + 365*24*3600*1000).toISOString().split('T')[0] : '';
+
+  STATE.ultimoResultado = {
+    sistemaId:     GTIA_WIZ_SISTEMA.id,
+    sistemaNombre: GTIA_WIZ_SISTEMA.nombre,
+    serie:         GTIA_WIZ_SISTEMA.serie,
+    tipo:          GTIA_WIZ_SISTEMA.tipo,
+    esGarantia:    true,
+    gtiaProducto:  producto,
+    gtiaCostoCancel: costo,
+    gtiaPrimaPorc: GTIA_WIZ_SISTEMA.primaPorc,
+    gtiaDeducible: GTIA_WIZ_SISTEMA.deducible,
+    gtiaInicio:    inicio,
+    gtiaFin:       fin,
+    subtotal:      prima,
+    gif:           0,
+    precioFinal:   prima
+  };
+
+  toast('✅ Garantía calculada');
+  switchTab('resultado');
+  renderResultado();
+}
+
+// ══════════════════════════════════════════════
+// MÓDULO PRESUPUESTOS ATRASADOS
+// ══════════════════════════════════════════════
+
+let PRES_ATRASADOS = [];
+
+function presAtrasadosCargar() {
+  PRES_ATRASADOS = JSON.parse(localStorage.getItem('barrcan_pres_atrasados') || '[]');
+}
+
+function presAtrasadosGuardar() {
+  localStorage.setItem('barrcan_pres_atrasados', JSON.stringify(PRES_ATRASADOS));
+}
+
+function presAtrasadoAgregar(datos) {
+  const nuevo = {
+    id:         crypto.randomUUID(),
+    folio:      datos.folio,
+    cliente:    datos.cliente,
+    tel:        datos.tel,
+    dir:        datos.dir,
+    monto:      datos.monto,
+    descripcion: datos.descripcion,
+    fecha:      datos.fecha || new Date().toISOString().split('T')[0],
+    estado:     'activo',
+    created_at: new Date().toISOString()
+  };
+  PRES_ATRASADOS.unshift(nuevo);
+  presAtrasadosGuardar();
+  // También intentar subir a Supabase
+  if (SYNC.online) {
+    sb().from('cotizaciones').upsert([{
+      folio:         nuevo.folio,
+      revision:      'A',
+      partidas_json: [],
+      total:         nuevo.monto || 0,
+      status:        'aprobado',
+      notas:         `Retroactivo: ${nuevo.descripcion}`,
+      cliente_nombre: nuevo.cliente,
+      cliente_tel:    nuevo.tel,
+      dir_obra:       nuevo.dir,
+      created_at:    nuevo.created_at
+    }], { onConflict: 'folio' }).then(({error}) => {
+      if (!error) toast('☁️ Presupuesto sincronizado: ' + nuevo.folio);
+    });
+  }
+  return nuevo;
+}
+
+// ══════════════════════════════════════════════
+// FOLIO DE VISITAS CORREGIDO: VIS-AAMMDD-NN
+// ══════════════════════════════════════════════
+
+function visitaGenerarFolio(fecha) {
+  const d = fecha ? new Date(fecha + 'T12:00:00') : new Date();
+  const aa = String(d.getFullYear()).slice(2);
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const dd = String(d.getDate()).padStart(2,'0');
+  const base = `VIS-${aa}${mm}${dd}`;
+
+  // Obtener consecutivo del día
+  const visitas = JSON.parse(localStorage.getItem('barrcan_visitas_folios') || '{}');
+  const key = `${aa}${mm}${dd}`;
+  const consec = (visitas[key] || 0) + 1;
+  visitas[key] = consec;
+  localStorage.setItem('barrcan_visitas_folios', JSON.stringify(visitas));
+
+  return `${base}-${String(consec).padStart(2,'0')}`;
+}
+
+function visitaFolioManual(folio) {
+  // Para visitas atrasadas permite editar el folio
+  return folio || visitaGenerarFolio();
+}
+
 // ── Abrir / Cerrar ────────────────────────────
 function visitaAbrir() {
   // Resetear estado
@@ -9570,9 +10451,11 @@ function visitaAbrir() {
   document.getElementById('visita-fecha').value = ahora.toISOString().split('T')[0];
   document.getElementById('visita-hora').value  = ahora.toTimeString().slice(0,5);
 
-  // Folio
-  const folio = 'VIS-' + String(Date.now()).slice(-6);
-  document.getElementById('visita-folio-badge').textContent = folio;
+  // Folio editable con nuevo formato VIS-AAMMDD-NN
+  const folioGen = visitaGenerarFolio(ahora.toISOString().split('T')[0]);
+  document.getElementById('visita-folio-badge').textContent = folioGen;
+  document.getElementById('visita-folio-badge').contentEditable = 'true';
+  document.getElementById('visita-folio-badge').title = 'Toca para editar el folio';
 
   // Cargar clientes en dropdown
   visitaCargarDropdown();
@@ -10062,6 +10945,35 @@ async function visitaGenerarPDF() {
       </div>
     </div>
 
+    <!-- Número de piezas -->
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Número de piezas *</label>
+        <input type="number" id="orden-num-piezas" class="form-input"
+          placeholder="Ej: 3" min="1" max="20" inputmode="numeric"
+          oninput="ordenGenerarPiezas()">
+        <div style="font-size:10px;color:var(--gray-400);margin-top:3px">
+          Cuántas piezas se van a instalar
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">¿Orden retroactiva?</label>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;
+               padding:10px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);
+               margin-top:4px;font-size:13px;font-weight:600;color:var(--gray-600)">
+          <input type="checkbox" id="orden-retroactiva" style="width:16px;height:16px">
+          Sí — antecedente de obra
+        </label>
+      </div>
+    </div>
+
+    <!-- Descripción por pieza (se genera dinámicamente) -->
+    <div id="orden-piezas-container" style="display:none">
+      <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+                  color:var(--blue);margin-bottom:8px">Descripción por pieza</div>
+      <div id="orden-piezas-lista"></div>
+    </div>
+
     <!-- Notas para el técnico -->
     <div class="form-group">
       <label class="form-label">Instrucciones para el técnico</label>
@@ -10096,8 +11008,248 @@ async function visitaGenerarPDF() {
 </div>
 
 <!-- ══════════════════════════════════════════
-     MODAL NUEVO / EDITAR CLIENTE
+     MÓDULO DE PAGOS
      ══════════════════════════════════════════ -->
+<div id="pago-modal-overlay" onclick="pagoCerrar()"
+  style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:800;backdrop-filter:blur(3px)"></div>
+
+<div id="pago-modal" style="display:none;position:fixed;bottom:0;left:0;right:0;
+  background:var(--white);border-radius:20px 20px 0 0;z-index:900;
+  max-height:85vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(0,0,0,0.3)">
+  <div style="padding:16px 20px 40px">
+    <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 16px"></div>
+    <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--navy);margin-bottom:16px">
+      Registrar Pago
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Monto recibido *</label>
+        <div class="input-unit">
+          <input type="number" id="pago-monto" class="form-input" placeholder="0" min="0" inputmode="numeric">
+          <span class="input-unit-label">$</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fecha *</label>
+        <input type="date" id="pago-fecha" class="form-input">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Forma de pago *</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button class="pago-forma-btn active" data-forma="efectivo" onclick="pagoSelForma(this)"
+          style="padding:12px;border:2px solid var(--blue);border-radius:var(--radius-sm);
+                 background:rgba(46,109,164,0.08);cursor:pointer;font-family:'DM Sans',sans-serif;
+                 font-size:13px;font-weight:600;color:var(--blue)">
+          💵 Efectivo
+        </button>
+        <button class="pago-forma-btn" data-forma="transferencia" onclick="pagoSelForma(this)"
+          style="padding:12px;border:2px solid var(--gray-200);border-radius:var(--radius-sm);
+                 background:none;cursor:pointer;font-family:'DM Sans',sans-serif;
+                 font-size:13px;font-weight:600;color:var(--gray-400)">
+          📲 Transferencia
+        </button>
+      </div>
+    </div>
+
+    <!-- Foto comprobante (solo transferencia) -->
+    <div id="pago-comprobante-group" style="display:none" class="form-group">
+      <label class="form-label">Foto del comprobante</label>
+      <input type="file" id="pago-comprobante-file" accept="image/*" capture="environment"
+        style="display:none" onchange="pagoCargarComprobante(this)">
+      <button onclick="document.getElementById('pago-comprobante-file').click()"
+        style="width:100%;padding:12px;background:var(--off-white);border:1.5px dashed var(--gray-200);
+               border-radius:var(--radius-sm);cursor:pointer;font-size:13px;color:var(--gray-400)">
+        📷 Tomar foto del comprobante
+      </button>
+      <div id="pago-comprobante-preview" style="margin-top:8px"></div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Concepto</label>
+      <div class="form-select-wrap">
+        <select id="pago-concepto" class="form-select">
+          <option value="anticipo">Anticipo (50%)</option>
+          <option value="segundo">Segundo pago (35%)</option>
+          <option value="liquidacion">Liquidación (15%)</option>
+          <option value="visita">Visita de medición</option>
+          <option value="otro">Otro</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Notas</label>
+      <input type="text" id="pago-notas" class="form-input" placeholder="Referencia, observaciones...">
+    </div>
+
+    <div id="pago-error" style="display:none;color:var(--red);font-size:12px;padding:8px 12px;
+      background:rgba(192,57,43,0.08);border-radius:var(--radius-sm);margin-bottom:12px"></div>
+
+    <button onclick="pagoGuardar()" class="btn-calcular"
+      style="background:linear-gradient(135deg,#27AE60,#2ECC71);box-shadow:0 4px 16px rgba(39,174,96,0.35)">
+      <span>💾</span> REGISTRAR PAGO
+    </button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     MÓDULO DE GARANTÍAS / POSTVENTA
+     ══════════════════════════════════════════ -->
+<div id="garantias-overlay" style="display:none;position:fixed;inset:0;background:var(--off-white);z-index:300;overflow-y:auto;padding:16px 16px 120px">
+
+  <!-- Header -->
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+    <button onclick="garantiasCerrar()" style="width:36px;height:36px;border-radius:50%;border:none;background:var(--gray-100);font-size:18px;cursor:pointer;flex-shrink:0">←</button>
+    <div>
+      <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--navy)">Garantías y Postventa</div>
+      <div style="font-size:11px;color:var(--gray-400)">Tickets de servicio · Reportes de clientes</div>
+    </div>
+    <button onclick="garantiaAbrir()" style="margin-left:auto;padding:8px 14px;background:var(--navy);color:white;border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:700;cursor:pointer">
+      + Ticket
+    </button>
+  </div>
+
+  <!-- Filtros semáforo -->
+  <div style="display:flex;gap:8px;margin-bottom:14px;overflow-x:auto;padding-bottom:4px">
+    <button class="orden-filtro-btn active" data-filtro="todos" onclick="garantiasFiltrar(this)">Todos</button>
+    <button class="orden-filtro-btn" data-filtro="urgente" onclick="garantiasFiltrar(this)">🔴 Urgente</button>
+    <button class="orden-filtro-btn" data-filtro="medio" onclick="garantiasFiltrar(this)">🟡 Medio</button>
+    <button class="orden-filtro-btn" data-filtro="normal" onclick="garantiasFiltrar(this)">🟢 Normal</button>
+    <button class="orden-filtro-btn" data-filtro="resuelto" onclick="garantiasFiltrar(this)">✅ Resuelto</button>
+  </div>
+
+  <div id="garantias-lista">
+    <div style="text-align:center;padding:40px;color:var(--gray-400)">
+      <div style="font-size:40px;margin-bottom:10px">🛡️</div>
+      <div>Sin tickets de garantía</div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal nuevo ticket garantía -->
+<div id="garantia-modal-overlay" onclick="garantiaCerrar()"
+  style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:800;backdrop-filter:blur(3px)"></div>
+
+<div id="garantia-modal" style="display:none;position:fixed;bottom:0;left:0;right:0;
+  background:var(--white);border-radius:20px 20px 0 0;z-index:900;
+  max-height:92vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(0,0,0,0.3)">
+  <div style="padding:16px 20px 40px">
+    <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 16px"></div>
+    <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--navy);margin-bottom:16px">
+      Nuevo Ticket de Garantía
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Cliente *</label>
+      <input type="text" id="gtia-cliente" class="form-input" placeholder="Nombre del cliente">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Teléfono *</label>
+      <input type="tel" id="gtia-tel" class="form-input" placeholder="55 1234 5678" inputmode="tel">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Folio de contrato (si recuerda)</label>
+      <input type="text" id="gtia-folio" class="form-input" placeholder="CACN-...">
+    </div>
+
+    <!-- Tipo de problema → define prioridad automática -->
+    <div class="form-group">
+      <label class="form-label">Tipo de problema *</label>
+      <div class="form-select-wrap">
+        <select id="gtia-tipo" class="form-select" onchange="gtiaActualizarPrioridad()">
+          <optgroup label="🔴 Urgente">
+            <option value="filtracion">Filtración de agua</option>
+            <option value="vidrio_roto">Vidrio roto</option>
+            <option value="no_cierra">No cierra / no abre</option>
+            <option value="seguridad">Problema de seguridad</option>
+          </optgroup>
+          <optgroup label="🟡 Medio">
+            <option value="herraje_dañado">Herraje dañado</option>
+            <option value="ruido">Ruido al abrir/cerrar</option>
+            <option value="mosquitero">Mosquitero roto</option>
+            <option value="condensacion">Condensación</option>
+          </optgroup>
+          <optgroup label="🟢 Normal">
+            <option value="ajuste">Ajuste menor</option>
+            <option value="silicón">Silicón despegado</option>
+            <option value="limpieza">Limpieza / mantenimiento</option>
+            <option value="revision">Revisión general</option>
+          </optgroup>
+        </select>
+      </div>
+    </div>
+
+    <!-- Prioridad (se llena automático pero es editable) -->
+    <div class="form-group">
+      <label class="form-label">Prioridad</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <button class="gtia-prior-btn" data-prior="urgente" onclick="gtiaSelPrioridad(this)"
+          style="padding:10px;border:2px solid var(--gray-200);border-radius:var(--radius-sm);
+                 background:none;cursor:pointer;font-size:12px;font-weight:700;color:var(--gray-400)">
+          🔴 Urgente
+        </button>
+        <button class="gtia-prior-btn" data-prior="medio" onclick="gtiaSelPrioridad(this)"
+          style="padding:10px;border:2px solid var(--gray-200);border-radius:var(--radius-sm);
+                 background:none;cursor:pointer;font-size:12px;font-weight:700;color:var(--gray-400)">
+          🟡 Medio
+        </button>
+        <button class="gtia-prior-btn" data-prior="normal" onclick="gtiaSelPrioridad(this)"
+          style="padding:10px;border:2px solid var(--gray-200);border-radius:var(--radius-sm);
+                 background:none;cursor:pointer;font-size:12px;font-weight:700;color:var(--gray-400)">
+          🟢 Normal
+        </button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Descripción del problema *</label>
+      <textarea id="gtia-desc" class="form-input" rows="3"
+        placeholder="Describe qué está pasando con detalle..." style="resize:none"></textarea>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Fecha de instalación aprox.</label>
+        <input type="date" id="gtia-fecha-inst" class="form-input">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Disponibilidad visita</label>
+        <div class="form-select-wrap">
+          <select id="gtia-disponibilidad" class="form-select">
+            <option value="manana">Mañana (8-2pm)</option>
+            <option value="tarde">Tarde (2-6pm)</option>
+            <option value="sabado">Sábado</option>
+            <option value="coordinar">A coordinar</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fotos del problema -->
+    <div class="form-group">
+      <label class="form-label">Fotos / evidencia</label>
+      <input type="file" id="gtia-fotos-input" accept="image/*,video/*" multiple
+        style="display:none" onchange="gtiaAgregarEvidencia(this)">
+      <button onclick="document.getElementById('gtia-fotos-input').click()"
+        style="width:100%;padding:12px;background:var(--off-white);border:1.5px dashed var(--gray-200);
+               border-radius:var(--radius-sm);cursor:pointer;font-size:13px;color:var(--gray-400)">
+        📷 Agregar fotos o video
+      </button>
+      <div id="gtia-evidencia-preview" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px"></div>
+    </div>
+
+    <div id="gtia-error" style="display:none;color:var(--red);font-size:12px;padding:8px 12px;
+      background:rgba(192,57,43,0.08);border-radius:var(--radius-sm);margin-bottom:12px"></div>
+
+    <button onclick="gtiaGuardar()" class="btn-calcular"
+      style="background:linear-gradient(135deg,#E74C3C,#C0392B);box-shadow:0 4px 16px rgba(231,76,60,0.35)">
+      <span>🛡️</span> CREAR TICKET
+    </button>
+  </div>
+</div>
 <div id="cli-modal-overlay" onclick="cliCerrarFormulario()"
   style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:600;backdrop-filter:blur(3px)"></div>
 
@@ -10850,7 +12002,7 @@ function pinAcceso() {
 // ── Roles ─────────────────────────────────────
 function pinAplicarRol() {
   const esTecnico = USUARIO_ACTIVO.rol === 'tecnico';
-  const tabsAdmin = ['tab-catalogo','tab-cotizar','tab-historial','tab-ordenes','tab-clientes','tab-config'];
+  const tabsAdmin = ['tab-catalogo','tab-cotizar','tab-historial','tab-ordenes','tab-garantias','tab-clientes','tab-config'];
   tabsAdmin.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = esTecnico ? 'none' : '';
@@ -10885,7 +12037,7 @@ function pinCerrarSesion(porInactividad = false) {
   USUARIO_ACTIVO = { id:'', nombre:'', apodo:'', rol:'admin', emoji:'', color:'' };
   pinUsuarioSelId = '';
   // Restaurar tabs
-  ['tab-catalogo','tab-cotizar','tab-historial','tab-ordenes','tab-clientes','tab-config'].forEach(id => {
+  ['tab-catalogo','tab-cotizar','tab-historial','tab-ordenes','tab-garantias','tab-clientes','tab-config'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = '';
   });

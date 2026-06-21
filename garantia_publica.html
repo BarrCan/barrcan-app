@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="theme-color" content="#1B3A5C">
+<title>BarrCan · Reporte de Garantía</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  :root {
+    --navy:#1B3A5C; --blue:#2E6DA4; --gold:#C8923A;
+    --red:#C0392B; --green:#27AE60;
+    --gray-100:#F5F7FA; --gray-200:#E8ECF0;
+    --gray-400:#94A3B8; --gray-600:#64748B;
+    --white:#FFFFFF; --radius:14px; --radius-sm:8px;
+  }
+  body {
+    font-family:'DM Sans',sans-serif;
+    background:var(--gray-100);
+    min-height:100vh;
+    padding-bottom:40px;
+  }
+
+  /* Header */
+  .header {
+    background:linear-gradient(135deg,#0F2A45,#1B3A5C);
+    padding:20px 20px 24px;
+    text-align:center;
+    color:white;
+  }
+  .logo { font-family:'Playfair Display',serif; font-size:28px; font-weight:900; letter-spacing:-1px; }
+  .logo span { color:var(--gold); }
+  .header-sub { font-size:11px; color:rgba(200,146,58,0.8); letter-spacing:2px; text-transform:uppercase; margin-top:2px; }
+  .header-title { font-size:16px; color:rgba(255,255,255,0.8); margin-top:12px; }
+
+  /* Formulario */
+  .form-container { max-width:480px; margin:0 auto; padding:20px 16px; }
+  .card { background:var(--white); border-radius:var(--radius); padding:18px; margin-bottom:14px; box-shadow:0 2px 8px rgba(0,0,0,0.06); }
+  .card-title { font-size:11px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:var(--blue); margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+  .form-group { margin-bottom:14px; }
+  .form-label { font-size:12px; font-weight:600; color:var(--gray-600); margin-bottom:5px; display:block; }
+  .form-input {
+    width:100%; padding:12px 14px; border:1.5px solid var(--gray-200);
+    border-radius:var(--radius-sm); font-family:'DM Sans',sans-serif;
+    font-size:14px; color:var(--navy); background:var(--gray-100);
+    outline:none; transition:border-color 0.2s;
+  }
+  .form-input:focus { border-color:var(--blue); background:white; }
+  textarea.form-input { resize:none; }
+  select.form-input { appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2394A3B8' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 14px center; padding-right:36px; }
+
+  /* Tipo problema */
+  .tipo-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .tipo-btn {
+    padding:12px 8px; border:1.5px solid var(--gray-200); border-radius:var(--radius-sm);
+    background:none; cursor:pointer; font-family:'DM Sans',sans-serif;
+    font-size:12px; font-weight:600; color:var(--gray-400);
+    display:flex; flex-direction:column; align-items:center; gap:4px;
+    transition:all 0.15s;
+  }
+  .tipo-btn.urgente.active { border-color:#E74C3C; background:rgba(231,76,60,0.08); color:#E74C3C; }
+  .tipo-btn.medio.active   { border-color:#F39C12; background:rgba(243,156,18,0.08); color:#F39C12; }
+  .tipo-btn.normal.active  { border-color:#27AE60; background:rgba(39,174,96,0.08);  color:#27AE60; }
+  .tipo-btn .tipo-emoji { font-size:22px; }
+  .tipo-btn .tipo-label { font-size:11px; }
+
+  /* Fotos */
+  .foto-btn {
+    width:100%; padding:14px; background:var(--gray-100);
+    border:1.5px dashed var(--gray-200); border-radius:var(--radius-sm);
+    cursor:pointer; font-size:13px; color:var(--gray-400);
+    display:flex; align-items:center; justify-content:center; gap:8px;
+  }
+  .foto-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:10px; }
+  .foto-thumb { position:relative; border-radius:6px; overflow:hidden; }
+  .foto-thumb img, .foto-thumb video { width:100%; height:80px; object-fit:cover; display:block; }
+  .foto-del { position:absolute; top:3px; right:3px; width:18px; height:18px; border-radius:50%; border:none; background:rgba(0,0,0,0.6); color:white; font-size:10px; cursor:pointer; }
+
+  /* Prioridad badge */
+  .prior-badge {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:6px 12px; border-radius:20px; font-size:12px; font-weight:700;
+    margin-bottom:12px;
+  }
+  .prior-urgente { background:rgba(231,76,60,0.1); color:#E74C3C; }
+  .prior-medio   { background:rgba(243,156,18,0.1); color:#F39C12; }
+  .prior-normal  { background:rgba(39,174,96,0.1);  color:#27AE60; }
+
+  /* Botón enviar */
+  .btn-enviar {
+    width:100%; padding:16px; background:linear-gradient(135deg,var(--navy),#2A4F7A);
+    color:white; border:none; border-radius:var(--radius);
+    font-family:'DM Sans',sans-serif; font-size:16px; font-weight:700;
+    cursor:pointer; box-shadow:0 4px 20px rgba(27,58,92,0.35);
+    display:flex; align-items:center; justify-content:center; gap:10px;
+  }
+  .btn-enviar:disabled { opacity:0.6; cursor:not-allowed; }
+
+  /* Estado enviado */
+  .enviado-screen { display:none; text-align:center; padding:40px 20px; }
+  .enviado-icon { font-size:64px; margin-bottom:16px; }
+  .enviado-titulo { font-family:'Playfair Display',serif; font-size:24px; font-weight:700; color:var(--navy); margin-bottom:8px; }
+  .enviado-sub { font-size:14px; color:var(--gray-400); line-height:1.6; }
+  .enviado-wa {
+    margin-top:20px; padding:14px 24px; background:#25D366; color:white;
+    border:none; border-radius:var(--radius); font-size:15px; font-weight:700;
+    cursor:pointer; display:inline-flex; align-items:center; gap:8px;
+  }
+
+  .error-msg { color:var(--red); font-size:12px; padding:10px 12px;
+    background:rgba(192,57,43,0.08); border-radius:var(--radius-sm); margin-bottom:12px; display:none; }
+
+  .info-note { font-size:11px; color:var(--gray-400); margin-top:4px; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="logo">Barr<span>Can</span></div>
+  <div class="header-sub">Cancelería · Aluminio · Vidrio</div>
+  <div class="header-title">🛡️ Reporte de Garantía o Servicio</div>
+</div>
+
+<!-- Formulario -->
+<div class="form-container" id="form-container">
+
+  <!-- Datos del cliente -->
+  <div class="card">
+    <div class="card-title">👤 Tus Datos</div>
+    <div class="form-group">
+      <label class="form-label">Nombre completo *</label>
+      <input type="text" id="g-nombre" class="form-input" placeholder="Tu nombre">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Teléfono / WhatsApp *</label>
+      <input type="tel" id="g-tel" class="form-input" placeholder="55 1234 5678" inputmode="tel">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Número de contrato (si lo recuerdas)</label>
+      <input type="text" id="g-folio" class="form-input" placeholder="CACN-...">
+      <div class="info-note">Lo encuentras en tu presupuesto-contrato</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Fecha aproximada de instalación</label>
+      <input type="date" id="g-fecha-inst" class="form-input">
+    </div>
+  </div>
+
+  <!-- Tipo de problema -->
+  <div class="card">
+    <div class="card-title">⚠️ ¿Qué está pasando?</div>
+    <div class="tipo-grid">
+      <button class="tipo-btn urgente" data-tipo="filtracion" data-prior="urgente" onclick="selTipo(this)">
+        <span class="tipo-emoji">💧</span>
+        <span class="tipo-label">Filtración de agua</span>
+      </button>
+      <button class="tipo-btn urgente" data-tipo="vidrio_roto" data-prior="urgente" onclick="selTipo(this)">
+        <span class="tipo-emoji">🪟</span>
+        <span class="tipo-label">Vidrio roto</span>
+      </button>
+      <button class="tipo-btn urgente" data-tipo="no_cierra" data-prior="urgente" onclick="selTipo(this)">
+        <span class="tipo-emoji">🚪</span>
+        <span class="tipo-label">No cierra / no abre</span>
+      </button>
+      <button class="tipo-btn urgente" data-tipo="seguridad" data-prior="urgente" onclick="selTipo(this)">
+        <span class="tipo-emoji">🔒</span>
+        <span class="tipo-label">Problema de seguridad</span>
+      </button>
+      <button class="tipo-btn medio" data-tipo="herraje_dañado" data-prior="medio" onclick="selTipo(this)">
+        <span class="tipo-emoji">🔧</span>
+        <span class="tipo-label">Herraje dañado</span>
+      </button>
+      <button class="tipo-btn medio" data-tipo="ruido" data-prior="medio" onclick="selTipo(this)">
+        <span class="tipo-emoji">🔊</span>
+        <span class="tipo-label">Ruido al abrir</span>
+      </button>
+      <button class="tipo-btn normal" data-tipo="ajuste" data-prior="normal" onclick="selTipo(this)">
+        <span class="tipo-emoji">⚙️</span>
+        <span class="tipo-label">Ajuste menor</span>
+      </button>
+      <button class="tipo-btn normal" data-tipo="revision" data-prior="normal" onclick="selTipo(this)">
+        <span class="tipo-emoji">🔍</span>
+        <span class="tipo-label">Revisión general</span>
+      </button>
+    </div>
+    <div id="g-prior-badge" style="margin-top:12px;display:none"></div>
+  </div>
+
+  <!-- Descripción -->
+  <div class="card">
+    <div class="card-title">📝 Descripción del Problema</div>
+    <div class="form-group">
+      <textarea id="g-desc" class="form-input" rows="4"
+        placeholder="Describe con detalle qué está pasando. Cuándo empezó, en qué parte de la ventana/cancel, etc."></textarea>
+    </div>
+    <div class="form-group">
+      <label class="form-label">¿Cuándo puedes recibir visita?</label>
+      <select id="g-disponibilidad" class="form-input">
+        <option value="manana">Mañana (8am - 2pm)</option>
+        <option value="tarde">Tarde (2pm - 6pm)</option>
+        <option value="sabado">Sábado</option>
+        <option value="coordinar">A coordinar por WhatsApp</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Fotos/Video -->
+  <div class="card">
+    <div class="card-title">📷 Fotos o Video del Problema</div>
+    <div style="font-size:12px;color:var(--gray-400);margin-bottom:10px">
+      Adjunta fotos o un video corto (máx 1 min) que muestre el problema. Esto nos ayuda a preparar la visita.
+    </div>
+    <input type="file" id="g-media-input" accept="image/*,video/*" multiple
+      style="display:none" onchange="agregarMedia(this)">
+    <button class="foto-btn" onclick="document.getElementById('g-media-input').click()">
+      <span style="font-size:20px">📷</span> Agregar fotos o video
+    </button>
+    <div class="foto-grid" id="g-media-grid"></div>
+    <div id="g-media-count" style="text-align:center;font-size:11px;color:var(--gray-400);margin-top:6px"></div>
+  </div>
+
+  <!-- Error -->
+  <div class="error-msg" id="g-error"></div>
+
+  <!-- Botón enviar -->
+  <button class="btn-enviar" id="g-btn-enviar" onclick="enviarReporte()">
+    <span style="font-size:20px">📨</span> Enviar Reporte
+  </button>
+
+  <div style="text-align:center;font-size:11px;color:var(--gray-400);margin-top:16px;line-height:1.6">
+    Al enviar tu reporte, nuestro equipo lo recibirá inmediatamente<br>
+    y te contactará por WhatsApp a la brevedad posible.<br><br>
+    <b>BarrCan</b> · Tel: 56-15-15-84-15
+  </div>
+</div>
+
+<!-- Pantalla de enviado -->
+<div class="enviado-screen" id="enviado-screen">
+  <div class="enviado-icon">✅</div>
+  <div class="enviado-titulo">¡Reporte Enviado!</div>
+  <div class="enviado-sub">
+    Tu reporte fue recibido por el equipo de BarrCan.<br>
+    Te contactaremos por WhatsApp a la brevedad.<br><br>
+    <b id="enviado-folio"></b>
+  </div>
+  <button class="enviado-wa" onclick="abrirWA()">
+    <span style="font-size:20px">💬</span> Confirmar por WhatsApp
+  </button>
+</div>
+
+<script>
+const SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co';
+const SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
+const WA_NUM = '525615158415';
+
+let _sb = null;
+function sb() {
+  if (!_sb) _sb = window.supabase.createClient(SB_URL, SB_KEY, {
+    db: { schema: 'barrcan' },
+    global: { fetch: (...args) => fetch(...args) }
+  });
+  return _sb;
+}
+
+let TIPO_SEL  = '';
+let PRIOR_SEL = '';
+let MEDIA     = [];
+
+const PRIOR_LABELS = {
+  urgente: { emoji:'🔴', label:'Urgente — Atención prioritaria', cls:'prior-urgente' },
+  medio:   { emoji:'🟡', label:'Medio — Revisión pronto',        cls:'prior-medio'   },
+  normal:  { emoji:'🟢', label:'Normal — Revisión programada',   cls:'prior-normal'  }
+};
+
+function selTipo(btn) {
+  document.querySelectorAll('.tipo-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  TIPO_SEL  = btn.dataset.tipo;
+  PRIOR_SEL = btn.dataset.prior;
+
+  const badge = document.getElementById('g-prior-badge');
+  const p = PRIOR_LABELS[PRIOR_SEL];
+  badge.style.display = 'block';
+  badge.innerHTML = `<span class="prior-badge ${p.cls}">${p.emoji} ${p.label}</span>`;
+}
+
+function agregarMedia(input) {
+  Array.from(input.files).forEach(file => {
+    if (MEDIA.length >= 6) { alert('Máximo 6 archivos'); return; }
+    const reader = new FileReader();
+    reader.onload = e => {
+      MEDIA.push({ dataUrl: e.target.result, tipo: file.type, nombre: file.name });
+      renderMedia();
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value = '';
+}
+
+function renderMedia() {
+  const grid = document.getElementById('g-media-grid');
+  const count = document.getElementById('g-media-count');
+  count.textContent = MEDIA.length ? `${MEDIA.length} archivo${MEDIA.length>1?'s':''} adjunto${MEDIA.length>1?'s':''}` : '';
+  grid.innerHTML = MEDIA.map((m,i) =>
+    `<div class="foto-thumb">
+      ${m.tipo.startsWith('video')
+        ? `<video src="${m.dataUrl}" style="width:100%;height:80px;object-fit:cover"></video>`
+        : `<img src="${m.dataUrl}">`}
+      <button class="foto-del" onclick="MEDIA.splice(${i},1);renderMedia()">✕</button>
+    </div>`
+  ).join('');
+}
+
+async function enviarReporte() {
+  const nombre = document.getElementById('g-nombre').value.trim();
+  const tel    = document.getElementById('g-tel').value.trim();
+  const desc   = document.getElementById('g-desc').value.trim();
+  const errEl  = document.getElementById('g-error');
+
+  if (!nombre) { mostrarError('⚠️ Tu nombre es obligatorio'); return; }
+  if (!tel)    { mostrarError('⚠️ Tu teléfono es obligatorio'); return; }
+  if (!TIPO_SEL){ mostrarError('⚠️ Selecciona el tipo de problema'); return; }
+  if (!desc)   { mostrarError('⚠️ Describe el problema con más detalle'); return; }
+  errEl.style.display = 'none';
+
+  const btn = document.getElementById('g-btn-enviar');
+  btn.disabled = true;
+  btn.innerHTML = '<span style="font-size:18px">⏳</span> Enviando…';
+
+  const folio = 'GTI-' + Date.now().toString().slice(-6);
+  const payload = {
+    cliente_nombre:    nombre,
+    cliente_tel:       tel,
+    folio_contrato:    document.getElementById('g-folio').value.trim() || null,
+    tipo_problema:     TIPO_SEL,
+    prioridad:         PRIOR_SEL || 'normal',
+    descripcion:       desc,
+    fecha_instalacion: document.getElementById('g-fecha-inst').value || null,
+    disponibilidad:    document.getElementById('g-disponibilidad').value,
+    estado:            'nuevo',
+    registrado_por:    'cliente_web',
+    num_evidencias:    MEDIA.length
+  };
+
+  try {
+    const { error } = await sb().from('garantias').insert([payload]);
+    if (error) throw error;
+    mostrarEnviado(folio, nombre, tel, payload);
+  } catch(e) {
+    // Si falla Supabase, igual notificar por WhatsApp
+    console.warn('Supabase error:', e.message);
+    mostrarEnviado(folio, nombre, tel, payload);
+  }
+}
+
+function mostrarError(msg) {
+  const el = document.getElementById('g-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+  el.scrollIntoView({ behavior:'smooth', block:'center' });
+}
+
+function mostrarEnviado(folio, nombre, tel, payload) {
+  document.getElementById('form-container').style.display = 'none';
+  const screen = document.getElementById('enviado-screen');
+  screen.style.display = 'block';
+  document.getElementById('enviado-folio').textContent = 'Folio de seguimiento: ' + folio;
+  screen.scrollIntoView({ behavior:'smooth' });
+
+  // Guardar datos para el botón de WhatsApp
+  window._waData = { folio, nombre, tel, payload };
+}
+
+function abrirWA() {
+  const d = window._waData;
+  if (!d) return;
+  const p = PRIOR_LABELS[d.payload.prioridad] || PRIOR_LABELS.normal;
+  const msg = encodeURIComponent(
+    `${p.emoji} *Reporte de Garantía BarrCan*\n` +
+    `Folio: ${d.folio}\n` +
+    `Cliente: ${d.nombre} · ${d.tel}\n` +
+    `Problema: ${d.payload.tipo_problema}\n` +
+    `${d.payload.descripcion}\n` +
+    `${d.payload.folio_contrato ? 'Contrato: ' + d.payload.folio_contrato + '\n' : ''}` +
+    `Disponibilidad: ${d.payload.disponibilidad}\n` +
+    `Prioridad: ${(d.payload.prioridad||'').toUpperCase()}`
+  );
+  window.open(`https://wa.me/${WA_NUM}?text=${msg}`, '_blank');
+}
+</script>
+</body>
+</html>
