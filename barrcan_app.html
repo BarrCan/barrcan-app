@@ -2280,11 +2280,48 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Monto del Trabajo</label>
-        <input type="text" class="form-input" id="ent-monto" oninput="entActualizarProgreso()">
+        <div class="input-unit">
+          <input type="number" class="form-input" id="ent-monto" min="0" inputmode="numeric"
+            placeholder="0" oninput="entCalcularTotal()">
+          <span class="input-unit-label">$</span>
+        </div>
       </div>
       <div class="form-group">
         <label class="form-label">Fecha de Entrega</label>
         <input type="date" class="form-input" id="ent-fecha" oninput="entActualizarProgreso()">
+      </div>
+    </div>
+
+    <!-- Adicionales en campo -->
+    <div class="wizard-card fade-in" style="margin-top:0;padding:14px 16px;background:rgba(230,126,34,0.05);border:1.5px solid rgba(230,126,34,0.2)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:700;color:#E67E22;letter-spacing:0.5px">➕ Adicionales en campo</div>
+        <button onclick="entAgregarAdicional()"
+          style="padding:5px 12px;background:#E67E22;color:white;border:none;border-radius:20px;
+                 font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer">
+          + Agregar
+        </button>
+      </div>
+      <div id="ent-adicionales-lista" style="display:flex;flex-direction:column;gap:8px"></div>
+      <div id="ent-adicionales-vacio" style="font-size:11px;color:var(--gray-400);text-align:center;padding:6px">
+        Sin adicionales — toca "+ Agregar" si hubo extras
+      </div>
+      <!-- Total -->
+      <div id="ent-total-wrap" style="display:none;margin-top:12px;padding:10px 14px;
+        background:var(--navy);border-radius:var(--radius-sm);display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-size:11px;color:rgba(255,255,255,0.7)">Trabajo</div>
+          <div style="font-size:13px;color:white;font-weight:600" id="ent-total-base">$0</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+          <div style="font-size:11px;color:rgba(255,255,255,0.7)">Adicionales</div>
+          <div style="font-size:13px;color:#F39C12;font-weight:600" id="ent-total-adicionales">$0</div>
+        </div>
+        <div style="border-top:1px solid rgba(255,255,255,0.2);margin:8px 0"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-size:13px;color:white;font-weight:700">Total a cobrar</div>
+          <div style="font-size:16px;color:#F1C40F;font-weight:800" id="ent-total-final">$0</div>
+        </div>
       </div>
     </div>
 
@@ -7631,6 +7668,7 @@ function abrirEntrega() {
   entRenderEvidencias();
   entIniciarFirmas();
   entActualizarProgreso();
+  entRenderAdicionales();
 
   // Fecha de hoy por defecto
   const fEl = document.getElementById('ent-fecha');
@@ -7653,8 +7691,83 @@ function abrirEntrega() {
   }
 }
 
+// ── Adicionales en campo ──────────────────────────────────────
+let ENT_ADICIONALES = [];
+
+function entAgregarAdicional() {
+  ENT_ADICIONALES.push({ id: Date.now(), concepto: '', monto: 0 });
+  entRenderAdicionales();
+  // Enfocar el último input de concepto
+  setTimeout(() => {
+    const inputs = document.querySelectorAll('.ent-adic-concepto');
+    if (inputs.length) inputs[inputs.length - 1].focus();
+  }, 50);
+}
+
+function entEliminarAdicional(id) {
+  ENT_ADICIONALES = ENT_ADICIONALES.filter(a => a.id !== id);
+  entRenderAdicionales();
+  entCalcularTotal();
+}
+
+function entRenderAdicionales() {
+  const lista  = document.getElementById('ent-adicionales-lista');
+  const vacio  = document.getElementById('ent-adicionales-vacio');
+  if (!lista) return;
+
+  if (!ENT_ADICIONALES.length) {
+    lista.innerHTML = '';
+    vacio.style.display = 'block';
+    entCalcularTotal();
+    return;
+  }
+  vacio.style.display = 'none';
+  lista.innerHTML = ENT_ADICIONALES.map(a => `
+    <div style="display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:center">
+      <input type="text" class="form-input ent-adic-concepto" placeholder="Concepto (ej. Vidrio roto 4mm)"
+        value="${a.concepto || ''}"
+        style="font-size:12px;padding:8px 10px"
+        oninput="ENT_ADICIONALES.find(x=>x.id===${a.id}).concepto=this.value">
+      <div class="input-unit" style="width:110px">
+        <input type="number" class="form-input" placeholder="0" min="0" inputmode="numeric"
+          value="${a.monto || ''}"
+          style="font-size:12px;padding:8px 10px"
+          oninput="ENT_ADICIONALES.find(x=>x.id===${a.id}).monto=parseFloat(this.value)||0;entCalcularTotal()">
+        <span class="input-unit-label">$</span>
+      </div>
+      <button onclick="entEliminarAdicional(${a.id})"
+        style="width:30px;height:36px;border:none;background:rgba(192,57,43,0.1);
+               color:var(--red);border-radius:var(--radius-sm);cursor:pointer;font-size:16px">
+        ✕
+      </button>
+    </div>
+  `).join('');
+  entCalcularTotal();
+}
+
+function entCalcularTotal() {
+  const base       = parseFloat(document.getElementById('ent-monto')?.value) || 0;
+  const adicTotal  = ENT_ADICIONALES.reduce((s, a) => s + (a.monto || 0), 0);
+  const total      = base + adicTotal;
+  const wrap       = document.getElementById('ent-total-wrap');
+
+  if (wrap) {
+    if (adicTotal > 0) {
+      wrap.style.display = 'block';
+      document.getElementById('ent-total-base').textContent        = '$' + fmt(base);
+      document.getElementById('ent-total-adicionales').textContent = '+$' + fmt(adicTotal);
+      document.getElementById('ent-total-final').textContent       = '$' + fmt(total);
+    } else {
+      wrap.style.display = 'none';
+    }
+  }
+  entActualizarProgreso();
+}
+
 function cerrarEntrega() {
   document.getElementById('entrega-overlay').style.display = 'none';
+  ENT_ADICIONALES = [];
+  entRenderAdicionales();
 }
 
 function entRenderChecklist() {
@@ -7844,9 +7957,13 @@ function entGenerarReporte() {
   const tel      = document.getElementById('ent-tel').value;
   const folio    = document.getElementById('ent-folio').value;
   const dir      = document.getElementById('ent-dir').value;
-  const monto    = document.getElementById('ent-monto').value;
+  const montoBase = parseFloat(document.getElementById('ent-monto').value) || 0;
   const fecha    = document.getElementById('ent-fecha').value;
   const tecnico  = document.getElementById('ent-tecnico').value || 'BarrCan';
+
+  // Calcular total con adicionales
+  const adicTotal = ENT_ADICIONALES.reduce((s, a) => s + (a.monto || 0), 0);
+  const montoTotal = montoBase + adicTotal;
 
   const firmasTec = document.getElementById('pad-tec').toDataURL();
   const firmasCli = document.getElementById('pad-cli').toDataURL();
@@ -7861,6 +7978,34 @@ function entGenerarReporte() {
       <td style=padding:6px 8px;border:1px solid #ddd;font-size:9pt>${nota}</td>
     </tr>`;
   }).join('');
+
+  // Adicionales para el PDF
+  const adicionalesHTML = ENT_ADICIONALES.length > 0 ? `
+    <h2>2b. Servicios y Materiales Adicionales</h2>
+    <table style=margin-bottom:10px>
+      <thead><tr>
+        <th>Concepto</th>
+        <th style=width:120px;text-align:right>Importe</th>
+      </tr></thead>
+      <tbody>
+        ${ENT_ADICIONALES.map(a => `
+          <tr>
+            <td style=padding:6px 8px;border:1px solid #ddd;font-size:9pt>${a.concepto || '—'}</td>
+            <td style=padding:6px 8px;border:1px solid #ddd;font-size:9pt;text-align:right;font-weight:700>$${fmt(a.monto)}</td>
+          </tr>`).join('')}
+        <tr style=background:#FEF9E7>
+          <td style=padding:6px 8px;border:1px solid #ddd;font-size:9pt;font-weight:700;color:#1B3A5C>Subtotal adicionales</td>
+          <td style=padding:6px 8px;border:1px solid #ddd;font-size:9pt;text-align:right;font-weight:800;color:#E67E22>$${fmt(adicTotal)}</td>
+        </tr>
+      </tbody>
+    </table>` : '';
+
+  // Fila de total en datos de obra
+  const montoRows = adicTotal > 0 ? `
+    <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Trabajo base</td><td style=padding:5px 8px;border:1px solid #ddd>$${fmt(montoBase)}</td></tr>
+    <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Adicionales</td><td style=padding:5px 8px;border:1px solid #ddd;color:#E67E22;font-weight:700>+$${fmt(adicTotal)}</td></tr>
+    <tr style=background:#1B3A5C><td style=padding:5px 8px;border:1px solid #1B3A5C;font-weight:700;color:white>TOTAL</td><td style=padding:5px 8px;border:1px solid #1B3A5C;color:#F1C40F;font-weight:800;font-size:11pt>$${fmt(montoTotal)}</td></tr>
+  ` : `<tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Monto</td><td style=padding:5px 8px;border:1px solid #ddd>$${fmt(montoBase)}</td></tr>`;
 
   const fotosHTML = ENT_EVIDENCIAS.filter(e=>e.tipo==='foto' && ENT.evidencias[e.id]).map(e=>`
     <div style=text-align:center>
@@ -7891,7 +8036,7 @@ function entGenerarReporte() {
     <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700;width:35%>Cliente</td><td style=padding:5px 8px;border:1px solid #ddd>${cliente}</td></tr>
     <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Folio</td><td style=padding:5px 8px;border:1px solid #ddd>${folio}</td></tr>
     <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Dirección</td><td style=padding:5px 8px;border:1px solid #ddd>${dir}</td></tr>
-    <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Monto</td><td style=padding:5px 8px;border:1px solid #ddd>${monto}</td></tr>
+    ${montoRows}
     <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Fecha de entrega</td><td style=padding:5px 8px;border:1px solid #ddd>${fecha}</td></tr>
     <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Técnico instalador</td><td style=padding:5px 8px;border:1px solid #ddd>${tecnico}</td></tr>
   </table>
@@ -7900,6 +8045,7 @@ function entGenerarReporte() {
     <thead><tr><th>Punto Técnico</th><th style=width:50px;text-align:center>Estado</th><th>Notas</th></tr></thead>
     <tbody>${checkRows}</tbody>
   </table>
+  ${adicionalesHTML}
   <h2>3. Registro Fotográfico</h2>
   <div style=display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px>${fotosHTML}</div>
   ${ENT.evidencias['ev5'] ? `<div style=font-size:9pt;color:#1B3A5C;padding:8px;background:#f0f4f8;border-radius:4px>🎬 Video funcional capturado: ${ENT.evidencias['ev5']}</div>` : ''}
@@ -10481,30 +10627,9 @@ function gtiaAbrirDetalle(id) {
   document.getElementById('gtia-det-estado').value        = g.estado || 'nuevo';
   document.getElementById('gtia-det-tecnico').value       = g.tecnico_asignado || '';
   document.getElementById('gtia-det-fecha-vis').value     = g.fecha_visita_agendada || '';
-  document.getElementById('gtia-det-hora-vis').value      = g.hora_visita_agendada || '';
   document.getElementById('gtia-det-costo').value         = g.costo_reparacion || '';
   document.getElementById('gtia-det-notas').value         = g.notas_internas || '';
   document.getElementById('gtia-det-error').style.display = 'none';
-
-  // Mostrar fotos si las hay
-  const fotosWrap = document.getElementById('gtia-det-fotos-wrap');
-  const fotosGrid = document.getElementById('gtia-det-fotos-grid');
-  const fotos = g.fotos_urls || [];
-  if (fotos.length > 0) {
-    fotosGrid.innerHTML = fotos.map(url =>
-      `<a href="${url}" target="_blank" style="display:block;border-radius:6px;overflow:hidden;aspect-ratio:1;background:#f0f0f0">
-        <img src="${url}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML='📷'">
-      </a>`
-    ).join('');
-    fotosWrap.style.display = 'block';
-  } else if (g.num_evidencias > 0) {
-    fotosGrid.innerHTML = `<div style="grid-column:1/-1;font-size:12px;color:var(--gray-400);text-align:center;padding:8px">
-      📷 ${g.num_evidencias} foto${g.num_evidencias>1?'s':''} adjunta${g.num_evidencias>1?'s':''} (enviadas por WhatsApp)
-    </div>`;
-    fotosWrap.style.display = 'block';
-  } else {
-    fotosWrap.style.display = 'none';
-  }
 
   document.getElementById('gtia-det-overlay').style.display = 'block';
   document.getElementById('gtia-det-modal').style.display   = 'block';
@@ -10516,22 +10641,20 @@ function gtiaDetCerrar() {
 }
 
 async function gtiaDetGuardar() {
-  const id       = document.getElementById('gtia-det-id').value;
-  const estado   = document.getElementById('gtia-det-estado').value;
-  const tecnico  = document.getElementById('gtia-det-tecnico').value.trim();
-  const fechaVis = document.getElementById('gtia-det-fecha-vis').value;
-  const horaVis  = document.getElementById('gtia-det-hora-vis').value;
-  const costoRep = parseFloat(document.getElementById('gtia-det-costo').value) || null;
-  const notasInt = document.getElementById('gtia-det-notas').value.trim();
-  const errEl    = document.getElementById('gtia-det-error');
+  const id             = document.getElementById('gtia-det-id').value;
+  const estado         = document.getElementById('gtia-det-estado').value;
+  const tecnico        = document.getElementById('gtia-det-tecnico').value.trim();
+  const fechaVis       = document.getElementById('gtia-det-fecha-vis').value;
+  const costoRep       = parseFloat(document.getElementById('gtia-det-costo').value) || null;
+  const notasInt       = document.getElementById('gtia-det-notas').value.trim();
+  const errEl          = document.getElementById('gtia-det-error');
 
   const cambios = {
     estado,
-    tecnico_asignado:      tecnico || null,
-    fecha_visita_agendada: fechaVis || null,
-    hora_visita_agendada:  horaVis || null,
-    costo_reparacion:      costoRep,
-    notas_internas:        notasInt || null
+    tecnico_asignado:       tecnico || null,
+    fecha_visita_agendada:  fechaVis || null,
+    costo_reparacion:       costoRep,
+    notas_internas:         notasInt || null
   };
 
   try {
@@ -10539,25 +10662,26 @@ async function gtiaDetGuardar() {
       const { error } = await sb().from('garantias').update(cambios).eq('id', id);
       if (error) throw error;
     }
+    // Actualizar cache local
     const idx = GARANTIAS_CACHE.findIndex(x => x.id === id);
     if (idx >= 0) {
       GARANTIAS_CACHE[idx] = { ...GARANTIAS_CACHE[idx], ...cambios };
       localStorage.setItem('barrcan_garantias_cache', JSON.stringify(GARANTIAS_CACHE));
     }
-    // Notificar al cliente si se agendó visita
+
+    // Si se agendó visita → notificar WhatsApp al cliente
     if (fechaVis && estado === 'visita_agendada') {
       const g = GARANTIAS_CACHE[idx];
-      const horaStr = horaVis ? ` a las ${horaVis}` : '';
-      const tecNombre = tecnico ? (USUARIOS[tecnico]?.apodo || tecnico) : 'Por confirmar';
       const msg = encodeURIComponent(
         `🛡️ *BarrCan · Visita de garantía agendada*\n` +
         `Hola ${g?.cliente_nombre || ''}, agendamos una visita para revisar tu reporte.\n` +
-        `📅 Fecha: ${fechaVis}${horaStr}\n` +
-        `👷 Técnico: ${tecNombre}\n` +
+        `📅 Fecha: ${fechaVis}\n` +
+        `👷 Técnico: ${tecnico || 'Por confirmar'}\n` +
         `¿Tienes alguna pregunta? Escríbenos aquí.`
       );
       window.open(`https://wa.me/52${g?.cliente_tel?.replace(/\D/g,'')}?text=${msg}`, '_blank');
     }
+
     toast(`✅ Ticket actualizado · ${estado}`);
     gtiaDetCerrar();
     garantiasRenderLista();
@@ -10565,65 +10689,6 @@ async function gtiaDetGuardar() {
     errEl.textContent = '❌ ' + e.message;
     errEl.style.display = 'block';
   }
-}
-
-// ── WhatsApp al técnico asignado ──────────────────────────────
-function gtiaWATecnico() {
-  const id      = document.getElementById('gtia-det-id').value;
-  const tecnico = document.getElementById('gtia-det-tecnico').value;
-  const fecha   = document.getElementById('gtia-det-fecha-vis').value;
-  const hora    = document.getElementById('gtia-det-hora-vis').value;
-  const g       = GARANTIAS_CACHE.find(x => x.id === id);
-  if (!tecnico) { toast('⚠️ Selecciona un técnico primero'); return; }
-  const uTec = USUARIOS[tecnico];
-  if (!uTec?.tel) { toast('⚠️ El técnico aún no tiene número registrado'); return; }
-  const horaStr  = hora  ? ` a las ${hora}` : '';
-  const fechaStr = fecha ? `📅 Fecha: ${fecha}${horaStr}\n` : '';
-  const msg = encodeURIComponent(
-    `🔧 *BarrCan · Visita asignada*\n` +
-    `Hola ${uTec.apodo}, tienes una visita de garantía asignada.\n\n` +
-    `👤 Cliente: ${g?.cliente_nombre || '—'}\n` +
-    `📞 Tel: ${g?.cliente_tel || '—'}\n` +
-    `🔩 Problema: ${g?.tipo_problema || '—'}\n` +
-    `📝 ${(g?.descripcion || '').slice(0, 100)}\n` +
-    `${fechaStr}` +
-    `\nRevisa la app BarrCan para más detalles.`
-  );
-  window.open(`https://wa.me/52${uTec.tel.replace(/\D/g,'')}?text=${msg}`, '_blank');
-}
-
-// ── Agregar evento a Google Calendar ─────────────────────────
-function gtiaAgregarCalendario() {
-  const id      = document.getElementById('gtia-det-id').value;
-  const fecha   = document.getElementById('gtia-det-fecha-vis').value;
-  const hora    = document.getElementById('gtia-det-hora-vis').value;
-  const tecnico = document.getElementById('gtia-det-tecnico').value;
-  const g       = GARANTIAS_CACHE.find(x => x.id === id);
-  if (!fecha) { toast('⚠️ Selecciona una fecha primero'); return; }
-  const fechaBase = fecha.replace(/-/g, '');
-  let dtStart, dtEnd;
-  if (hora) {
-    const [hh, mm] = hora.split(':');
-    dtStart = `${fechaBase}T${hh}${mm}00`;
-    const endHour = String(parseInt(hh) + 2).padStart(2, '0');
-    dtEnd   = `${fechaBase}T${endHour}${mm}00`;
-  } else {
-    dtStart = fechaBase;
-    dtEnd   = fechaBase;
-  }
-  const tecNombre = tecnico ? (USUARIOS[tecnico]?.apodo || tecnico) : 'Por confirmar';
-  const titulo    = encodeURIComponent(`🛡️ Garantía · ${g?.cliente_nombre || 'Cliente'}`);
-  const detalle   = encodeURIComponent(
-    `Cliente: ${g?.cliente_nombre || '—'}\n` +
-    `Tel: ${g?.cliente_tel || '—'}\n` +
-    `Problema: ${g?.tipo_problema || '—'}\n` +
-    `Descripción: ${(g?.descripcion || '').slice(0, 150)}\n` +
-    `Técnico: ${tecNombre}`
-  );
-  const url = `https://calendar.google.com/calendar/render?action=TEMPLATE` +
-    `&text=${titulo}&dates=${dtStart}/${dtEnd}&details=${detalle}`;
-  window.open(url, '_blank');
-  toast('📅 Abriendo Google Calendar…');
 }
 
 function gtiaDetWhatsApp() {
@@ -11942,19 +12007,13 @@ function visitasGuardadasAbrir() {
   <div style="padding:16px 20px 40px">
     <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 16px"></div>
 
-    <!-- Header con botón X -->
+    <!-- Header -->
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
       <div>
         <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--navy)" id="gtia-det-nombre">—</div>
         <div style="font-size:12px;color:var(--gray-400);margin-top:2px" id="gtia-det-tel">—</div>
       </div>
-      <div style="display:flex;align-items:center;gap:10px">
-        <span id="gtia-det-prior" style="font-size:12px;font-weight:700"></span>
-        <button onclick="gtiaDetCerrar()"
-          style="width:32px;height:32px;border-radius:50%;border:none;background:var(--off-white);
-                 color:var(--gray-400);font-size:18px;cursor:pointer;display:flex;align-items:center;
-                 justify-content:center;flex-shrink:0">✕</button>
-      </div>
+      <span id="gtia-det-prior" style="font-size:12px;font-weight:700"></span>
     </div>
 
     <!-- Datos del reporte (solo lectura) -->
@@ -11967,13 +12026,6 @@ function visitasGuardadasAbrir() {
         <div><span style="color:var(--gray-400)">Disponibilidad: </span><span id="gtia-det-disp" style="font-weight:600;color:var(--navy)">—</span></div>
       </div>
       <div style="margin-top:8px;font-size:12px;color:var(--gray-600);line-height:1.5" id="gtia-det-desc">—</div>
-    </div>
-
-    <!-- Fotos del cliente -->
-    <div id="gtia-det-fotos-wrap" style="display:none;margin-bottom:14px">
-      <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
-                  color:var(--gray-400);margin-bottom:8px">📷 Fotos del cliente</div>
-      <div id="gtia-det-fotos-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px"></div>
     </div>
 
     <!-- Gestión interna -->
@@ -11998,31 +12050,16 @@ function visitasGuardadasAbrir() {
         <div class="form-select-wrap">
           <select id="gtia-det-tecnico" class="form-select">
             <option value="">— Sin asignar —</option>
-            <option value="TEC1">🔧 Técnico 1</option>
-            <option value="TEC2">🟣 Técnico 2</option>
-            <option value="MAU">👔 MAU</option>
-            <option value="HER">👔 HER</option>
+            <option value="TEC1">TEC1</option>
+            <option value="TEC2">TEC2</option>
+            <option value="MAU">MAU</option>
+            <option value="HER">HER</option>
           </select>
         </div>
       </div>
       <div class="form-group">
         <label class="form-label">Fecha de visita</label>
         <input type="date" id="gtia-det-fecha-vis" class="form-input">
-      </div>
-    </div>
-
-    <div class="form-row">
-      <div class="form-group">
-        <label class="form-label">Hora de visita</label>
-        <input type="time" id="gtia-det-hora-vis" class="form-input">
-      </div>
-      <div class="form-group" style="display:flex;align-items:flex-end">
-        <button onclick="gtiaAgregarCalendario()"
-          style="width:100%;padding:11px;background:rgba(66,133,244,0.1);color:#4285F4;
-                 border:1.5px solid rgba(66,133,244,0.3);border-radius:var(--radius-sm);
-                 font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer">
-          📅 Agregar a Calendar
-        </button>
       </div>
     </div>
 
@@ -12047,21 +12084,14 @@ function visitasGuardadasAbrir() {
     <div id="gtia-det-error" style="display:none;color:var(--red);font-size:12px;
       padding:8px 12px;background:rgba(192,57,43,0.08);border-radius:var(--radius-sm);margin-bottom:12px"></div>
 
-    <!-- Botones WA -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
+    <!-- Botones -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
       <button onclick="gtiaDetWhatsApp()"
         style="padding:12px;background:rgba(37,211,102,0.1);color:#25D366;border:1.5px solid rgba(37,211,102,0.3);
                border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer">
-        💬 WA Cliente
+        💬 WhatsApp cliente
       </button>
-      <button onclick="gtiaWATecnico()"
-        style="padding:12px;background:rgba(230,126,34,0.1);color:#E67E22;border:1.5px solid rgba(230,126,34,0.3);
-               border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer">
-        👷 WA Técnico
-      </button>
-    </div>
-    <div style="margin-bottom:10px">
-      <button onclick="gtiaDetGuardar()" class="btn-calcular" style="margin:0;padding:12px;width:100%">
+      <button onclick="gtiaDetGuardar()" class="btn-calcular" style="margin:0;padding:12px">
         💾 Guardar cambios
       </button>
     </div>
@@ -12070,7 +12100,7 @@ function visitasGuardadasAbrir() {
       style="width:100%;padding:11px;background:none;border:1px solid var(--gray-200);
              border-radius:var(--radius-sm);color:var(--gray-400);font-family:'DM Sans',sans-serif;
              font-size:13px;cursor:pointer">
-      Cerrar sin guardar
+      Cerrar
     </button>
   </div>
 </div>
@@ -12703,7 +12733,6 @@ const USUARIOS = {
     rol:    'admin',
     emoji:  '👔',
     color:  '#2E6DA4',
-    tel:    '5615158415',
     pinKey: 'barrcan_pin_MAU'
   },
   'HER': {
@@ -12712,7 +12741,6 @@ const USUARIOS = {
     rol:    'admin',
     emoji:  '👔',
     color:  '#27AE60',
-    tel:    '',
     pinKey: 'barrcan_pin_HER'
   },
   'TEC1': {
@@ -12721,7 +12749,6 @@ const USUARIOS = {
     rol:    'tecnico',
     emoji:  '🔧',
     color:  '#E67E22',
-    tel:    '5561872304',
     pinKey: 'barrcan_pin_TEC1'
   },
   'TEC2': {
@@ -12730,7 +12757,6 @@ const USUARIOS = {
     rol:    'tecnico',
     emoji:  '🔧',
     color:  '#8E44AD',
-    tel:    '',
     pinKey: 'barrcan_pin_TEC2'
   }
 };
