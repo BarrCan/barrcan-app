@@ -124,10 +124,17 @@ html, body {
   display: flex;
   border-bottom: 2px solid rgba(200,146,58,0.3);
   flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
 }
+.tabs::-webkit-scrollbar { display: none; }
 .tab {
-  flex: 1;
-  padding: 10px 4px;
+  flex: 0 0 auto;
+  min-width: 68px;
+  padding: 10px 10px;
   text-align: center;
   font-size: 10px;
   font-weight: 600;
@@ -143,6 +150,7 @@ html, body {
   flex-direction: column;
   align-items: center;
   gap: 3px;
+  white-space: nowrap;
 }
 .tab-icon { font-size: 16px; }
 .tab.active { color: var(--gold-light); border-bottom-color: var(--gold); }
@@ -923,9 +931,10 @@ select.form-select { padding-right: 36px; cursor: pointer; }
   /* Ocultar toda la app */
   #app, .header, .tabs, .export-bar, .toast,
   .barra-seleccion, #modal-overlay, #modal-edicion,
-  #modal-contrato-overlay, #modal-contrato { display: none !important; }
-  /* Mostrar solo el contrato */
-  #print-area {
+  #modal-contrato-overlay, #modal-contrato,
+  #entrega-overlay { display: none !important; }
+  /* Mostrar solo el área de impresión activa */
+  #print-area, #ent-print-area {
     display: block !important;
     position: fixed;
     inset: 0;
@@ -1066,7 +1075,7 @@ select.form-select { padding-right: 36px; cursor: pointer; }
       <span class="tab-icon">📦</span>Órdenes
     </div>
     <div class="tab" onclick="garantiasAbrir()" id="tab-garantias">
-      <span class="tab-icon">🛡️</span>Garantías
+      <span class="tab-icon">🛡️</span>Fallas
     </div>
     <div class="tab" onclick="switchTab('entrega')" id="tab-entrega">
       <span class="tab-icon">🚚</span>Entrega
@@ -2280,48 +2289,11 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Monto del Trabajo</label>
-        <div class="input-unit">
-          <input type="number" class="form-input" id="ent-monto" min="0" inputmode="numeric"
-            placeholder="0" oninput="entCalcularTotal()">
-          <span class="input-unit-label">$</span>
-        </div>
+        <input type="text" class="form-input" id="ent-monto" oninput="entActualizarProgreso()">
       </div>
       <div class="form-group">
         <label class="form-label">Fecha de Entrega</label>
         <input type="date" class="form-input" id="ent-fecha" oninput="entActualizarProgreso()">
-      </div>
-    </div>
-
-    <!-- Adicionales en campo -->
-    <div class="wizard-card fade-in" style="margin-top:0;padding:14px 16px;background:rgba(230,126,34,0.05);border:1.5px solid rgba(230,126,34,0.2)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div style="font-size:12px;font-weight:700;color:#E67E22;letter-spacing:0.5px">➕ Adicionales en campo</div>
-        <button onclick="entAgregarAdicional()"
-          style="padding:5px 12px;background:#E67E22;color:white;border:none;border-radius:20px;
-                 font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer">
-          + Agregar
-        </button>
-      </div>
-      <div id="ent-adicionales-lista" style="display:flex;flex-direction:column;gap:8px"></div>
-      <div id="ent-adicionales-vacio" style="font-size:11px;color:var(--gray-400);text-align:center;padding:6px">
-        Sin adicionales — toca "+ Agregar" si hubo extras
-      </div>
-      <!-- Total -->
-      <div id="ent-total-wrap" style="display:none;margin-top:12px;padding:10px 14px;
-        background:var(--navy);border-radius:var(--radius-sm);display:none">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div style="font-size:11px;color:rgba(255,255,255,0.7)">Trabajo</div>
-          <div style="font-size:13px;color:white;font-weight:600" id="ent-total-base">$0</div>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
-          <div style="font-size:11px;color:rgba(255,255,255,0.7)">Adicionales</div>
-          <div style="font-size:13px;color:#F39C12;font-weight:600" id="ent-total-adicionales">$0</div>
-        </div>
-        <div style="border-top:1px solid rgba(255,255,255,0.2);margin:8px 0"></div>
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div style="font-size:13px;color:white;font-weight:700">Total a cobrar</div>
-          <div style="font-size:16px;color:#F1C40F;font-weight:800" id="ent-total-final">$0</div>
-        </div>
       </div>
     </div>
 
@@ -2387,8 +2359,29 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     <span>📄</span> GENERAR REPORTE Y ENVIAR ENCUESTA
   </button>
 
+  <button onclick="entVerHistorialReportes()"
+    style="width:100%;margin-top:10px;padding:12px;background:rgba(46,109,164,0.08);
+           color:var(--blue);border:1.5px solid rgba(46,109,164,0.25);border-radius:var(--radius-sm);
+           font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer">
+    📋 Ver reportes generados
+  </button>
+
   <!-- Área de impresión del reporte -->
   <div id="ent-print-area" style="display:none"></div>
+</div>
+
+<!-- Overlay historial de reportes -->
+<div id="ent-reportes-overlay" style="display:none;position:fixed;inset:0;background:var(--off-white);z-index:500;overflow-y:auto;padding:16px 16px 120px">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+    <button onclick="document.getElementById('ent-reportes-overlay').style.display='none'"
+      style="width:36px;height:36px;border-radius:50%;border:none;background:var(--white);
+             box-shadow:0 2px 8px rgba(0,0,0,0.1);font-size:18px;cursor:pointer">←</button>
+    <div>
+      <div style="font-family:'Playfair Display',serif;font-size:17px;font-weight:700;color:var(--navy)">Reportes de Entrega</div>
+      <div style="font-size:11px;color:var(--gray-400)">Historial permanente · Ligas verificables</div>
+    </div>
+  </div>
+  <div id="ent-reportes-lista"></div>
 </div>
 
 <!-- Export bar -->
@@ -5875,7 +5868,11 @@ function switchTab(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('screen-'+name).classList.add('active');
-  document.getElementById('tab-'+name).classList.add('active');
+  const tabActivo = document.getElementById('tab-'+name);
+  if (tabActivo) {
+    tabActivo.classList.add('active');
+    tabActivo.scrollIntoView({ behavior:'smooth', block:'nearest', inline:'center' });
+  }
 
   // Cargar clientes al entrar a esa pestaña
   if (name === 'clientes') { cliCargar(); }
@@ -7668,7 +7665,6 @@ function abrirEntrega() {
   entRenderEvidencias();
   entIniciarFirmas();
   entActualizarProgreso();
-  entRenderAdicionales();
 
   // Fecha de hoy por defecto
   const fEl = document.getElementById('ent-fecha');
@@ -7691,83 +7687,8 @@ function abrirEntrega() {
   }
 }
 
-// ── Adicionales en campo ──────────────────────────────────────
-let ENT_ADICIONALES = [];
-
-function entAgregarAdicional() {
-  ENT_ADICIONALES.push({ id: Date.now(), concepto: '', monto: 0 });
-  entRenderAdicionales();
-  // Enfocar el último input de concepto
-  setTimeout(() => {
-    const inputs = document.querySelectorAll('.ent-adic-concepto');
-    if (inputs.length) inputs[inputs.length - 1].focus();
-  }, 50);
-}
-
-function entEliminarAdicional(id) {
-  ENT_ADICIONALES = ENT_ADICIONALES.filter(a => a.id !== id);
-  entRenderAdicionales();
-  entCalcularTotal();
-}
-
-function entRenderAdicionales() {
-  const lista  = document.getElementById('ent-adicionales-lista');
-  const vacio  = document.getElementById('ent-adicionales-vacio');
-  if (!lista) return;
-
-  if (!ENT_ADICIONALES.length) {
-    lista.innerHTML = '';
-    vacio.style.display = 'block';
-    entCalcularTotal();
-    return;
-  }
-  vacio.style.display = 'none';
-  lista.innerHTML = ENT_ADICIONALES.map(a => `
-    <div style="display:grid;grid-template-columns:1fr auto auto;gap:6px;align-items:center">
-      <input type="text" class="form-input ent-adic-concepto" placeholder="Concepto (ej. Vidrio roto 4mm)"
-        value="${a.concepto || ''}"
-        style="font-size:12px;padding:8px 10px"
-        oninput="ENT_ADICIONALES.find(x=>x.id===${a.id}).concepto=this.value">
-      <div class="input-unit" style="width:110px">
-        <input type="number" class="form-input" placeholder="0" min="0" inputmode="numeric"
-          value="${a.monto || ''}"
-          style="font-size:12px;padding:8px 10px"
-          oninput="ENT_ADICIONALES.find(x=>x.id===${a.id}).monto=parseFloat(this.value)||0;entCalcularTotal()">
-        <span class="input-unit-label">$</span>
-      </div>
-      <button onclick="entEliminarAdicional(${a.id})"
-        style="width:30px;height:36px;border:none;background:rgba(192,57,43,0.1);
-               color:var(--red);border-radius:var(--radius-sm);cursor:pointer;font-size:16px">
-        ✕
-      </button>
-    </div>
-  `).join('');
-  entCalcularTotal();
-}
-
-function entCalcularTotal() {
-  const base       = parseFloat(document.getElementById('ent-monto')?.value) || 0;
-  const adicTotal  = ENT_ADICIONALES.reduce((s, a) => s + (a.monto || 0), 0);
-  const total      = base + adicTotal;
-  const wrap       = document.getElementById('ent-total-wrap');
-
-  if (wrap) {
-    if (adicTotal > 0) {
-      wrap.style.display = 'block';
-      document.getElementById('ent-total-base').textContent        = '$' + fmt(base);
-      document.getElementById('ent-total-adicionales').textContent = '+$' + fmt(adicTotal);
-      document.getElementById('ent-total-final').textContent       = '$' + fmt(total);
-    } else {
-      wrap.style.display = 'none';
-    }
-  }
-  entActualizarProgreso();
-}
-
 function cerrarEntrega() {
   document.getElementById('entrega-overlay').style.display = 'none';
-  ENT_ADICIONALES = [];
-  entRenderAdicionales();
 }
 
 function entRenderChecklist() {
@@ -7930,7 +7851,7 @@ function entJalarDatos() {
   entActualizarProgreso();
 }
 
-function entGenerarReporte() {
+async function entGenerarReporte() {
   // Validar campos obligatorios
   const errores = [];
   if (!document.getElementById('ent-cliente').value)  errores.push('• Nombre del cliente');
@@ -7957,13 +7878,9 @@ function entGenerarReporte() {
   const tel      = document.getElementById('ent-tel').value;
   const folio    = document.getElementById('ent-folio').value;
   const dir      = document.getElementById('ent-dir').value;
-  const montoBase = parseFloat(document.getElementById('ent-monto').value) || 0;
+  const monto    = document.getElementById('ent-monto').value;
   const fecha    = document.getElementById('ent-fecha').value;
   const tecnico  = document.getElementById('ent-tecnico').value || 'BarrCan';
-
-  // Calcular total con adicionales
-  const adicTotal = ENT_ADICIONALES.reduce((s, a) => s + (a.monto || 0), 0);
-  const montoTotal = montoBase + adicTotal;
 
   const firmasTec = document.getElementById('pad-tec').toDataURL();
   const firmasCli = document.getElementById('pad-cli').toDataURL();
@@ -7978,34 +7895,6 @@ function entGenerarReporte() {
       <td style=padding:6px 8px;border:1px solid #ddd;font-size:9pt>${nota}</td>
     </tr>`;
   }).join('');
-
-  // Adicionales para el PDF
-  const adicionalesHTML = ENT_ADICIONALES.length > 0 ? `
-    <h2>2b. Servicios y Materiales Adicionales</h2>
-    <table style=margin-bottom:10px>
-      <thead><tr>
-        <th>Concepto</th>
-        <th style=width:120px;text-align:right>Importe</th>
-      </tr></thead>
-      <tbody>
-        ${ENT_ADICIONALES.map(a => `
-          <tr>
-            <td style=padding:6px 8px;border:1px solid #ddd;font-size:9pt>${a.concepto || '—'}</td>
-            <td style=padding:6px 8px;border:1px solid #ddd;font-size:9pt;text-align:right;font-weight:700>$${fmt(a.monto)}</td>
-          </tr>`).join('')}
-        <tr style=background:#FEF9E7>
-          <td style=padding:6px 8px;border:1px solid #ddd;font-size:9pt;font-weight:700;color:#1B3A5C>Subtotal adicionales</td>
-          <td style=padding:6px 8px;border:1px solid #ddd;font-size:9pt;text-align:right;font-weight:800;color:#E67E22>$${fmt(adicTotal)}</td>
-        </tr>
-      </tbody>
-    </table>` : '';
-
-  // Fila de total en datos de obra
-  const montoRows = adicTotal > 0 ? `
-    <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Trabajo base</td><td style=padding:5px 8px;border:1px solid #ddd>$${fmt(montoBase)}</td></tr>
-    <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Adicionales</td><td style=padding:5px 8px;border:1px solid #ddd;color:#E67E22;font-weight:700>+$${fmt(adicTotal)}</td></tr>
-    <tr style=background:#1B3A5C><td style=padding:5px 8px;border:1px solid #1B3A5C;font-weight:700;color:white>TOTAL</td><td style=padding:5px 8px;border:1px solid #1B3A5C;color:#F1C40F;font-weight:800;font-size:11pt>$${fmt(montoTotal)}</td></tr>
-  ` : `<tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Monto</td><td style=padding:5px 8px;border:1px solid #ddd>$${fmt(montoBase)}</td></tr>`;
 
   const fotosHTML = ENT_EVIDENCIAS.filter(e=>e.tipo==='foto' && ENT.evidencias[e.id]).map(e=>`
     <div style=text-align:center>
@@ -8036,7 +7925,7 @@ function entGenerarReporte() {
     <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700;width:35%>Cliente</td><td style=padding:5px 8px;border:1px solid #ddd>${cliente}</td></tr>
     <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Folio</td><td style=padding:5px 8px;border:1px solid #ddd>${folio}</td></tr>
     <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Dirección</td><td style=padding:5px 8px;border:1px solid #ddd>${dir}</td></tr>
-    ${montoRows}
+    <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Monto</td><td style=padding:5px 8px;border:1px solid #ddd>${monto}</td></tr>
     <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Fecha de entrega</td><td style=padding:5px 8px;border:1px solid #ddd>${fecha}</td></tr>
     <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Técnico instalador</td><td style=padding:5px 8px;border:1px solid #ddd>${tecnico}</td></tr>
   </table>
@@ -8045,7 +7934,6 @@ function entGenerarReporte() {
     <thead><tr><th>Punto Técnico</th><th style=width:50px;text-align:center>Estado</th><th>Notas</th></tr></thead>
     <tbody>${checkRows}</tbody>
   </table>
-  ${adicionalesHTML}
   <h2>3. Registro Fotográfico</h2>
   <div style=display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px>${fotosHTML}</div>
   ${ENT.evidencias['ev5'] ? `<div style=font-size:9pt;color:#1B3A5C;padding:8px;background:#f0f4f8;border-radius:4px>🎬 Video funcional capturado: ${ENT.evidencias['ev5']}</div>` : ''}
@@ -8069,7 +7957,7 @@ function entGenerarReporte() {
   </div>
   </div></body></html>`;
 
-  // Guardar reporte en historial
+  // Guardar reporte en historial local
   try {
     const reportes = JSON.parse(localStorage.getItem('barrcan_reportes') || '[]');
     reportes.unshift({ folio, cliente, fecha, ts: new Date().toLocaleString('es-MX') });
@@ -8077,16 +7965,156 @@ function entGenerarReporte() {
     localStorage.setItem('barrcan_reportes', JSON.stringify(reportes));
   } catch(e){}
 
-  // Imprimir / guardar PDF
-  const pa = document.getElementById('ent-print-area');
-  pa.innerHTML = reporteHTML;
-  pa.style.display = 'block';
-  setTimeout(() => {
-    window.print();
-    pa.style.display = 'none';
-    // Después de imprimir, abrir encuesta
-    setTimeout(() => entAbrirEncuesta(cliente, tel, folio), 1000);
-  }, 300);
+  toast('⏳ Guardando reporte…');
+
+  // Subir reporte a Supabase Storage bucket 'reportes'
+  let reporteUrl = null;
+  try {
+    const nombreArchivo = `${folio}_${fecha.replace(/-/g,'')}_${Date.now()}.html`;
+    const blobUp = new Blob([reporteHTML], { type: 'text/html;charset=utf-8' });
+    const { error: uploadError } = await sb().storage
+      .from('reportes')
+      .upload(nombreArchivo, blobUp, { contentType: 'text/html', upsert: true });
+    if (!uploadError) {
+      const { data: urlData } = sb().storage.from('reportes').getPublicUrl(nombreArchivo);
+      reporteUrl = urlData?.publicUrl || null;
+    } else {
+      console.warn('Upload reporte error:', uploadError.message);
+    }
+
+    // Registrar en tabla reportes_entrega
+    const usuarioActual = window._usuarioActual || tecnico;
+    const registroEnvio = {
+      folio,
+      cliente_nombre:   cliente,
+      cliente_tel:      tel || null,
+      fecha_entrega:    fecha,
+      tecnico,
+      registrado_por:   usuarioActual,
+      reporte_url:      reporteUrl,
+      whatsapp_enviado: !!tel,
+      tel_destino:      tel || null,
+      created_at:       new Date().toISOString()
+    };
+
+    if (SYNC.online) {
+      const { error: dbError } = await sb().from('reportes_entrega').insert([registroEnvio]);
+      if (dbError) console.warn('DB reporte error:', dbError.message);
+    } else {
+      const cola = JSON.parse(localStorage.getItem('barrcan_cola_reportes') || '[]');
+      cola.push(registroEnvio);
+      localStorage.setItem('barrcan_cola_reportes', JSON.stringify(cola));
+    }
+  } catch(e) {
+    console.warn('Error guardando reporte:', e.message);
+  }
+
+  // Abrir reporte — usar URL permanente de Supabase si está disponible, sino blob temporal
+  if (reporteUrl) {
+    window.open(reporteUrl, '_blank');
+  } else {
+    const blobVer = new Blob([reporteHTML], { type: 'text/html;charset=utf-8' });
+    const urlVer  = URL.createObjectURL(blobVer);
+    window.open(urlVer, '_blank');
+    setTimeout(() => URL.revokeObjectURL(urlVer), 30000);
+  }
+
+  // Mandar WhatsApp al cliente con liga permanente al reporte
+  if (tel) {
+    const telLimpio    = tel.replace(/\D/g,'');
+    const telConCodigo = telLimpio.startsWith('52') ? telLimpio : '52' + telLimpio;
+    const ligaReporte  = reporteUrl ? `\n\n📄 Su reporte de entrega:\n${reporteUrl}` : '';
+    const msgCliente   = encodeURIComponent(
+      `✅ *BarrCan · Entrega completada*\n` +
+      `Hola ${cliente}, su instalación ha sido completada el día de hoy.\n\n` +
+      `📋 Folio: ${folio}\n` +
+      `📅 Fecha: ${fecha}\n` +
+      `👷 Técnico: ${tecnico}` +
+      `${ligaReporte}\n\n` +
+      `Conserve este mensaje como comprobante de entrega.\n` +
+      `*BarrCan Cancelería* · TEL: 56-15-15-84-15`
+    );
+    setTimeout(() => {
+      window.open(`https://wa.me/${telConCodigo}?text=${msgCliente}`, '_blank');
+    }, 1200);
+  }
+
+  toast(reporteUrl ? '✅ Reporte guardado · Liga enviada por WhatsApp' : '✅ Reporte generado');
+
+  // Abrir encuesta interna
+  setTimeout(() => entAbrirEncuesta(cliente, tel, folio), 800);
+}
+
+// ── Historial de reportes de entrega ─────────────────────────
+async function entVerHistorialReportes() {
+  const overlay = document.getElementById('ent-reportes-overlay');
+  const lista   = document.getElementById('ent-reportes-lista');
+  overlay.style.display = 'block';
+  lista.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">⏳ Cargando…</div>';
+
+  try {
+    const { data, error } = await sb().from('reportes_entrega')
+      .select('*').order('created_at', { ascending: false }).limit(50);
+    if (error) throw error;
+    if (!data?.length) {
+      lista.innerHTML = '<div style="text-align:center;padding:30px;color:var(--gray-400)">Sin reportes generados aún</div>';
+      return;
+    }
+    lista.innerHTML = data.map(r => `
+      <div style="background:var(--white);border-radius:var(--radius);padding:14px 16px;
+                  margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+          <div>
+            <div style="font-weight:700;color:var(--navy);font-size:14px">${r.cliente_nombre || '—'}</div>
+            <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--blue)">${r.folio || '—'}</div>
+          </div>
+          <div style="font-size:11px;color:var(--gray-400);text-align:right">
+            ${r.fecha_entrega || '—'}<br>
+            <span style="color:${r.whatsapp_enviado ? '#25D366' : 'var(--gray-300)'}">
+              ${r.whatsapp_enviado ? '✅ WA enviado' : '⚪ Sin WA'}
+            </span>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--gray-400);margin-bottom:8px">
+          👷 ${r.tecnico || '—'} · Registrado por: ${r.registrado_por || '—'}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          ${r.reporte_url ? `
+            <a href="${r.reporte_url}" target="_blank"
+              style="display:block;padding:9px;background:rgba(46,109,164,0.08);color:var(--blue);
+                     border:1px solid rgba(46,109,164,0.2);border-radius:var(--radius-sm);
+                     font-size:12px;font-weight:700;text-align:center;text-decoration:none">
+              📄 Ver reporte
+            </a>
+            <button onclick="entReenviarWA('${r.cliente_tel||''}','${r.cliente_nombre||''}','${r.folio||''}','${r.reporte_url||''}')"
+              style="padding:9px;background:rgba(37,211,102,0.08);color:#25D366;
+                     border:1px solid rgba(37,211,102,0.2);border-radius:var(--radius-sm);
+                     font-size:12px;font-weight:700;cursor:pointer">
+              💬 Reenviar WA
+            </button>
+          ` : `<div style="grid-column:1/-1;font-size:11px;color:var(--gray-400);text-align:center;padding:6px">
+            ⚠️ Reporte sin URL — generado sin conexión
+          </div>`}
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {
+    lista.innerHTML = `<div style="text-align:center;padding:20px;color:var(--red)">❌ ${e.message}</div>`;
+  }
+}
+
+function entReenviarWA(tel, cliente, folio, url) {
+  if (!tel) { toast('⚠️ Sin teléfono del cliente'); return; }
+  const telLimpio = tel.replace(/\D/g,'');
+  const telConCodigo = telLimpio.startsWith('52') ? telLimpio : '52'+telLimpio;
+  const msg = encodeURIComponent(
+    `📄 *BarrCan · Reporte de entrega*\n` +
+    `Hola ${cliente}, le reenviamos su reporte de entrega.\n\n` +
+    `📋 Folio: ${folio}\n` +
+    `${url}\n\n` +
+    `*BarrCan Cancelería* · TEL: 56-15-15-84-15`
+  );
+  window.open(`https://wa.me/${telConCodigo}?text=${msg}`, '_blank');
 }
 
 // ══════════════════════════════════════════════
@@ -9901,7 +9929,21 @@ async function ordenesCargar() {
 
   // Mostrar caché inmediato si existe
   const cache = JSON.parse(localStorage.getItem('barrcan_ordenes_cache') || '[]');
-  if (cache.length) { ORDENES_CACHE = cache; ordenesRenderLista(); }
+  if (cache.length) {
+    ORDENES_CACHE = cache;
+    ordenesRenderLista();
+    if (!SYNC.online) {
+      toast('📦 Mostrando órdenes en caché · Sin conexión');
+      return;
+    }
+  } else if (!SYNC.online) {
+    lista.innerHTML = `<div style="text-align:center;padding:40px;color:var(--gray-400)">
+      <div style="font-size:32px;margin-bottom:12px">📵</div>
+      <div style="font-weight:700;color:var(--navy);margin-bottom:6px">Sin conexión</div>
+      <div style="font-size:12px">No hay datos en caché. Conéctate para cargar las órdenes.</div>
+    </div>`;
+    return;
+  }
 
   if (!SYNC.online) return;
 
@@ -10448,6 +10490,10 @@ async function pagoGuardar() {
     pagoCerrar();
     pagoCargarLista(PAGO_ORDEN_ID);
     ordenesRenderLista();
+    // Si es anticipo, ofrecer generar recibo
+    if (concepto === 'anticipo' || concepto === 'anticipo_50') {
+      setTimeout(() => pagoGenerarRecibo(PAGO_ORDEN_ID, monto, fecha, PAGO_FORMA_SEL), 500);
+    }
   } catch(e) {
     const pagosLocal = JSON.parse(localStorage.getItem('barrcan_pagos_local') || '[]');
     pagosLocal.push({ ...payload, id: crypto.randomUUID(), created_at: new Date().toISOString() });
@@ -10455,6 +10501,145 @@ async function pagoGuardar() {
     toast(`💾 Pago guardado localmente · $${fmt(monto)}`);
     pagoCerrar();
   }
+}
+
+// ── Recibo de anticipo ────────────────────────────────────────
+async function pagoGenerarRecibo(ordenId, monto, fecha, formaPago) {
+  const orden = ORDENES_CACHE.find(x => x.id === ordenId);
+  if (!orden) return;
+
+  const folio    = orden.folio_cotizacion || ordenId.slice(0,8).toUpperCase();
+  const cliente  = orden.cliente_nombre || '—';
+  const tel      = orden.cliente_tel || '';
+  const dir      = orden.dir_obra || '—';
+  const total    = (orden.saldo_pendiente || 0) + monto;
+  const saldo    = orden.saldo_pendiente || 0;
+  const fechaStr = fecha || new Date().toISOString().split('T')[0];
+  const folioRec = `REC-${Date.now().toString().slice(-6)}`;
+  const formaStr = formaPago === 'transferencia' ? 'Transferencia bancaria' : 'Efectivo';
+
+  const reciboHTML = `<!DOCTYPE html><html lang=es><head><meta charset=UTF-8>
+  <style>
+    body{font-family:Arial,sans-serif;color:#222;background:white;font-size:10pt;margin:0;padding:0}
+    .page{max-width:680px;margin:0 auto;padding:24px}
+    .header{text-align:center;border-bottom:3px solid #1B3A5C;padding-bottom:14px;margin-bottom:16px}
+    .logo-text{font-size:22pt;font-weight:900;color:#1B3A5C;letter-spacing:2px}
+    .logo-sub{font-size:8pt;color:#C8923A;letter-spacing:3px;text-transform:uppercase}
+    .recibo-titulo{font-size:14pt;font-weight:700;color:#1B3A5C;margin:10px 0 4px;
+      border-top:1px dashed #aaa;border-bottom:1px dashed #aaa;padding:6px 0;text-align:center}
+    .folio{font-size:10pt;color:#C8923A;font-weight:700;text-align:center;margin-bottom:14px}
+    table{width:100%;border-collapse:collapse;margin-bottom:12px}
+    td{padding:6px 10px;border:1px solid #ddd;font-size:9.5pt}
+    .label{font-weight:700;background:#f5f7fa;width:35%}
+    .monto-box{background:#1B3A5C;color:white;border-radius:6px;padding:14px 18px;
+      display:flex;justify-content:space-between;align-items:center;margin:14px 0}
+    .monto-lbl{font-size:10pt;opacity:0.8}
+    .monto-val{font-size:18pt;font-weight:800;color:#F1C40F}
+    .saldo-box{background:#FEF9E7;border:1.5px solid #F39C12;border-radius:6px;
+      padding:10px 18px;display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+    .footer{margin-top:20px;padding-top:12px;border-top:1px solid #ddd;
+      font-size:8pt;color:#888;text-align:center;line-height:1.8}
+    .sello{border:2px dashed #1B3A5C;border-radius:8px;padding:10px;text-align:center;
+      margin-top:16px;color:#1B3A5C;font-size:9pt}
+  </style></head><body><div class=page>
+  <div class=header>
+    <div class=logo-text>BarrCan</div>
+    <div class=logo-sub>Cancelería · Aluminio · Vidrio</div>
+    <div style=font-size:8pt;color:#666;margin-top:4px>
+      PRIV. SANTA CRUZ No.23 COL. SAN SIMÓN TICUMAC CP. 03660<br>
+      BENITO JUÁREZ, CDMX · TEL: 56-15-15-84-15 · www.BarrCan.com.mx
+    </div>
+  </div>
+
+  <div class=recibo-titulo>RECIBO DE ANTICIPO</div>
+  <div class=folio>Folio: ${folioRec} · Pedido: ${folio}</div>
+
+  <table>
+    <tr><td class=label>Cliente</td><td>${cliente}</td></tr>
+    <tr><td class=label>Teléfono</td><td>${tel || '—'}</td></tr>
+    <tr><td class=label>Dirección obra</td><td>${dir}</td></tr>
+    <tr><td class=label>Descripción</td><td>${orden.descripcion_trabajo || '—'}</td></tr>
+    <tr><td class=label>Fecha de pago</td><td>${fechaStr}</td></tr>
+    <tr><td class=label>Forma de pago</td><td>${formaStr}</td></tr>
+  </table>
+
+  <div class=monto-box>
+    <div>
+      <div class=monto-lbl>Anticipo recibido</div>
+      <div class=monto-val>$${fmt(monto)} MXN</div>
+    </div>
+    <div style=font-size:28pt>✅</div>
+  </div>
+
+  <div class=saldo-box>
+    <div style=font-size:9.5pt>
+      <div><strong>Total del proyecto:</strong> $${fmt(total)} MXN</div>
+      <div>Anticipo (este recibo): $${fmt(monto)} MXN</div>
+    </div>
+    <div style=text-align:right>
+      <div style=font-size:8.5pt;color:#E67E22;font-weight:700>Saldo pendiente</div>
+      <div style=font-size:14pt;font-weight:800;color:#E67E22>$${fmt(saldo)} MXN</div>
+    </div>
+  </div>
+
+  <div class=sello>
+    ✅ Pago recibido conforme · ${fechaStr}<br>
+    <strong>BarrCan Cancelería</strong> · TEL: 56-15-15-84-15
+  </div>
+
+  <div class=footer>
+    Este recibo es comprobante de anticipo del trabajo descrito.<br>
+    El saldo restante deberá cubrirse conforme a lo acordado.<br>
+    ${folioRec} · BarrCan Cancelería · ${fechaStr}
+  </div>
+  </div></body></html>`;
+
+  // Subir recibo a Supabase Storage
+  let reciboUrl = null;
+  try {
+    const nombreArchivo = `recibos/${folioRec}.html`;
+    const blobUp = new Blob([reciboHTML], { type: 'text/html;charset=utf-8' });
+    const { error: uploadError } = await sb().storage
+      .from('reportes')
+      .upload(nombreArchivo, blobUp, { contentType: 'text/html', upsert: true });
+    if (!uploadError) {
+      const { data: urlData } = sb().storage.from('reportes').getPublicUrl(nombreArchivo);
+      reciboUrl = urlData?.publicUrl || null;
+    }
+  } catch(e) { console.warn('Error subiendo recibo:', e.message); }
+
+  // Abrir recibo en nueva pestaña
+  if (reciboUrl) {
+    window.open(reciboUrl, '_blank');
+  } else {
+    const blobVer = new Blob([reciboHTML], { type: 'text/html;charset=utf-8' });
+    const urlVer  = URL.createObjectURL(blobVer);
+    window.open(urlVer, '_blank');
+    setTimeout(() => URL.revokeObjectURL(urlVer), 30000);
+  }
+
+  // Mandar recibo por WhatsApp al cliente
+  if (tel) {
+    const telLimpio    = tel.replace(/\D/g,'');
+    const telConCodigo = telLimpio.startsWith('52') ? telLimpio : '52' + telLimpio;
+    const ligaRecibo   = reciboUrl ? `\n\n📄 Su recibo:\n${reciboUrl}` : '';
+    const msg = encodeURIComponent(
+      `🧾 *BarrCan · Recibo de anticipo*\n` +
+      `Hola ${cliente}, confirmamos haber recibido su anticipo.\n\n` +
+      `💰 Monto: $${fmt(monto)} MXN\n` +
+      `📋 Pedido: ${folio}\n` +
+      `📅 Fecha: ${fechaStr}\n` +
+      `💳 Forma: ${formaStr}\n` +
+      `⏳ Saldo pendiente: $${fmt(saldo)} MXN` +
+      `${ligaRecibo}\n\n` +
+      `*BarrCan Cancelería* · TEL: 56-15-15-84-15`
+    );
+    setTimeout(() => {
+      window.open(`https://wa.me/${telConCodigo}?text=${msg}`, '_blank');
+    }, 1000);
+  }
+
+  toast(reciboUrl ? '🧾 Recibo generado · Enviado por WhatsApp' : '🧾 Recibo generado');
 }
 
 async function pagoCargarLista(ordenId) {
@@ -10614,7 +10799,7 @@ function gtiaAbrirDetalle(id) {
   if (!g) return;
   const st = GTIA_PRIOR_STYLE[g.prioridad] || GTIA_PRIOR_STYLE.normal;
 
-  document.getElementById('gtia-det-id').value     = g.id;
+  document.getElementById('gtia-det-id').value            = g.id;
   document.getElementById('gtia-det-nombre').textContent  = g.cliente_nombre || '—';
   document.getElementById('gtia-det-tel').textContent     = g.cliente_tel || '—';
   document.getElementById('gtia-det-folio').textContent   = g.folio_contrato || '—';
@@ -10627,9 +10812,30 @@ function gtiaAbrirDetalle(id) {
   document.getElementById('gtia-det-estado').value        = g.estado || 'nuevo';
   document.getElementById('gtia-det-tecnico').value       = g.tecnico_asignado || '';
   document.getElementById('gtia-det-fecha-vis').value     = g.fecha_visita_agendada || '';
+  document.getElementById('gtia-det-hora-vis').value      = g.hora_visita_agendada || '';
   document.getElementById('gtia-det-costo').value         = g.costo_reparacion || '';
   document.getElementById('gtia-det-notas').value         = g.notas_internas || '';
   document.getElementById('gtia-det-error').style.display = 'none';
+
+  // Mostrar fotos
+  const fotosWrap = document.getElementById('gtia-det-fotos-wrap');
+  const fotosGrid = document.getElementById('gtia-det-fotos-grid');
+  const fotos = Array.isArray(g.fotos_urls) ? g.fotos_urls : [];
+  if (fotos.length > 0) {
+    fotosGrid.innerHTML = fotos.map(url =>
+      `<a href="${url}" target="_blank" style="display:block;border-radius:6px;overflow:hidden;aspect-ratio:1;background:#f0f0f0">
+        <img src="${url}" style="width:100%;height:100%;object-fit:cover" onerror="this.parentElement.innerHTML='📷'">
+      </a>`
+    ).join('');
+    fotosWrap.style.display = 'block';
+  } else if (g.num_evidencias > 0) {
+    fotosGrid.innerHTML = `<div style="grid-column:1/-1;font-size:12px;color:var(--gray-400);text-align:center;padding:8px">
+      📷 ${g.num_evidencias} foto${g.num_evidencias>1?'s':''} enviada${g.num_evidencias>1?'s':''} por WhatsApp
+    </div>`;
+    fotosWrap.style.display = 'block';
+  } else {
+    fotosWrap.style.display = 'none';
+  }
 
   document.getElementById('gtia-det-overlay').style.display = 'block';
   document.getElementById('gtia-det-modal').style.display   = 'block';
@@ -10641,20 +10847,22 @@ function gtiaDetCerrar() {
 }
 
 async function gtiaDetGuardar() {
-  const id             = document.getElementById('gtia-det-id').value;
-  const estado         = document.getElementById('gtia-det-estado').value;
-  const tecnico        = document.getElementById('gtia-det-tecnico').value.trim();
-  const fechaVis       = document.getElementById('gtia-det-fecha-vis').value;
-  const costoRep       = parseFloat(document.getElementById('gtia-det-costo').value) || null;
-  const notasInt       = document.getElementById('gtia-det-notas').value.trim();
-  const errEl          = document.getElementById('gtia-det-error');
+  const id       = document.getElementById('gtia-det-id').value;
+  const estado   = document.getElementById('gtia-det-estado').value;
+  const tecnico  = document.getElementById('gtia-det-tecnico').value.trim();
+  const fechaVis = document.getElementById('gtia-det-fecha-vis').value;
+  const horaVis  = document.getElementById('gtia-det-hora-vis').value;
+  const costoRep = parseFloat(document.getElementById('gtia-det-costo').value) || null;
+  const notasInt = document.getElementById('gtia-det-notas').value.trim();
+  const errEl    = document.getElementById('gtia-det-error');
 
   const cambios = {
     estado,
-    tecnico_asignado:       tecnico || null,
-    fecha_visita_agendada:  fechaVis || null,
-    costo_reparacion:       costoRep,
-    notas_internas:         notasInt || null
+    tecnico_asignado:      tecnico || null,
+    fecha_visita_agendada: fechaVis || null,
+    hora_visita_agendada:  horaVis || null,
+    costo_reparacion:      costoRep,
+    notas_internas:        notasInt || null
   };
 
   try {
@@ -10662,26 +10870,24 @@ async function gtiaDetGuardar() {
       const { error } = await sb().from('garantias').update(cambios).eq('id', id);
       if (error) throw error;
     }
-    // Actualizar cache local
     const idx = GARANTIAS_CACHE.findIndex(x => x.id === id);
     if (idx >= 0) {
       GARANTIAS_CACHE[idx] = { ...GARANTIAS_CACHE[idx], ...cambios };
       localStorage.setItem('barrcan_garantias_cache', JSON.stringify(GARANTIAS_CACHE));
     }
-
-    // Si se agendó visita → notificar WhatsApp al cliente
     if (fechaVis && estado === 'visita_agendada') {
       const g = GARANTIAS_CACHE[idx];
+      const horaStr = horaVis ? ` a las ${horaVis}` : '';
+      const tecNombre = tecnico ? (USUARIOS[tecnico]?.apodo || tecnico) : 'Por confirmar';
       const msg = encodeURIComponent(
-        `🛡️ *BarrCan · Visita de garantía agendada*\n` +
+        `🛡️ *BarrCan · Visita agendada*\n` +
         `Hola ${g?.cliente_nombre || ''}, agendamos una visita para revisar tu reporte.\n` +
-        `📅 Fecha: ${fechaVis}\n` +
-        `👷 Técnico: ${tecnico || 'Por confirmar'}\n` +
+        `📅 Fecha: ${fechaVis}${horaStr}\n` +
+        `👷 Técnico: ${tecNombre}\n` +
         `¿Tienes alguna pregunta? Escríbenos aquí.`
       );
       window.open(`https://wa.me/52${g?.cliente_tel?.replace(/\D/g,'')}?text=${msg}`, '_blank');
     }
-
     toast(`✅ Ticket actualizado · ${estado}`);
     gtiaDetCerrar();
     garantiasRenderLista();
@@ -10689,6 +10895,67 @@ async function gtiaDetGuardar() {
     errEl.textContent = '❌ ' + e.message;
     errEl.style.display = 'block';
   }
+}
+
+function gtiaDetWhatsApp() {
+  const id = document.getElementById('gtia-det-id').value;
+  const g  = GARANTIAS_CACHE.find(x => x.id === id);
+  if (!g?.cliente_tel) { toast('⚠️ Sin teléfono del cliente'); return; }
+  const msg = encodeURIComponent(
+    `🛡️ *BarrCan · Seguimiento de reporte*\n` +
+    `Hola ${g.cliente_nombre}, te contactamos respecto a tu reporte de falla/garantía.\n` +
+    `Folio: ${g.folio_contrato || '—'}\n` +
+    `Problema: ${g.tipo_problema || '—'}`
+  );
+  window.open(`https://wa.me/52${g.cliente_tel.replace(/\D/g,'')}?text=${msg}`, '_blank');
+}
+
+function gtiaWATecnico() {
+  const id      = document.getElementById('gtia-det-id').value;
+  const tecnico = document.getElementById('gtia-det-tecnico').value;
+  const fecha   = document.getElementById('gtia-det-fecha-vis').value;
+  const hora    = document.getElementById('gtia-det-hora-vis').value;
+  const g       = GARANTIAS_CACHE.find(x => x.id === id);
+  if (!tecnico) { toast('⚠️ Selecciona un técnico primero'); return; }
+  const uTec = USUARIOS[tecnico];
+  if (!uTec?.tel) { toast('⚠️ El técnico aún no tiene número registrado'); return; }
+  const horaStr  = hora  ? ` a las ${hora}` : '';
+  const fechaStr = fecha ? `📅 Fecha: ${fecha}${horaStr}\n` : '';
+  const msg = encodeURIComponent(
+    `🔧 *BarrCan · Visita asignada*\n` +
+    `Hola ${uTec.apodo}, tienes una visita de falla/garantía asignada.\n\n` +
+    `👤 Cliente: ${g?.cliente_nombre || '—'}\n` +
+    `📞 Tel: ${g?.cliente_tel || '—'}\n` +
+    `🔩 Problema: ${g?.tipo_problema || '—'}\n` +
+    `📝 ${(g?.descripcion || '').slice(0,100)}\n` +
+    `${fechaStr}` +
+    `\nRevisa la app BarrCan para más detalles.`
+  );
+  window.open(`https://wa.me/52${uTec.tel.replace(/\D/g,'')}?text=${msg}`, '_blank');
+}
+
+function gtiaAgregarCalendario() {
+  const id      = document.getElementById('gtia-det-id').value;
+  const fecha   = document.getElementById('gtia-det-fecha-vis').value;
+  const hora    = document.getElementById('gtia-det-hora-vis').value;
+  const tecnico = document.getElementById('gtia-det-tecnico').value;
+  const g       = GARANTIAS_CACHE.find(x => x.id === id);
+  if (!fecha) { toast('⚠️ Selecciona una fecha primero'); return; }
+  const fechaBase = fecha.replace(/-/g,'');
+  let dtStart, dtEnd;
+  if (hora) {
+    const [hh,mm] = hora.split(':');
+    dtStart = `${fechaBase}T${hh}${mm}00`;
+    dtEnd   = `${fechaBase}T${String(parseInt(hh)+2).padStart(2,'0')}${mm}00`;
+  } else { dtStart = fechaBase; dtEnd = fechaBase; }
+  const tecNombre = tecnico ? (USUARIOS[tecnico]?.apodo || tecnico) : 'Por confirmar';
+  const titulo  = encodeURIComponent(`🛡️ Falla/Garantía · ${g?.cliente_nombre || 'Cliente'}`);
+  const detalle = encodeURIComponent(
+    `Cliente: ${g?.cliente_nombre || '—'}\nTel: ${g?.cliente_tel || '—'}\n` +
+    `Problema: ${g?.tipo_problema || '—'}\nDescripción: ${(g?.descripcion||'').slice(0,150)}\nTécnico: ${tecNombre}`
+  );
+  window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${titulo}&dates=${dtStart}/${dtEnd}&details=${detalle}`, '_blank');
+  toast('📅 Abriendo Google Calendar…');
 }
 
 function gtiaDetWhatsApp() {
@@ -12007,16 +12274,22 @@ function visitasGuardadasAbrir() {
   <div style="padding:16px 20px 40px">
     <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 16px"></div>
 
-    <!-- Header -->
+    <!-- Header con botón X -->
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
       <div>
         <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--navy)" id="gtia-det-nombre">—</div>
         <div style="font-size:12px;color:var(--gray-400);margin-top:2px" id="gtia-det-tel">—</div>
       </div>
-      <span id="gtia-det-prior" style="font-size:12px;font-weight:700"></span>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span id="gtia-det-prior" style="font-size:12px;font-weight:700"></span>
+        <button onclick="gtiaDetCerrar()"
+          style="width:32px;height:32px;border-radius:50%;border:none;background:var(--off-white);
+                 color:var(--gray-400);font-size:18px;cursor:pointer;display:flex;align-items:center;
+                 justify-content:center;flex-shrink:0">✕</button>
+      </div>
     </div>
 
-    <!-- Datos del reporte (solo lectura) -->
+    <!-- Datos del reporte -->
     <div style="background:var(--off-white);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:14px">
       <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--gray-400);margin-bottom:8px">Reporte del cliente</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px">
@@ -12026,6 +12299,12 @@ function visitasGuardadasAbrir() {
         <div><span style="color:var(--gray-400)">Disponibilidad: </span><span id="gtia-det-disp" style="font-weight:600;color:var(--navy)">—</span></div>
       </div>
       <div style="margin-top:8px;font-size:12px;color:var(--gray-600);line-height:1.5" id="gtia-det-desc">—</div>
+    </div>
+
+    <!-- Fotos del cliente -->
+    <div id="gtia-det-fotos-wrap" style="display:none;margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--gray-400);margin-bottom:8px">📷 Fotos del cliente</div>
+      <div id="gtia-det-fotos-grid" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px"></div>
     </div>
 
     <!-- Gestión interna -->
@@ -12050,10 +12329,10 @@ function visitasGuardadasAbrir() {
         <div class="form-select-wrap">
           <select id="gtia-det-tecnico" class="form-select">
             <option value="">— Sin asignar —</option>
-            <option value="TEC1">TEC1</option>
-            <option value="TEC2">TEC2</option>
-            <option value="MAU">MAU</option>
-            <option value="HER">HER</option>
+            <option value="TEC1">🔧 Técnico 1</option>
+            <option value="TEC2">🟣 Técnico 2</option>
+            <option value="MAU">👔 MAU</option>
+            <option value="HER">👔 HER</option>
           </select>
         </div>
       </div>
@@ -12063,16 +12342,28 @@ function visitasGuardadasAbrir() {
       </div>
     </div>
 
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Hora de visita</label>
+        <input type="time" id="gtia-det-hora-vis" class="form-input">
+      </div>
+      <div class="form-group" style="display:flex;align-items:flex-end">
+        <button onclick="gtiaAgregarCalendario()"
+          style="width:100%;padding:11px;background:rgba(66,133,244,0.1);color:#4285F4;
+                 border:1.5px solid rgba(66,133,244,0.3);border-radius:var(--radius-sm);
+                 font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer">
+          📅 Calendar
+        </button>
+      </div>
+    </div>
+
     <div class="form-group">
       <label class="form-label">Costo de reparación (si aplica)</label>
       <div class="input-unit">
-        <input type="number" id="gtia-det-costo" class="form-input"
-          placeholder="0" min="0" inputmode="numeric">
+        <input type="number" id="gtia-det-costo" class="form-input" placeholder="0" min="0" inputmode="numeric">
         <span class="input-unit-label">$</span>
       </div>
-      <div style="font-size:10px;color:var(--gray-400);margin-top:3px">
-        Dejar vacío si está cubierto por garantía
-      </div>
+      <div style="font-size:10px;color:var(--gray-400);margin-top:3px">Dejar vacío si está cubierto por garantía</div>
     </div>
 
     <div class="form-group">
@@ -12084,23 +12375,28 @@ function visitasGuardadasAbrir() {
     <div id="gtia-det-error" style="display:none;color:var(--red);font-size:12px;
       padding:8px 12px;background:rgba(192,57,43,0.08);border-radius:var(--radius-sm);margin-bottom:12px"></div>
 
-    <!-- Botones -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
       <button onclick="gtiaDetWhatsApp()"
         style="padding:12px;background:rgba(37,211,102,0.1);color:#25D366;border:1.5px solid rgba(37,211,102,0.3);
                border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer">
-        💬 WhatsApp cliente
+        💬 WA Cliente
       </button>
-      <button onclick="gtiaDetGuardar()" class="btn-calcular" style="margin:0;padding:12px">
+      <button onclick="gtiaWATecnico()"
+        style="padding:12px;background:rgba(230,126,34,0.1);color:#E67E22;border:1.5px solid rgba(230,126,34,0.3);
+               border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer">
+        👷 WA Técnico
+      </button>
+    </div>
+    <div style="margin-bottom:8px">
+      <button onclick="gtiaDetGuardar()" class="btn-calcular" style="margin:0;padding:12px;width:100%">
         💾 Guardar cambios
       </button>
     </div>
-
     <button onclick="gtiaDetCerrar()"
       style="width:100%;padding:11px;background:none;border:1px solid var(--gray-200);
              border-radius:var(--radius-sm);color:var(--gray-400);font-family:'DM Sans',sans-serif;
              font-size:13px;cursor:pointer">
-      Cerrar
+      Cerrar sin guardar
     </button>
   </div>
 </div>
@@ -12727,38 +13023,10 @@ async function cliEliminar() {
 // Migración futura: solo cambiar pinEvaluarLogin()
 
 const USUARIOS = {
-  'MAU': {
-    nombre: 'Mauricio Barrera Espinosa',
-    apodo:  'Mauricio',
-    rol:    'admin',
-    emoji:  '👔',
-    color:  '#2E6DA4',
-    pinKey: 'barrcan_pin_MAU'
-  },
-  'HER': {
-    nombre: 'Luis Barrera',
-    apodo:  'Luis',
-    rol:    'admin',
-    emoji:  '👔',
-    color:  '#27AE60',
-    pinKey: 'barrcan_pin_HER'
-  },
-  'TEC1': {
-    nombre: 'Técnico 1',
-    apodo:  'Técnico 1',
-    rol:    'tecnico',
-    emoji:  '🔧',
-    color:  '#E67E22',
-    pinKey: 'barrcan_pin_TEC1'
-  },
-  'TEC2': {
-    nombre: 'Técnico 2',
-    apodo:  'Técnico 2',
-    rol:    'tecnico',
-    emoji:  '🔧',
-    color:  '#8E44AD',
-    pinKey: 'barrcan_pin_TEC2'
-  }
+  'MAU': { nombre:'Mauricio Barrera Espinosa', apodo:'Mauricio', rol:'admin', emoji:'👔', color:'#2E6DA4', tel:'5615158415', pinKey:'barrcan_pin_MAU' },
+  'HER': { nombre:'Luis Barrera', apodo:'Luis', rol:'admin', emoji:'👔', color:'#27AE60', tel:'', pinKey:'barrcan_pin_HER' },
+  'TEC1': { nombre:'Técnico 1', apodo:'Técnico 1', rol:'tecnico', emoji:'🔧', color:'#E67E22', tel:'5561872304', pinKey:'barrcan_pin_TEC1' },
+  'TEC2': { nombre:'Técnico 2', apodo:'Técnico 2', rol:'tecnico', emoji:'🔧', color:'#8E44AD', tel:'', pinKey:'barrcan_pin_TEC2' }
 };
 
 let USUARIO_ACTIVO   = { id:'', nombre:'', apodo:'', rol:'admin', emoji:'', color:'' };
@@ -12949,10 +13217,65 @@ function pinAcceso() {
       sincronizarPelicula();
       sincronizarAcabados();
       sbInit();
+      // Precarga agresiva para modo offline
+      appPrecargarDatos();
     }, 100);
   }
   pinResetInactividad();
   pinRegistrarActividad();
+}
+
+// ── Precarga masiva para funcionamiento offline ───────────────
+async function appPrecargarDatos() {
+  if (!SYNC.online) {
+    // Sin conexión: cargar todo desde caché local
+    appCargarDesdeCache();
+    return;
+  }
+  try {
+    // Cargar en paralelo todos los módulos críticos
+    const [ordenes, garantias, clientes, precios] = await Promise.allSettled([
+      sb().from('ordenes_trabajo').select('*').order('fecha_instalacion', { ascending: false }).limit(100),
+      sb().from('garantias').select('*').order('created_at', { ascending: false }).limit(100),
+      sb().from('clientes').select('*').order('nombre').limit(200),
+      sb().from('config_precios').select('*').limit(50)
+    ]);
+
+    if (ordenes.status === 'fulfilled' && !ordenes.value.error) {
+      ORDENES_CACHE = ordenes.value.data || [];
+      localStorage.setItem('barrcan_ordenes_cache', JSON.stringify(ORDENES_CACHE));
+    }
+    if (garantias.status === 'fulfilled' && !garantias.value.error) {
+      GARANTIAS_CACHE = garantias.value.data || [];
+      localStorage.setItem('barrcan_garantias_cache', JSON.stringify(GARANTIAS_CACHE));
+    }
+    if (clientes.status === 'fulfilled' && !clientes.value.error) {
+      window._clientesCache = clientes.value.data || [];
+      localStorage.setItem('barrcan_clientes_cache', JSON.stringify(window._clientesCache));
+    }
+
+    localStorage.setItem('barrcan_precarga_ts', Date.now().toString());
+    console.log('[BarrCan] Precarga offline completada ✅');
+  } catch(e) {
+    console.warn('[BarrCan] Precarga parcial:', e.message);
+    appCargarDesdeCache();
+  }
+}
+
+function appCargarDesdeCache() {
+  try {
+    const o = localStorage.getItem('barrcan_ordenes_cache');
+    if (o) ORDENES_CACHE = JSON.parse(o);
+    const g = localStorage.getItem('barrcan_garantias_cache');
+    if (g) GARANTIAS_CACHE = JSON.parse(g);
+    const c = localStorage.getItem('barrcan_clientes_cache');
+    if (c) window._clientesCache = JSON.parse(c);
+    const ts = localStorage.getItem('barrcan_precarga_ts');
+    if (ts) {
+      const mins = Math.round((Date.now() - parseInt(ts)) / 60000);
+      if (mins > 0) toast(`📦 Datos en caché · Última sync: hace ${mins} min`);
+    }
+  } catch(e) { console.warn('[BarrCan] Error cargando caché:', e.message); }
 }
 
 // ── Roles ─────────────────────────────────────
