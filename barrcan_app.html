@@ -8019,11 +8019,27 @@ async function entGenerarReporte() {
     setTimeout(() => URL.revokeObjectURL(urlVer), 30000);
   }
 
-  // Mandar WhatsApp al cliente con liga permanente al reporte
+  // Guardar en caché local para historial (independiente de Supabase)
+  try {
+    const hist = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
+    hist.unshift({
+      folio, cliente_nombre: cliente, cliente_tel: tel,
+      fecha_entrega: fecha, tecnico,
+      reporte_url: reporteUrl,
+      whatsapp_enviado: !!tel,
+      created_at: new Date().toISOString(),
+      ts: new Date().toLocaleString('es-MX')
+    });
+    if (hist.length > 50) hist.pop();
+    localStorage.setItem('barrcan_reportes_historial', JSON.stringify(hist));
+  } catch(e){}
+
+  // Mandar WhatsApp al cliente — con liga al reporte Y link a encuesta
   if (tel) {
     const telLimpio    = tel.replace(/\D/g,'');
     const telConCodigo = telLimpio.startsWith('52') ? telLimpio : '52' + telLimpio;
     const ligaReporte  = reporteUrl ? `\n\n📄 Su reporte de entrega:\n${reporteUrl}` : '';
+    const encuestaLink = `https://barrcan.github.io/barrcan-app/garantia_publica.html`;
     const msgCliente   = encodeURIComponent(
       `✅ *BarrCan · Entrega completada*\n` +
       `Hola ${cliente}, su instalación ha sido completada el día de hoy.\n\n` +
@@ -8031,18 +8047,22 @@ async function entGenerarReporte() {
       `📅 Fecha: ${fecha}\n` +
       `👷 Técnico: ${tecnico}` +
       `${ligaReporte}\n\n` +
+      `⭐ *¿Cómo calificaría nuestro servicio?*\n` +
+      `Su opinión es muy importante para nosotros. Solo toma 1 minuto:\n` +
+      `${encuestaLink}\n\n` +
       `Conserve este mensaje como comprobante de entrega.\n` +
       `*BarrCan Cancelería* · TEL: 56-15-15-84-15`
     );
+    // Esperar 2 segundos para que el técnico vea el reporte primero
     setTimeout(() => {
       window.open(`https://wa.me/${telConCodigo}?text=${msgCliente}`, '_blank');
-    }, 1200);
+    }, 2000);
   }
 
-  toast(reporteUrl ? '✅ Reporte guardado · Liga enviada por WhatsApp' : '✅ Reporte generado');
+  toast(reporteUrl ? '✅ Reporte guardado · Abriendo WhatsApp…' : '✅ Reporte generado');
 
-  // Abrir encuesta interna
-  setTimeout(() => entAbrirEncuesta(cliente, tel, folio), 800);
+  // Abrir encuesta interna después del WhatsApp
+  setTimeout(() => entAbrirEncuesta(cliente, tel, folio), 3500);
 }
 
 // ── Historial de reportes de entrega ─────────────────────────
@@ -8052,55 +8072,72 @@ async function entVerHistorialReportes() {
   overlay.style.display = 'block';
   lista.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">⏳ Cargando…</div>';
 
+  // Primero mostrar caché local inmediatamente
+  let datosLocales = [];
   try {
-    const { data, error } = await sb().from('reportes_entrega')
-      .select('*').order('created_at', { ascending: false }).limit(50);
-    if (error) throw error;
-    if (!data?.length) {
-      lista.innerHTML = '<div style="text-align:center;padding:30px;color:var(--gray-400)">Sin reportes generados aún</div>';
-      return;
+    datosLocales = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
+  } catch(e){}
+
+  // Intentar cargar de Supabase
+  let datosSupabase = [];
+  try {
+    if (SYNC.online) {
+      const { data, error } = await sb().from('reportes_entrega')
+        .select('*').order('created_at', { ascending: false }).limit(50);
+      if (!error && data?.length) {
+        datosSupabase = data;
+        // Actualizar caché local con datos de Supabase
+        localStorage.setItem('barrcan_reportes_historial', JSON.stringify(datosSupabase));
+      }
     }
-    lista.innerHTML = data.map(r => `
-      <div style="background:var(--white);border-radius:var(--radius);padding:14px 16px;
-                  margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-          <div>
-            <div style="font-weight:700;color:var(--navy);font-size:14px">${r.cliente_nombre || '—'}</div>
-            <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--blue)">${r.folio || '—'}</div>
-          </div>
-          <div style="font-size:11px;color:var(--gray-400);text-align:right">
-            ${r.fecha_entrega || '—'}<br>
-            <span style="color:${r.whatsapp_enviado ? '#25D366' : 'var(--gray-300)'}">
-              ${r.whatsapp_enviado ? '✅ WA enviado' : '⚪ Sin WA'}
-            </span>
-          </div>
+  } catch(e) { console.warn('Error cargando historial:', e.message); }
+
+  // Usar Supabase si hay datos, sino local
+  const datos = datosSupabase.length ? datosSupabase : datosLocales;
+
+  if (!datos.length) {
+    lista.innerHTML = '<div style="text-align:center;padding:30px;color:var(--gray-400)">Sin reportes generados aún</div>';
+    return;
+  }
+
+  lista.innerHTML = datos.map(r => `
+    <div style="background:var(--white);border-radius:var(--radius);padding:14px 16px;
+                margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div>
+          <div style="font-weight:700;color:var(--navy);font-size:14px">${r.cliente_nombre || '—'}</div>
+          <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--blue)">${r.folio || '—'}</div>
         </div>
-        <div style="font-size:11px;color:var(--gray-400);margin-bottom:8px">
-          👷 ${r.tecnico || '—'} · Registrado por: ${r.registrado_por || '—'}
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          ${r.reporte_url ? `
-            <a href="${r.reporte_url}" target="_blank"
-              style="display:block;padding:9px;background:rgba(46,109,164,0.08);color:var(--blue);
-                     border:1px solid rgba(46,109,164,0.2);border-radius:var(--radius-sm);
-                     font-size:12px;font-weight:700;text-align:center;text-decoration:none">
-              📄 Ver reporte
-            </a>
-            <button onclick="entReenviarWA('${r.cliente_tel||''}','${r.cliente_nombre||''}','${r.folio||''}','${r.reporte_url||''}')"
-              style="padding:9px;background:rgba(37,211,102,0.08);color:#25D366;
-                     border:1px solid rgba(37,211,102,0.2);border-radius:var(--radius-sm);
-                     font-size:12px;font-weight:700;cursor:pointer">
-              💬 Reenviar WA
-            </button>
-          ` : `<div style="grid-column:1/-1;font-size:11px;color:var(--gray-400);text-align:center;padding:6px">
-            ⚠️ Reporte sin URL — generado sin conexión
-          </div>`}
+        <div style="font-size:11px;color:var(--gray-400);text-align:right">
+          ${r.fecha_entrega || r.ts || '—'}<br>
+          <span style="color:${r.whatsapp_enviado ? '#25D366' : 'var(--gray-300)'}">
+            ${r.whatsapp_enviado ? '✅ WA enviado' : '⚪ Sin WA'}
+          </span>
         </div>
       </div>
-    `).join('');
-  } catch(e) {
-    lista.innerHTML = `<div style="text-align:center;padding:20px;color:var(--red)">❌ ${e.message}</div>`;
-  }
+      <div style="font-size:11px;color:var(--gray-400);margin-bottom:8px">
+        👷 ${r.tecnico || '—'} · Registrado por: ${r.registrado_por || '—'}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        ${r.reporte_url ? `
+          <a href="${r.reporte_url}" target="_blank"
+            style="display:block;padding:9px;background:rgba(46,109,164,0.08);color:var(--blue);
+                   border:1px solid rgba(46,109,164,0.2);border-radius:var(--radius-sm);
+                   font-size:12px;font-weight:700;text-align:center;text-decoration:none">
+            📄 Ver reporte
+          </a>
+          <button onclick="entReenviarWA('${(r.cliente_tel||'').replace(/'/g,'')}','${(r.cliente_nombre||'').replace(/'/g,'')}','${(r.folio||'').replace(/'/g,'')}','${(r.reporte_url||'').replace(/'/g,'')}')"
+            style="padding:9px;background:rgba(37,211,102,0.08);color:#25D366;
+                   border:1px solid rgba(37,211,102,0.2);border-radius:var(--radius-sm);
+                   font-size:12px;font-weight:700;cursor:pointer">
+            💬 Reenviar WA
+          </button>
+        ` : `<div style="grid-column:1/-1;font-size:11px;color:var(--gray-400);text-align:center;padding:6px">
+          ⚠️ Reporte sin URL permanente
+        </div>`}
+      </div>
+    </div>
+  `).join('');
 }
 
 function entReenviarWA(tel, cliente, folio, url) {
