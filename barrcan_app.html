@@ -7818,7 +7818,7 @@ function entJalarDatos() {
   entActualizarProgreso();
 }
 
-function entGenerarReporte() {
+async function entGenerarReporte() {
   // Validar campos obligatorios
   const errores = [];
   if (!document.getElementById('ent-cliente').value)  errores.push('• Nombre del cliente');
@@ -7924,7 +7924,7 @@ function entGenerarReporte() {
   </div>
   </div></body></html>`;
 
-  // Guardar reporte en historial
+  // Guardar reporte en historial local
   try {
     const reportes = JSON.parse(localStorage.getItem('barrcan_reportes') || '[]');
     reportes.unshift({ folio, cliente, fecha, ts: new Date().toLocaleString('es-MX') });
@@ -7932,16 +7932,80 @@ function entGenerarReporte() {
     localStorage.setItem('barrcan_reportes', JSON.stringify(reportes));
   } catch(e){}
 
-  // Imprimir / guardar PDF
-  const pa = document.getElementById('ent-print-area');
-  pa.innerHTML = reporteHTML;
-  pa.style.display = 'block';
-  setTimeout(() => {
-    window.print();
-    pa.style.display = 'none';
-    // Después de imprimir, abrir encuesta
-    setTimeout(() => entAbrirEncuesta(cliente, tel, folio), 1000);
-  }, 300);
+  toast('⏳ Guardando reporte…');
+
+  // Subir reporte a Supabase Storage bucket 'reportes'
+  let reporteUrl = null;
+  try {
+    const nombreArchivo = `${folio}_${fecha}.html`;
+    const blobUp = new Blob([reporteHTML], { type: 'text/html;charset=utf-8' });
+    const { error: uploadError } = await sb().storage
+      .from('reportes')
+      .upload(nombreArchivo, blobUp, { contentType: 'text/html', upsert: true });
+    if (!uploadError) {
+      const { data: urlData } = sb().storage.from('reportes').getPublicUrl(nombreArchivo);
+      reporteUrl = urlData?.publicUrl || null;
+    } else {
+      console.warn('Upload reporte error:', uploadError.message);
+    }
+
+    // Registrar en tabla reportes_entrega
+    const usuarioActual = window._usuarioActual || tecnico;
+    const registroEnvio = {
+      folio,
+      cliente_nombre:   cliente,
+      cliente_tel:      tel || null,
+      fecha_entrega:    fecha,
+      tecnico,
+      registrado_por:   usuarioActual,
+      reporte_url:      reporteUrl,
+      whatsapp_enviado: !!tel,
+      tel_destino:      tel || null,
+      created_at:       new Date().toISOString()
+    };
+
+    if (SYNC.online) {
+      const { error: dbError } = await sb().from('reportes_entrega').insert([registroEnvio]);
+      if (dbError) console.warn('DB reporte error:', dbError.message);
+    } else {
+      const cola = JSON.parse(localStorage.getItem('barrcan_cola_reportes') || '[]');
+      cola.push(registroEnvio);
+      localStorage.setItem('barrcan_cola_reportes', JSON.stringify(cola));
+    }
+  } catch(e) {
+    console.warn('Error guardando reporte:', e.message);
+  }
+
+  // Abrir reporte en nueva pestaña
+  const blobVer = new Blob([reporteHTML], { type: 'text/html;charset=utf-8' });
+  const urlVer  = URL.createObjectURL(blobVer);
+  window.open(urlVer, '_blank');
+  setTimeout(() => URL.revokeObjectURL(urlVer), 15000);
+
+  // Mandar WhatsApp al cliente con liga permanente al reporte
+  if (tel) {
+    const telLimpio    = tel.replace(/\D/g,'');
+    const telConCodigo = telLimpio.startsWith('52') ? telLimpio : '52' + telLimpio;
+    const ligaReporte  = reporteUrl ? `\n\n📄 Su reporte de entrega:\n${reporteUrl}` : '';
+    const msgCliente   = encodeURIComponent(
+      `✅ *BarrCan · Entrega completada*\n` +
+      `Hola ${cliente}, su instalación ha sido completada el día de hoy.\n\n` +
+      `📋 Folio: ${folio}\n` +
+      `📅 Fecha: ${fecha}\n` +
+      `👷 Técnico: ${tecnico}` +
+      `${ligaReporte}\n\n` +
+      `Conserve este mensaje como comprobante de entrega.\n` +
+      `*BarrCan Cancelería* · TEL: 56-15-15-84-15`
+    );
+    setTimeout(() => {
+      window.open(`https://wa.me/${telConCodigo}?text=${msgCliente}`, '_blank');
+    }, 1200);
+  }
+
+  toast(reporteUrl ? '✅ Reporte guardado · Liga enviada por WhatsApp' : '✅ Reporte generado');
+
+  // Abrir encuesta interna
+  setTimeout(() => entAbrirEncuesta(cliente, tel, folio), 800);
 }
 
 // ══════════════════════════════════════════════
