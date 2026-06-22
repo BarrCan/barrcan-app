@@ -923,9 +923,10 @@ select.form-select { padding-right: 36px; cursor: pointer; }
   /* Ocultar toda la app */
   #app, .header, .tabs, .export-bar, .toast,
   .barra-seleccion, #modal-overlay, #modal-edicion,
-  #modal-contrato-overlay, #modal-contrato { display: none !important; }
-  /* Mostrar solo el contrato */
-  #print-area {
+  #modal-contrato-overlay, #modal-contrato,
+  #entrega-overlay { display: none !important; }
+  /* Mostrar solo el área de impresión activa */
+  #print-area, #ent-print-area {
     display: block !important;
     position: fixed;
     inset: 0;
