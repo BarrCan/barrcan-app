@@ -2351,8 +2351,29 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     <span>📄</span> GENERAR REPORTE Y ENVIAR ENCUESTA
   </button>
 
+  <button onclick="entVerHistorialReportes()"
+    style="width:100%;margin-top:10px;padding:12px;background:rgba(46,109,164,0.08);
+           color:var(--blue);border:1.5px solid rgba(46,109,164,0.25);border-radius:var(--radius-sm);
+           font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer">
+    📋 Ver reportes generados
+  </button>
+
   <!-- Área de impresión del reporte -->
   <div id="ent-print-area" style="display:none"></div>
+</div>
+
+<!-- Overlay historial de reportes -->
+<div id="ent-reportes-overlay" style="display:none;position:fixed;inset:0;background:var(--off-white);z-index:500;overflow-y:auto;padding:16px 16px 120px">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+    <button onclick="document.getElementById('ent-reportes-overlay').style.display='none'"
+      style="width:36px;height:36px;border-radius:50%;border:none;background:var(--white);
+             box-shadow:0 2px 8px rgba(0,0,0,0.1);font-size:18px;cursor:pointer">←</button>
+    <div>
+      <div style="font-family:'Playfair Display',serif;font-size:17px;font-weight:700;color:var(--navy)">Reportes de Entrega</div>
+      <div style="font-size:11px;color:var(--gray-400)">Historial permanente · Ligas verificables</div>
+    </div>
+  </div>
+  <div id="ent-reportes-lista"></div>
 </div>
 
 <!-- Export bar -->
@@ -7937,7 +7958,7 @@ async function entGenerarReporte() {
   // Subir reporte a Supabase Storage bucket 'reportes'
   let reporteUrl = null;
   try {
-    const nombreArchivo = `${folio}_${fecha}.html`;
+    const nombreArchivo = `${folio}_${fecha.replace(/-/g,'')}_${Date.now()}.html`;
     const blobUp = new Blob([reporteHTML], { type: 'text/html;charset=utf-8' });
     const { error: uploadError } = await sb().storage
       .from('reportes')
@@ -7976,11 +7997,15 @@ async function entGenerarReporte() {
     console.warn('Error guardando reporte:', e.message);
   }
 
-  // Abrir reporte en nueva pestaña
-  const blobVer = new Blob([reporteHTML], { type: 'text/html;charset=utf-8' });
-  const urlVer  = URL.createObjectURL(blobVer);
-  window.open(urlVer, '_blank');
-  setTimeout(() => URL.revokeObjectURL(urlVer), 15000);
+  // Abrir reporte — usar URL permanente de Supabase si está disponible, sino blob temporal
+  if (reporteUrl) {
+    window.open(reporteUrl, '_blank');
+  } else {
+    const blobVer = new Blob([reporteHTML], { type: 'text/html;charset=utf-8' });
+    const urlVer  = URL.createObjectURL(blobVer);
+    window.open(urlVer, '_blank');
+    setTimeout(() => URL.revokeObjectURL(urlVer), 30000);
+  }
 
   // Mandar WhatsApp al cliente con liga permanente al reporte
   if (tel) {
@@ -8006,6 +8031,78 @@ async function entGenerarReporte() {
 
   // Abrir encuesta interna
   setTimeout(() => entAbrirEncuesta(cliente, tel, folio), 800);
+}
+
+// ── Historial de reportes de entrega ─────────────────────────
+async function entVerHistorialReportes() {
+  const overlay = document.getElementById('ent-reportes-overlay');
+  const lista   = document.getElementById('ent-reportes-lista');
+  overlay.style.display = 'block';
+  lista.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">⏳ Cargando…</div>';
+
+  try {
+    const { data, error } = await sb().from('reportes_entrega')
+      .select('*').order('created_at', { ascending: false }).limit(50);
+    if (error) throw error;
+    if (!data?.length) {
+      lista.innerHTML = '<div style="text-align:center;padding:30px;color:var(--gray-400)">Sin reportes generados aún</div>';
+      return;
+    }
+    lista.innerHTML = data.map(r => `
+      <div style="background:var(--white);border-radius:var(--radius);padding:14px 16px;
+                  margin-bottom:10px;box-shadow:0 2px 8px rgba(0,0,0,0.06)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+          <div>
+            <div style="font-weight:700;color:var(--navy);font-size:14px">${r.cliente_nombre || '—'}</div>
+            <div style="font-family:'DM Mono',monospace;font-size:11px;color:var(--blue)">${r.folio || '—'}</div>
+          </div>
+          <div style="font-size:11px;color:var(--gray-400);text-align:right">
+            ${r.fecha_entrega || '—'}<br>
+            <span style="color:${r.whatsapp_enviado ? '#25D366' : 'var(--gray-300)'}">
+              ${r.whatsapp_enviado ? '✅ WA enviado' : '⚪ Sin WA'}
+            </span>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--gray-400);margin-bottom:8px">
+          👷 ${r.tecnico || '—'} · Registrado por: ${r.registrado_por || '—'}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          ${r.reporte_url ? `
+            <a href="${r.reporte_url}" target="_blank"
+              style="display:block;padding:9px;background:rgba(46,109,164,0.08);color:var(--blue);
+                     border:1px solid rgba(46,109,164,0.2);border-radius:var(--radius-sm);
+                     font-size:12px;font-weight:700;text-align:center;text-decoration:none">
+              📄 Ver reporte
+            </a>
+            <button onclick="entReenviarWA('${r.cliente_tel||''}','${r.cliente_nombre||''}','${r.folio||''}','${r.reporte_url||''}')"
+              style="padding:9px;background:rgba(37,211,102,0.08);color:#25D366;
+                     border:1px solid rgba(37,211,102,0.2);border-radius:var(--radius-sm);
+                     font-size:12px;font-weight:700;cursor:pointer">
+              💬 Reenviar WA
+            </button>
+          ` : `<div style="grid-column:1/-1;font-size:11px;color:var(--gray-400);text-align:center;padding:6px">
+            ⚠️ Reporte sin URL — generado sin conexión
+          </div>`}
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {
+    lista.innerHTML = `<div style="text-align:center;padding:20px;color:var(--red)">❌ ${e.message}</div>`;
+  }
+}
+
+function entReenviarWA(tel, cliente, folio, url) {
+  if (!tel) { toast('⚠️ Sin teléfono del cliente'); return; }
+  const telLimpio = tel.replace(/\D/g,'');
+  const telConCodigo = telLimpio.startsWith('52') ? telLimpio : '52'+telLimpio;
+  const msg = encodeURIComponent(
+    `📄 *BarrCan · Reporte de entrega*\n` +
+    `Hola ${cliente}, le reenviamos su reporte de entrega.\n\n` +
+    `📋 Folio: ${folio}\n` +
+    `${url}\n\n` +
+    `*BarrCan Cancelería* · TEL: 56-15-15-84-15`
+  );
+  window.open(`https://wa.me/${telConCodigo}?text=${msg}`, '_blank');
 }
 
 // ══════════════════════════════════════════════
@@ -10367,6 +10464,10 @@ async function pagoGuardar() {
     pagoCerrar();
     pagoCargarLista(PAGO_ORDEN_ID);
     ordenesRenderLista();
+    // Si es anticipo, ofrecer generar recibo
+    if (concepto === 'anticipo' || concepto === 'anticipo_50') {
+      setTimeout(() => pagoGenerarRecibo(PAGO_ORDEN_ID, monto, fecha, PAGO_FORMA_SEL), 500);
+    }
   } catch(e) {
     const pagosLocal = JSON.parse(localStorage.getItem('barrcan_pagos_local') || '[]');
     pagosLocal.push({ ...payload, id: crypto.randomUUID(), created_at: new Date().toISOString() });
@@ -10374,6 +10475,145 @@ async function pagoGuardar() {
     toast(`💾 Pago guardado localmente · $${fmt(monto)}`);
     pagoCerrar();
   }
+}
+
+// ── Recibo de anticipo ────────────────────────────────────────
+async function pagoGenerarRecibo(ordenId, monto, fecha, formaPago) {
+  const orden = ORDENES_CACHE.find(x => x.id === ordenId);
+  if (!orden) return;
+
+  const folio    = orden.folio_cotizacion || ordenId.slice(0,8).toUpperCase();
+  const cliente  = orden.cliente_nombre || '—';
+  const tel      = orden.cliente_tel || '';
+  const dir      = orden.dir_obra || '—';
+  const total    = (orden.saldo_pendiente || 0) + monto;
+  const saldo    = orden.saldo_pendiente || 0;
+  const fechaStr = fecha || new Date().toISOString().split('T')[0];
+  const folioRec = `REC-${Date.now().toString().slice(-6)}`;
+  const formaStr = formaPago === 'transferencia' ? 'Transferencia bancaria' : 'Efectivo';
+
+  const reciboHTML = `<!DOCTYPE html><html lang=es><head><meta charset=UTF-8>
+  <style>
+    body{font-family:Arial,sans-serif;color:#222;background:white;font-size:10pt;margin:0;padding:0}
+    .page{max-width:680px;margin:0 auto;padding:24px}
+    .header{text-align:center;border-bottom:3px solid #1B3A5C;padding-bottom:14px;margin-bottom:16px}
+    .logo-text{font-size:22pt;font-weight:900;color:#1B3A5C;letter-spacing:2px}
+    .logo-sub{font-size:8pt;color:#C8923A;letter-spacing:3px;text-transform:uppercase}
+    .recibo-titulo{font-size:14pt;font-weight:700;color:#1B3A5C;margin:10px 0 4px;
+      border-top:1px dashed #aaa;border-bottom:1px dashed #aaa;padding:6px 0;text-align:center}
+    .folio{font-size:10pt;color:#C8923A;font-weight:700;text-align:center;margin-bottom:14px}
+    table{width:100%;border-collapse:collapse;margin-bottom:12px}
+    td{padding:6px 10px;border:1px solid #ddd;font-size:9.5pt}
+    .label{font-weight:700;background:#f5f7fa;width:35%}
+    .monto-box{background:#1B3A5C;color:white;border-radius:6px;padding:14px 18px;
+      display:flex;justify-content:space-between;align-items:center;margin:14px 0}
+    .monto-lbl{font-size:10pt;opacity:0.8}
+    .monto-val{font-size:18pt;font-weight:800;color:#F1C40F}
+    .saldo-box{background:#FEF9E7;border:1.5px solid #F39C12;border-radius:6px;
+      padding:10px 18px;display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+    .footer{margin-top:20px;padding-top:12px;border-top:1px solid #ddd;
+      font-size:8pt;color:#888;text-align:center;line-height:1.8}
+    .sello{border:2px dashed #1B3A5C;border-radius:8px;padding:10px;text-align:center;
+      margin-top:16px;color:#1B3A5C;font-size:9pt}
+  </style></head><body><div class=page>
+  <div class=header>
+    <div class=logo-text>BarrCan</div>
+    <div class=logo-sub>Cancelería · Aluminio · Vidrio</div>
+    <div style=font-size:8pt;color:#666;margin-top:4px>
+      PRIV. SANTA CRUZ No.23 COL. SAN SIMÓN TICUMAC CP. 03660<br>
+      BENITO JUÁREZ, CDMX · TEL: 56-15-15-84-15 · www.BarrCan.com.mx
+    </div>
+  </div>
+
+  <div class=recibo-titulo>RECIBO DE ANTICIPO</div>
+  <div class=folio>Folio: ${folioRec} · Pedido: ${folio}</div>
+
+  <table>
+    <tr><td class=label>Cliente</td><td>${cliente}</td></tr>
+    <tr><td class=label>Teléfono</td><td>${tel || '—'}</td></tr>
+    <tr><td class=label>Dirección obra</td><td>${dir}</td></tr>
+    <tr><td class=label>Descripción</td><td>${orden.descripcion_trabajo || '—'}</td></tr>
+    <tr><td class=label>Fecha de pago</td><td>${fechaStr}</td></tr>
+    <tr><td class=label>Forma de pago</td><td>${formaStr}</td></tr>
+  </table>
+
+  <div class=monto-box>
+    <div>
+      <div class=monto-lbl>Anticipo recibido</div>
+      <div class=monto-val>$${fmt(monto)} MXN</div>
+    </div>
+    <div style=font-size:28pt>✅</div>
+  </div>
+
+  <div class=saldo-box>
+    <div style=font-size:9.5pt>
+      <div><strong>Total del proyecto:</strong> $${fmt(total)} MXN</div>
+      <div>Anticipo (este recibo): $${fmt(monto)} MXN</div>
+    </div>
+    <div style=text-align:right>
+      <div style=font-size:8.5pt;color:#E67E22;font-weight:700>Saldo pendiente</div>
+      <div style=font-size:14pt;font-weight:800;color:#E67E22>$${fmt(saldo)} MXN</div>
+    </div>
+  </div>
+
+  <div class=sello>
+    ✅ Pago recibido conforme · ${fechaStr}<br>
+    <strong>BarrCan Cancelería</strong> · TEL: 56-15-15-84-15
+  </div>
+
+  <div class=footer>
+    Este recibo es comprobante de anticipo del trabajo descrito.<br>
+    El saldo restante deberá cubrirse conforme a lo acordado.<br>
+    ${folioRec} · BarrCan Cancelería · ${fechaStr}
+  </div>
+  </div></body></html>`;
+
+  // Subir recibo a Supabase Storage
+  let reciboUrl = null;
+  try {
+    const nombreArchivo = `recibos/${folioRec}.html`;
+    const blobUp = new Blob([reciboHTML], { type: 'text/html;charset=utf-8' });
+    const { error: uploadError } = await sb().storage
+      .from('reportes')
+      .upload(nombreArchivo, blobUp, { contentType: 'text/html', upsert: true });
+    if (!uploadError) {
+      const { data: urlData } = sb().storage.from('reportes').getPublicUrl(nombreArchivo);
+      reciboUrl = urlData?.publicUrl || null;
+    }
+  } catch(e) { console.warn('Error subiendo recibo:', e.message); }
+
+  // Abrir recibo en nueva pestaña
+  if (reciboUrl) {
+    window.open(reciboUrl, '_blank');
+  } else {
+    const blobVer = new Blob([reciboHTML], { type: 'text/html;charset=utf-8' });
+    const urlVer  = URL.createObjectURL(blobVer);
+    window.open(urlVer, '_blank');
+    setTimeout(() => URL.revokeObjectURL(urlVer), 30000);
+  }
+
+  // Mandar recibo por WhatsApp al cliente
+  if (tel) {
+    const telLimpio    = tel.replace(/\D/g,'');
+    const telConCodigo = telLimpio.startsWith('52') ? telLimpio : '52' + telLimpio;
+    const ligaRecibo   = reciboUrl ? `\n\n📄 Su recibo:\n${reciboUrl}` : '';
+    const msg = encodeURIComponent(
+      `🧾 *BarrCan · Recibo de anticipo*\n` +
+      `Hola ${cliente}, confirmamos haber recibido su anticipo.\n\n` +
+      `💰 Monto: $${fmt(monto)} MXN\n` +
+      `📋 Pedido: ${folio}\n` +
+      `📅 Fecha: ${fechaStr}\n` +
+      `💳 Forma: ${formaStr}\n` +
+      `⏳ Saldo pendiente: $${fmt(saldo)} MXN` +
+      `${ligaRecibo}\n\n` +
+      `*BarrCan Cancelería* · TEL: 56-15-15-84-15`
+    );
+    setTimeout(() => {
+      window.open(`https://wa.me/${telConCodigo}?text=${msg}`, '_blank');
+    }, 1000);
+  }
+
+  toast(reciboUrl ? '🧾 Recibo generado · Enviado por WhatsApp' : '🧾 Recibo generado');
 }
 
 async function pagoCargarLista(ordenId) {
