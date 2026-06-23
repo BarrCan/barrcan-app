@@ -1162,6 +1162,7 @@ select.form-select { padding-right: 36px; cursor: pointer; }
                 <option value="9t|1.00">9 mm – Cristal Templado</option>
                 <option value="10|1.00">10 mm – Semi-estructural</option>
                 <option value="12|1.00">12 mm – Estructural</option>
+                <option value="12t|1.00">12 mm – Cristal Templado</option>
                 <option value="24|1.00">24 mm – Insulado (4+12+4)</option>
               </select>
             </div>
@@ -2160,6 +2161,28 @@ select.form-select { padding-right: 36px; cursor: pointer; }
           <span class="config-item-label">24 mm – Insulado</span>
           <div style="display:flex;align-items:center;gap:4px">
             <input type="number" class="config-input-inline" id="cfg-vid-24" value="950" min="100" onchange="guardarConfig();sincronizarVidrios()">
+            <span style="font-size:12px;color:var(--gray-400)">$/m²</span>
+          </div>
+        </div>
+        <div style="padding:8px 16px 4px;font-size:10px;color:var(--gray-400)">Vidrio Templado (precio fijo por m²)</div>
+        <div class="config-item">
+          <span class="config-item-label">6 mm – Cristal Templado</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-vid-6t" value="1200" min="100" onchange="guardarConfig();sincronizarVidrios()">
+            <span style="font-size:12px;color:var(--gray-400)">$/m²</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label">9 mm – Cristal Templado</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-vid-9t" value="2100" min="100" onchange="guardarConfig();sincronizarVidrios()">
+            <span style="font-size:12px;color:var(--gray-400)">$/m²</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label">12 mm – Cristal Templado</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-vid-12t" value="2900" min="100" onchange="guardarConfig();sincronizarVidrios()">
             <span style="font-size:12px;color:var(--gray-400)">$/m²</span>
           </div>
         </div>
@@ -4709,6 +4732,8 @@ const CONFIG_DEFAULTS = {
   // Vidrio base
   'cfg-vid-4': 380, 'cfg-vid-6': 480, 'cfg-vid-8': 540,
   'cfg-vid-9': 580, 'cfg-vid-10': 620, 'cfg-vid-12': 720, 'cfg-vid-24': 950,
+  // Vidrio templado
+  'cfg-vid-6t': 1200, 'cfg-vid-9t': 2100, 'cfg-vid-12t': 2900,
   // Recargos vidrio especial
   'cfg-pct-verde': 6, 'cfg-pct-filtrasol': 7,
   'cfg-pct-bronce': 9, 'cfg-pct-azul': 11,
@@ -4731,10 +4756,16 @@ function cargarConfig() {
       const el = document.getElementById(id);
       if (el) el.value = saved[id] !== undefined ? saved[id] : def;
     });
-    // Mostrar fecha de última actualización
     const fechaEl = document.getElementById('cfg-ultima-actualizacion');
     if (fechaEl) fechaEl.textContent = saved._fecha || '—';
   } catch(e){}
+  // Sincronizar dropdowns con precios cargados
+  setTimeout(() => {
+    sincronizarVidrios();
+    sincronizarAcabados();
+    sincronizarPelicula();
+    actualizarPrecioVidrio();
+  }, 100);
 }
 
 function guardarConfig() {
@@ -4778,7 +4809,8 @@ function sincronizarAcabados() {
 function sincronizarVidrios() {
   const mapaBase = {
     '4': 'cfg-vid-4', '6': 'cfg-vid-6', '8': 'cfg-vid-8',
-    '9': 'cfg-vid-9', '10': 'cfg-vid-10', '12': 'cfg-vid-12', '24': 'cfg-vid-24'
+    '9': 'cfg-vid-9', '10': 'cfg-vid-10', '12': 'cfg-vid-12', '24': 'cfg-vid-24',
+    '6t': 'cfg-vid-6t', '9t': 'cfg-vid-9t', '12t': 'cfg-vid-12t'
   };
   const mapaPct = {
     '1.06': 'cfg-pct-verde', '1.07': 'cfg-pct-filtrasol',
@@ -6137,15 +6169,12 @@ function actualizarPrecioVidrio() {
   const sel = document.getElementById('inp-vidrio');
   if (!sel) return;
   const [esp] = sel.value.split('|');
-  // 6t y 9t son vidrio templado — usan precio de 6mm y 9mm con recargo 15%
-  let precio;
-  if (esp === '6t') {
-    precio = Math.round((cfgVal('cfg-vid-6') || 480) * 1.35);
-  } else if (esp === '9t') {
-    precio = Math.round((cfgVal('cfg-vid-9') || 580) * 1.35);
-  } else {
-    precio = cfgVal('cfg-vid-' + esp) || 480;
-  }
+  const mapa = {
+    '4':'cfg-vid-4','6':'cfg-vid-6','8':'cfg-vid-8',
+    '9':'cfg-vid-9','10':'cfg-vid-10','12':'cfg-vid-12','24':'cfg-vid-24',
+    '6t':'cfg-vid-6t','9t':'cfg-vid-9t','12t':'cfg-vid-12t'
+  };
+  const precio = cfgVal(mapa[esp] || 'cfg-vid-6') || 480;
   const inpPrecio = document.getElementById('inp-precio-vidrio');
   if (inpPrecio) inpPrecio.value = precio;
 }
