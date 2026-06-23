@@ -7619,7 +7619,7 @@ function abrirModalContrato() {
       cliListaCache = cache;
     } else if (SYNC.online) {
       // Cargar en background sin bloquear
-      sb().from('clientes').select('*').order('nombre').then(({ data }) => {
+      sb().from('clientes').select('*').order('nombre').range(0,999).then(({ data }) => {
         if (data?.length) {
           cliListaCache = data;
           clientesGuardarCache(data);
@@ -11918,7 +11918,7 @@ async function visitaCargarDropdown() {
   const sel = document.getElementById('visita-cliente-sel');
   sel.innerHTML = '<option value="">— Buscar cliente —</option>';
   try {
-    const { data } = await sb().from('clientes').select('id,nombre,telefono,empresa,cargo').order('nombre');
+    const { data } = await sb().from('clientes').select('id,nombre,telefono,empresa,cargo').order('nombre').range(0,999);
     if (data) {
       data.forEach(c => {
         const opt = document.createElement('option');
@@ -13210,7 +13210,8 @@ async function cliSyncBackground() {
     const { data, error } = await sb()
       .from('clientes')
       .select('*')
-      .order('num_cliente', { ascending: true });
+      .order('num_cliente', { ascending: true })
+      .range(0, 999);
     if (error) throw error;
     cliListaCache = data || [];
     clientesGuardarCache(cliListaCache);
