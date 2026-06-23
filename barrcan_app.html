@@ -12873,8 +12873,23 @@ function visitasGuardadasAbrir() {
     <!-- Nombre -->
     <div class="form-group">
       <label class="form-label">Nombre completo *</label>
-      <input type="text" id="cli-inp-nombre" class="form-input"
-        placeholder="Ing. Raymundo López Hernández">
+      <div style="display:flex;gap:8px;align-items:center">
+        <div class="form-select-wrap" style="width:120px;flex-shrink:0">
+          <select id="cli-inp-tratamiento" class="form-select">
+            <option value="">— —</option>
+            <option value="Sr.">Sr.</option>
+            <option value="Sra.">Sra.</option>
+            <option value="Srita.">Srita.</option>
+            <option value="Ing.">Ing.</option>
+            <option value="Arq.">Arq.</option>
+            <option value="Lic.">Lic.</option>
+            <option value="Dr.">Dr.</option>
+            <option value="Dra.">Dra.</option>
+          </select>
+        </div>
+        <input type="text" id="cli-inp-nombre" class="form-input"
+          placeholder="Nombre y apellido(s)" style="flex:1">
+      </div>
     </div>
 
     <!-- Teléfono + Email -->
@@ -13183,6 +13198,7 @@ async function cliAbrirFormulario() {
     document.getElementById('cli-inp-'+f).value = '');
   document.getElementById('cli-inp-canal').value = 'WA';
   document.getElementById('cli-inp-cargo').value = '';
+  document.getElementById('cli-inp-tratamiento').value = '';
 
   // Sugerir número
   document.getElementById('cli-num-preview').value = cliSiguienteNum('WA');
@@ -13206,6 +13222,15 @@ function cliAbrirEdicion(id) {
   document.getElementById('cli-num-preview').value        = c.num_cliente || '—';
 
   document.getElementById('cli-inp-nombre').value  = c.nombre   || '';
+  // Separar tratamiento del nombre al editar
+  const tratos = ['Sr.','Sra.','Srita.','Ing.','Arq.','Lic.','Dr.','Dra.'];
+  const primerPalabra = (c.nombre||'').split(' ')[0];
+  if (tratos.includes(primerPalabra)) {
+    document.getElementById('cli-inp-tratamiento').value = primerPalabra;
+    document.getElementById('cli-inp-nombre').value = (c.nombre||'').slice(primerPalabra.length).trim();
+  } else {
+    document.getElementById('cli-inp-tratamiento').value = '';
+  }
   document.getElementById('cli-inp-tel').value     = c.telefono || '';
   document.getElementById('cli-inp-email').value   = c.email    || '';
   document.getElementById('cli-inp-empresa').value = c.empresa  || '';
@@ -13227,7 +13252,9 @@ function cliCerrarFormulario() {
 
 // ── Guardar (crear o actualizar) ──────────────
 async function cliGuardar() {
-  const nombre    = document.getElementById('cli-inp-nombre').value.trim();
+  const tratamiento = document.getElementById('cli-inp-tratamiento').value.trim();
+  const nombreBase  = document.getElementById('cli-inp-nombre').value.trim();
+  const nombre      = tratamiento ? `${tratamiento} ${nombreBase}` : nombreBase;
   const telefono  = document.getElementById('cli-inp-tel').value.trim();
   const email     = document.getElementById('cli-inp-email').value.trim();
   const empresa   = document.getElementById('cli-inp-empresa').value.trim();
