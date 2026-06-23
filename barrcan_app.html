@@ -7608,9 +7608,25 @@ function abrirModalContrato() {
   regenerarFolio();
   // Limpiar buscador
   const buscar = document.getElementById('ctr-buscar-cli');
-  if (buscar) { buscar.value = ''; }
+  if (buscar) buscar.value = '';
   const res = document.getElementById('ctr-cli-resultados');
   if (res) { res.style.display = 'none'; res.innerHTML = ''; }
+
+  // Cargar cache de clientes si está vacío
+  if (!cliListaCache.length) {
+    const cache = clientesCargarCache();
+    if (cache.length) {
+      cliListaCache = cache;
+    } else if (SYNC.online) {
+      // Cargar en background sin bloquear
+      sb().from('clientes').select('*').order('nombre').then(({ data }) => {
+        if (data?.length) {
+          cliListaCache = data;
+          clientesGuardarCache(data);
+        }
+      });
+    }
+  }
 
   document.getElementById('modal-contrato-overlay').style.display = 'block';
   document.getElementById('modal-contrato').style.display = 'block';
@@ -7619,24 +7635,38 @@ function abrirModalContrato() {
 function ctrBuscarCliente(q) {
   const res = document.getElementById('ctr-cli-resultados');
   if (!q || q.length < 2) { res.style.display = 'none'; return; }
-  const term = q.toLowerCase();
+  const term = q.toLowerCase().replace(/\s+/g,'');
   const matches = (cliListaCache || []).filter(c =>
-    (c.nombre||'').toLowerCase().includes(term) ||
-    (c.telefono||'').includes(term) ||
+    (c.nombre||'').toLowerCase().replace(/\s+/g,'').includes(term) ||
+    (c.telefono||'').replace(/\D/g,'').includes(term.replace(/\D/g,'')) ||
     (c.num_cliente||'').toLowerCase().includes(term)
-  ).slice(0, 6);
-  if (!matches.length) { res.style.display = 'none'; return; }
+  ).slice(0, 8);
+
+  if (!matches.length) {
+    res.innerHTML = `
+      <div style="padding:12px 14px;text-align:center">
+        <div style="font-size:12px;color:var(--gray-400);margin-bottom:10px">Sin resultados para "<strong>${q}</strong>"</div>
+        <button onclick="ctrNuevoClienteRapido('${q.replace(/'/g,"")}')"
+          style="padding:8px 16px;background:var(--blue);color:white;border:none;border-radius:8px;
+                 font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer">
+          + Agregar cliente nuevo
+        </button>
+      </div>`;
+    res.style.display = 'block';
+    return;
+  }
+
   res.innerHTML = matches.map(c => `
     <div onclick="ctrSeleccionarCliente('${c.id}')"
       style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--gray-100);
-             display:flex;justify-content:space-between;align-items:center"
+             display:flex;justify-content:space-between;align-items:center;background:white"
       onmouseover="this.style.background='var(--off-white)'"
       onmouseout="this.style.background='white'">
       <div>
         <div style="font-size:13px;font-weight:700;color:var(--navy)">${c.nombre||'—'}</div>
         <div style="font-size:11px;color:var(--gray-400)">${c.telefono||''} ${c.empresa ? '· '+c.empresa : ''}</div>
       </div>
-      <div style="font-size:10px;color:var(--blue);font-weight:600">${c.num_cliente||''}</div>
+      <div style="font-size:11px;color:var(--blue);font-weight:700;font-family:'DM Mono',monospace">${c.num_cliente||''}</div>
     </div>`).join('');
   res.style.display = 'block';
 }
@@ -7644,14 +7674,27 @@ function ctrBuscarCliente(q) {
 function ctrSeleccionarCliente(id) {
   const c = (cliListaCache || []).find(x => x.id === id);
   if (!c) return;
-  document.getElementById('ctr-nombre').value    = c.nombre    || '';
-  document.getElementById('ctr-direccion').value = c.direccion || '';
-  document.getElementById('ctr-telefono').value  = c.telefono  || '';
-  document.getElementById('ctr-numcliente').value= c.num_cliente|| '';
-  // Limpiar buscador
+  document.getElementById('ctr-nombre').value     = c.nombre     || '';
+  document.getElementById('ctr-direccion').value  = c.direccion  || '';
+  document.getElementById('ctr-telefono').value   = c.telefono   || '';
+  document.getElementById('ctr-numcliente').value = c.num_cliente || '';
   document.getElementById('ctr-buscar-cli').value = '';
   document.getElementById('ctr-cli-resultados').style.display = 'none';
-  toast(`✅ Cliente: ${c.nombre}`);
+  toast(`✅ ${c.nombre}`);
+}
+
+function ctrNuevoClienteRapido(nombrePre) {
+  // Cierra el modal de contrato, abre el de cliente pre-llenado
+  cerrarModalContrato();
+  // Guardar estado para regresar después
+  window._ctrPendiente = true;
+  // Abrir modal de nuevo cliente
+  cliAbrirFormulario();
+  setTimeout(() => {
+    const inp = document.getElementById('cli-inp-nombre');
+    if (inp) inp.value = nombrePre;
+  }, 350);
+  toast('📝 Agrega el cliente y regresa a cotizar');
 }
 
 function cerrarModalContrato() {
