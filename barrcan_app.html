@@ -2638,6 +2638,19 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     <!-- Campos cliente -->
     <div style="background:var(--off-white);border-radius:var(--radius);padding:14px;margin-bottom:12px">
       <div class="wizard-title" style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--blue);margin-bottom:12px;display:flex;align-items:center;gap:8px">👤 Cliente <span style="flex:1;height:1px;background:var(--gray-200);display:block"></span></div>
+
+      <!-- Buscador de clientes guardados -->
+      <div class="form-group">
+        <label class="form-label">Buscar cliente registrado</label>
+        <input type="text" class="form-input" id="ctr-buscar-cli"
+          placeholder="Nombre o teléfono..."
+          oninput="ctrBuscarCliente(this.value)"
+          autocomplete="off">
+        <div id="ctr-cli-resultados" style="display:none;background:var(--white);border:1.5px solid var(--gray-200);
+          border-radius:var(--radius-sm);margin-top:4px;max-height:180px;overflow-y:auto;
+          box-shadow:0 4px 12px rgba(0,0,0,0.1)"></div>
+      </div>
+
       <div class="form-group">
         <label class="form-label">Nombre completo</label>
         <input type="text" class="form-input" id="ctr-nombre" placeholder="Ing. Raymundo López">
@@ -7593,8 +7606,52 @@ function abrirModalContrato() {
     return;
   }
   regenerarFolio();
+  // Limpiar buscador
+  const buscar = document.getElementById('ctr-buscar-cli');
+  if (buscar) { buscar.value = ''; }
+  const res = document.getElementById('ctr-cli-resultados');
+  if (res) { res.style.display = 'none'; res.innerHTML = ''; }
+
   document.getElementById('modal-contrato-overlay').style.display = 'block';
   document.getElementById('modal-contrato').style.display = 'block';
+}
+
+function ctrBuscarCliente(q) {
+  const res = document.getElementById('ctr-cli-resultados');
+  if (!q || q.length < 2) { res.style.display = 'none'; return; }
+  const term = q.toLowerCase();
+  const matches = (cliListaCache || []).filter(c =>
+    (c.nombre||'').toLowerCase().includes(term) ||
+    (c.telefono||'').includes(term) ||
+    (c.num_cliente||'').toLowerCase().includes(term)
+  ).slice(0, 6);
+  if (!matches.length) { res.style.display = 'none'; return; }
+  res.innerHTML = matches.map(c => `
+    <div onclick="ctrSeleccionarCliente('${c.id}')"
+      style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--gray-100);
+             display:flex;justify-content:space-between;align-items:center"
+      onmouseover="this.style.background='var(--off-white)'"
+      onmouseout="this.style.background='white'">
+      <div>
+        <div style="font-size:13px;font-weight:700;color:var(--navy)">${c.nombre||'—'}</div>
+        <div style="font-size:11px;color:var(--gray-400)">${c.telefono||''} ${c.empresa ? '· '+c.empresa : ''}</div>
+      </div>
+      <div style="font-size:10px;color:var(--blue);font-weight:600">${c.num_cliente||''}</div>
+    </div>`).join('');
+  res.style.display = 'block';
+}
+
+function ctrSeleccionarCliente(id) {
+  const c = (cliListaCache || []).find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('ctr-nombre').value    = c.nombre    || '';
+  document.getElementById('ctr-direccion').value = c.direccion || '';
+  document.getElementById('ctr-telefono').value  = c.telefono  || '';
+  document.getElementById('ctr-numcliente').value= c.num_cliente|| '';
+  // Limpiar buscador
+  document.getElementById('ctr-buscar-cli').value = '';
+  document.getElementById('ctr-cli-resultados').style.display = 'none';
+  toast(`✅ Cliente: ${c.nombre}`);
 }
 
 function cerrarModalContrato() {
