@@ -8380,7 +8380,7 @@ async function entGenerarReporte() {
   </div>
   </div></body></html>`;
 
-  // Guardar reporte en historial local
+  // Guardar historial local
   try {
     const reportes = JSON.parse(localStorage.getItem('barrcan_reportes') || '[]');
     reportes.unshift({ folio, cliente, fecha, ts: new Date().toLocaleString('es-MX') });
@@ -8390,105 +8390,103 @@ async function entGenerarReporte() {
 
   toast('⏳ Guardando reporte…');
 
-  // Subir reporte a Supabase Storage bucket 'reportes'
+  // Subir a Supabase Storage
   let reporteUrl = null;
   try {
     const nombreArchivo = `${folio}_${fecha.replace(/-/g,'')}_${Date.now()}.html`;
     const blobUp = new Blob([reporteHTML], { type: 'text/html;charset=utf-8' });
     const { error: uploadError } = await sb().storage
-      .from('reportes')
-      .upload(nombreArchivo, blobUp, { contentType: 'text/html', upsert: true });
+      .from('reportes').upload(nombreArchivo, blobUp, { contentType: 'text/html', upsert: true });
     if (!uploadError) {
       const { data: urlData } = sb().storage.from('reportes').getPublicUrl(nombreArchivo);
       reporteUrl = urlData?.publicUrl || null;
-    } else {
-      console.warn('Upload reporte error:', uploadError.message);
     }
-
-    // Registrar en tabla reportes_entrega
-    const usuarioActual = window._usuarioActual || tecnico;
+    // Registrar en BD
     const registroEnvio = {
-      folio,
-      cliente_nombre:   cliente,
-      cliente_tel:      tel || null,
-      fecha_entrega:    fecha,
-      tecnico,
-      registrado_por:   usuarioActual,
-      reporte_url:      reporteUrl,
-      whatsapp_enviado: !!tel,
-      tel_destino:      tel || null,
-      created_at:       new Date().toISOString()
+      folio, cliente_nombre: cliente, cliente_tel: tel || null,
+      fecha_entrega: fecha, tecnico,
+      registrado_por: USUARIO_ACTIVO?.id || tecnico,
+      reporte_url: reporteUrl, whatsapp_enviado: false,
+      tel_destino: tel || null, created_at: new Date().toISOString()
     };
-
     if (SYNC.online) {
-      const { error: dbError } = await sb().from('reportes_entrega').insert([registroEnvio]);
-      if (dbError) console.warn('DB reporte error:', dbError.message);
+      await sb().from('reportes_entrega').insert([registroEnvio]);
     } else {
       const cola = JSON.parse(localStorage.getItem('barrcan_cola_reportes') || '[]');
       cola.push(registroEnvio);
       localStorage.setItem('barrcan_cola_reportes', JSON.stringify(cola));
     }
-  } catch(e) {
-    console.warn('Error guardando reporte:', e.message);
+    // Caché local
+    try {
+      const hist = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
+      hist.unshift({ ...registroEnvio, ts: new Date().toLocaleString('es-MX') });
+      if (hist.length > 50) hist.pop();
+      localStorage.setItem('barrcan_reportes_historial', JSON.stringify(hist));
+    } catch(e){}
+  } catch(e) { console.warn('Error guardando reporte:', e.message); }
+
+  // Abrir reporte con document.write (siempre formateado)
+  const win = window.open('', '_blank');
+  if (win) { win.document.write(reporteHTML); win.document.close(); }
+  else { toast('⚠️ Permite ventanas emergentes para ver el reporte'); }
+
+  // Mostrar panel de acciones
+  entMostrarAccionesReporte(folio, cliente, tel, fecha, tecnico);
+  toast('✅ Reporte generado · Imprímelo como PDF y luego envíalo');
+}
+
+function entMostrarAccionesReporte(folio, cliente, tel, fecha, tecnico) {
+  const encuestaLink = `https://barrcan.github.io/barrcan-app/encuesta_publica.html?folio=${encodeURIComponent(folio)}&cliente=${encodeURIComponent(cliente)}`;
+  let overlay = document.getElementById('ent-acciones-overlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'ent-acciones-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:2000;display:flex;align-items:flex-end;backdrop-filter:blur(4px)';
+    document.body.appendChild(overlay);
   }
+  const telLimpio = (tel||'').replace(/\D/g,'');
+  const telConCodigo = telLimpio.startsWith('52') ? telLimpio : '52'+telLimpio;
+  const msgWA = encodeURIComponent(
+    `✅ *BarrCan · Entrega completada*\n` +
+    `Hola ${cliente}, su instalación ha sido completada.\n\n` +
+    `📋 Folio: ${folio}\n📅 Fecha: ${fecha}\n👷 Técnico: ${tecnico}\n\n` +
+    `⭐ *¿Cómo calificaría nuestro servicio?*\nSolo toma 1 minuto:\n${encuestaLink}\n\n` +
+    `*(Adjunte el PDF del reporte de entrega)*\n*BarrCan Cancelería* · TEL: 56-15-15-84-15`
+  );
+  const waUrl = tel ? `https://wa.me/${telConCodigo}?text=${msgWA}` : '';
+  const cliEsc = cliente.replace(/'/g,"\\'");
+  const folioEsc = folio.replace(/'/g,"\\'");
+  overlay.innerHTML = `
+    <div style="width:100%;background:var(--white);border-radius:20px 20px 0 0;padding:20px 20px 40px;box-shadow:0 -8px 40px rgba(0,0,0,0.3)">
+      <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 16px"></div>
+      <div style="font-family:'Playfair Display',serif;font-size:16px;font-weight:700;color:var(--navy);margin-bottom:4px">✅ Reporte generado</div>
+      <div style="font-size:12px;color:var(--gray-400);margin-bottom:14px">
+        El reporte se abrió en nueva pestaña.<br>
+        <strong>1)</strong> Imprímelo como PDF &nbsp;·&nbsp;
+        <strong>2)</strong> Regresa y envía el PDF por WhatsApp
+      </div>
+      <div style="background:var(--off-white);border-radius:var(--radius-sm);padding:8px 12px;margin-bottom:14px;font-size:12px;color:var(--gray-600)">
+        📋 <strong>${folio}</strong> · ${cliente}
+      </div>
+      ${tel ? `<button onclick="entEnviarWAReporte('${waUrl.replace(/'/g,"\\'")}')"
+        style="width:100%;padding:14px;background:#25D366;color:white;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;display:flex;align-items:center;justify-content:center;gap:8px">
+        💬 Enviar confirmación + encuesta por WhatsApp
+      </button>` : ''}
+      <button onclick="entAbrirEncuesta('${cliEsc}','${tel||''}','${folioEsc}')"
+        style="width:100%;padding:12px;background:rgba(200,146,58,0.1);color:var(--gold);border:1.5px solid rgba(200,146,58,0.3);border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:10px">
+        ⭐ Registrar encuesta interna
+      </button>
+      <button onclick="document.getElementById('ent-acciones-overlay').style.display='none'"
+        style="width:100%;padding:12px;background:none;border:1px solid var(--gray-200);border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;color:var(--gray-400);cursor:pointer">
+        Cerrar
+      </button>
+    </div>`;
+  overlay.style.display = 'flex';
+}
 
-  // Abrir reporte — usar URL permanente de Supabase si está disponible, sino document.write
-  if (reporteUrl) {
-    window.open(reporteUrl, '_blank');
-  } else {
-    const win = window.open('', '_blank');
-    if (win) {
-      win.document.write(reporteHTML);
-      win.document.close();
-    } else {
-      toast('⚠️ Permite ventanas emergentes para ver el reporte');
-    }
-  }
-
-  // Guardar en caché local para historial (independiente de Supabase)
-  try {
-    const hist = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
-    hist.unshift({
-      folio, cliente_nombre: cliente, cliente_tel: tel,
-      fecha_entrega: fecha, tecnico,
-      reporte_url: reporteUrl,
-      whatsapp_enviado: !!tel,
-      created_at: new Date().toISOString(),
-      ts: new Date().toLocaleString('es-MX')
-    });
-    if (hist.length > 50) hist.pop();
-    localStorage.setItem('barrcan_reportes_historial', JSON.stringify(hist));
-  } catch(e){}
-
-  // Mandar WhatsApp al cliente — con liga al reporte Y link a encuesta
-  if (tel) {
-    const telLimpio    = tel.replace(/\D/g,'');
-    const telConCodigo = telLimpio.startsWith('52') ? telLimpio : '52' + telLimpio;
-    const ligaReporte  = reporteUrl ? `\n\n📄 Su reporte de entrega:\n${reporteUrl}` : '';
-    const encuestaLink = `https://barrcan.github.io/barrcan-app/encuesta_publica.html?folio=${encodeURIComponent(folio)}&cliente=${encodeURIComponent(cliente)}`;
-    const msgCliente   = encodeURIComponent(
-      `✅ *BarrCan · Entrega completada*\n` +
-      `Hola ${cliente}, su instalación ha sido completada el día de hoy.\n\n` +
-      `📋 Folio: ${folio}\n` +
-      `📅 Fecha: ${fecha}\n` +
-      `👷 Técnico: ${tecnico}` +
-      `${ligaReporte}\n\n` +
-      `⭐ *¿Cómo calificaría nuestro servicio?*\n` +
-      `Su opinión es muy importante para nosotros. Solo toma 1 minuto:\n` +
-      `${encuestaLink}\n\n` +
-      `Conserve este mensaje como comprobante de entrega.\n` +
-      `*BarrCan Cancelería* · TEL: 56-15-15-84-15`
-    );
-    // Esperar 2 segundos para que el técnico vea el reporte primero
-    setTimeout(() => {
-      window.open(`https://wa.me/${telConCodigo}?text=${msgCliente}`, '_blank');
-    }, 2000);
-  }
-
-  toast(reporteUrl ? '✅ Reporte guardado · Abriendo WhatsApp…' : '✅ Reporte generado');
-
-  // Abrir encuesta interna después del WhatsApp
-  setTimeout(() => entAbrirEncuesta(cliente, tel, folio), 3500);
+async function entEnviarWAReporte(waUrl) {
+  window.open(waUrl, '_blank');
+  toast('💬 WhatsApp abierto · Adjunta el PDF del reporte');
 }
 
 // ── Historial de reportes de entrega ─────────────────────────
