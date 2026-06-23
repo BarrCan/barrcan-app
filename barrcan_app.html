@@ -1146,9 +1146,9 @@ select.form-select { padding-right: 36px; cursor: pointer; }
           <div class="form-group">
             <label class="form-label">Espesor de Vidrio</label>
             <div class="form-select-wrap">
-              <select class="form-select" id="inp-vidrio">
+              <select class="form-select" id="inp-vidrio" onchange="actualizarPrecioVidrio()">
                 <option value="4|1.00">4 mm – Monolítico ligero</option>
-                <option value="6|1.00" selected>6 mm – Monolítico estándar</option>
+                <option value="6|1.00" selected>6 mm – Claro / Monolítico estándar</option>
                 <option value="6|1.06">6 mm – Tinte Verde (+6%)</option>
                 <option value="6|1.07">6 mm – Filtrasol (+7%)</option>
                 <option value="6|1.09">6 mm – Bronce (+9%)</option>
@@ -1161,6 +1161,38 @@ select.form-select { padding-right: 36px; cursor: pointer; }
                 <option value="12|1.00">12 mm – Estructural</option>
                 <option value="24|1.00">24 mm – Insulado (4+12+4)</option>
               </select>
+            </div>
+          </div>
+
+          <!-- Diseño esmerilado -->
+          <div class="switch-row" id="esmerilado-row" style="margin-bottom:8px;padding:10px 12px;background:rgba(46,109,164,0.05);border-radius:var(--radius-sm)">
+            <div class="switch-info">
+              <div class="switch-label">🌫️ Diseño Esmerilado</div>
+              <div class="switch-desc">Aplicación de película esmerilada · desde $800 base</div>
+            </div>
+            <div class="toggle" id="toggle-esmerilado" onclick="toggleEsmerilado()">
+              <div class="toggle-knob"></div>
+            </div>
+          </div>
+          <div id="esmerilado-detalle" style="display:none;margin-bottom:10px">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label" style="font-size:11px">Tipo de diseño</label>
+                <div class="form-select-wrap">
+                  <select class="form-select" id="esmerilado-tipo" onchange="calcularEsmerilado()">
+                    <option value="total">Esmerilado total</option>
+                    <option value="franja">Franja horizontal</option>
+                    <option value="diseño">Diseño especial / logo</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label" style="font-size:11px">Costo adicional</label>
+                <div class="input-unit">
+                  <input type="number" class="form-input" id="esmerilado-costo" value="800" min="800" step="100" inputmode="numeric" onchange="calcularEsmerilado()">
+                  <span class="input-unit-label">$</span>
+                </div>
+              </div>
             </div>
           </div>
           <div class="form-row">
@@ -2031,104 +2063,269 @@ select.form-select { padding-right: 36px; cursor: pointer; }
           </div>
         </div>
         <div style="padding:8px 16px 4px;font-size:10px;color:var(--gray-400)">Factores por acabado (multiplicador sobre precio base)</div>
-        ${[
-          ['cfg-factor-natural','Natural','1.00'],
-          ['cfg-factor-blanco','Blanco','1.08'],
-          ['cfg-factor-negro','Negro Anodizado','1.12'],
-          ['cfg-factor-color','Anodizado Color','1.15'],
-          ['cfg-factor-madera','Madera / Especial','1.20'],
-          ['cfg-factor-duro','Duro Anodizado','1.25']
-        ].map(([id,label,val])=>`
         <div class="config-item">
-          <span class="config-item-label">${label}</span>
+          <span class="config-item-label">Natural</span>
           <div style="display:flex;align-items:center;gap:4px">
-            <input type="number" class="config-input-inline" id="${id}" value="${val}" step="0.01" min="1" max="2" onchange="guardarConfig();sincronizarAcabados()">
+            <input type="number" class="config-input-inline" id="cfg-factor-natural" value="1.00" step="0.01" min="1" max="2" onchange="guardarConfig();sincronizarAcabados()">
             <span style="font-size:12px;color:var(--gray-400)">×</span>
           </div>
-        </div>`).join('')}
+        </div>
+        <div class="config-item">
+          <span class="config-item-label">Blanco</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-factor-blanco" value="1.08" step="0.01" min="1" max="2" onchange="guardarConfig();sincronizarAcabados()">
+            <span style="font-size:12px;color:var(--gray-400)">×</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label">Negro Anodizado</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-factor-negro" value="1.12" step="0.01" min="1" max="2" onchange="guardarConfig();sincronizarAcabados()">
+            <span style="font-size:12px;color:var(--gray-400)">×</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label">Anodizado Color</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-factor-color" value="1.15" step="0.01" min="1" max="2" onchange="guardarConfig();sincronizarAcabados()">
+            <span style="font-size:12px;color:var(--gray-400)">×</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label">Madera / Especial</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-factor-madera" value="1.20" step="0.01" min="1" max="2" onchange="guardarConfig();sincronizarAcabados()">
+            <span style="font-size:12px;color:var(--gray-400)">×</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label">Duro Anodizado</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-factor-duro" value="1.25" step="0.01" min="1" max="2" onchange="guardarConfig();sincronizarAcabados()">
+            <span style="font-size:12px;color:var(--gray-400)">×</span>
+          </div>
+        </div>
       </div>
 
       <!-- ── PRECIOS DE VIDRIO ── -->
       <div class="config-section">
         <div class="wizard-title" style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--blue);margin-bottom:10px;display:flex;align-items:center;gap:8px">🔲 Vidrio — Precios base ($/m²) <span style="flex:1;height:1px;background:var(--gray-200);display:block"></span></div>
         <div style="padding:6px 16px 8px;font-size:10px;color:var(--gray-400)">Los vidrios especiales aplican % adicional sobre el precio base del mismo espesor</div>
-        ${[
-          ['cfg-vid-4','4 mm – Monolítico ligero','380'],
-          ['cfg-vid-6','6 mm – Monolítico estándar','480'],
-          ['cfg-vid-8','8 mm – Monolítico reforzado','540'],
-          ['cfg-vid-9','9 mm – Base esp. color','580'],
-          ['cfg-vid-10','10 mm – Semi-estructural','620'],
-          ['cfg-vid-12','12 mm – Estructural','720'],
-          ['cfg-vid-24','24 mm – Insulado','950']
-        ].map(([id,label,val])=>`
         <div class="config-item">
-          <span class="config-item-label">${label}</span>
+          <span class="config-item-label">4 mm – Monolítico ligero</span>
           <div style="display:flex;align-items:center;gap:4px">
-            <input type="number" class="config-input-inline" id="${id}" value="${val}" min="100" onchange="guardarConfig();sincronizarVidrios()">
+            <input type="number" class="config-input-inline" id="cfg-vid-4" value="380" min="100" onchange="guardarConfig();sincronizarVidrios()">
             <span style="font-size:12px;color:var(--gray-400)">$/m²</span>
           </div>
-        </div>`).join('')}
-        <div style="padding:8px 16px 4px;font-size:10px;color:var(--gray-400)">Recargos por tipo especial (% sobre base)</div>
-        ${[
-          ['cfg-pct-verde','Tinte Verde','6'],
-          ['cfg-pct-filtrasol','Filtrasol / Reflecta Plata','7'],
-          ['cfg-pct-bronce','Bronce (solo 6mm)','9'],
-          ['cfg-pct-azul','Tintex Azul','11']
-        ].map(([id,label,val])=>`
+        </div>
         <div class="config-item">
-          <span class="config-item-label">${label}</span>
+          <span class="config-item-label">6 mm – Monolítico estándar</span>
           <div style="display:flex;align-items:center;gap:4px">
-            <input type="number" class="config-input-inline" id="${id}" value="${val}" min="0" max="50" onchange="guardarConfig();sincronizarVidrios()">
+            <input type="number" class="config-input-inline" id="cfg-vid-6" value="480" min="100" onchange="guardarConfig();sincronizarVidrios()">
+            <span style="font-size:12px;color:var(--gray-400)">$/m²</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label">8 mm – Monolítico reforzado</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-vid-8" value="540" min="100" onchange="guardarConfig();sincronizarVidrios()">
+            <span style="font-size:12px;color:var(--gray-400)">$/m²</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label">9 mm – Base esp. color</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-vid-9" value="580" min="100" onchange="guardarConfig();sincronizarVidrios()">
+            <span style="font-size:12px;color:var(--gray-400)">$/m²</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label">10 mm – Semi-estructural</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-vid-10" value="620" min="100" onchange="guardarConfig();sincronizarVidrios()">
+            <span style="font-size:12px;color:var(--gray-400)">$/m²</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label">12 mm – Estructural</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-vid-12" value="720" min="100" onchange="guardarConfig();sincronizarVidrios()">
+            <span style="font-size:12px;color:var(--gray-400)">$/m²</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label">24 mm – Insulado</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-vid-24" value="950" min="100" onchange="guardarConfig();sincronizarVidrios()">
+            <span style="font-size:12px;color:var(--gray-400)">$/m²</span>
+          </div>
+        </div>
+        <div style="padding:8px 16px 4px;font-size:10px;color:var(--gray-400)">Recargos por tipo especial (% sobre base)</div>
+        <div class="config-item">
+          <span class="config-item-label">Tinte Verde</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-pct-verde" value="6" min="0" max="50" onchange="guardarConfig();sincronizarVidrios()">
             <span style="font-size:13px;color:var(--blue);font-weight:600">%</span>
           </div>
-        </div>`).join('')}
+        </div>
+        <div class="config-item">
+          <span class="config-item-label">Filtrasol / Reflecta Plata</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-pct-filtrasol" value="7" min="0" max="50" onchange="guardarConfig();sincronizarVidrios()">
+            <span style="font-size:13px;color:var(--blue);font-weight:600">%</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label">Bronce (solo 6mm)</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-pct-bronce" value="9" min="0" max="50" onchange="guardarConfig();sincronizarVidrios()">
+            <span style="font-size:13px;color:var(--blue);font-weight:600">%</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label">Tintex Azul</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-pct-azul" value="11" min="0" max="50" onchange="guardarConfig();sincronizarVidrios()">
+            <span style="font-size:13px;color:var(--blue);font-weight:600">%</span>
+          </div>
+        </div>
       </div>
 
       <!-- ── PELÍCULA / VINILO ── -->
       <div class="config-section">
         <div class="wizard-title" style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--blue);margin-bottom:10px;display:flex;align-items:center;gap:8px">🎞️ Película / Vinilo <span style="flex:1;height:1px;background:var(--gray-200);display:block"></span></div>
-        ${[
-          ['cfg-pel-esm-venta','Esmerilada — Precio venta','350'],
-          ['cfg-pel-esm-costo','Esmerilada — Costo material','150'],
-          ['cfg-pel-fil-venta','Filtrasol — Precio venta','390'],
-          ['cfg-pel-fil-costo','Filtrasol — Costo material','180'],
-          ['cfg-pel-vin-venta','Vinilo — Precio venta','450'],
-          ['cfg-pel-vin-costo','Vinilo — Costo material','0']
-        ].map(([id,label,val])=>`
         <div class="config-item">
-          <span class="config-item-label">${label}</span>
+          <span class="config-item-label">Esmerilada — Precio venta</span>
           <div style="display:flex;align-items:center;gap:4px">
-            <input type="number" class="config-input-inline" id="${id}" value="${val}" min="0" onchange="guardarConfig();sincronizarPelicula()">
+            <input type="number" class="config-input-inline" id="cfg-pel-esm-venta" value="350" min="0" onchange="guardarConfig();sincronizarPelicula()">
             <span style="font-size:12px;color:var(--gray-400)">$/m²</span>
           </div>
-        </div>`).join('')}
+        </div>
+        <div class="config-item">
+          <span class="config-item-label">Esmerilada — Costo material</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-pel-esm-costo" value="150" min="0" onchange="guardarConfig();sincronizarPelicula()">
+            <span style="font-size:12px;color:var(--gray-400)">$/m²</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label">Filtrasol — Precio venta</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-pel-fil-venta" value="390" min="0" onchange="guardarConfig();sincronizarPelicula()">
+            <span style="font-size:12px;color:var(--gray-400)">$/m²</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label">Filtrasol — Costo material</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-pel-fil-costo" value="180" min="0" onchange="guardarConfig();sincronizarPelicula()">
+            <span style="font-size:12px;color:var(--gray-400)">$/m²</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label">Vinilo — Precio venta</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-pel-vin-venta" value="450" min="0" onchange="guardarConfig();sincronizarPelicula()">
+            <span style="font-size:12px;color:var(--gray-400)">$/m²</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label">Vinilo — Costo material</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-pel-vin-costo" value="0" min="0" onchange="guardarConfig();sincronizarPelicula()">
+            <span style="font-size:12px;color:var(--gray-400)">$/m²</span>
+          </div>
+        </div>
       </div>
 
       <!-- ── HERRAJES FRECUENTES ── -->
       <div class="config-section">
         <div class="wizard-title" style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--blue);margin-bottom:10px;display:flex;align-items:center;gap:8px">🔩 Herrajes Frecuentes <span style="flex:1;height:1px;background:var(--gray-200);display:block"></span></div>
         <div style="padding:6px 16px 8px;font-size:10px;color:var(--gray-400)">Precio unitario por pieza o metro lineal</div>
-        ${[
-          ['cfg-h-car-clight','Carretilla C-LIGHT 1.5"','45'],
-          ['cfg-h-car-2000','Carretilla Panorama 2"','65'],
-          ['cfg-h-car-3000','Carretilla Panorama 3"','95'],
-          ['cfg-h-car-hd','Carretilla Pesada HD 3"','160'],
-          ['cfg-h-broche','Broche / Cierre embutido','55'],
-          ['cfg-h-bisagra2','Bisagra 2 Palas','60'],
-          ['cfg-h-bisagra3','Bisagra 3 Palas','90'],
-          ['cfg-h-felpa','Felpa Selladora (ml)','8'],
-          ['cfg-h-empaque','Empaque EPDM (ml)','11'],
-          ['cfg-h-tornillo','Tornillo ensamble (pza)','4'],
-          ['cfg-h-taquete','Taquete Fijación (pza)','6'],
-          ['cfg-h-silicon','Silicón Arquitectónico','85']
-        ].map(([id,label,val])=>`
         <div class="config-item">
-          <span class="config-item-label" style="font-size:12px">${label}</span>
+          <span class="config-item-label" style="font-size:12px">Carretilla C-LIGHT 1.5"</span>
           <div style="display:flex;align-items:center;gap:4px">
-            <input type="number" class="config-input-inline" id="${id}" value="${val}" min="0" step="0.5" onchange="guardarConfig()">
+            <input type="number" class="config-input-inline" id="cfg-h-car-clight" value="45" min="0" step="0.5" onchange="guardarConfig()">
             <span style="font-size:12px;color:var(--gray-400)">$</span>
           </div>
-        </div>`).join('')}
+        </div>
+        <div class="config-item">
+          <span class="config-item-label" style="font-size:12px">Carretilla Panorama 2"</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-h-car-2000" value="65" min="0" step="0.5" onchange="guardarConfig()">
+            <span style="font-size:12px;color:var(--gray-400)">$</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label" style="font-size:12px">Carretilla Panorama 3"</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-h-car-3000" value="95" min="0" step="0.5" onchange="guardarConfig()">
+            <span style="font-size:12px;color:var(--gray-400)">$</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label" style="font-size:12px">Carretilla Pesada HD 3"</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-h-car-hd" value="160" min="0" step="0.5" onchange="guardarConfig()">
+            <span style="font-size:12px;color:var(--gray-400)">$</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label" style="font-size:12px">Broche / Cierre embutido</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-h-broche" value="55" min="0" step="0.5" onchange="guardarConfig()">
+            <span style="font-size:12px;color:var(--gray-400)">$</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label" style="font-size:12px">Bisagra 2 Palas</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-h-bisagra2" value="60" min="0" step="0.5" onchange="guardarConfig()">
+            <span style="font-size:12px;color:var(--gray-400)">$</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label" style="font-size:12px">Bisagra 3 Palas</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-h-bisagra3" value="90" min="0" step="0.5" onchange="guardarConfig()">
+            <span style="font-size:12px;color:var(--gray-400)">$</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label" style="font-size:12px">Felpa Selladora (ml)</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-h-felpa" value="8" min="0" step="0.5" onchange="guardarConfig()">
+            <span style="font-size:12px;color:var(--gray-400)">$</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label" style="font-size:12px">Empaque EPDM (ml)</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-h-empaque" value="11" min="0" step="0.5" onchange="guardarConfig()">
+            <span style="font-size:12px;color:var(--gray-400)">$</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label" style="font-size:12px">Tornillo ensamble (pza)</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-h-tornillo" value="4" min="0" step="0.5" onchange="guardarConfig()">
+            <span style="font-size:12px;color:var(--gray-400)">$</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label" style="font-size:12px">Taquete Fijación (pza)</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-h-taquete" value="6" min="0" step="0.5" onchange="guardarConfig()">
+            <span style="font-size:12px;color:var(--gray-400)">$</span>
+          </div>
+        </div>
+        <div class="config-item">
+          <span class="config-item-label" style="font-size:12px">Silicón Arquitectónico</span>
+          <div style="display:flex;align-items:center;gap:4px">
+            <input type="number" class="config-input-inline" id="cfg-h-silicon" value="85" min="0" step="0.5" onchange="guardarConfig()">
+            <span style="font-size:12px;color:var(--gray-400)">$</span>
+          </div>
+        </div>
         <div style="padding:10px 16px;background:rgba(46,109,164,0.06);border-radius:var(--radius-sm);margin-top:8px;font-size:11px;color:var(--gray-600)">
           💡 Estos precios actualizan el BOM de nuevas cotizaciones. Las cotizaciones guardadas conservan los precios con los que se generaron.
         </div>
@@ -5910,6 +6107,40 @@ function toggleSwitch(id) {
   }
 }
 
+// ── Esmerilado ────────────────────────────────────────────────
+let ESMERILADO_ACTIVO = false;
+
+function toggleEsmerilado() {
+  ESMERILADO_ACTIVO = !ESMERILADO_ACTIVO;
+  const tog = document.getElementById('toggle-esmerilado');
+  const det = document.getElementById('esmerilado-detalle');
+  if (tog) tog.classList.toggle('on', ESMERILADO_ACTIVO);
+  if (det) det.style.display = ESMERILADO_ACTIVO ? 'block' : 'none';
+}
+
+function calcularEsmerilado() {
+  const tipo = document.getElementById('esmerilado-tipo')?.value;
+  const costoEl = document.getElementById('esmerilado-costo');
+  if (!costoEl) return;
+  if (tipo === 'diseño') costoEl.value = 1200;
+  else if (tipo === 'franja') costoEl.value = 900;
+  else costoEl.value = 800;
+}
+
+function costoEsmerilado() {
+  if (!ESMERILADO_ACTIVO) return 0;
+  return parseFloat(document.getElementById('esmerilado-costo')?.value) || 800;
+}
+
+function actualizarPrecioVidrio() {
+  const sel = document.getElementById('inp-vidrio');
+  if (!sel) return;
+  const [esp] = sel.value.split('|');
+  const precio = cfgVal('cfg-vid-' + esp) || 480;
+  const inpPrecio = document.getElementById('inp-precio-vidrio');
+  if (inpPrecio) inpPrecio.value = precio;
+}
+
 function setPiso(n) {
   STATE.pisoActual = n;
   document.querySelectorAll('.piso-btn').forEach(b => {
@@ -6152,6 +6383,7 @@ function calcular() {
   }
 
   const costoVisita = STATE.visitaTecnica ? 1000 : 0;
+  const costoEsm    = costoEsmerilado();
   const costoRealAcumulado = subtotalFabricacion + gif + costoLogistica;
   const precioSinUtilidad = costoRealAcumulado;
   const utilidad = precioSinUtilidad * utilidadPct;
@@ -6164,7 +6396,7 @@ function calcular() {
   // ─── 7. Película / Vinilo (opcional) ───
   const pelData = calcularPelicula(L, H);
   const pelExtra = (pelData && !isNaN(pelData.totalVenta)) ? pelData.totalVenta : 0;
-  const precioFinal = precioBase - descuentoMonto + pelExtra;
+  const precioFinal = precioBase - descuentoMonto + pelExtra + costoEsm;
 
   const resultado = {
     sistema: sistema.nombre,
@@ -6186,6 +6418,7 @@ function calcular() {
     gif,
     costoLogistica,
     costoVisita,
+    costoEsmerilado: costoEsm,
     costoRealAcumulado,
     utilidad,
     precioBase,
@@ -6407,6 +6640,7 @@ function renderVista(r) {
         ${renderFilaCosto('Gastos indirectos (GIF)', r.gif, true)}
         ${renderFilaCosto('Logística de campo', r.costoLogistica)}
         ${r.costoVisita > 0 ? renderFilaCosto('Visita técnica previa', r.costoVisita) : ''}
+        ${r.costoEsmerilado > 0 ? renderFilaCosto('🌫️ Diseño esmerilado', r.costoEsmerilado) : ''}
         ${renderFilaCosto('Utilidad', r.utilidad, false, true)}
         ${r.descuentoMonto > 0 ? `
         <div style="height:1px;background:var(--gray-100)"></div>
@@ -6500,6 +6734,7 @@ function renderVista(r) {
         ${renderFilaCosto('GIF +' + document.getElementById('cfg-gif').value + '%', r.gif)}
         ${renderFilaCosto('Logística', r.costoLogistica)}
         ${r.costoVisita > 0 ? renderFilaCosto('Visita técnica', r.costoVisita) : ''}
+        ${r.costoEsmerilado > 0 ? renderFilaCosto('🌫️ Esmerilado', r.costoEsmerilado) : ''}
         <div class=costo-row subtotal><span>COSTO REAL ACUMULADO</span><span class=costo-monto>$${fmt(r.costoRealAcumulado)}</span></div>
         ${renderFilaCosto('Utilidad +' + document.getElementById('cfg-utilidad').value + '%', r.utilidad, false, true)}
         ${r.pelData ? `
