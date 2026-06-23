@@ -11117,29 +11117,58 @@ async function pagoGuardar() {
 // ── Recibo de anticipo ────────────────────────────────────────
 async function pagoGenerarRecibo(ordenId, monto, fecha, formaPago) {
   const orden = ORDENES_CACHE.find(x => x.id === ordenId);
-  if (!orden) return;
 
-  const folio    = orden.folio_cotizacion || ordenId.slice(0,8).toUpperCase();
-  const cliente  = orden.cliente_nombre || '—';
-  const tel      = orden.cliente_tel || '';
-  const dir      = orden.dir_obra || '—';
-  const total    = (orden.saldo_pendiente || 0) + monto;
-  const saldo    = orden.saldo_pendiente || 0;
+  // Datos — funciona con o sin OT
+  const folio    = orden?.folio_cotizacion
+    || document.getElementById('pago-folio-sufijo')?.value.trim().replace(/^CACN-/i,'')
+    || ordenId?.slice(0,8).toUpperCase() || '—';
+  const folioFull = folio.startsWith('CACN-') ? folio : `CACN-${folio}`;
+  const cliente  = orden?.cliente_nombre
+    || document.getElementById('pago-cliente-nombre')?.value.trim() || '—';
+  const tel      = orden?.cliente_tel || '';
+  const dir      = orden?.dir_obra || '—';
+  const total    = (orden?.saldo_pendiente || 0) + monto;
+  const saldo    = orden?.saldo_pendiente || 0;
   const fechaStr = fecha || new Date().toISOString().split('T')[0];
   const folioRec = `REC-${Date.now().toString().slice(-6)}`;
-  const formaStr = formaPago === 'transferencia' ? 'Transferencia bancaria' : 'Efectivo';
+  const formaStr = formaPago === 'tarjeta' ? 'Tarjeta de crédito/débito'
+    : formaPago === 'transferencia' ? 'Transferencia bancaria' : 'Efectivo';
+
+  // ── Calcular fecha tentativa de instalación (5-7 días hábiles) ──
+  function diasHabiles(desde, dias) {
+    const d = new Date(desde + 'T12:00:00');
+    let agregados = 0;
+    while (agregados < dias) {
+      d.setDate(d.getDate() + 1);
+      const dow = d.getDay();
+      if (dow !== 0 && dow !== 6) agregados++;
+    }
+    return d.toISOString().split('T')[0];
+  }
+  function fmtFecha(iso) {
+    const [y,m,d] = iso.split('-');
+    const meses = ['','enero','febrero','marzo','abril','mayo','junio',
+      'julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    return `${parseInt(d)} de ${meses[parseInt(m)]} de ${y}`;
+  }
+  const fechaBase   = fechaStr;
+  const fechaMin    = diasHabiles(fechaBase, 5);
+  const fechaMax    = diasHabiles(fechaBase, 7);
+  const rangoFechas = `${fmtFecha(fechaMin)} al ${fmtFecha(fechaMax)}`;
 
   const reciboHTML = `<!DOCTYPE html><html lang=es><head><meta charset=UTF-8>
   <meta name=viewport content=width=device-width>
   <style>
-    body{font-family:Arial,sans-serif;color:#222;background:white;font-size:10pt;margin:0;padding:0}
-    .page{max-width:680px;margin:0 auto;padding:24px;padding-bottom:80px}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;color:#222;background:white;font-size:10pt}
+    .page{max-width:680px;margin:0 auto;padding:24px;padding-bottom:90px}
     .header{text-align:center;border-bottom:3px solid #1B3A5C;padding-bottom:14px;margin-bottom:16px}
     .logo-text{font-size:22pt;font-weight:900;color:#1B3A5C;letter-spacing:2px}
     .logo-sub{font-size:8pt;color:#C8923A;letter-spacing:3px;text-transform:uppercase}
     .recibo-titulo{font-size:14pt;font-weight:700;color:#1B3A5C;margin:10px 0 4px;
       border-top:1px dashed #aaa;border-bottom:1px dashed #aaa;padding:6px 0;text-align:center}
-    .folio{font-size:10pt;color:#C8923A;font-weight:700;text-align:center;margin-bottom:14px}
+    .folio{font-size:10pt;color:#C8923A;font-weight:700;text-align:center;margin-bottom:14px;
+      font-family:monospace}
     table{width:100%;border-collapse:collapse;margin-bottom:12px}
     td{padding:6px 10px;border:1px solid #ddd;font-size:9.5pt}
     .label{font-weight:700;background:#f5f7fa;width:35%}
@@ -11147,9 +11176,24 @@ async function pagoGenerarRecibo(ordenId, monto, fecha, formaPago) {
       display:flex;justify-content:space-between;align-items:center;margin:14px 0}
     .monto-lbl{font-size:10pt;opacity:0.8}
     .monto-val{font-size:18pt;font-weight:800;color:#F1C40F}
-    .barra-print{position:fixed;bottom:0;left:0;right:0;background:#1B3A5C;padding:12px 20px;display:flex;gap:10px;justify-content:center;z-index:999}
-    .btn-print{padding:12px 28px;background:#C8923A;color:white;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif}
-    .btn-cerrar{padding:12px 20px;background:rgba(255,255,255,0.15);color:white;border:none;border-radius:8px;font-size:13px;cursor:pointer;font-family:Arial,sans-serif}
+    .saldo-box{background:#FEF9E7;border:1.5px solid #F39C12;border-radius:6px;
+      padding:10px 18px;display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+    .fecha-box{background:#EAF4FF;border:1.5px solid #2E6DA4;border-radius:8px;
+      padding:14px 18px;margin:14px 0;text-align:center}
+    .fecha-titulo{font-size:9pt;font-weight:700;color:#2E6DA4;text-transform:uppercase;
+      letter-spacing:1px;margin-bottom:6px}
+    .fecha-rango{font-size:13pt;font-weight:800;color:#1B3A5C;line-height:1.4}
+    .fecha-nota{font-size:8.5pt;color:#555;margin-top:6px;font-style:italic}
+    .sello{border:2px dashed #1B3A5C;border-radius:8px;padding:10px;text-align:center;
+      margin-top:16px;color:#1B3A5C;font-size:9pt}
+    .footer{margin-top:16px;padding-top:10px;border-top:1px solid #ddd;
+      font-size:8pt;color:#888;text-align:center;line-height:1.8}
+    .barra-print{position:fixed;bottom:0;left:0;right:0;background:#1B3A5C;padding:10px 20px;
+      display:flex;gap:10px;justify-content:center;z-index:999}
+    .btn-print{padding:11px 24px;background:#C8923A;color:white;border:none;border-radius:8px;
+      font-size:14px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif}
+    .btn-cerrar{padding:11px 18px;background:rgba(255,255,255,0.15);color:white;border:none;
+      border-radius:8px;font-size:13px;cursor:pointer;font-family:Arial,sans-serif}
     @media print{.barra-print{display:none!important}.page{padding:16px}}
   </style></head><body>
   <div class=barra-print>
@@ -11157,66 +11201,69 @@ async function pagoGenerarRecibo(ordenId, monto, fecha, formaPago) {
     <button class=btn-cerrar onclick="window.close()">✕ Cerrar</button>
   </div>
   <div class=page>
-    .saldo-box{background:#FEF9E7;border:1.5px solid #F39C12;border-radius:6px;
-      padding:10px 18px;display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
-    .footer{margin-top:20px;padding-top:12px;border-top:1px solid #ddd;
-      font-size:8pt;color:#888;text-align:center;line-height:1.8}
-    .sello{border:2px dashed #1B3A5C;border-radius:8px;padding:10px;text-align:center;
-      margin-top:16px;color:#1B3A5C;font-size:9pt}
-  </style></head><body><div class=page>
-  <div class=header>
-    <div class=logo-text>BarrCan</div>
-    <div class=logo-sub>Cancelería · Aluminio · Vidrio</div>
-    <div style=font-size:8pt;color:#666;margin-top:4px>
-      PRIV. SANTA CRUZ No.23 COL. SAN SIMÓN TICUMAC CP. 03660<br>
-      BENITO JUÁREZ, CDMX · TEL: 56-15-15-84-15 · www.BarrCan.com.mx
+    <div class=header>
+      <div class=logo-text>BarrCan</div>
+      <div class=logo-sub>Cancelería · Aluminio · Vidrio</div>
+      <div style=font-size:8pt;color:#666;margin-top:4px>
+        PRIV. SANTA CRUZ No.23 COL. SAN SIMÓN TICUMAC CP. 03660<br>
+        BENITO JUÁREZ, CDMX · TEL: 56-15-15-84-15 · www.BarrCan.com.mx
+      </div>
     </div>
-  </div>
 
-  <div class=recibo-titulo>RECIBO DE ANTICIPO</div>
-  <div class=folio>Folio: ${folioRec} · Pedido: ${folio}</div>
+    <div class=recibo-titulo>RECIBO DE ANTICIPO</div>
+    <div class=folio>Folio: ${folioRec} &nbsp;·&nbsp; Pedido: ${folioFull}</div>
 
-  <table>
-    <tr><td class=label>Cliente</td><td>${cliente}</td></tr>
-    <tr><td class=label>Teléfono</td><td>${tel || '—'}</td></tr>
-    <tr><td class=label>Dirección obra</td><td>${dir}</td></tr>
-    <tr><td class=label>Descripción</td><td>${orden.descripcion_trabajo || '—'}</td></tr>
-    <tr><td class=label>Fecha de pago</td><td>${fechaStr}</td></tr>
-    <tr><td class=label>Forma de pago</td><td>${formaStr}</td></tr>
-  </table>
+    <table>
+      <tr><td class=label>Cliente</td><td><strong>${cliente}</strong></td></tr>
+      <tr><td class=label>Teléfono</td><td>${tel || '—'}</td></tr>
+      <tr><td class=label>Dirección obra</td><td>${dir}</td></tr>
+      <tr><td class=label>Descripción</td><td>${orden?.descripcion_trabajo || '—'}</td></tr>
+      <tr><td class=label>Fecha de pago</td><td>${fmtFecha(fechaStr)}</td></tr>
+      <tr><td class=label>Forma de pago</td><td>${formaStr}</td></tr>
+    </table>
 
-  <div class=monto-box>
-    <div>
-      <div class=monto-lbl>Anticipo recibido</div>
-      <div class=monto-val>$${fmt(monto)} MXN</div>
+    <div class=monto-box>
+      <div>
+        <div class=monto-lbl>Anticipo recibido</div>
+        <div class=monto-val>$${fmt(monto)} MXN</div>
+      </div>
+      <div style=font-size:28pt>✅</div>
     </div>
-    <div style=font-size:28pt>✅</div>
-  </div>
 
-  <div class=saldo-box>
-    <div style=font-size:9.5pt>
-      <div><strong>Total del proyecto:</strong> $${fmt(total)} MXN</div>
-      <div>Anticipo (este recibo): $${fmt(monto)} MXN</div>
+    ${total > 0 ? `<div class=saldo-box>
+      <div style=font-size:9.5pt>
+        <div><strong>Total del proyecto:</strong> $${fmt(total)} MXN</div>
+        <div>Anticipo (este recibo): $${fmt(monto)} MXN</div>
+      </div>
+      <div style=text-align:right>
+        <div style=font-size:8.5pt;color:#E67E22;font-weight:700>Saldo pendiente</div>
+        <div style=font-size:14pt;font-weight:800;color:#E67E22>$${fmt(saldo)} MXN</div>
+      </div>
+    </div>` : ''}
+
+    <!-- Fecha tentativa de instalación -->
+    <div class=fecha-box>
+      <div class=fecha-titulo>📅 Fecha tentativa de instalación</div>
+      <div class=fecha-rango>${rangoFechas}</div>
+      <div class=fecha-nota>
+        Plazo estimado de 5 a 7 días hábiles a partir de la recepción del anticipo.<br>
+        En esos días nos comunicaremos para confirmar fecha y hora exactas.
+      </div>
     </div>
-    <div style=text-align:right>
-      <div style=font-size:8.5pt;color:#E67E22;font-weight:700>Saldo pendiente</div>
-      <div style=font-size:14pt;font-weight:800;color:#E67E22>$${fmt(saldo)} MXN</div>
+
+    <div class=sello>
+      ✅ Pago recibido conforme · ${fmtFecha(fechaStr)}<br>
+      <strong>BarrCan Cancelería</strong> · TEL: 56-15-15-84-15
     </div>
-  </div>
 
-  <div class=sello>
-    ✅ Pago recibido conforme · ${fechaStr}<br>
-    <strong>BarrCan Cancelería</strong> · TEL: 56-15-15-84-15
-  </div>
-
-  <div class=footer>
-    Este recibo es comprobante de anticipo del trabajo descrito.<br>
-    El saldo restante deberá cubrirse conforme a lo acordado.<br>
-    ${folioRec} · BarrCan Cancelería · ${fechaStr}
-  </div>
+    <div class=footer>
+      Este recibo es comprobante de anticipo del trabajo descrito.<br>
+      El saldo restante deberá cubrirse conforme a lo acordado en el presupuesto-contrato.<br>
+      ${folioRec} · BarrCan Cancelería · ${fmtFecha(fechaStr)}
+    </div>
   </div></body></html>`;
 
-  // Subir recibo a Supabase Storage
+  // Subir a Supabase Storage
   let reciboUrl = null;
   try {
     const nombreArchivo = `recibos/${folioRec}.html`;
@@ -11230,41 +11277,32 @@ async function pagoGenerarRecibo(ordenId, monto, fecha, formaPago) {
     }
   } catch(e) { console.warn('Error subiendo recibo:', e.message); }
 
-  // Abrir recibo
-  if (reciboUrl) {
-    window.open(reciboUrl, '_blank');
-  } else {
-    const win = window.open('', '_blank');
-    if (win) {
-      win.document.write(reciboHTML);
-      win.document.close();
-    } else {
-      toast('⚠️ Permite ventanas emergentes para ver el recibo');
-    }
-  }
+  // Abrir recibo con document.write
+  const win = window.open('', '_blank');
+  if (win) { win.document.write(reciboHTML); win.document.close(); }
+  else { toast('⚠️ Permite ventanas emergentes'); }
 
-  // Mandar recibo por WhatsApp al cliente
+  // WhatsApp al cliente con rango de fechas
   if (tel) {
-    const telLimpio    = tel.replace(/\D/g,'');
-    const telConCodigo = telLimpio.startsWith('52') ? telLimpio : '52' + telLimpio;
-    const ligaRecibo   = reciboUrl ? `\n\n📄 Su recibo:\n${reciboUrl}` : '';
+    const telLimpio = tel.replace(/\D/g,'');
+    const telCC = telLimpio.startsWith('52') ? telLimpio : '52'+telLimpio;
     const msg = encodeURIComponent(
       `🧾 *BarrCan · Recibo de anticipo*\n` +
       `Hola ${cliente}, confirmamos haber recibido su anticipo.\n\n` +
       `💰 Monto: $${fmt(monto)} MXN\n` +
-      `📋 Pedido: ${folio}\n` +
-      `📅 Fecha: ${fechaStr}\n` +
-      `💳 Forma: ${formaStr}\n` +
-      `⏳ Saldo pendiente: $${fmt(saldo)} MXN` +
-      `${ligaRecibo}\n\n` +
+      `📋 Pedido: ${folioFull}\n` +
+      `📅 Fecha de pago: ${fmtFecha(fechaStr)}\n` +
+      `💳 Forma: ${formaStr}\n\n` +
+      `🔨 *Fecha tentativa de instalación:*\n` +
+      `Del ${rangoFechas}\n` +
+      `En esos días nos comunicaremos para confirmar fecha y hora exactas.\n\n` +
+      `*(Le compartimos el recibo en PDF por este medio)*\n` +
       `*BarrCan Cancelería* · TEL: 56-15-15-84-15`
     );
-    setTimeout(() => {
-      window.open(`https://wa.me/${telConCodigo}?text=${msg}`, '_blank');
-    }, 1000);
+    setTimeout(() => window.open(`https://wa.me/${telCC}?text=${msg}`, '_blank'), 1200);
   }
 
-  toast(reciboUrl ? '🧾 Recibo generado · Enviado por WhatsApp' : '🧾 Recibo generado');
+  toast('🧾 Recibo generado · Imprímelo y envíalo por WhatsApp');
 }
 
 async function pagoCargarLista(ordenId) {
