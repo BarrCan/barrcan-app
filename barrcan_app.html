@@ -7600,6 +7600,98 @@ function regenerarFolio() {
   document.getElementById('folio-preview').textContent = buildFolio(region, cli);
 }
 
+// ── Buscador cliente en presupuestos atrasados ───────────────
+function presBuscarCliente(q) {
+  const res = document.getElementById('pres-cli-resultados');
+  if (!q || q.length < 2) { res.style.display = 'none'; return; }
+  const term = q.toLowerCase().replace(/\s+/g,'');
+  const matches = (cliListaCache || []).filter(c =>
+    (c.nombre||'').toLowerCase().replace(/\s+/g,'').includes(term) ||
+    (c.telefono||'').replace(/\D/g,'').includes(term.replace(/\D/g,'')) ||
+    (c.num_cliente||'').toLowerCase().includes(term)
+  ).slice(0, 6);
+  if (!matches.length) {
+    res.innerHTML = `<div style="padding:10px 14px;font-size:12px;color:var(--gray-400)">Sin resultados</div>`;
+    res.style.display = 'block'; return;
+  }
+  res.innerHTML = matches.map(c => `
+    <div onclick="presSeleccionarCliente('${c.id}')"
+      style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--gray-100);
+             display:flex;justify-content:space-between;align-items:center;background:white"
+      onmouseover="this.style.background='var(--off-white)'"
+      onmouseout="this.style.background='white'">
+      <div>
+        <div style="font-size:13px;font-weight:700;color:var(--navy)">${c.nombre||'—'}</div>
+        <div style="font-size:11px;color:var(--gray-400)">${c.telefono||''}</div>
+      </div>
+      <div style="font-size:11px;color:var(--blue);font-weight:700;font-family:'DM Mono',monospace">${c.num_cliente||''}</div>
+    </div>`).join('');
+  res.style.display = 'block';
+}
+
+function presSeleccionarCliente(id) {
+  const c = (cliListaCache||[]).find(x=>x.id===id);
+  if (!c) return;
+  document.getElementById('pres-cliente').value = c.nombre    || '';
+  document.getElementById('pres-tel').value     = c.telefono  || '';
+  document.getElementById('pres-dir').value     = c.direccion || '';
+  if (c.num_cliente) {
+    const sfx = document.getElementById('pres-folio');
+    if (sfx && !sfx.value) sfx.placeholder = `108A-260623-${c.num_cliente}`;
+  }
+  document.getElementById('pres-buscar-cli').value = '';
+  document.getElementById('pres-cli-resultados').style.display = 'none';
+  toast(`✅ ${c.nombre}`);
+}
+
+function presAutocompletarFolio(val) {
+  const inp = document.getElementById('pres-folio');
+  if (val.toUpperCase().startsWith('CACN-')) inp.value = val.slice(5);
+}
+
+// ── Buscador cliente en pagos ─────────────────────────────────
+function pagoBuscarCliente(q) {
+  const res = document.getElementById('pago-cli-resultados');
+  if (!q || q.length < 2) { res.style.display = 'none'; return; }
+  const term = q.toLowerCase().replace(/\s+/g,'');
+  const matches = (cliListaCache || []).filter(c =>
+    (c.nombre||'').toLowerCase().replace(/\s+/g,'').includes(term) ||
+    (c.telefono||'').replace(/\D/g,'').includes(term.replace(/\D/g,'')) ||
+    (c.num_cliente||'').toLowerCase().includes(term)
+  ).slice(0, 6);
+  if (!matches.length) {
+    res.innerHTML = `<div style="padding:10px 14px;font-size:12px;color:var(--gray-400)">Sin resultados</div>`;
+    res.style.display = 'block'; return;
+  }
+  res.innerHTML = matches.map(c => `
+    <div onclick="pagoSeleccionarCliente('${c.id}')"
+      style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--gray-100);
+             display:flex;justify-content:space-between;align-items:center;background:white"
+      onmouseover="this.style.background='var(--off-white)'"
+      onmouseout="this.style.background='white'">
+      <div>
+        <div style="font-size:13px;font-weight:700;color:var(--navy)">${c.nombre||'—'}</div>
+        <div style="font-size:11px;color:var(--gray-400)">${c.telefono||''}</div>
+      </div>
+      <div style="font-size:11px;color:var(--blue);font-weight:700;font-family:'DM Mono',monospace">${c.num_cliente||''}</div>
+    </div>`).join('');
+  res.style.display = 'block';
+}
+
+function pagoSeleccionarCliente(id) {
+  const c = (cliListaCache||[]).find(x=>x.id===id);
+  if (!c) return;
+  const nombreEl = document.getElementById('pago-cliente-nombre');
+  if (nombreEl) nombreEl.value = c.nombre || '';
+  const folioEl = document.getElementById('pago-folio-sufijo');
+  if (folioEl && !folioEl.value && c.num_cliente) {
+    folioEl.placeholder = `108A-260623-${c.num_cliente}`;
+  }
+  document.getElementById('pago-buscar-cli').value = '';
+  document.getElementById('pago-cli-resultados').style.display = 'none';
+  toast(`✅ ${c.nombre}`);
+}
+
 function abrirModalContrato() {
   if (!STATE.ultimoResultado && !STATE.presupuestoGlobal) {
     toast('⚠️ Primero genera una cotización');
@@ -10889,19 +10981,47 @@ function pagoAbrir(ordenId) {
   PAGO_ORDEN_ID    = ordenId;
   PAGO_FORMA_SEL   = 'efectivo';
   PAGO_COMPROBANTE = null;
-  document.getElementById('pago-monto').value  = '';
-  document.getElementById('pago-notas').value  = '';
-  document.getElementById('pago-fecha').value  = new Date().toISOString().split('T')[0];
+  document.getElementById('pago-monto').value   = '';
+  document.getElementById('pago-notas').value   = '';
+  document.getElementById('pago-fecha').value   = new Date().toISOString().split('T')[0];
   document.getElementById('pago-concepto').value = 'anticipo';
   document.getElementById('pago-comprobante-preview').innerHTML = '';
   document.getElementById('pago-comprobante-group').style.display = 'none';
   document.getElementById('pago-error').style.display = 'none';
+  // Limpiar campos de referencia
+  const buscar = document.getElementById('pago-buscar-cli');
+  if (buscar) buscar.value = '';
+  const res = document.getElementById('pago-cli-resultados');
+  if (res) { res.style.display = 'none'; res.innerHTML = ''; }
+  const folioEl = document.getElementById('pago-folio-sufijo');
+  if (folioEl) folioEl.value = '';
+  const nombreEl = document.getElementById('pago-cliente-nombre');
+  if (nombreEl) nombreEl.value = '';
+  // Si viene de una OT, prellenar datos
+  if (ordenId) {
+    const o = ORDENES_CACHE.find(x => x.id === ordenId);
+    if (o) {
+      if (folioEl) folioEl.value = (o.folio_cotizacion||'').replace(/^CACN-/i,'');
+      if (nombreEl) nombreEl.value = o.cliente_nombre || '';
+      // Ocultar sección de referencia si ya tiene OT
+      const refSec = document.getElementById('pago-ref-section');
+      if (refSec) refSec.style.display = 'none';
+    }
+  } else {
+    const refSec = document.getElementById('pago-ref-section');
+    if (refSec) refSec.style.display = 'block';
+  }
   document.querySelectorAll('.pago-forma-btn').forEach(b => {
     const activo = b.dataset.forma === 'efectivo';
     b.style.borderColor = activo ? 'var(--blue)' : 'var(--gray-200)';
     b.style.background  = activo ? 'rgba(46,109,164,0.08)' : 'none';
     b.style.color       = activo ? 'var(--blue)' : 'var(--gray-400)';
   });
+  // Cargar cache de clientes si está vacío
+  if (!cliListaCache.length) {
+    const cache = clientesCargarCache();
+    if (cache.length) cliListaCache = cache;
+  }
   document.getElementById('pago-modal-overlay').style.display = 'block';
   document.getElementById('pago-modal').style.display = 'block';
 }
@@ -10943,17 +11063,25 @@ function pagoCargarComprobante(input) {
 }
 
 async function pagoGuardar() {
-  const monto   = parseFloat(document.getElementById('pago-monto').value) || 0;
-  const fecha   = document.getElementById('pago-fecha').value;
-  const concepto= document.getElementById('pago-concepto').value;
-  const notas   = document.getElementById('pago-notas').value.trim();
-  const errEl   = document.getElementById('pago-error');
+  const monto    = parseFloat(document.getElementById('pago-monto').value) || 0;
+  const fecha    = document.getElementById('pago-fecha').value;
+  const concepto = document.getElementById('pago-concepto').value;
+  const notas    = document.getElementById('pago-notas').value.trim();
+  const errEl    = document.getElementById('pago-error');
   if (!monto || monto <= 0) { errEl.textContent='⚠️ Ingresa el monto recibido'; errEl.style.display='block'; return; }
   if (!fecha) { errEl.textContent='⚠️ La fecha es obligatoria'; errEl.style.display='block'; return; }
   errEl.style.display = 'none';
 
+  // Folio y cliente desde campos de referencia
+  const folioSuf   = document.getElementById('pago-folio-sufijo')?.value.trim() || '';
+  const folioFinal = folioSuf ? `CACN-${folioSuf}` : null;
+  const clienteRef = document.getElementById('pago-cliente-nombre')?.value.trim() || null;
+
   const payload = {
-    orden_id: PAGO_ORDEN_ID, monto, fecha_pago: fecha,
+    orden_id: PAGO_ORDEN_ID || null,
+    folio_referencia: folioFinal,
+    cliente_nombre_ref: clienteRef,
+    monto, fecha_pago: fecha,
     forma_pago: PAGO_FORMA_SEL, concepto, notas,
     registrado_por: USUARIO_ACTIVO.id,
     comprobante_img: PAGO_COMPROBANTE || null
@@ -12543,6 +12671,34 @@ function visitasGuardadasAbrir() {
       </div>
     </div>
 
+    <!-- Referencia presupuesto (para pagos sin OT) -->
+    <div id="pago-ref-section" style="background:var(--off-white);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--blue);margin-bottom:10px">Referencia del presupuesto</div>
+      <div class="form-group">
+        <label class="form-label">Buscar cliente</label>
+        <input type="text" class="form-input" id="pago-buscar-cli"
+          placeholder="Nombre, teléfono o número..."
+          oninput="pagoBuscarCliente(this.value)" autocomplete="off">
+        <div id="pago-cli-resultados" style="display:none;background:var(--white);
+          border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);margin-top:4px;
+          max-height:160px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1)"></div>
+      </div>
+      <div class="form-group" style="margin-bottom:6px">
+        <label class="form-label">Folio del presupuesto</label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <div style="background:white;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);
+            padding:10px;font-size:12px;font-weight:700;color:var(--navy);white-space:nowrap;
+            font-family:'DM Mono',monospace">CACN-</div>
+          <input type="text" id="pago-folio-sufijo" class="form-input"
+            placeholder="094B-260610-32J" style="flex:1;font-family:'DM Mono',monospace;font-size:12px">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Cliente</label>
+        <input type="text" id="pago-cliente-nombre" class="form-input" placeholder="Nombre del cliente">
+      </div>
+    </div>
+
     <div class="form-group">
       <label class="form-label">Forma de pago *</label>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
@@ -12920,9 +13076,28 @@ function visitasGuardadasAbrir() {
     </div>
 
     <div class="form-group">
+      <label class="form-label">Buscar cliente registrado</label>
+      <input type="text" class="form-input" id="pres-buscar-cli"
+        placeholder="Nombre, teléfono o número de cliente..."
+        oninput="presBuscarCliente(this.value)" autocomplete="off">
+      <div id="pres-cli-resultados" style="display:none;background:var(--white);
+        border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);margin-top:4px;
+        max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1)"></div>
+    </div>
+
+    <div class="form-group">
       <label class="form-label">Folio del presupuesto *</label>
-      <input type="text" id="pres-folio" class="form-input" placeholder="Ej: CACN-094B-260610-32J">
-      <div style="font-size:10px;color:var(--gray-400);margin-top:3px">Tal como aparece en el documento original</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <div style="background:var(--off-white);border:1.5px solid var(--gray-200);
+          border-radius:var(--radius-sm);padding:10px 12px;font-size:13px;
+          font-weight:700;color:var(--navy);white-space:nowrap;font-family:'DM Mono',monospace">
+          CACN-
+        </div>
+        <input type="text" id="pres-folio" class="form-input"
+          placeholder="094B-260610-32J" style="flex:1;font-family:'DM Mono',monospace"
+          oninput="presAutocompletarFolio(this.value)">
+      </div>
+      <div style="font-size:10px;color:var(--gray-400);margin-top:3px">Ingresa solo la parte después de CACN-</div>
     </div>
 
     <div class="form-group">
