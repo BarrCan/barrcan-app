@@ -1153,10 +1153,13 @@ select.form-select { padding-right: 36px; cursor: pointer; }
                 <option value="6|1.07">6 mm – Filtrasol (+7%)</option>
                 <option value="6|1.09">6 mm – Bronce (+9%)</option>
                 <option value="6|1.11">6 mm – Tintex Azul (+11%)</option>
+                <option value="6t|1.00">6 mm – Cristal Templado</option>
                 <option value="8|1.00">8 mm – Monolítico reforzado</option>
+                <option value="9|1.00">9 mm – Claro</option>
                 <option value="9|1.06">9 mm – Tinte Verde (+6%)</option>
                 <option value="9|1.07">9 mm – Filtrasol (+7%)</option>
                 <option value="9|1.11">9 mm – Tintex Azul (+11%)</option>
+                <option value="9t|1.00">9 mm – Cristal Templado</option>
                 <option value="10|1.00">10 mm – Semi-estructural</option>
                 <option value="12|1.00">12 mm – Estructural</option>
                 <option value="24|1.00">24 mm – Insulado (4+12+4)</option>
@@ -1180,9 +1183,9 @@ select.form-select { padding-right: 36px; cursor: pointer; }
                 <label class="form-label" style="font-size:11px">Tipo de diseño</label>
                 <div class="form-select-wrap">
                   <select class="form-select" id="esmerilado-tipo" onchange="calcularEsmerilado()">
-                    <option value="total">Esmerilado total</option>
-                    <option value="franja">Franja horizontal</option>
-                    <option value="diseño">Diseño especial / logo</option>
+                    <option value="rayas">Diseño rayas / franjas — $800</option>
+                    <option value="total">Esmerilado total — $900</option>
+                    <option value="diseño">Diseño especial / logo — $1,500</option>
                   </select>
                 </div>
               </div>
@@ -4773,7 +4776,6 @@ function sincronizarAcabados() {
 
 // ── Sincronizar precios de vidrio con dropdown ──
 function sincronizarVidrios() {
-  // Mapa espesor → id del campo config
   const mapaBase = {
     '4': 'cfg-vid-4', '6': 'cfg-vid-6', '8': 'cfg-vid-8',
     '9': 'cfg-vid-9', '10': 'cfg-vid-10', '12': 'cfg-vid-12', '24': 'cfg-vid-24'
@@ -4788,17 +4790,15 @@ function sincronizarVidrios() {
     Array.from(sel.options).forEach(opt => {
       const [esp, factor] = opt.value.split('|');
       const baseId = mapaBase[esp];
+      if (!baseId) return;
+      const basePrice = parseFloat(document.getElementById(baseId)?.value || 0);
+      if (!basePrice) return;
       const pctId  = mapaPct[factor];
-      if (baseId) {
-        const basePrice = parseFloat(document.getElementById(baseId)?.value || 0);
-        const pct       = pctId ? parseFloat(document.getElementById(pctId)?.value || 0) / 100 : 0;
-        const precioFinal = (basePrice * (1 + pct)).toFixed(0);
-        // Actualizar texto del option sin cambiar el value
-        const partes = opt.text.split('→')[0].trim();
-        if (pct > 0) {
-          opt.text = `${partes.split('(')[0].trim()} (+${(pct*100).toFixed(0)}%) → $${precioFinal}/m²`;
-        }
-      }
+      const pct    = pctId ? parseFloat(document.getElementById(pctId)?.value || 0) / 100 : 0;
+      const precioFinal = Math.round(basePrice * (1 + pct));
+      // Limpiar el texto base (quitar precio anterior si lo hay)
+      const textoBase = opt.text.split('→')[0].split('$')[0].trim();
+      opt.text = `${textoBase} → $${precioFinal}/m²`;
     });
   });
 }
@@ -6122,8 +6122,9 @@ function calcularEsmerilado() {
   const tipo = document.getElementById('esmerilado-tipo')?.value;
   const costoEl = document.getElementById('esmerilado-costo');
   if (!costoEl) return;
-  if (tipo === 'diseño') costoEl.value = 1200;
-  else if (tipo === 'franja') costoEl.value = 900;
+  if (tipo === 'rayas') costoEl.value = 800;
+  else if (tipo === 'total') costoEl.value = 900;
+  else if (tipo === 'diseño') costoEl.value = 1500;
   else costoEl.value = 800;
 }
 
@@ -6136,7 +6137,15 @@ function actualizarPrecioVidrio() {
   const sel = document.getElementById('inp-vidrio');
   if (!sel) return;
   const [esp] = sel.value.split('|');
-  const precio = cfgVal('cfg-vid-' + esp) || 480;
+  // 6t y 9t son vidrio templado — usan precio de 6mm y 9mm con recargo 15%
+  let precio;
+  if (esp === '6t') {
+    precio = Math.round((cfgVal('cfg-vid-6') || 480) * 1.35);
+  } else if (esp === '9t') {
+    precio = Math.round((cfgVal('cfg-vid-9') || 580) * 1.35);
+  } else {
+    precio = cfgVal('cfg-vid-' + esp) || 480;
+  }
   const inpPrecio = document.getElementById('inp-precio-vidrio');
   if (inpPrecio) inpPrecio.value = precio;
 }
@@ -8274,7 +8283,7 @@ async function entGenerarReporte() {
     const telLimpio    = tel.replace(/\D/g,'');
     const telConCodigo = telLimpio.startsWith('52') ? telLimpio : '52' + telLimpio;
     const ligaReporte  = reporteUrl ? `\n\n📄 Su reporte de entrega:\n${reporteUrl}` : '';
-    const encuestaLink = `https://barrcan.github.io/barrcan-app/garantia_publica.html`;
+    const encuestaLink = `https://barrcan.github.io/barrcan-app/encuesta_publica.html?folio=${encodeURIComponent(folio)}&cliente=${encodeURIComponent(cliente)}`;
     const msgCliente   = encodeURIComponent(
       `✅ *BarrCan · Entrega completada*\n` +
       `Hola ${cliente}, su instalación ha sido completada el día de hoy.\n\n` +

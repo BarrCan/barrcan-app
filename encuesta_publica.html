@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>BarrCan · Encuesta de Satisfacción</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --navy: #1B3A5C;
+      --gold: #C8923A;
+      --blue: #2E6DA4;
+      --white: #FFFFFF;
+      --off-white: #F7F8FA;
+      --gray-200: #E8ECF0;
+      --gray-400: #9BAAB8;
+      --gray-600: #5A6B7A;
+      --green: #27AE60;
+      --red: #C0392B;
+      --radius: 16px;
+      --radius-sm: 10px;
+    }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--off-white);
+      color: var(--navy);
+      min-height: 100vh;
+      padding-bottom: 40px;
+    }
+    .header {
+      background: var(--navy);
+      padding: 20px 20px 24px;
+      text-align: center;
+    }
+    .logo { font-family: 'Playfair Display', serif; font-size: 26px; color: white; font-weight: 700; }
+    .logo span { color: var(--gold); }
+    .logo-sub { font-size: 9px; letter-spacing: 3px; color: rgba(255,255,255,0.5); text-transform: uppercase; margin-top: 2px; }
+    .header-title { font-size: 14px; color: rgba(255,255,255,0.85); margin-top: 12px; font-weight: 600; }
+    .header-sub { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 4px; }
+
+    .container { max-width: 480px; margin: 0 auto; padding: 20px 16px; }
+
+    .card {
+      background: var(--white);
+      border-radius: var(--radius);
+      padding: 18px 16px;
+      margin-bottom: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+    }
+    .q-numero { font-size: 10px; font-weight: 700; color: var(--gold); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; }
+    .q-texto { font-size: 15px; font-weight: 700; color: var(--navy); line-height: 1.4; margin-bottom: 14px; }
+
+    .opciones { display: flex; flex-direction: column; gap: 8px; }
+    .opcion {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 14px;
+      border: 1.5px solid var(--gray-200);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all 0.15s;
+      background: var(--off-white);
+    }
+    .opcion:active { transform: scale(0.98); }
+    .opcion.selected {
+      border-color: var(--blue);
+      background: rgba(46,109,164,0.07);
+    }
+    .opcion.selected .opcion-emoji { transform: scale(1.2); }
+    .opcion-emoji { font-size: 20px; flex-shrink: 0; transition: transform 0.15s; }
+    .opcion-texto { font-size: 13px; font-weight: 600; color: var(--navy); line-height: 1.3; }
+
+    .textarea-label { font-size: 12px; font-weight: 600; color: var(--gray-600); margin-bottom: 8px; }
+    textarea {
+      width: 100%; min-height: 90px; padding: 12px; border: 1.5px solid var(--gray-200);
+      border-radius: var(--radius-sm); font-family: 'DM Sans', sans-serif; font-size: 13px;
+      color: var(--navy); background: var(--off-white); resize: none; outline: none;
+      transition: border-color 0.15s;
+    }
+    textarea:focus { border-color: var(--blue); }
+
+    .btn-enviar {
+      width: 100%; padding: 16px; border: none; border-radius: var(--radius);
+      background: linear-gradient(135deg, var(--navy), var(--blue));
+      color: white; font-family: 'DM Sans', sans-serif; font-size: 16px; font-weight: 700;
+      cursor: pointer; margin-top: 8px; box-shadow: 0 6px 20px rgba(27,58,92,0.3);
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+    }
+    .btn-enviar:disabled { opacity: 0.6; cursor: default; }
+
+    .enviado {
+      display: none; text-align: center; padding: 40px 20px;
+    }
+    .enviado-ico { font-size: 64px; margin-bottom: 16px; }
+    .enviado-titulo { font-family: 'Playfair Display', serif; font-size: 22px; color: var(--navy); margin-bottom: 8px; }
+    .enviado-sub { font-size: 13px; color: var(--gray-600); line-height: 1.6; }
+
+    .error-msg {
+      display: none; color: var(--red); font-size: 12px; padding: 10px 14px;
+      background: rgba(192,57,43,0.08); border-radius: var(--radius-sm); margin-top: 10px;
+    }
+
+    .nps-opciones {
+      display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;
+    }
+    .nps-btn {
+      flex: 1; min-width: 36px; padding: 10px 4px; border: 1.5px solid var(--gray-200);
+      border-radius: 8px; background: var(--off-white); font-size: 13px; font-weight: 700;
+      color: var(--navy); cursor: pointer; text-align: center; transition: all 0.15s;
+    }
+    .nps-btn.selected { border-color: var(--blue); background: rgba(46,109,164,0.1); color: var(--blue); }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">Barr<span>Can</span></div>
+  <div class="logo-sub">Cancelería · Aluminio · Vidrio</div>
+  <div class="header-title">⭐ Encuesta de Satisfacción</div>
+  <div class="header-sub" id="header-cliente">Su opinión es confidencial · Solo toma 1 minuto</div>
+</div>
+
+<div class="container">
+
+  <!-- Estado enviado -->
+  <div class="enviado" id="estado-enviado">
+    <div class="enviado-ico">🙏</div>
+    <div class="enviado-titulo">¡Gracias por su opinión!</div>
+    <div class="enviado-sub">Sus respuestas nos ayudan a mejorar el servicio.<br>En BarrCan nos comprometemos a seguir creciendo para usted.</div>
+  </div>
+
+  <!-- Formulario -->
+  <div id="form-encuesta">
+
+    <!-- P1 -->
+    <div class="card">
+      <div class="q-numero">Pregunta 1 de 6</div>
+      <div class="q-texto">¿El tiempo de entrega cumplió con lo acordado?</div>
+      <div class="opciones" id="q1">
+        <div class="opcion" data-q="q1" data-v="a" onclick="seleccionarOpcion(this)">
+          <span class="opcion-emoji">✅</span>
+          <span class="opcion-texto">Sí, en tiempo y forma</span>
+        </div>
+        <div class="opcion" data-q="q1" data-v="b" onclick="seleccionarOpcion(this)">
+          <span class="opcion-emoji">⚠️</span>
+          <span class="opcion-texto">Con retraso menor, aceptable</span>
+        </div>
+        <div class="opcion" data-q="q1" data-v="c" onclick="seleccionarOpcion(this)">
+          <span class="opcion-emoji">❌</span>
+          <span class="opcion-texto">No cumplió el tiempo pactado</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- P2 -->
+    <div class="card">
+      <div class="q-numero">Pregunta 2 de 6</div>
+      <div class="q-texto">¿El instalador llegó puntual y se presentó correctamente?</div>
+      <div class="opciones" id="q2">
+        <div class="opcion" data-q="q2" data-v="a" onclick="seleccionarOpcion(this)">
+          <span class="opcion-emoji">✅</span>
+          <span class="opcion-texto">Sí, puntual y profesional</span>
+        </div>
+        <div class="opcion" data-q="q2" data-v="b" onclick="seleccionarOpcion(this)">
+          <span class="opcion-emoji">⚠️</span>
+          <span class="opcion-texto">Llegó tarde pero se disculpó</span>
+        </div>
+        <div class="opcion" data-q="q2" data-v="c" onclick="seleccionarOpcion(this)">
+          <span class="opcion-emoji">❌</span>
+          <span class="opcion-texto">No, hubo problemas de presentación</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- P3 -->
+    <div class="card">
+      <div class="q-numero">Pregunta 3 de 6</div>
+      <div class="q-texto">¿El producto instalado corresponde exactamente a lo cotizado?</div>
+      <div class="opciones" id="q3">
+        <div class="opcion" data-q="q3" data-v="a" onclick="seleccionarOpcion(this)">
+          <span class="opcion-emoji">✅</span>
+          <span class="opcion-texto">Sí, exactamente lo acordado</span>
+        </div>
+        <div class="opcion" data-q="q3" data-v="b" onclick="seleccionarOpcion(this)">
+          <span class="opcion-emoji">⚠️</span>
+          <span class="opcion-texto">Hubo diferencias menores, aceptables</span>
+        </div>
+        <div class="opcion" data-q="q3" data-v="c" onclick="seleccionarOpcion(this)">
+          <span class="opcion-emoji">❌</span>
+          <span class="opcion-texto">No correspondió a lo cotizado</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- P4 -->
+    <div class="card">
+      <div class="q-numero">Pregunta 4 de 6</div>
+      <div class="q-texto">¿Cómo califica el acabado y limpieza de la instalación?</div>
+      <div class="opciones" id="q4">
+        <div class="opcion" data-q="q4" data-v="a" onclick="seleccionarOpcion(this)">
+          <span class="opcion-emoji">⭐</span>
+          <span class="opcion-texto">Excelente — impecable</span>
+        </div>
+        <div class="opcion" data-q="q4" data-v="b" onclick="seleccionarOpcion(this)">
+          <span class="opcion-emoji">👍</span>
+          <span class="opcion-texto">Bueno — algunos detalles menores</span>
+        </div>
+        <div class="opcion" data-q="q4" data-v="c" onclick="seleccionarOpcion(this)">
+          <span class="opcion-emoji">😐</span>
+          <span class="opcion-texto">Regular — necesita mejoras</span>
+        </div>
+        <div class="opcion" data-q="q4" data-v="d" onclick="seleccionarOpcion(this)">
+          <span class="opcion-emoji">👎</span>
+          <span class="opcion-texto">Deficiente — muy por debajo de lo esperado</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- P5 -->
+    <div class="card">
+      <div class="q-numero">Pregunta 5 de 6</div>
+      <div class="q-texto">¿El técnico explicó el funcionamiento del producto y dejó el área limpia?</div>
+      <div class="opciones" id="q5">
+        <div class="opcion" data-q="q5" data-v="a" onclick="seleccionarOpcion(this)">
+          <span class="opcion-emoji">✅</span>
+          <span class="opcion-texto">Sí, explicó todo y dejó limpio</span>
+        </div>
+        <div class="opcion" data-q="q5" data-v="b" onclick="seleccionarOpcion(this)">
+          <span class="opcion-emoji">⚠️</span>
+          <span class="opcion-texto">Explicó pero dejó algunos residuos</span>
+        </div>
+        <div class="opcion" data-q="q5" data-v="c" onclick="seleccionarOpcion(this)">
+          <span class="opcion-emoji">❌</span>
+          <span class="opcion-texto">No explicó y/o dejó el área sucia</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- P6 NPS -->
+    <div class="card">
+      <div class="q-numero">Pregunta 6 de 6</div>
+      <div class="q-texto">Del 1 al 10, ¿qué tan probable es que nos recomiende con alguien?</div>
+      <div class="nps-opciones" id="q6">
+        <div class="nps-btn" data-q="q6" data-v="1" onclick="seleccionarNPS(this)">1</div>
+        <div class="nps-btn" data-q="q6" data-v="2" onclick="seleccionarNPS(this)">2</div>
+        <div class="nps-btn" data-q="q6" data-v="3" onclick="seleccionarNPS(this)">3</div>
+        <div class="nps-btn" data-q="q6" data-v="4" onclick="seleccionarNPS(this)">4</div>
+        <div class="nps-btn" data-q="q6" data-v="5" onclick="seleccionarNPS(this)">5</div>
+        <div class="nps-btn" data-q="q6" data-v="6" onclick="seleccionarNPS(this)">6</div>
+        <div class="nps-btn" data-q="q6" data-v="7" onclick="seleccionarNPS(this)">7</div>
+        <div class="nps-btn" data-q="q6" data-v="8" onclick="seleccionarNPS(this)">8</div>
+        <div class="nps-btn" data-q="q6" data-v="9" onclick="seleccionarNPS(this)">9</div>
+        <div class="nps-btn" data-q="q6" data-v="10" onclick="seleccionarNPS(this)">10</div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--gray-400);margin-top:6px">
+        <span>Nada probable</span><span>Muy probable</span>
+      </div>
+    </div>
+
+    <!-- Comentarios -->
+    <div class="card">
+      <div class="textarea-label">💬 ¿Algún comentario adicional? (opcional)</div>
+      <textarea id="comentarios" placeholder="Su comentario nos ayuda a mejorar..."></textarea>
+    </div>
+
+    <div id="error-msg" class="error-msg"></div>
+
+    <button class="btn-enviar" id="btn-enviar" onclick="enviarEncuesta()">
+      <span>⭐</span> Enviar mi opinión
+    </button>
+
+    <div style="font-size:10px;color:var(--gray-400);text-align:center;margin-top:14px;line-height:1.6">
+      Sus respuestas son confidenciales y solo se usan para mejorar nuestro servicio.<br>
+      BarrCan Cancelería · TEL: 56-15-15-84-15
+    </div>
+  </div>
+
+</div>
+
+<script>
+const SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJtbmdqdHp1cHVraHlseGxnY3d3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDYyMzUyODgsImV4cCI6MjA2MTgxMTI4OH0.OBU1s6x7bNYFpF3dUFpyMJULdO2VFmYrznVtBiqtFV4';
+let _sb = null;
+function sb() {
+  if (!_sb) _sb = window.supabase.createClient(SB_URL, SB_KEY, { db: { schema: 'barrcan' } });
+  return _sb;
+}
+
+// Leer parámetros de URL
+const params = new URLSearchParams(window.location.search);
+const FOLIO   = params.get('folio') || '';
+const CLIENTE = params.get('cliente') || '';
+
+if (CLIENTE) {
+  document.getElementById('header-cliente').textContent = `Para: ${CLIENTE} · Solo toma 1 minuto`;
+}
+
+const RESP = { q1: null, q2: null, q3: null, q4: null, q5: null, q6: null };
+
+function seleccionarOpcion(el) {
+  const q = el.dataset.q;
+  document.querySelectorAll(`[data-q="${q}"]`).forEach(o => o.classList.remove('selected'));
+  el.classList.add('selected');
+  RESP[q] = el.dataset.v;
+}
+
+function seleccionarNPS(el) {
+  document.querySelectorAll('[data-q="q6"]').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+  RESP.q6 = el.dataset.v;
+}
+
+async function enviarEncuesta() {
+  const errEl = document.getElementById('error-msg');
+  errEl.style.display = 'none';
+
+  // Validar que todas estén respondidas
+  const pendientes = Object.entries(RESP).filter(([k,v]) => !v).map(([k]) => k);
+  if (pendientes.length) {
+    errEl.textContent = `⚠️ Por favor responde todas las preguntas (faltan: ${pendientes.length})`;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const btn = document.getElementById('btn-enviar');
+  btn.disabled = true;
+  btn.innerHTML = '<span>⏳</span> Enviando...';
+
+  const payload = {
+    folio_entrega:        FOLIO || null,
+    cliente_nombre:       CLIENTE || null,
+    p1_tiempo_entrega:    RESP.q1,
+    p2_puntualidad:       RESP.q2,
+    p3_producto_correcto: RESP.q3,
+    p4_acabado:           RESP.q4,
+    p5_explicacion:       RESP.q5,
+    p6_nps:               parseInt(RESP.q6),
+    comentarios:          document.getElementById('comentarios').value.trim() || null,
+    origen:               'encuesta_web',
+    created_at:           new Date().toISOString()
+  };
+
+  try {
+    const { error } = await sb().from('encuestas').insert([payload]);
+    if (error) throw error;
+  } catch(e) {
+    console.warn('Supabase error:', e.message);
+    // Guardar localmente si falla
+    const local = JSON.parse(localStorage.getItem('barrcan_encuestas_pendientes') || '[]');
+    local.push(payload);
+    localStorage.setItem('barrcan_encuestas_pendientes', JSON.stringify(local));
+  }
+
+  // Mostrar confirmación
+  document.getElementById('form-encuesta').style.display = 'none';
+  document.getElementById('estado-enviado').style.display = 'block';
+}
+</script>
+</body>
+</html>
