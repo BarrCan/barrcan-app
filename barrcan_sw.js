@@ -1,10 +1,10 @@
 // ══════════════════════════════════════════════
-// BarrCan Service Worker v4 — Offline First
+// BarrCan Service Worker v5 — Offline First
 // Estrategia: Cache First para app shell
 // Supabase y APIs externas: Network Only
 // ══════════════════════════════════════════════
 
-const CACHE_VERSION = 'barrcan-v4';
+const CACHE_VERSION = 'barrcan-v5';
 
 const RECURSOS_CORE = [
   './barrcan_app.html',
