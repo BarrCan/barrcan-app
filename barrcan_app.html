@@ -6174,7 +6174,15 @@ function actualizarPrecioVidrio() {
     '9':'cfg-vid-9','10':'cfg-vid-10','12':'cfg-vid-12','24':'cfg-vid-24',
     '6t':'cfg-vid-6t','9t':'cfg-vid-9t','12t':'cfg-vid-12t'
   };
-  const precio = cfgVal(mapa[esp] || 'cfg-vid-6') || 480;
+  const cfgId = mapa[esp] || 'cfg-vid-6';
+  // Leer del campo config si está disponible, si no del localStorage
+  let precio = parseFloat(document.getElementById(cfgId)?.value) || 0;
+  if (!precio) {
+    try {
+      const saved = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
+      precio = saved[cfgId] || CONFIG_DEFAULTS[cfgId] || 480;
+    } catch(e) { precio = 480; }
+  }
   const inpPrecio = document.getElementById('inp-precio-vidrio');
   if (inpPrecio) inpPrecio.value = precio;
 }
@@ -6329,20 +6337,31 @@ function calcular() {
 
   const sistema = DB.sistemas.find(s => s.id === STATE.sistemaId);
   const factorAcabado  = parseFloat(document.getElementById('inp-acabado').value);
-  // Nuevo formato value: espesor|factor p.ej. 6|1.07
+  // Nuevo formato value: espesor|factor p.ej. 6|1.07 o 6t|1.00
   const vidSel         = document.getElementById('inp-vidrio');
   const vidVal         = vidSel.value.split('|');
-  const espVidrio      = parseInt(vidVal[0]);
+  const espRaw         = vidVal[0]; // '6', '9', '6t', '9t', '12t'
+  const espVidrio      = parseInt(espRaw);
   const factorVidrio   = parseFloat(vidVal[1] || 1);
-  const espVidrioLabel = vidSel.options[vidSel.selectedIndex].text;
-  // Precio vidrio: campo del wizard si fue editado, sino toma del Config
-  const espKey = { '4':'cfg-vid-4','6':'cfg-vid-6','8':'cfg-vid-8',
-                   '9':'cfg-vid-9','10':'cfg-vid-10','12':'cfg-vid-12','24':'cfg-vid-24' };
-  const cfgVidId = espKey[String(espVidrio)];
-  const precioVidrioCfg = cfgVidId ? (parseFloat(document.getElementById(cfgVidId)?.value) || 480) : 480;
+  const espVidrioLabel = vidSel.options[vidSel.selectedIndex].text.split('→')[0].trim();
+  // Precio vidrio: mapa completo incluyendo templados
+  const espKey = {
+    '4':'cfg-vid-4','6':'cfg-vid-6','8':'cfg-vid-8',
+    '9':'cfg-vid-9','10':'cfg-vid-10','12':'cfg-vid-12','24':'cfg-vid-24',
+    '6t':'cfg-vid-6t','9t':'cfg-vid-9t','12t':'cfg-vid-12t'
+  };
+  const cfgVidId = espKey[espRaw] || espKey[String(espVidrio)];
+  // Leer precio del campo config o del localStorage como respaldo
+  let precioVidrioCfg = parseFloat(document.getElementById(cfgVidId)?.value) || 0;
+  if (!precioVidrioCfg) {
+    try {
+      const saved = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
+      precioVidrioCfg = saved[cfgVidId] || CONFIG_DEFAULTS[cfgVidId] || 480;
+    } catch(e) { precioVidrioCfg = 480; }
+  }
   const precioVidrioWizard = cfg('inp-precio-vidrio');
-  // Si el campo del wizard tiene el valor por defecto (480) usamos el de Config para ese espesor
-  const precioVidrioBase = (precioVidrioWizard === 480 && cfgVidId) ? precioVidrioCfg : precioVidrioWizard;
+  // Usar precio del wizard si fue editado manualmente, sino usar el de config
+  const precioVidrioBase = precioVidrioWizard > 0 ? precioVidrioWizard : precioVidrioCfg;
   const precioVidrio   = precioVidrioBase * factorVidrio;
   const mdo = cfg('inp-mdo');
   const gifPct = cfg('cfg-gif') / 100;
@@ -7539,7 +7558,12 @@ function actualizarCfgTotal() {
 const FOLIO_KEY = 'barrcan_consecutivo';
 
 function getConsecutivo() {
-  return parseInt(localStorage.getItem(FOLIO_KEY) || '1');
+  const val = parseInt(localStorage.getItem(FOLIO_KEY));
+  if (!val || val < 108) {
+    localStorage.setItem(FOLIO_KEY, '108');
+    return 108;
+  }
+  return val;
 }
 function incrementarConsecutivo() {
   const n = getConsecutivo() + 1;
@@ -7660,162 +7684,157 @@ function buildContratoHTML(datos) {
       <li><strong>NO INCLUYE</strong> ningún trabajo de <strong>Electricidad</strong> (cableado, contactos, iluminación)</li>
     </ul>`;
 
-  // Grid de diagramas (máx 3 por fila)
+  // Grid de diagramas
   const diagramas = partidas.map((p,i) => `
     <div style=display:inline-block;text-align:center;margin:8px 12px;vertical-align:top>
       ${svgContratoPorTipo(p.tipo, p.L, p.H, i+1)}
-      <div style=font-size:8pt;color:#555;margin-top:14px>${p.L} × ${p.H} mm</div>
+      <div style=font-size:8pt;color:#555;margin-top:6px>${p.L} × ${p.H} mm</div>
+      <div style=font-size:8pt;color:#1B3A5C;font-weight:700>${i+1}.</div>
     </div>`).join('');
 
-  // Tabla de precios
-  const filasPrecios = partidas.map((p,i) => `
-    <tr>
-      <td style=padding:5px 8px;border:1px solid #ddd;font-size:9.5pt>${i+1}.</td>
-      <td style=padding:5px 8px;border:1px solid #ddd;font-size:9.5pt>${p.nombre}</td>
-      <td style=padding:5px 8px;border:1px solid #ddd;font-size:9.5pt;text-align:center>${p.L} × ${p.H} mm</td>
-      <td style=padding:5px 8px;border:1px solid #ddd;font-size:9.5pt;text-align:right;font-weight:600>$${fmt(p.precio)}</td>
-    </tr>`).join('');
+  // Lista de precios estilo BarrCan original
+  const listaPrecios = partidas.map((p,i) =>
+    `<div style=display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dotted #ddd;font-size:11pt>
+      <span style=color:#222>${i+1}.</span>
+      <span style=font-weight:600;color:#1B3A5C>$&nbsp;${fmt(p.precio)}</span>
+    </div>`
+  ).join('');
 
   return `<!DOCTYPE html>
 <html lang=es>
 <head>
 <meta charset=UTF-8>
+<meta name=viewport content=width=device-width>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; color: #222; background: white; font-size: 10pt; }
-  .page { max-width: 720px; margin: 0 auto; padding: 20px; }
-  .page-break { page-break-before: always; padding-top: 20px; }
-  h2 { color: #1B3A5C; font-size: 13pt; border-bottom: 2px solid #C8923A; padding-bottom: 5px; margin: 18px 0 10px; }
-  table { border-collapse: collapse; width: 100%; }
-  .total-row td { background: #1B3A5C; color: white; font-weight: 700; font-size: 11pt; padding: 7px 8px; }
-  .bank-box { border: 1px solid #ddd; border-radius: 6px; padding: 10px 14px; margin: 8px 0; }
-  .important-box { border: 1.5px solid #C8923A; border-radius: 6px; padding: 10px 14px; background: #fffbf4; margin: 10px 0; }
-  .firma-table td { padding: 40px 20px 8px; border-top: 1px solid #999; font-size: 9pt; color: #555; text-align: center; }
-  @media print {
-    body { font-size: 9.5pt; }
-    .no-print { display: none !important; }
-  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:Arial,sans-serif; color:#222; background:white; font-size:10pt; }
+  .page { max-width:700px; margin:0 auto; padding:28px 32px; }
+  .page-break { page-break-before:always; padding-top:28px; }
+  @media print { body { font-size:10pt; } .no-print { display:none !important; } }
 </style>
 </head>
 <body>
 <div class=page>
 
-  <!-- ENCABEZADO -->
-  <div style=text-align:center;margin-bottom:16px>
-    <div style=font-size:9pt;font-weight:700;color:#1B3A5C;line-height:1.6>
+  <!-- MEMBRETE -->
+  <div style=text-align:center;margin-bottom:20px>
+    <div style=font-size:10pt;font-weight:700;color:#1B3A5C;line-height:1.8>
       PRIV. SANTA CRUZ No.23 COL. SAN SIMÓN TICUMAC CP. 03660<br>
-      BENITO JUÁREZ, MÉXICO, D.F. &nbsp;TEL: 56-15-15-84-15<br>
-      WWW.BarrCan.com.mx &nbsp;|&nbsp; can_alum_cris@hotmail.com
+      BENITO JUÁREZ, MÉXICO, D. F. TEL: 56-15-15-84-15<br>
+      WWW.BarrCan.com.mx &nbsp; E-mail: can_alum_cris@hotmail.com
     </div>
-    <div style=margin:10px auto;border-top:1px dashed #aaa;border-bottom:1px dashed #aaa;padding:4px 0;color:#aaa;letter-spacing:4px;font-size:8pt>· · · · · · · · · · · · · · · · · · · · · · · · · · ·</div>
-    <div style=font-size:13pt;font-weight:700;color:#1B3A5C;margin:6px 0>Presupuesto - Contrato</div>
+    <div style=margin:12px 0;border-top:2px solid #1B3A5C;border-bottom:2px solid #1B3A5C;padding:5px 0>
+      <span style=font-size:13pt;font-weight:700;color:#1B3A5C;letter-spacing:1px>Presupuesto - Contrato</span>
+    </div>
   </div>
 
-  <!-- FOLIO + FECHA + CLIENTE -->
-  <div style=display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px>
+  <!-- FECHA + CLIENTE -->
+  <div style=display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px>
     <div>
-      <div style=font-size:16pt;font-weight:700;color:#1B3A5C>${nombre || 'Cliente'}</div>
-      <div style=font-size:10pt;color:#555;margin-top:3px>${direccion || ''}</div>
-      ${telefono ? `<div style=font-size:9.5pt;color:#555>Tel: ${telefono}</div>` : ''}
+      <div style=font-size:12pt;font-weight:700;color:#1B3A5C>${nombre || 'Cliente'}</div>
+      ${direccion ? `<div style=font-size:10pt;color:#444;margin-top:2px>${direccion}</div>` : ''}
+      ${telefono ? `<div style=font-size:10pt;color:#444>Tel: ${telefono}</div>` : ''}
     </div>
-    <div style=text-align:right>
-      <div style=font-size:9.5pt;color:#555>${fechaLarga()}</div>
-      <div style=font-family:monospace;font-size:9pt;color:#1B3A5C;font-weight:700;margin-top:4px>${folio}</div>
+    <div style=text-align:right;font-size:10pt;color:#444>
+      ${fechaLarga()}
     </div>
   </div>
 
   <!-- DIAGRAMAS -->
-  <div style=text-align:center;margin:10px 0 6px;border:1px solid #eee;border-radius:6px;padding:12px;background:#fafafa>
+  <div style=text-align:center;margin:0 0 16px;padding:12px;border:1px solid #e0e0e0;border-radius:4px;background:#fafafa>
     ${diagramas}
   </div>
 
-  ${notas ? `<div style=font-size:9.5pt;color:#444;margin:8px 0><strong>Nota:</strong> ${notas}</div>` : ''}
+  <!-- LISTA DE PRECIOS estilo BarrCan -->
+  <div style=margin-bottom:6px>
+    ${listaPrecios}
+    <div style=display:flex;justify-content:space-between;padding:8px 0;margin-top:4px;border-top:2px solid #1B3A5C>
+      <span style=font-size:12pt;font-weight:700;color:#1B3A5C>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;$</span>
+      <span style=font-size:13pt;font-weight:700;color:#1B3A5C>$&nbsp;${fmt(total)}</span>
+    </div>
+  </div>
 
-  <!-- TABLA PRECIOS -->
-  <table style=margin:14px 0>
-    <thead>
-      <tr style=background:#1B3A5C;color:white>
-        <th style=padding:6px 8px;text-align:left;font-size:9.5pt;border:1px solid #1B3A5C>#</th>
-        <th style=padding:6px 8px;text-align:left;font-size:9.5pt;border:1px solid #1B3A5C>Sistema</th>
-        <th style=padding:6px 8px;text-align:center;font-size:9.5pt;border:1px solid #1B3A5C>Medidas</th>
-        <th style=padding:6px 8px;text-align:right;font-size:9.5pt;border:1px solid #1B3A5C>Precio</th>
-      </tr>
-    </thead>
-    <tbody>${filasPrecios}</tbody>
-    <tfoot>
-      <tr class=total-row>
-        <td colspan=3 style=padding:7px 8px>TOTAL</td>
-        <td style=padding:7px 8px;text-align:right>$${fmt(total)}</td>
-      </tr>
-    </tfoot>
-  </table>
+  <!-- NOTA DESCRIPTIVA -->
+  ${notas ? `<div style=font-size:9.5pt;color:#333;line-height:1.7;margin:14px 0;text-align:justify>
+    <strong>Nota:</strong> ${notas}
+  </div>` : ''}
+
+  <!-- TEXTO ESTÁNDAR -->
+  <div style=font-size:9.5pt;color:#333;line-height:1.7;margin:14px 0;text-align:justify>
+    El presente presupuesto contempla los trabajos antes descritos, cualquier otro trabajo
+    adicional se cotizará. Estos precios están sujetos a cambios sin previo aviso.
+  </div>
+
+  <!-- FOLIO -->
+  <div style=text-align:center;font-size:10pt;font-weight:700;color:#1B3A5C;margin:16px 0;letter-spacing:2px>
+    ${folio}
+  </div>
 
   <!-- PAGOS -->
-  <h2>2. Política de Pagos</h2>
-  <table style=margin-bottom:10px>
-    <thead>
-      <tr style=background:#1B3A5C;color:white>
-        <th style=padding:6px 8px;font-size:9.5pt;text-align:left;border:1px solid #1B3A5C>Concepto</th>
-        <th style=padding:6px 8px;font-size:9.5pt;text-align:center;border:1px solid #1B3A5C>%</th>
-        <th style=padding:6px 8px;font-size:9.5pt;text-align:left;border:1px solid #1B3A5C>Momento</th>
-        <th style=padding:6px 8px;font-size:9.5pt;text-align:right;border:1px solid #1B3A5C>Monto</th>
+  <div style=margin:20px 0 10px>
+    <table style=width:100%;border-collapse:collapse>
+      <tr>
+        <td style=padding:5px 8px;border:1px solid #ddd;font-size:9.5pt>Anticipo inicial (50%)</td>
+        <td style=padding:5px 8px;border:1px solid #ddd;font-size:9.5pt;text-align:right;font-weight:600>$&nbsp;${fmt(total*0.50)}</td>
+        <td style=padding:5px 8px;border:1px solid #ddd;font-size:9pt;color:#555>Al aprobar y firmar</td>
       </tr>
-    </thead>
-    <tbody>
-      <tr><td style=padding:5px 8px;border:1px solid #ddd;font-size:9.5pt>Anticipo inicial</td><td style=padding:5px 8px;border:1px solid #ddd;text-align:center>50%</td><td style=padding:5px 8px;border:1px solid #ddd;font-size:9pt>Al aprobar y firmar</td><td style=padding:5px 8px;border:1px solid #ddd;text-align:right;font-weight:600>$${fmt(total*0.50)}</td></tr>
-      <tr><td style=padding:5px 8px;border:1px solid #ddd;font-size:9.5pt>Segundo pago</td><td style=padding:5px 8px;border:1px solid #ddd;text-align:center>35%</td><td style=padding:5px 8px;border:1px solid #ddd;font-size:9pt>Al confirmar fecha de instalación</td><td style=padding:5px 8px;border:1px solid #ddd;text-align:right;font-weight:600>$${fmt(total*0.35)}</td></tr>
-      <tr><td style=padding:5px 8px;border:1px solid #ddd;font-size:9.5pt>Liquidación final</td><td style=padding:5px 8px;border:1px solid #ddd;text-align:center>15%</td><td style=padding:5px 8px;border:1px solid #ddd;font-size:9pt>A la entrega y conclusión</td><td style=padding:5px 8px;border:1px solid #ddd;text-align:right;font-weight:600>$${fmt(total*0.15)}</td></tr>
-    </tbody>
-  </table>
+      <tr>
+        <td style=padding:5px 8px;border:1px solid #ddd;font-size:9.5pt>Segundo pago (35%)</td>
+        <td style=padding:5px 8px;border:1px solid #ddd;font-size:9.5pt;text-align:right;font-weight:600>$&nbsp;${fmt(total*0.35)}</td>
+        <td style=padding:5px 8px;border:1px solid #ddd;font-size:9pt;color:#555>Al confirmar fecha de instalación</td>
+      </tr>
+      <tr style=background:#1B3A5C>
+        <td style=padding:5px 8px;border:1px solid #1B3A5C;font-size:9.5pt;color:white;font-weight:700>Liquidación final (15%)</td>
+        <td style=padding:5px 8px;border:1px solid #1B3A5C;font-size:9.5pt;text-align:right;font-weight:700;color:#F1C40F>$&nbsp;${fmt(total*0.15)}</td>
+        <td style=padding:5px 8px;border:1px solid #1B3A5C;font-size:9pt;color:rgba(255,255,255,0.8)>A la entrega</td>
+      </tr>
+    </table>
+  </div>
 
-  <div style=display:flex;gap:12px;margin-bottom:10px>
-    <div class=bank-box style=flex:1>
-      <div style=font-size:8.5pt;font-weight:700;color:#1B3A5C;margin-bottom:4px>Banorte</div>
+  <!-- DATOS BANCARIOS -->
+  <div style=display:flex;gap:16px;margin:12px 0>
+    <div style=flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 12px>
+      <div style=font-size:8.5pt;font-weight:700;color:#1B3A5C>Banorte</div>
       <div style=font-size:8.5pt;color:#444>Mauricio Barrera Espinosa</div>
-      <div style=font-size:8.5pt;color:#444>Cuenta: 0672530766</div>
+      <div style=font-size:8.5pt;color:#444>Cta: 0672530766</div>
       <div style=font-size:8.5pt;color:#444>CLABE: 072180006725307668</div>
     </div>
-    <div class=bank-box style=flex:1>
-      <div style=font-size:8.5pt;font-weight:700;color:#1B3A5C;margin-bottom:4px>BBVA</div>
+    <div style=flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 12px>
+      <div style=font-size:8.5pt;font-weight:700;color:#1B3A5C>BBVA</div>
       <div style=font-size:8.5pt;color:#444>Mauricio Barrera Espinosa</div>
-      <div style=font-size:8.5pt;color:#444>Cuenta: 1512081906</div>
+      <div style=font-size:8.5pt;color:#444>Cta: 1512081906</div>
       <div style=font-size:8.5pt;color:#444>CLABE: 012180015120819061</div>
     </div>
   </div>
 
-  <div class=important-box>
-    <div style=font-size:9pt;font-weight:700;color:#C8923A;margin-bottom:4px>IMPORTANTE — Segundo pago (35%)</div>
-    <div style=font-size:8.5pt;color:#444;font-style:italic>Este pago deberá efectuarse en la fecha acordada o a más tardar el mismo día en que se defina la agenda de instalación. Si BarrCan no recibe dicho pago en el plazo indicado, la fecha de instalación agendada quedará automáticamente liberada y deberá reagendarse conforme a la disponibilidad del taller en ese momento.</div>
-  </div>
-
-  <!-- TIEMPO DE ENTREGA -->
-  <div style=margin:10px 0;padding:10px 14px;background:#f0f4f8;border-radius:6px;font-size:9.5pt;color:#1B3A5C>
-    <strong>Tiempo de entrega e instalación:</strong> 5 a 7 días hábiles a partir de la recepción del anticipo del 50%.
+  <!-- TIEMPO ENTREGA -->
+  <div style=font-size:9.5pt;color:#333;margin:10px 0;padding:8px 12px;background:#f0f4f8;border-left:3px solid #1B3A5C>
+    <strong>Tiempo de entrega:</strong> 5 a 7 días hábiles a partir de la recepción del anticipo del 50%.
   </div>
 
   <!-- FIRMAS -->
-  <table style=width:100%;margin:20px 0 10px>
-    <tr class=firma-table>
-      <td style=width:48%;padding:40px 20px 8px;border-top:1px solid #999;font-size:9pt;color:#555;text-align:center>
+  <table style=width:100%;margin:24px 0 10px>
+    <tr>
+      <td style=width:45%;padding:50px 12px 6px;border-top:1px solid #999;font-size:9pt;color:#555;text-align:center>
         Firma y nombre del cliente<br>Fecha: ___________________
       </td>
-      <td style=width:4%></td>
-      <td style=width:48%;padding:40px 20px 8px;border-top:1px solid #999;font-size:9pt;color:#555;text-align:center>
-        Sello y firma BarrCan<br>Folio: ${folio}
+      <td style=width:10%></td>
+      <td style=width:45%;padding:50px 12px 6px;border-top:1px solid #999;font-size:9pt;color:#555;text-align:center>
+        Sello y firma BarrCan<br>${folio}
       </td>
     </tr>
   </table>
 
-  <!-- PAGE BREAK → Condiciones -->
+  <!-- PÁGINA 2: CONDICIONES -->
   <div class=page-break>
-    <h2>Condiciones de Venta</h2>
-    ${condicionesVenta}
-    <h2 style=margin-top:14px>Trabajos no comprendidos en este presupuesto</h2>
-    ${trabajosNoIncluye}
-    <div style=margin-top:14px;padding:10px 14px;background:#f0f4f8;border-radius:6px;font-size:8.5pt;color:#1B3A5C;font-weight:700;text-align:center>
-      El presente presupuesto contempla los trabajos antes descritos, cualquier otro trabajo adicional se cotizará.<br>
-      Estos precios están sujetos a cambios sin previo aviso. &nbsp;·&nbsp; ${folio}
+    <div style=font-size:11pt;font-weight:700;color:#1B3A5C;border-bottom:2px solid #C8923A;padding-bottom:4px;margin-bottom:12px>
+      Condiciones de venta
     </div>
+    ${condicionesVenta}
+    <div style=font-size:11pt;font-weight:700;color:#1B3A5C;border-bottom:2px solid #C8923A;padding-bottom:4px;margin:14px 0 10px>
+      Trabajos no comprendidos en este presupuesto
+    </div>
+    ${trabajosNoIncluye}
   </div>
 
 </div>
@@ -7861,11 +7880,6 @@ function generarContrato() {
 
   const html = buildContratoHTML({ folio, nombre, direccion, telefono, notas, partidas, total });
 
-  // Inyectar en print-area y disparar impresión
-  const pa = document.getElementById('print-area');
-  pa.innerHTML = html;
-  pa.style.display = 'block';
-
   cerrarModalContrato();
 
   // Incrementar consecutivo solo cuando se confirma
@@ -7877,12 +7891,20 @@ function generarContrato() {
     guardarEnStorage();
   }
 
-  setTimeout(() => {
-    window.print();
-    setTimeout(() => { pa.style.display = 'none'; }, 1500);
-  }, 300);
+  // Abrir en nueva ventana con document.write (funciona en móvil y desktop)
+  const win = window.open('', '_blank');
+  if (win) {
+    win.document.write(html);
+    win.document.close();
+  } else {
+    // Fallback: print-area
+    const pa = document.getElementById('print-area');
+    pa.innerHTML = html;
+    pa.style.display = 'block';
+    setTimeout(() => { window.print(); setTimeout(() => { pa.style.display = 'none'; }, 1500); }, 300);
+  }
 
-  toast('✅ Contrato generado — ' + folio);
+  toast('✅ Presupuesto generado — ' + folio);
 }
 
 // ══════════════════════════════════════════════
@@ -8282,14 +8304,17 @@ async function entGenerarReporte() {
     console.warn('Error guardando reporte:', e.message);
   }
 
-  // Abrir reporte — usar URL permanente de Supabase si está disponible, sino blob temporal
+  // Abrir reporte — usar URL permanente de Supabase si está disponible, sino document.write
   if (reporteUrl) {
     window.open(reporteUrl, '_blank');
   } else {
-    const blobVer = new Blob([reporteHTML], { type: 'text/html;charset=utf-8' });
-    const urlVer  = URL.createObjectURL(blobVer);
-    window.open(urlVer, '_blank');
-    setTimeout(() => URL.revokeObjectURL(urlVer), 30000);
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(reporteHTML);
+      win.document.close();
+    } else {
+      toast('⚠️ Permite ventanas emergentes para ver el reporte');
+    }
   }
 
   // Guardar en caché local para historial (independiente de Supabase)
@@ -10918,14 +10943,17 @@ async function pagoGenerarRecibo(ordenId, monto, fecha, formaPago) {
     }
   } catch(e) { console.warn('Error subiendo recibo:', e.message); }
 
-  // Abrir recibo en nueva pestaña
+  // Abrir recibo
   if (reciboUrl) {
     window.open(reciboUrl, '_blank');
   } else {
-    const blobVer = new Blob([reciboHTML], { type: 'text/html;charset=utf-8' });
-    const urlVer  = URL.createObjectURL(blobVer);
-    window.open(urlVer, '_blank');
-    setTimeout(() => URL.revokeObjectURL(urlVer), 30000);
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(reciboHTML);
+      win.document.close();
+    } else {
+      toast('⚠️ Permite ventanas emergentes para ver el recibo');
+    }
   }
 
   // Mandar recibo por WhatsApp al cliente
