@@ -13360,32 +13360,27 @@ function cliActualizarPreview() {
 
 // ── Cargar lista desde Supabase ───────────────
 async function cliCargar() {
-  const lista = document.getElementById('cli-lista');
-  const cacheEdad  = clientesCacheEdad();
+  const lista      = document.getElementById('cli-lista');
   const cacheLocal = clientesCargarCache();
 
-  // Mostrar caché inmediatamente si existe
+  // Mostrar caché inmediatamente para velocidad
   if (cacheLocal.length > 0) {
     cliListaCache = cacheLocal;
     cliRenderLista(cliListaCache);
-    // Actualizar en background si hay señal y caché tiene más de 5 min
-    if (SYNC.online && cacheEdad > 5) cliSyncBackground();
-    return;
+  } else {
+    lista.innerHTML = `<div style="text-align:center;padding:30px;color:var(--gray-400)">
+      <div style="font-size:28px;margin-bottom:8px">⏳</div>Cargando…</div>`;
   }
 
-  // Sin caché — spinner
-  lista.innerHTML = `<div style="text-align:center;padding:30px;color:var(--gray-400)">
-    <div style="font-size:28px;margin-bottom:8px">⏳</div>Cargando…</div>`;
-
-  if (!SYNC.online) {
+  // SIEMPRE sincronizar con Supabase si hay conexión
+  if (SYNC.online) {
+    await cliSyncBackground();
+  } else if (!cacheLocal.length) {
     lista.innerHTML = `<div style="text-align:center;padding:40px 20px;color:var(--gray-400)">
       <div style="font-size:36px;margin-bottom:12px">📵</div>
       <div style="font-size:14px;font-weight:600">Sin conexión</div>
       <div style="font-size:12px;margin-top:6px">Los clientes se cargarán cuando regrese la señal</div></div>`;
-    return;
   }
-
-  await cliSyncBackground();
 }
 
 async function cliSyncBackground() {
@@ -13663,7 +13658,6 @@ async function cliGuardar() {
         toast('✅ Cliente actualizado · ' + num_raw);
       }
     } else {
-      // ── INSERT (offline-first) ──
       const nuevoCliente = {
         id: crypto.randomUUID(),
         nombre, telefono, email, empresa, cargo,
