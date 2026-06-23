@@ -8546,16 +8546,16 @@ async function entVerHistorialReportes() {
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         ${r.reporte_url ? `
-          <a href="${r.reporte_url}" target="_blank"
-            style="display:block;padding:9px;background:rgba(46,109,164,0.08);color:var(--blue);
+          <button onclick="entAbrirReporteUrl('${r.reporte_url.replace(/'/g,'')}')"
+            style="display:block;width:100%;padding:9px;background:rgba(46,109,164,0.08);color:var(--blue);
                    border:1px solid rgba(46,109,164,0.2);border-radius:var(--radius-sm);
-                   font-size:12px;font-weight:700;text-align:center;text-decoration:none">
+                   font-size:12px;font-weight:700;text-align:center;cursor:pointer;font-family:'DM Sans',sans-serif">
             📄 Ver reporte
-          </a>
+          </button>
           <button onclick="entReenviarWA('${(r.cliente_tel||'').replace(/'/g,'')}','${(r.cliente_nombre||'').replace(/'/g,'')}','${(r.folio||'').replace(/'/g,'')}','${(r.reporte_url||'').replace(/'/g,'')}')"
             style="padding:9px;background:rgba(37,211,102,0.08);color:#25D366;
                    border:1px solid rgba(37,211,102,0.2);border-radius:var(--radius-sm);
-                   font-size:12px;font-weight:700;cursor:pointer">
+                   font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
             💬 Reenviar WA
           </button>
         ` : `<div style="grid-column:1/-1;font-size:11px;color:var(--gray-400);text-align:center;padding:6px">
@@ -8564,6 +8564,24 @@ async function entVerHistorialReportes() {
       </div>
     </div>
   `).join('');
+}
+
+async function entAbrirReporteUrl(url) {
+  toast('⏳ Abriendo reporte…');
+  try {
+    const resp = await fetch(url);
+    const html = await resp.text();
+    const win = window.open('', '_blank');
+    if (win) {
+      win.document.write(html);
+      win.document.close();
+    } else {
+      toast('⚠️ Permite ventanas emergentes');
+    }
+  } catch(e) {
+    // Si falla el fetch, abrir directo
+    window.open(url, '_blank');
+  }
 }
 
 function entReenviarWA(tel, cliente, folio, url) {
@@ -9165,7 +9183,7 @@ function sb() {
 }
 
 // ══════════════════════════════════════════════
-// SISTEMA OFFLINE-FIRST — BarrCan v4
+// SISTEMA OFFLINE-FIRST — BarrCan v5
 // ══════════════════════════════════════════════
 // Capas de almacenamiento:
 //   1. Memoria (STATE) — sesión activa
