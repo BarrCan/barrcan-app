@@ -2168,14 +2168,14 @@ select.form-select { padding-right: 36px; cursor: pointer; }
         <div class="config-item">
           <span class="config-item-label">6 mm – Cristal Templado</span>
           <div style="display:flex;align-items:center;gap:4px">
-            <input type="number" class="config-input-inline" id="cfg-vid-6t" value="1200" min="100" onchange="guardarConfig();sincronizarVidrios()">
+            <input type="number" class="config-input-inline" id="cfg-vid-6t" value="800" min="100" onchange="guardarConfig();sincronizarVidrios()">
             <span style="font-size:12px;color:var(--gray-400)">$/m²</span>
           </div>
         </div>
         <div class="config-item">
           <span class="config-item-label">9 mm – Cristal Templado</span>
           <div style="display:flex;align-items:center;gap:4px">
-            <input type="number" class="config-input-inline" id="cfg-vid-9t" value="2100" min="100" onchange="guardarConfig();sincronizarVidrios()">
+            <input type="number" class="config-input-inline" id="cfg-vid-9t" value="1800" min="100" onchange="guardarConfig();sincronizarVidrios()">
             <span style="font-size:12px;color:var(--gray-400)">$/m²</span>
           </div>
         </div>
@@ -4746,7 +4746,7 @@ const CONFIG_DEFAULTS = {
   'cfg-vid-4': 380, 'cfg-vid-6': 480, 'cfg-vid-8': 540,
   'cfg-vid-9': 580, 'cfg-vid-10': 620, 'cfg-vid-12': 720, 'cfg-vid-24': 950,
   // Vidrio templado
-  'cfg-vid-6t': 1200, 'cfg-vid-9t': 2100, 'cfg-vid-12t': 2900,
+  'cfg-vid-6t': 800, 'cfg-vid-9t': 1800, 'cfg-vid-12t': 2900,
   // Recargos vidrio especial
   'cfg-pct-verde': 6, 'cfg-pct-filtrasol': 7,
   'cfg-pct-bronce': 9, 'cfg-pct-azul': 11,
@@ -7645,7 +7645,7 @@ function ctrBuscarCliente(q) {
   if (!matches.length) {
     res.innerHTML = `
       <div style="padding:12px 14px;text-align:center">
-        <div style="font-size:12px;color:var(--gray-400);margin-bottom:10px">Sin resultados para "<strong>${q}</strong>"</div>
+        <div style="font-size:12px;color:var(--gray-400);margin-bottom:10px">Sin resultados para: <strong>${q}</strong></div>
         <button onclick="ctrNuevoClienteRapido('${q.replace(/'/g,"")}')"
           style="padding:8px 16px;background:var(--blue);color:white;border:none;border-radius:8px;
                  font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer">
@@ -8462,8 +8462,8 @@ function entMostrarAccionesReporte(folio, cliente, tel, fecha, tecnico) {
       <div style="font-family:'Playfair Display',serif;font-size:16px;font-weight:700;color:var(--navy);margin-bottom:4px">✅ Reporte generado</div>
       <div style="font-size:12px;color:var(--gray-400);margin-bottom:14px">
         El reporte se abrió en nueva pestaña.<br>
-        <strong>1)</strong> Imprímelo como PDF &nbsp;·&nbsp;
-        <strong>2)</strong> Regresa y envía el PDF por WhatsApp
+        <strong>Paso 1:</strong> Imprímelo como PDF &nbsp;·&nbsp;
+        <strong>Paso 2:</strong> Regresa y envía el PDF por WhatsApp
       </div>
       <div style="background:var(--off-white);border-radius:var(--radius-sm);padding:8px 12px;margin-bottom:14px;font-size:12px;color:var(--gray-600)">
         📋 <strong>${folio}</strong> · ${cliente}
@@ -8491,33 +8491,32 @@ async function entEnviarWAReporte(waUrl) {
 
 // ── Historial de reportes de entrega ─────────────────────────
 async function entVerHistorialReportes() {
+async function entVerHistorialReportes() {
   const overlay = document.getElementById('ent-reportes-overlay');
   const lista   = document.getElementById('ent-reportes-lista');
   overlay.style.display = 'block';
-  lista.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">⏳ Cargando…</div>';
+  lista.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">⏳ Cargando reportes…</div>';
 
-  // Primero mostrar caché local inmediatamente
-  let datosLocales = [];
-  try {
-    datosLocales = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
-  } catch(e){}
+  let datos = [];
 
-  // Intentar cargar de Supabase
-  let datosSupabase = [];
-  try {
-    if (SYNC.online) {
+  // SIEMPRE intentar Supabase primero (funciona en cualquier dispositivo)
+  if (SYNC.online) {
+    try {
       const { data, error } = await sb().from('reportes_entrega')
-        .select('*').order('created_at', { ascending: false }).limit(50);
+        .select('*').order('created_at', { ascending: false }).limit(100);
       if (!error && data?.length) {
-        datosSupabase = data;
-        // Actualizar caché local con datos de Supabase
-        localStorage.setItem('barrcan_reportes_historial', JSON.stringify(datosSupabase));
+        datos = data;
+        localStorage.setItem('barrcan_reportes_historial', JSON.stringify(data));
       }
-    }
-  } catch(e) { console.warn('Error cargando historial:', e.message); }
+    } catch(e) { console.warn('Error Supabase reportes:', e.message); }
+  }
 
-  // Usar Supabase si hay datos, sino local
-  const datos = datosSupabase.length ? datosSupabase : datosLocales;
+  // Fallback: caché local si no hay conexión
+  if (!datos.length) {
+    try {
+      datos = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
+    } catch(e){}
+  }
 
   if (!datos.length) {
     lista.innerHTML = '<div style="text-align:center;padding:30px;color:var(--gray-400)">Sin reportes generados aún</div>';
@@ -10270,7 +10269,7 @@ function flCalcular() {
       ℹ️ Toma las fotos directamente con la cámara. Agrega una descripción a cada pieza fotografiada (ej: "Cancel sala - OX 1.20m")
     </div>
 
-    <input type="file" id="visita-file-input" accept="image/*" capture="environment" multiple
+    <input type="file" id="visita-file-input" accept="image/*" multiple
       style="display:none" onchange="visitaAgregarFotos(this)">
     <button onclick="document.getElementById('visita-file-input').click()"
       style="width:100%;padding:14px;background:var(--navy);color:white;border:none;
@@ -10922,8 +10921,14 @@ function pagoSelForma(btn) {
     b.style.background  = activo ? 'rgba(46,109,164,0.08)' : 'none';
     b.style.color       = activo ? 'var(--blue)' : 'var(--gray-400)';
   });
-  document.getElementById('pago-comprobante-group').style.display =
-    PAGO_FORMA_SEL === 'transferencia' ? 'block' : 'none';
+  const necesitaFoto = ['transferencia','tarjeta'].includes(PAGO_FORMA_SEL);
+  document.getElementById('pago-comprobante-group').style.display = necesitaFoto ? 'block' : 'none';
+  const lbl = document.getElementById('pago-comprobante-label');
+  if (lbl) {
+    lbl.textContent = PAGO_FORMA_SEL === 'tarjeta'
+      ? 'Foto del voucher / captura de pantalla'
+      : 'Foto del comprobante de transferencia';
+  }
 }
 
 function pagoCargarComprobante(input) {
@@ -12541,31 +12546,37 @@ function visitasGuardadasAbrir() {
 
     <div class="form-group">
       <label class="form-label">Forma de pago *</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
         <button class="pago-forma-btn active" data-forma="efectivo" onclick="pagoSelForma(this)"
           style="padding:12px;border:2px solid var(--blue);border-radius:var(--radius-sm);
                  background:rgba(46,109,164,0.08);cursor:pointer;font-family:'DM Sans',sans-serif;
-                 font-size:13px;font-weight:600;color:var(--blue)">
+                 font-size:12px;font-weight:600;color:var(--blue)">
           💵 Efectivo
         </button>
         <button class="pago-forma-btn" data-forma="transferencia" onclick="pagoSelForma(this)"
           style="padding:12px;border:2px solid var(--gray-200);border-radius:var(--radius-sm);
                  background:none;cursor:pointer;font-family:'DM Sans',sans-serif;
-                 font-size:13px;font-weight:600;color:var(--gray-400)">
+                 font-size:12px;font-weight:600;color:var(--gray-400)">
           📲 Transferencia
+        </button>
+        <button class="pago-forma-btn" data-forma="tarjeta" onclick="pagoSelForma(this)"
+          style="padding:12px;border:2px solid var(--gray-200);border-radius:var(--radius-sm);
+                 background:none;cursor:pointer;font-family:'DM Sans',sans-serif;
+                 font-size:12px;font-weight:600;color:var(--gray-400)">
+          💳 Tarjeta
         </button>
       </div>
     </div>
 
-    <!-- Foto comprobante (solo transferencia) -->
+    <!-- Foto comprobante (transferencia o tarjeta) -->
     <div id="pago-comprobante-group" style="display:none" class="form-group">
-      <label class="form-label">Foto del comprobante</label>
-      <input type="file" id="pago-comprobante-file" accept="image/*" capture="environment"
+      <label class="form-label" id="pago-comprobante-label">Foto del comprobante</label>
+      <input type="file" id="pago-comprobante-file" accept="image/*"
         style="display:none" onchange="pagoCargarComprobante(this)">
       <button onclick="document.getElementById('pago-comprobante-file').click()"
         style="width:100%;padding:12px;background:var(--off-white);border:1.5px dashed var(--gray-200);
                border-radius:var(--radius-sm);cursor:pointer;font-size:13px;color:var(--gray-400)">
-        📷 Tomar foto del comprobante
+        📷 Adjuntar foto / captura de pantalla
       </button>
       <div id="pago-comprobante-preview" style="margin-top:8px"></div>
     </div>
@@ -13802,11 +13813,15 @@ function appCargarDesdeCache() {
 // ── Roles ─────────────────────────────────────
 function pinAplicarRol() {
   const esTecnico = USUARIO_ACTIVO.rol === 'tecnico';
-  const tabsAdmin = ['tab-catalogo','tab-cotizar','tab-historial','tab-ordenes','tab-garantias','tab-clientes','tab-config'];
-  tabsAdmin.forEach(id => {
+  // Tabs que solo admin ve
+  const soloAdmin = ['tab-catalogo','tab-cotizar','tab-historial','tab-ordenes','tab-garantias','tab-clientes','tab-config'];
+  soloAdmin.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = esTecnico ? 'none' : '';
   });
+  // Tab de entrega siempre visible
+  const tabEntrega = document.getElementById('tab-entrega');
+  if (tabEntrega) tabEntrega.style.display = '';
   if (esTecnico) abrirEntrega();
 }
 
