@@ -9490,10 +9490,37 @@ async function syncTodo() {
         if (!error) exitos++;
       }
     } catch(e) {
-      // Si falla, volver a encolar
       SYNC.cola.push(item);
     }
   }
+
+  // ── Sync cola de pagos offline ──
+  try {
+    const colaP = JSON.parse(localStorage.getItem('barrcan_pagos_cola') || '[]');
+    if (colaP.length) {
+      const quedaron = [];
+      for (const p of colaP) {
+        const { error } = await sb().from('pagos').insert([p]);
+        if (!error) exitos++;
+        else quedaron.push(p);
+      }
+      localStorage.setItem('barrcan_pagos_cola', JSON.stringify(quedaron));
+    }
+  } catch(e){}
+
+  // ── Sync cola de reportes de entrega offline ──
+  try {
+    const colaR = JSON.parse(localStorage.getItem('barrcan_cola_reportes') || '[]');
+    if (colaR.length) {
+      const quedaron = [];
+      for (const r of colaR) {
+        const { error } = await sb().from('reportes_entrega').insert([r]);
+        if (!error) exitos++;
+        else quedaron.push(r);
+      }
+      localStorage.setItem('barrcan_cola_reportes', JSON.stringify(quedaron));
+    }
+  } catch(e){}
 
   sbGuardarColaLocal();
   SYNC.sincronizando = false;
@@ -9501,7 +9528,6 @@ async function syncTodo() {
 
   if (exitos > 0) {
     toast(`☁️ ${exitos} registro${exitos>1?'s':''} sincronizado${exitos>1?'s':''}`);
-    // Refrescar clientes si había pendientes
     if (cola.some(i => i.tipo === 'cliente')) await cliCargar();
   }
 }
@@ -11072,50 +11098,66 @@ async function pagoGuardar() {
   if (!fecha) { errEl.textContent='⚠️ La fecha es obligatoria'; errEl.style.display='block'; return; }
   errEl.style.display = 'none';
 
+  const btn = document.querySelector('#pago-modal .btn-calcular');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span>⏳</span> Guardando…'; }
+
   // Folio y cliente desde campos de referencia
   const folioSuf   = document.getElementById('pago-folio-sufijo')?.value.trim() || '';
   const folioFinal = folioSuf ? `CACN-${folioSuf}` : null;
   const clienteRef = document.getElementById('pago-cliente-nombre')?.value.trim() || null;
 
   const payload = {
+    id: crypto.randomUUID(),
     orden_id: PAGO_ORDEN_ID || null,
     folio_referencia: folioFinal,
     cliente_nombre_ref: clienteRef,
     monto, fecha_pago: fecha,
     forma_pago: PAGO_FORMA_SEL, concepto, notas,
-    registrado_por: USUARIO_ACTIVO.id,
-    comprobante_img: PAGO_COMPROBANTE || null
+    registrado_por: USUARIO_ACTIVO?.id || 'app',
+    comprobante_img: PAGO_COMPROBANTE || null,
+    created_at: new Date().toISOString()
   };
 
   try {
-    const { error } = await sb().from('pagos').insert([payload]);
-    if (error) throw error;
-    const o = ORDENES_CACHE.find(x => x.id === PAGO_ORDEN_ID);
-    if (o) {
-      const nuevoSaldo = Math.max(0, (o.saldo_pendiente || 0) - monto);
-      await sb().from('ordenes_trabajo').update({ saldo_pendiente: nuevoSaldo }).eq('id', PAGO_ORDEN_ID);
-      o.saldo_pendiente = nuevoSaldo;
-      localStorage.setItem('barrcan_ordenes_cache', JSON.stringify(ORDENES_CACHE));
+    if (SYNC.online) {
+      const { error } = await sb().from('pagos').insert([payload]);
+      if (error) throw error;
+      // Actualizar saldo de OT si aplica
+      if (PAGO_ORDEN_ID) {
+        const o = ORDENES_CACHE.find(x => x.id === PAGO_ORDEN_ID);
+        if (o) {
+          const nuevoSaldo = concepto === 'liquidado_total' ? 0 : Math.max(0, (o.saldo_pendiente||0) - monto);
+          await sb().from('ordenes_trabajo').update({ saldo_pendiente: nuevoSaldo }).eq('id', PAGO_ORDEN_ID);
+          o.saldo_pendiente = nuevoSaldo;
+          localStorage.setItem('barrcan_ordenes_cache', JSON.stringify(ORDENES_CACHE));
+        }
+      }
+    } else {
+      // Guardar local para sync posterior
+      const cola = JSON.parse(localStorage.getItem('barrcan_pagos_cola') || '[]');
+      cola.push(payload);
+      localStorage.setItem('barrcan_pagos_cola', JSON.stringify(cola));
     }
+
     toast(`✅ Pago de $${fmt(monto)} registrado`);
     pagoCerrar();
-    pagoCargarLista(PAGO_ORDEN_ID);
-    ordenesRenderLista();
-    // Si es anticipo, ofrecer generar recibo
-    if (concepto === 'anticipo' || concepto === 'anticipo_50') {
-      setTimeout(() => pagoGenerarRecibo(PAGO_ORDEN_ID, monto, fecha, PAGO_FORMA_SEL), 500);
+    if (PAGO_ORDEN_ID) { pagoCargarLista(PAGO_ORDEN_ID); ordenesRenderLista(); }
+
+    // Generar recibo para anticipo y liquidado total
+    const generaRecibo = ['anticipo','anticipo_50','liquidado_total'].includes(concepto);
+    if (generaRecibo) {
+      setTimeout(() => pagoGenerarRecibo(PAGO_ORDEN_ID, monto, fecha, PAGO_FORMA_SEL, concepto), 500);
     }
   } catch(e) {
-    const pagosLocal = JSON.parse(localStorage.getItem('barrcan_pagos_local') || '[]');
-    pagosLocal.push({ ...payload, id: crypto.randomUUID(), created_at: new Date().toISOString() });
-    localStorage.setItem('barrcan_pagos_local', JSON.stringify(pagosLocal));
-    toast(`💾 Pago guardado localmente · $${fmt(monto)}`);
-    pagoCerrar();
+    errEl.textContent = '❌ ' + e.message;
+    errEl.style.display = 'block';
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = '<span>💾</span> REGISTRAR PAGO'; }
   }
 }
 
 // ── Recibo de anticipo ────────────────────────────────────────
-async function pagoGenerarRecibo(ordenId, monto, fecha, formaPago) {
+async function pagoGenerarRecibo(ordenId, monto, fecha, formaPago, concepto = 'anticipo') {
   const orden = ORDENES_CACHE.find(x => x.id === ordenId);
 
   // Datos — funciona con o sin OT
@@ -11155,6 +11197,31 @@ async function pagoGenerarRecibo(ordenId, monto, fecha, formaPago) {
   const fechaMin    = diasHabiles(fechaBase, 5);
   const fechaMax    = diasHabiles(fechaBase, 7);
   const rangoFechas = `${fmtFecha(fechaMin)} al ${fmtFecha(fechaMax)}`;
+
+  const tituloRecibo = concepto === 'liquidado_total' ? 'RECIBO DE PAGO TOTAL'
+    : concepto === 'liquidacion' ? 'RECIBO DE LIQUIDACIÓN'
+    : concepto === 'segundo' ? 'RECIBO DE SEGUNDO PAGO'
+    : 'RECIBO DE ANTICIPO';
+
+  const notaFechaInstalacion = ['anticipo','anticipo_50','liquidado_total'].includes(concepto) ? `
+    <!-- Fecha tentativa de instalación -->
+    <div class=fecha-box>
+      <div class=fecha-titulo>📅 Fecha tentativa de instalación</div>
+      <div class=fecha-rango>${rangoFechas}</div>
+      <div class=fecha-nota>
+        Plazo estimado de 5 a 7 días hábiles a partir de la recepción del anticipo.<br>
+        Un día antes del vencimiento del plazo nos comunicaremos para confirmar fecha y hora exactas.
+      </div>
+    </div>` : '';
+
+  const notaFactura = `
+    <div style=margin-top:12px;padding:10px 14px;background:#FFF8E1;border:1px solid #F39C12;
+      border-radius:6px;font-size:8.5pt;color:#555>
+      <strong>¿Requiere factura electrónica (CFDI)?</strong><br>
+      Envíe sus datos fiscales completos a
+      <strong>ventas@barrcan.com.mx</strong> y con gusto se la haremos llegar.<br>
+      <span style=color:#888>Este recibo no tiene validez fiscal.</span>
+    </div>`;
 
   const reciboHTML = `<!DOCTYPE html><html lang=es><head><meta charset=UTF-8>
   <meta name=viewport content=width=device-width>
@@ -11210,7 +11277,7 @@ async function pagoGenerarRecibo(ordenId, monto, fecha, formaPago) {
       </div>
     </div>
 
-    <div class=recibo-titulo>RECIBO DE ANTICIPO</div>
+    <div class=recibo-titulo>${tituloRecibo}</div>
     <div class=folio>Folio: ${folioRec} &nbsp;·&nbsp; Pedido: ${folioFull}</div>
 
     <table>
@@ -11241,15 +11308,8 @@ async function pagoGenerarRecibo(ordenId, monto, fecha, formaPago) {
       </div>
     </div>` : ''}
 
-    <!-- Fecha tentativa de instalación -->
-    <div class=fecha-box>
-      <div class=fecha-titulo>📅 Fecha tentativa de instalación</div>
-      <div class=fecha-rango>${rangoFechas}</div>
-      <div class=fecha-nota>
-        Plazo estimado de 5 a 7 días hábiles a partir de la recepción del anticipo.<br>
-        En esos días nos comunicaremos para confirmar fecha y hora exactas.
-      </div>
-    </div>
+    ${notaFechaInstalacion}
+    ${notaFactura}
 
     <div class=sello>
       ✅ Pago recibido conforme · ${fmtFecha(fechaStr)}<br>
@@ -12781,6 +12841,7 @@ function visitasGuardadasAbrir() {
           <option value="anticipo">Anticipo (50%)</option>
           <option value="segundo">Segundo pago (35%)</option>
           <option value="liquidacion">Liquidación (15%)</option>
+          <option value="liquidado_total">✅ Pago total (100%)</option>
           <option value="visita">Visita de medición</option>
           <option value="otro">Otro</option>
         </select>
