@@ -1,4 +1,27 @@
 <!DOCTYPE html>
+<!--
+  ██████╗  █████╗ ██████╗ ██████╗  ██████╗ █████╗ ███╗   ██╗
+  ██╔══██╗██╔══██╗██╔══██╗██╔══██╗██╔════╝██╔══██╗████╗  ██║
+  ██████╔╝███████║██████╔╝██████╔╝██║     ███████║██╔██╗ ██║
+  ██╔══██╗██╔══██║██╔══██╗██╔══██╗██║     ██╔══██║██║╚██╗██║
+  ██████╔╝██║  ██║██║  ██║██║  ██║╚██████╗██║  ██║██║ ╚████║
+  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝
+
+  VERSIÓN : v26
+  FECHA   : 2026-06-24
+  CAMBIOS :
+    - Buscador universal de clientes (clienteBuscar) reutilizable en toda la app
+    - Buscador de cliente en formulario de nueva OT
+    - Rediseño modal detalle OT con 4 tabs: OT / Taller / Instalación / Pagos
+    - Sync offline robusto: pagos y reportes se suben al reconectar
+    - Pago 100% liquidado como opción en módulo de pagos
+    - Recibo dinámico: título cambia según concepto (anticipo/liquidación/total)
+    - Nota de factura en recibo (ventas@barrcan.com.mx)
+    - Fecha tentativa solo aparece en anticipos y pagos totales
+    - Botón recibo ya no se congela (disabled mientras guarda)
+    - Fix: CSS duplicado en recibo corregido
+    - Fix: const reciboHTML faltaba en asignación
+-->
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -1057,6 +1080,7 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     <div class="offline-badge">
       <div class="offline-dot"></div>
       <span id="conn-status">Offline-First</span>
+      <span style="font-size:9px;color:rgba(255,255,255,0.3);margin-left:4px">v26</span>
     </div>
   </div>
 
@@ -1852,25 +1876,48 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     <!-- ══════════ ÓRDENES DE TRABAJO ══════════ -->
     <div class="screen" id="screen-ordenes">
       <p class="section-title">Órdenes de Trabajo</p>
-      <p class="section-sub">Instalaciones asignadas a técnicos</p>
+      <p class="section-sub">Gestión de producción e instalación</p>
+
+      <!-- Tabs de tipo de orden -->
+      <div style="display:flex;gap:6px;margin-bottom:14px;background:var(--off-white);
+                  border-radius:var(--radius-sm);padding:4px">
+        <button class="ot-tab-btn active" data-tab="ot" onclick="otCambiarTab(this)"
+          style="flex:1;padding:9px;border:none;border-radius:8px;background:var(--white);
+                 font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;
+                 color:var(--navy);cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.08)">
+          📋 OT
+        </button>
+        <button class="ot-tab-btn" data-tab="taller" onclick="otCambiarTab(this)"
+          style="flex:1;padding:9px;border:none;border-radius:8px;background:none;
+                 font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;
+                 color:var(--gray-400);cursor:pointer">
+          🔧 Taller
+        </button>
+        <button class="ot-tab-btn" data-tab="instalacion" onclick="otCambiarTab(this)"
+          style="flex:1;padding:9px;border:none;border-radius:8px;background:none;
+                 font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;
+                 color:var(--gray-400);cursor:pointer">
+          🚚 Instalación
+        </button>
+      </div>
 
       <!-- Botón nueva orden -->
-      <button onclick="ordenAbrir()" style="
-        width:100%;padding:15px;margin-bottom:16px;
-        background:linear-gradient(135deg,#27AE60,#2ECC71);
-        color:#fff;border:none;border-radius:var(--radius);
-        font-family:'DM Sans',sans-serif;font-size:15px;font-weight:700;
-        cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;
-        box-shadow:0 4px 16px rgba(39,174,96,0.35)">
-        <span style="font-size:20px">+</span> Nueva Orden de Instalación
+      <button onclick="ordenAbrir()"
+        style="width:100%;padding:14px;margin-bottom:14px;
+               background:linear-gradient(135deg,#27AE60,#2ECC71);color:#fff;border:none;
+               border-radius:var(--radius);font-family:'DM Sans',sans-serif;font-size:15px;
+               font-weight:700;cursor:pointer;display:flex;align-items:center;
+               justify-content:center;gap:10px;box-shadow:0 4px 16px rgba(39,174,96,0.35)">
+        <span style="font-size:20px">+</span> <span id="ot-btn-nueva-label">Nueva Orden de Trabajo</span>
       </button>
 
       <!-- Filtro por estado -->
       <div style="display:flex;gap:8px;margin-bottom:14px;overflow-x:auto;padding-bottom:4px">
         <button class="orden-filtro-btn active" data-filtro="todos" onclick="ordenFiltrar(this)">Todas</button>
-        <button class="orden-filtro-btn" data-filtro="pendiente" onclick="ordenFiltrar(this)">🟡 Pendientes</button>
-        <button class="orden-filtro-btn" data-filtro="en_camino" onclick="ordenFiltrar(this)">🔵 En camino</button>
-        <button class="orden-filtro-btn" data-filtro="completada" onclick="ordenFiltrar(this)">✅ Completadas</button>
+        <button class="orden-filtro-btn" data-filtro="pendiente" onclick="ordenFiltrar(this)">🟡 Pendiente</button>
+        <button class="orden-filtro-btn" data-filtro="produccion" onclick="ordenFiltrar(this)">🔧 Producción</button>
+        <button class="orden-filtro-btn" data-filtro="en_camino" onclick="ordenFiltrar(this)">🚚 En camino</button>
+        <button class="orden-filtro-btn" data-filtro="completada" onclick="ordenFiltrar(this)">✅ Completada</button>
       </div>
 
       <!-- Lista de órdenes -->
@@ -2425,6 +2472,15 @@ select.form-select { padding-right: 36px; cursor: pointer; }
           box-shadow:var(--shadow-md)">
           <span style="font-size:18px">📐</span> Nueva Visita
         </button>
+        <button onclick="visitasHistorialAbrir()" style="
+          padding:14px 8px;
+          background:linear-gradient(135deg,var(--navy),#2E6DA4);
+          color:#fff;border:none;border-radius:var(--radius);
+          font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;
+          cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;
+          box-shadow:var(--shadow-md)">
+          <span style="font-size:18px">📋</span> Historial Visitas
+        </button>
       </div>
 
       <!-- Buscador -->
@@ -2491,6 +2547,17 @@ select.form-select { padding-right: 36px; cursor: pointer; }
       </div>
     </div>
 
+    <!-- Buscador de cliente en entrega -->
+    <div class="form-group" style="margin-bottom:10px">
+      <label class="form-label">Buscar cliente registrado</label>
+      <input type="text" class="form-input" id="ent-buscar-cli"
+        placeholder="Nombre, teléfono o número..."
+        oninput="entBuscarCliente(this.value)" autocomplete="off">
+      <div id="ent-cli-resultados" style="display:none;background:var(--white);
+        border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);margin-top:4px;
+        max-height:160px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1)"></div>
+    </div>
+
     <div class="form-group">
       <label class="form-label">Cliente</label>
       <input type="text" class="form-input" id="ent-cliente" oninput="entActualizarProgreso()">
@@ -2501,8 +2568,8 @@ select.form-select { padding-right: 36px; cursor: pointer; }
         <input type="text" class="form-input" id="ent-tel" inputmode="tel" oninput="entActualizarProgreso()">
       </div>
       <div class="form-group">
-        <label class="form-label">Folio de Control</label>
-        <input type="text" class="form-input" id="ent-folio" oninput="entActualizarProgreso()">
+        <label class="form-label">Núm. Cliente</label>
+        <input type="text" class="form-input" id="ent-num-cliente" placeholder="25W016" style="font-family:'DM Mono',monospace">
       </div>
     </div>
     <div class="form-group">
@@ -2605,6 +2672,27 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     </div>
   </div>
   <div id="ent-reportes-lista"></div>
+</div>
+
+<!-- Historial de visitas de medición -->
+<div id="visitas-historial-overlay" style="display:none;position:fixed;inset:0;background:var(--off-white);z-index:500;overflow-y:auto;padding:16px 16px 120px">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+    <button onclick="document.getElementById('visitas-historial-overlay').style.display='none'"
+      style="width:36px;height:36px;border-radius:50%;border:none;background:var(--white);
+             box-shadow:0 2px 8px rgba(0,0,0,0.1);font-size:18px;cursor:pointer">←</button>
+    <div>
+      <div style="font-family:'Playfair Display',serif;font-size:17px;font-weight:700;color:var(--navy)">Historial de Visitas</div>
+      <div style="font-size:11px;color:var(--gray-400)">Visitas de medición registradas</div>
+    </div>
+    <div style="flex:1"></div>
+    <input type="text" id="visitas-buscar-hist" placeholder="Buscar…"
+      oninput="visitasHistorialFiltrar(this.value)"
+      style="padding:7px 12px;border:1.5px solid var(--gray-200);border-radius:8px;
+             font-size:12px;width:130px;outline:none;font-family:'DM Sans',sans-serif">
+  </div>
+  <div id="visitas-historial-lista">
+    <div style="text-align:center;padding:30px;color:var(--gray-400)">⏳ Cargando…</div>
+  </div>
 </div>
 
 <!-- Export bar -->
@@ -6873,8 +6961,9 @@ const SELECCION = new Set(); // ids seleccionados
 function renderHistorial() {
   const el = document.getElementById('historial-lista');
 
-  // Cargar presupuestos atrasados
+  // Cargar presupuestos atrasados — Supabase primero si hay conexión
   presAtrasadosCargar();
+  if (SYNC.online) presAtrasadosSyncSupabase();
   const atrasados = PRES_ATRASADOS || [];
 
   if (STATE.historial.length === 0 && atrasados.length === 0) {
@@ -6888,45 +6977,19 @@ function renderHistorial() {
   // Renderizar presupuestos atrasados primero si hay
   const atrasadosHTML = atrasados.length ? `
     <div style="margin-bottom:14px">
-      <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;
-                  color:var(--blue);margin-bottom:8px;padding:4px 0;border-bottom:1px solid var(--gray-200)">
-        📋 Presupuestos Anteriores (${atrasados.length})
+      <div style="display:flex;justify-content:space-between;align-items:center;
+                  margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--gray-200)">
+        <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue)">
+          📋 Presupuestos Anteriores (${atrasados.length})
+        </div>
+        <input type="text" id="pres-atr-buscar" placeholder="Buscar…"
+          oninput="presAtrasadosFiltrar(this.value)"
+          style="padding:5px 10px;border:1.5px solid var(--gray-200);border-radius:8px;
+                 font-size:11px;width:130px;outline:none;font-family:'DM Sans',sans-serif">
       </div>
-      ${atrasados.map(p => {
-        const estadoColors = {
-          activo:'#2E6DA4', aprobado:'#27AE60', en_produccion:'#E67E22',
-          pendiente_entrega:'#8E44AD', entregado:'#C0392B'
-        };
-        const estadoLabels = {
-          activo:'Activo', aprobado:'Aprobado ✓', en_produccion:'En producción',
-          pendiente_entrega:'Pendiente entrega', entregado:'Entregado'
-        };
-        const color = estadoColors[p.estado] || 'var(--gray-400)';
-        return `
-        <div style="background:var(--white);border-radius:var(--radius);padding:12px 14px;
-                    margin-bottom:8px;box-shadow:var(--shadow-sm);border-left:4px solid ${color}">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start">
-            <div>
-              <div style="font-size:12px;font-family:'DM Mono',monospace;color:var(--blue);font-weight:700">${p.folio}</div>
-              <div style="font-size:14px;font-weight:700;color:var(--navy);margin-top:2px">${p.cliente}</div>
-              ${p.descripcion ? `<div style="font-size:11px;color:var(--gray-400);margin-top:2px">${p.descripcion.slice(0,60)}${p.descripcion.length>60?'…':''}</div>` : ''}
-            </div>
-            <div style="text-align:right">
-              <div style="font-size:15px;font-weight:700;color:var(--gold)">$${fmt(p.monto)}</div>
-              ${p.saldo > 0 ? `<div style="font-size:10px;color:var(--red);font-weight:600">Saldo: $${fmt(p.saldo)}</div>` : ''}
-            </div>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
-            <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;
-                         background:${color}15;color:${color}">${estadoLabels[p.estado]||p.estado}</span>
-            <button onclick="ordenAbrirDesdePresAtrasado('${p.id}')"
-              style="font-size:11px;padding:4px 10px;background:var(--navy);color:white;
-                     border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">
-              + Orden de instalación
-            </button>
-          </div>
-        </div>`;
-      }).join('')}
+      <div id="pres-atr-lista">
+      ${atrasados.map(p => presAtrasadoCardHTML(p)).join('')}
+      </div>
     </div>` : '';
 
   el.innerHTML = atrasadosHTML + `
@@ -7851,43 +7914,20 @@ function fechaLarga() {
 function buildContratoHTML(datos) {
   const { folio, nombre, direccion, telefono, notas, partidas, total } = datos;
 
-  const condicionesVenta = `
-    <ol style=padding-left:16px;font-size:9pt;line-height:1.8;color:#222>
-      <li><strong>Vigencia:</strong> Este presupuesto tiene una vigencia de 5 días hábiles a partir de su fecha de emisión. Transcurrido ese plazo, los precios podrán modificarse sin previo aviso. En caso de requerir factura electrónica (CFDI), el IVA se desglosará sobre el importe acordado.</li>
-      <li><strong>Vanos descuadrados:</strong> No se incluyen perfiles de ajuste por vanos que presenten falta de plomo, nivel o escuadra. Si se detectan durante la visita de instalación, se cotizarán por separado.</li>
-      <li><strong>Limpieza:</strong> No se incluye limpieza fina posterior a la instalación. El retiro de residuos propios del proceso de instalación sí está comprendido.</li>
-      <li><strong>Tolerancias de fabricación:</strong> La tolerancia estándar es de ±5 mm en todas las dimensiones, conforme a las prácticas del sector.</li>
-      <li><strong>Condición de los vanos:</strong> El estado de los vanos al momento de la instalación es responsabilidad exclusiva del cliente. BarrCan no responde por deficiencias estructurales preexistentes.</li>
-      <li><strong>Cambios y modificaciones:</strong> Este presupuesto quedará sin efecto ante cualquier cambio en modulación, dimensiones, cantidades, colores, materiales o especificaciones. Toda modificación requerirá un nuevo presupuesto.</li>
-      <li><strong>Trabajos con material existente:</strong> La manipulación de material preexistente se realiza sin responsabilidad por daños accidentales.</li>
-      <li><strong>Almacenamiento de material:</strong> El material retirado tendrá un periodo sin costo de hasta 5 días hábiles. A partir del quinto día se aplicará un cargo de $80 MXN por día natural.</li>
-      <li><strong>Aceptación por depósito:</strong> El depósito del anticipo implica la aceptación plena de todas las condiciones descritas en este presupuesto.</li>
-      <li><strong>Política de reembolso:</strong> En caso de cancelación se retendrá el 25% del costo total. Si la fabricación ya inició, no procede reembolso en efectivo.</li>
-    </ol>`;
-
-  const trabajosNoIncluye = `
-    <ul style=padding-left:16px;font-size:9pt;line-height:1.8;color:#222>
-      <li><strong>NO INCLUYE</strong> ningún trabajo de <strong>Albañilería</strong> (muros, castillos, plantillas, resanes)</li>
-      <li><strong>NO INCLUYE</strong> ningún trabajo de <strong>Herrería</strong> (estructuras metálicas, barandales, rejas)</li>
-      <li><strong>NO INCLUYE</strong> ningún trabajo de <strong>Carpintería</strong> (marcos, puertas de madera)</li>
-      <li><strong>NO INCLUYE</strong> ningún trabajo de <strong>Electricidad</strong> (cableado, contactos, iluminación)</li>
-    </ul>`;
-
-  // Grid de diagramas
-  const diagramas = partidas.map((p,i) => `
-    <div style=display:inline-block;text-align:center;margin:8px 12px;vertical-align:top>
-      ${svgContratoPorTipo(p.tipo, p.L, p.H, i+1)}
-      <div style=font-size:8pt;color:#555;margin-top:6px>${p.L} × ${p.H} mm</div>
-      <div style=font-size:8pt;color:#1B3A5C;font-weight:700>${i+1}.</div>
+  // Lista numerada estilo BarrCan original — solo precios, sin nombres de sistema
+  const listaPrecios = partidas.map((p,i) => `
+    <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dotted #ccc;font-size:11pt">
+      <span style="color:#333;min-width:24px">${i+1}.</span>
+      <span style="flex:1"></span>
+      <span style="font-weight:700;color:#1B3A5C;font-family:'Courier New',monospace">$&nbsp;${fmt(p.precio)}</span>
     </div>`).join('');
 
-  // Lista de precios estilo BarrCan original
-  const listaPrecios = partidas.map((p,i) =>
-    `<div style=display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dotted #ddd;font-size:11pt>
-      <span style=color:#222>${i+1}.</span>
-      <span style=font-weight:600;color:#1B3A5C>$&nbsp;${fmt(p.precio)}</span>
-    </div>`
-  ).join('');
+  // Diagramas SVG pequeños
+  const diagramas = partidas.map((p,i) => `
+    <div style="display:inline-block;text-align:center;margin:6px 10px;vertical-align:top">
+      ${svgContratoPorTipo(p.tipo, p.L, p.H, i+1)}
+      <div style="font-size:8pt;color:#555;margin-top:4px">${p.L}×${p.H}</div>
+    </div>`).join('');
 
   return `<!DOCTYPE html>
 <html lang=es>
@@ -7895,156 +7935,235 @@ function buildContratoHTML(datos) {
 <meta charset=UTF-8>
 <meta name=viewport content=width=device-width>
 <style>
-  * { box-sizing:border-box; margin:0; padding:0; }
-  body { font-family:Arial,sans-serif; color:#222; background:white; font-size:10pt; }
-  .page { max-width:700px; margin:0 auto; padding:28px 32px; }
-  .page-break { page-break-before:always; padding-top:28px; }
-  .barra-print { position:fixed; bottom:0; left:0; right:0; background:#1B3A5C;
-    padding:12px 20px; display:flex; gap:10px; justify-content:center; z-index:999; }
-  .btn-print { padding:12px 28px; background:#C8923A; color:white; border:none;
-    border-radius:8px; font-size:14px; font-weight:700; cursor:pointer; font-family:Arial,sans-serif; }
-  .btn-print:active { opacity:0.85; }
-  .btn-cerrar { padding:12px 20px; background:rgba(255,255,255,0.15); color:white; border:none;
-    border-radius:8px; font-size:13px; cursor:pointer; font-family:Arial,sans-serif; }
-  @media print {
-    body { font-size:10pt; }
-    .barra-print { display:none !important; }
-    .page { padding:16px; }
-  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;color:#222;background:white;font-size:10pt;line-height:1.5}
+  .page{max-width:720px;margin:0 auto;padding:28px 36px;padding-bottom:80px}
+  .page-break{page-break-before:always;padding-top:28px}
+  h2{font-size:10.5pt;font-weight:700;color:#1B3A5C;border-bottom:2px solid #C8923A;
+     padding-bottom:3px;margin:18px 0 10px;text-transform:uppercase;letter-spacing:0.5px}
+  table{width:100%;border-collapse:collapse}
+  th{background:#1B3A5C;color:white;padding:7px 10px;font-size:9pt;font-weight:700}
+  td{padding:6px 10px;font-size:9pt;border:1px solid #ddd}
+  .barra-print{position:fixed;bottom:0;left:0;right:0;background:#1B3A5C;padding:10px 20px;
+    display:flex;gap:10px;justify-content:center;z-index:999}
+  .btn-print{padding:11px 24px;background:#C8923A;color:white;border:none;border-radius:8px;
+    font-size:14px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif}
+  .btn-cerrar{padding:11px 18px;background:rgba(255,255,255,0.15);color:white;border:none;
+    border-radius:8px;font-size:13px;cursor:pointer;font-family:Arial,sans-serif}
+  @media print{.barra-print{display:none!important}.page{padding:20px}}
 </style>
 </head>
 <body>
+<div class=barra-print>
+  <button class=btn-print onclick="window.print()">&#128424; Imprimir / Guardar PDF</button>
+  <button class=btn-cerrar onclick="window.close()">&#10005; Cerrar</button>
+</div>
+<div class=page>
 
-<!-- BARRA INFERIOR DE ACCIONES -->
-<div class="barra-print no-print">
-  <button class="btn-print" onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
-  <button class="btn-cerrar" onclick="window.close()">✕ Cerrar</button>
+<!-- ═══ MEMBRETE ═══ -->
+<div style="margin-bottom:18px;border-bottom:2.5px solid #1B3A5C;padding-bottom:14px">
+  <div style="display:flex;align-items:center;gap:16px">
+    <img src="${BARRCAN_LOGO_B64}" style="width:72px;height:72px;object-fit:contain;flex-shrink:0">
+    <div style="flex:1;text-align:center">
+      <div style="font-size:9.5pt;font-weight:700;color:#1B3A5C;line-height:1.8">
+        PRIV. SANTA CRUZ No.23 COL. SAN SIMÓN TICUMAC CP. 03660<br>
+        BENITO JUÁREZ, MÉXICO, D.F. &nbsp; TEL: 56-15-15-84-15<br>
+        WWW.BarrCan.com.mx &nbsp;·&nbsp; E-mail: can_alum_cris@hotmail.com
+      </div>
+    </div>
+  </div>
+  <div style="text-align:center;margin-top:10px;border-top:1.5px solid #1B3A5C;
+              border-bottom:1.5px solid #1B3A5C;padding:5px 0">
+    <span style="font-size:13pt;font-weight:700;color:#1B3A5C;letter-spacing:1px">Presupuesto - Contrato</span>
+  </div>
 </div>
 
-<div class="page" style="padding-bottom:80px">
-
-  <!-- MEMBRETE -->
-  <div style=text-align:center;margin-bottom:20px>
-    <div style=font-size:10pt;font-weight:700;color:#1B3A5C;line-height:1.8>
-      PRIV. SANTA CRUZ No.23 COL. SAN SIMÓN TICUMAC CP. 03660<br>
-      BENITO JUÁREZ, MÉXICO, D. F. TEL: 56-15-15-84-15<br>
-      WWW.BarrCan.com.mx &nbsp; E-mail: can_alum_cris@hotmail.com
-    </div>
-    <div style=margin:12px 0;border-top:2px solid #1B3A5C;border-bottom:2px solid #1B3A5C;padding:5px 0>
-      <span style=font-size:13pt;font-weight:700;color:#1B3A5C;letter-spacing:1px>Presupuesto - Contrato</span>
-    </div>
+<!-- ═══ CLIENTE Y FECHA ═══ -->
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+  <div>
+    <div style="font-size:13pt;font-weight:700;color:#1B3A5C">${nombre||'—'}</div>
+    ${direccion ? `<div style="font-size:9.5pt;color:#444;margin-top:2px">${direccion}</div>` : ''}
+    ${telefono  ? `<div style="font-size:9.5pt;color:#444">Tel: ${telefono}</div>` : ''}
   </div>
-
-  <!-- FECHA + CLIENTE -->
-  <div style=display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px>
-    <div>
-      <div style=font-size:12pt;font-weight:700;color:#1B3A5C>${nombre || 'Cliente'}</div>
-      ${direccion ? `<div style=font-size:10pt;color:#444;margin-top:2px>${direccion}</div>` : ''}
-      ${telefono ? `<div style=font-size:10pt;color:#444>Tel: ${telefono}</div>` : ''}
-    </div>
-    <div style=text-align:right;font-size:10pt;color:#444>
-      ${fechaLarga()}
-    </div>
+  <div style="text-align:right;font-size:9.5pt;color:#444;flex-shrink:0;padding-left:20px">
+    ${fechaLarga()}<br>
+    <span style="font-family:'Courier New',monospace;font-size:9pt;color:#1B3A5C;font-weight:700">${folio}</span>
   </div>
+</div>
 
-  <!-- DIAGRAMAS -->
-  <div style=text-align:center;margin:0 0 16px;padding:12px;border:1px solid #e0e0e0;border-radius:4px;background:#fafafa>
-    ${diagramas}
+<!-- ═══ DIAGRAMAS ═══ -->
+${partidas.length ? `<div style="text-align:center;margin-bottom:14px;padding:10px;
+  border:1px solid #e0e0e0;border-radius:4px;background:#fafafa">${diagramas}</div>` : ''}
+
+<!-- ═══ LISTA DE PRECIOS ═══ -->
+<div style="margin-bottom:8px">
+  ${listaPrecios}
+  <div style="display:flex;justify-content:space-between;padding:8px 0 4px;
+              border-top:2px solid #1B3A5C;margin-top:4px">
+    <span style="font-size:11.5pt;font-weight:700;color:#1B3A5C">Total</span>
+    <span style="font-size:12pt;font-weight:700;color:#1B3A5C;font-family:'Courier New',monospace">
+      $&nbsp;${fmt(total)}
+    </span>
   </div>
+</div>
 
-  <!-- LISTA DE PRECIOS estilo BarrCan -->
-  <div style=margin-bottom:6px>
-    ${listaPrecios}
-    <div style=display:flex;justify-content:space-between;padding:8px 0;margin-top:4px;border-top:2px solid #1B3A5C>
-      <span style=font-size:12pt;font-weight:700;color:#1B3A5C>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;$</span>
-      <span style=font-size:13pt;font-weight:700;color:#1B3A5C>$&nbsp;${fmt(total)}</span>
-    </div>
-  </div>
+<!-- ═══ NOTA DESCRIPTIVA ═══ -->
+${notas ? `<div style="font-size:9pt;color:#333;line-height:1.7;margin:14px 0;text-align:justify;
+  padding:10px 12px;background:#f9f9f9;border-left:3px solid #C8923A">
+  <strong>Nota:</strong> ${notas}
+</div>` : ''}
 
-  <!-- NOTA DESCRIPTIVA -->
-  ${notas ? `<div style=font-size:9.5pt;color:#333;line-height:1.7;margin:14px 0;text-align:justify>
-    <strong>Nota:</strong> ${notas}
-  </div>` : ''}
+<!-- ═══ PIE PÁGINA 1 ═══ -->
+<div style="font-size:8.5pt;color:#555;text-align:center;margin-top:14px;font-style:italic">
+  El presente presupuesto contempla los trabajos antes descritos. Cualquier trabajo adicional se cotizará por separado.<br>
+  Estos precios están sujetos a cambios sin previo aviso.
+</div>
 
-  <!-- TEXTO ESTÁNDAR -->
-  <div style=font-size:9.5pt;color:#333;line-height:1.7;margin:14px 0;text-align:justify>
-    El presente presupuesto contempla los trabajos antes descritos, cualquier otro trabajo
-    adicional se cotizará. Estos precios están sujetos a cambios sin previo aviso.
-  </div>
+<!-- ════════════════════════════════════════════
+     PÁGINA 2: CONDICIONES
+     ════════════════════════════════════════════ -->
+<div class=page-break>
 
-  <!-- FOLIO -->
-  <div style=text-align:center;font-size:10pt;font-weight:700;color:#1B3A5C;margin:16px 0;letter-spacing:2px>
-    ${folio}
-  </div>
+<h2>1. Condiciones de venta</h2>
+<ol style="padding-left:18px;font-size:9pt;line-height:1.8;color:#222">
+  <li><strong>Vigencia:</strong> Este presupuesto tiene una vigencia de <strong>10 días hábiles</strong> a partir de su fecha de emisión. Transcurrido ese plazo, los precios podrán modificarse sin previo aviso. En caso de requerir factura electrónica (CFDI), el IVA se desglosará sobre el importe acordado.</li>
+  <li><strong>Vanos descuadrados:</strong> No se incluyen perfiles de ajuste por vanos que presenten falta de plomo, nivel o escuadra. Si se detectan durante la visita de instalación, se cotizarán por separado.</li>
+  <li><strong>Limpieza:</strong> No se incluye limpieza fina posterior a la instalación. El retiro de residuos propios del proceso de instalación sí está comprendido.</li>
+  <li><strong>Tolerancias de fabricación:</strong> La tolerancia estándar es de ±5 mm en todas las dimensiones, conforme a las prácticas del sector.</li>
+  <li><strong>Condición de los vanos:</strong> El estado de los vanos al momento de la instalación es responsabilidad exclusiva del cliente. BarrCan no responde por deficiencias estructurales preexistentes que dificulten o impidan la correcta instalación.</li>
+  <li><strong>Cambios y modificaciones:</strong> Este presupuesto quedará sin efecto ante cualquier cambio en modulación, dimensiones, cantidades, colores, materiales o especificaciones de los elementos descritos. Toda modificación requerirá la emisión de un nuevo presupuesto actualizado.</li>
+  <li><strong>Trabajos con material existente:</strong> La manipulación de material preexistente (vidrios, espejos, perfiles, herrajes) se realiza sin responsabilidad por daños accidentales. En caso de rotura o daño, BarrCan no asumirá el costo de reposición; el trabajo de restauración se cotizará por separado.</li>
+  <li><strong>Almacenamiento de material:</strong> El material retirado que deba resguardarse para uso posterior tendrá un periodo sin costo de hasta <strong>5 días hábiles</strong>. A partir del quinto día se aplicará un cargo de <strong>$80 MXN por día natural</strong>. Consulte la Sección 3 para condiciones completas.</li>
+  <li><strong>Aceptación por depósito:</strong> El depósito del anticipo implica la aceptación plena de todas las condiciones descritas en este presupuesto. (En casos con visita de asesoramiento previo, se requerirá confirmación expresa del cliente, dado que el costo de dicha visita se acredita al anticipo inicial.)</li>
+  <li><strong>Política de reembolso:</strong> En caso de cancelación del proyecto se retendrá el <strong>25% del costo total</strong> por gastos administrativos y asesoramiento. Si la cancelación ocurre antes de iniciar fabricación, se devolverá el material adquirido y la diferencia económica, descontando el 25% y el costo de materiales comprados. Si la fabricación ya inició, no procede reembolso en efectivo; se entregará el material en el estado en que se encuentre como finiquito total.</li>
+</ol>
 
-  <!-- PAGOS -->
-  <div style=margin:20px 0 10px>
-    <table style=width:100%;border-collapse:collapse>
-      <tr>
-        <td style=padding:5px 8px;border:1px solid #ddd;font-size:9.5pt>Anticipo inicial (50%)</td>
-        <td style=padding:5px 8px;border:1px solid #ddd;font-size:9.5pt;text-align:right;font-weight:600>$&nbsp;${fmt(total*0.50)}</td>
-        <td style=padding:5px 8px;border:1px solid #ddd;font-size:9pt;color:#555>Al aprobar y firmar</td>
-      </tr>
-      <tr>
-        <td style=padding:5px 8px;border:1px solid #ddd;font-size:9.5pt>Segundo pago (35%)</td>
-        <td style=padding:5px 8px;border:1px solid #ddd;font-size:9.5pt;text-align:right;font-weight:600>$&nbsp;${fmt(total*0.35)}</td>
-        <td style=padding:5px 8px;border:1px solid #ddd;font-size:9pt;color:#555>Al confirmar fecha de instalación</td>
-      </tr>
-      <tr style=background:#1B3A5C>
-        <td style=padding:5px 8px;border:1px solid #1B3A5C;font-size:9.5pt;color:white;font-weight:700>Liquidación final (15%)</td>
-        <td style=padding:5px 8px;border:1px solid #1B3A5C;font-size:9.5pt;text-align:right;font-weight:700;color:#F1C40F>$&nbsp;${fmt(total*0.15)}</td>
-        <td style=padding:5px 8px;border:1px solid #1B3A5C;font-size:9pt;color:rgba(255,255,255,0.8)>A la entrega</td>
-      </tr>
-    </table>
-  </div>
+<h2>Trabajos no comprendidos en este presupuesto</h2>
+<ul style="padding-left:18px;font-size:9pt;line-height:2;color:#222">
+  <li><strong>NO INCLUYE</strong> ningún trabajo de <strong>ALBAÑILERÍA</strong> (muros, castillos, plantillas, resanes, etc.)</li>
+  <li><strong>NO INCLUYE</strong> ningún trabajo de <strong>HERRERÍA</strong> (estructuras metálicas, barandales, rejas u otros similares)</li>
+  <li><strong>NO INCLUYE</strong> ningún trabajo de <strong>CARPINTERÍA</strong> (marcos, puertas de madera, muebles o similares)</li>
+  <li><strong>NO INCLUYE</strong> ningún trabajo de <strong>ELECTRICIDAD</strong> (cableado, contactos, iluminación, etc.)</li>
+</ul>
 
-  <!-- DATOS BANCARIOS -->
-  <div style=display:flex;gap:16px;margin:12px 0>
-    <div style=flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 12px>
-      <div style=font-size:8.5pt;font-weight:700;color:#1B3A5C>Banorte</div>
-      <div style=font-size:8.5pt;color:#444>Mauricio Barrera Espinosa</div>
-      <div style=font-size:8.5pt;color:#444>Cta: 0672530766</div>
-      <div style=font-size:8.5pt;color:#444>CLABE: 072180006725307668</div>
-    </div>
-    <div style=flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 12px>
-      <div style=font-size:8.5pt;font-weight:700;color:#1B3A5C>BBVA</div>
-      <div style=font-size:8.5pt;color:#444>Mauricio Barrera Espinosa</div>
-      <div style=font-size:8.5pt;color:#444>Cta: 1512081906</div>
-      <div style=font-size:8.5pt;color:#444>CLABE: 012180015120819061</div>
-    </div>
-  </div>
+<!-- ════════════════════════════════════════════
+     PÁGINA 3: PAGOS + ALMACENAMIENTO + TIEMPO
+     ════════════════════════════════════════════ -->
+<div class=page-break>
 
-  <!-- TIEMPO ENTREGA -->
-  <div style=font-size:9.5pt;color:#333;margin:10px 0;padding:8px 12px;background:#f0f4f8;border-left:3px solid #1B3A5C>
-    <strong>Tiempo de entrega:</strong> 5 a 7 días hábiles a partir de la recepción del anticipo del 50%.
-  </div>
-
-  <!-- FIRMAS -->
-  <table style=width:100%;margin:24px 0 10px>
+<h2>2. Política de pagos</h2>
+<p style="font-size:9pt;color:#333;margin-bottom:10px">
+  Al aprobar formalmente el presupuesto, el cliente acepta las siguientes condiciones de pago:
+</p>
+<table style="margin-bottom:12px">
+  <thead>
     <tr>
-      <td style=width:45%;padding:50px 12px 6px;border-top:1px solid #999;font-size:9pt;color:#555;text-align:center>
-        Firma y nombre del cliente<br>Fecha: ___________________
-      </td>
-      <td style=width:10%></td>
-      <td style=width:45%;padding:50px 12px 6px;border-top:1px solid #999;font-size:9pt;color:#555;text-align:center>
-        Sello y firma BarrCan<br>${folio}
-      </td>
+      <th>Concepto</th>
+      <th style="text-align:center;width:100px">Porcentaje</th>
+      <th>Momento de pago</th>
+      <th style="text-align:right;width:110px">Monto</th>
     </tr>
-  </table>
+  </thead>
+  <tbody>
+    <tr>
+      <td>Anticipo inicial</td>
+      <td style="text-align:center">50 %</td>
+      <td>Al aprobar y firmar el presupuesto</td>
+      <td style="text-align:right;font-weight:700">$&nbsp;${fmt(total*0.50)}</td>
+    </tr>
+    <tr style="background:#f5f7fa">
+      <td>Segundo pago</td>
+      <td style="text-align:center">35 %</td>
+      <td>Al confirmar fecha de entrega e instalación</td>
+      <td style="text-align:right;font-weight:700">$&nbsp;${fmt(total*0.35)}</td>
+    </tr>
+    <tr style="background:#1B3A5C;color:white">
+      <td style="color:white;font-weight:700;border-color:#1B3A5C">Liquidación final</td>
+      <td style="color:white;text-align:center;border-color:#1B3A5C">15 %</td>
+      <td style="color:rgba(255,255,255,0.85);border-color:#1B3A5C">A la entrega y conclusión total del trabajo</td>
+      <td style="color:#F1C40F;text-align:right;font-weight:700;border-color:#1B3A5C">$&nbsp;${fmt(total*0.15)}</td>
+    </tr>
+  </tbody>
+</table>
 
-  <!-- PÁGINA 2: CONDICIONES -->
-  <div class=page-break>
-    <div style=font-size:11pt;font-weight:700;color:#1B3A5C;border-bottom:2px solid #C8923A;padding-bottom:4px;margin-bottom:12px>
-      Condiciones de venta
-    </div>
-    ${condicionesVenta}
-    <div style=font-size:11pt;font-weight:700;color:#1B3A5C;border-bottom:2px solid #C8923A;padding-bottom:4px;margin:14px 0 10px>
-      Trabajos no comprendidos en este presupuesto
-    </div>
-    ${trabajosNoIncluye}
+<!-- Datos bancarios -->
+<div style="display:flex;gap:16px;margin-bottom:12px">
+  <div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px">
+    <div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">Banorte</div>
+    <div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div>
+    <div style="font-size:8.5pt;color:#333">Cuenta: 0672530766</div>
+    <div style="font-size:8.5pt;color:#333">CLABE: 072180006725307668</div>
   </div>
-
+  <div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px">
+    <div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">BBVA</div>
+    <div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div>
+    <div style="font-size:8.5pt;color:#333">Cuenta: 1512081906</div>
+    <div style="font-size:8.5pt;color:#333">CLABE: 012180015120819061</div>
+  </div>
+  <div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px">
+    <div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">Titular</div>
+    <div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div>
+    <div style="font-size:8.5pt;color:#333">RFC: BAEM790610K90</div>
+    <div style="font-size:8pt;color:#888;margin-top:4px;font-style:italic">Factura: can_alum_cris@hotmail.com</div>
+  </div>
 </div>
+
+<!-- Nota segundo pago -->
+<div style="border:1.5px solid #E67E22;border-radius:4px;padding:10px 12px;margin-bottom:14px;background:#FFF8F0">
+  <div style="font-size:9pt;font-weight:700;color:#E67E22;margin-bottom:4px">IMPORTANTE — Segundo pago (35%)</div>
+  <div style="font-size:8.5pt;color:#555;font-style:italic;line-height:1.6">
+    Este pago deberá efectuarse en la fecha acordada o a más tardar el mismo día en que se defina la agenda de instalación.
+    Si BarrCan no recibe dicho pago en el plazo indicado, la fecha de instalación agendada quedará automáticamente liberada
+    y deberá reagendarse conforme a la disponibilidad del taller. Esta cancelación no generará penalización ni cargo adicional de parte de BarrCan.
+  </div>
+</div>
+
+<h2>3. Almacenamiento y disposición de material</h2>
+<table style="margin-bottom:14px;font-size:8.5pt">
+  <tbody>
+    <tr><td style="font-weight:700;background:#f5f7fa;width:36%">Periodo sin costo y notificación</td>
+        <td>El material tendrá un periodo de almacenamiento sin costo de hasta <strong>5 días hábiles</strong>. Al cuarto día hábil, BarrCan notificará al cliente por WhatsApp o correo electrónico para que considere el retiro antes de que inicie el periodo de cobro.</td></tr>
+    <tr><td style="font-weight:700;background:#f5f7fa">Cargo por almacenamiento</td>
+        <td>A partir del quinto día hábil, se aplicará un cargo de <strong>$80 MXN por día natural</strong> hasta que el material sea retirado o cedido formalmente.</td></tr>
+    <tr><td style="font-weight:700;background:#f5f7fa">Flete de entrega (CDMX)</td>
+        <td>Si el cliente requiere que BarrCan entregue el material en su domicilio dentro de la Ciudad de México: <strong>$800 MXN</strong> carga ligera / <strong>$1,000 MXN</strong> volumen medio / <strong>$1,800 MXN</strong> volumen alto. Se liquida antes de coordinar la entrega.</td></tr>
+    <tr><td style="font-weight:700;background:#f5f7fa">Flete foráneo</td>
+        <td>Para entregas fuera de la Ciudad de México, el costo se calculará conforme a la distancia. BarrCan notificará el monto al cliente para su aprobación antes de confirmar la logística.</td></tr>
+    <tr><td style="font-weight:700;background:#f5f7fa">Cesión de material a BarrCan</td>
+        <td>Si el cliente cede el material a BarrCan, se aplicará un cargo único de <strong>$1,000 MXN</strong> por concepto de manejo, retiro y disposición, el cual deberá cubrirse de forma anticipada.</td></tr>
+  </tbody>
+</table>
+
+<h2>4. Tiempo de entrega e instalación</h2>
+<div style="font-size:9.5pt;color:#333;padding:10px 14px;background:#EAF4FF;
+  border-left:4px solid #1B3A5C;border-radius:0 4px 4px 0;margin-bottom:18px;line-height:1.7">
+  El tiempo estimado de fabricación e instalación es de <strong>5 a 7 días hábiles</strong> contados a partir de la recepción del anticipo del 50 %.
+  BarrCan notificará con anticipación si la carga de trabajo no permitiera cumplir con dicho plazo.
+</div>
+
+<!-- FIRMAS -->
+<table style="width:100%;margin-top:24px">
+  <tr>
+    <td style="width:44%;padding:50px 12px 8px;border-top:1.5px solid #999;font-size:9pt;color:#555;text-align:center">
+      Firma y nombre del cliente<br>Fecha: ___________________
+    </td>
+    <td style="width:12%"></td>
+    <td style="width:44%;padding:50px 12px 8px;border-top:1.5px solid #999;font-size:9pt;color:#555;text-align:center">
+      Sello y firma BarrCan<br>
+      <span style="font-family:'Courier New',monospace;font-size:8pt;color:#1B3A5C">${folio}</span>
+    </td>
+  </tr>
+</table>
+
+<div style="font-size:7.5pt;color:#aaa;text-align:center;margin-top:16px;border-top:1px solid #eee;padding-top:8px">
+  El presente presupuesto contempla los trabajos antes descritos. Cualquier trabajo adicional se cotizará por separado.
+  Estos precios están sujetos a cambios sin previo aviso. &nbsp;·&nbsp; ${folio}
+</div>
+
+</div><!-- /page-break pagos -->
+</div><!-- /page-break condiciones -->
+
+</div><!-- /page -->
 </body>
 </html>`;
 }
@@ -8299,6 +8418,17 @@ function limpiarFirma(id) {
   entActualizarProgreso();
 }
 
+function entBuscarCliente(q) {
+  clienteBuscar(q, 'ent-cli-resultados', (c) => {
+    document.getElementById('ent-cliente').value      = c.nombre    || '';
+    document.getElementById('ent-tel').value          = c.telefono  || '';
+    document.getElementById('ent-num-cliente').value  = c.num_cliente|| '';
+    document.getElementById('ent-buscar-cli').value   = '';
+    entActualizarProgreso();
+    toast(`✅ ${c.nombre}`);
+  });
+}
+
 function entActualizarProgreso() {
   const secciones = [
     // Datos básicos — cliente, folio, fecha, dirección y asignado por
@@ -8376,13 +8506,14 @@ async function entGenerarReporte() {
   alertEl.style.display = 'none';
 
   // Generar HTML del reporte
-  const cliente  = document.getElementById('ent-cliente').value;
-  const tel      = document.getElementById('ent-tel').value;
-  const folio    = document.getElementById('ent-folio').value;
-  const dir      = document.getElementById('ent-dir').value;
-  const monto    = document.getElementById('ent-monto').value;
-  const fecha    = document.getElementById('ent-fecha').value;
-  const tecnico  = document.getElementById('ent-tecnico').value || 'BarrCan';
+  const cliente    = document.getElementById('ent-cliente').value;
+  const tel        = document.getElementById('ent-tel').value;
+  const folio      = document.getElementById('ent-folio').value;
+  const dir        = document.getElementById('ent-dir').value;
+  const monto      = document.getElementById('ent-monto').value;
+  const fecha      = document.getElementById('ent-fecha').value;
+  const tecnico    = document.getElementById('ent-tecnico').value || 'BarrCan';
+  const numCliente = document.getElementById('ent-num-cliente')?.value || '';
 
   const firmasTec = document.getElementById('pad-tec').toDataURL();
   const firmasCli = document.getElementById('pad-cli').toDataURL();
@@ -8422,19 +8553,24 @@ async function entGenerarReporte() {
     <button class=btn-cerrar onclick="window.close()">✕ Cerrar</button>
   </div>
   <div class=page>
-  <div style=text-align:center;margin-bottom:16px>
-    <div style=font-size:9pt;font-weight:700;color:#1B3A5C;line-height:1.6>
-      PRIV. SANTA CRUZ No.23 COL. SAN SIMÓN TICUMAC CP. 03660<br>
-      BENITO JUÁREZ, MÉXICO, D.F. &nbsp;TEL: 56-15-15-84-15<br>
-      WWW.BarrCan.com.mx
-    </div>
-    <div style=font-size:14pt;font-weight:700;color:#1B3A5C;margin-top:8px;border-top:1px dashed #aaa;border-bottom:1px dashed #aaa;padding:6px 0>
-      REPORTE DE ENTREGA — VENTANAS Y CANCELERÍA
+  <div style=margin-bottom:16px;border-bottom:2px solid #1B3A5C;padding-bottom:12px>
+    <div style=display:flex;align-items:center;gap:14px>
+      <img src="${BARRCAN_LOGO_B64}" style=width:64px;height:64px;object-fit:contain;flex-shrink:0>
+      <div style=flex:1>
+        <div style=font-size:20pt;font-weight:900;color:#1B3A5C;letter-spacing:2px;line-height:1>BarrCan</div>
+        <div style=font-size:7.5pt;color:#C8923A;letter-spacing:3px;text-transform:uppercase>Cancelería · Aluminio · Vidrio</div>
+        <div style=font-size:7.5pt;color:#666;margin-top:2px>PRIV. SANTA CRUZ No.23 · SAN SIMÓN TICUMAC CP.03660 · BENITO JUÁREZ, CDMX</div>
+        <div style=font-size:7.5pt;color:#666>TEL: 56-15-15-84-15 · www.BarrCan.com.mx</div>
+      </div>
+      <div style=text-align:right>
+        <div style=font-size:12pt;font-weight:700;color:#1B3A5C;border:2px solid #1B3A5C;padding:4px 10px;border-radius:4px>REPORTE DE ENTREGA</div>
+        <div style=font-size:8pt;color:#888;margin-top:4px>Ventanas y Cancelería</div>
+      </div>
     </div>
   </div>
   <h2>1. Datos de la Obra</h2>
   <table style=margin-bottom:10px>
-    <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700;width:35%>Cliente</td><td style=padding:5px 8px;border:1px solid #ddd>${cliente}</td></tr>
+    <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700;width:35%>Cliente</td><td style=padding:5px 8px;border:1px solid #ddd>${cliente}${numCliente ? ` <span style=font-size:9pt;color:#2E6DA4;font-family:monospace;font-weight:700> · ${numCliente}</span>` : ''}</td></tr>
     <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Folio</td><td style=padding:5px 8px;border:1px solid #ddd>${folio}</td></tr>
     <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Dirección</td><td style=padding:5px 8px;border:1px solid #ddd>${dir}</td></tr>
     <tr><td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Monto</td><td style=padding:5px 8px;border:1px solid #ddd>${monto}</td></tr>
@@ -8579,6 +8715,129 @@ async function entEnviarWAReporte(waUrl) {
 }
 
 // ── Historial de reportes de entrega ─────────────────────────
+// ══════════════════════════════════════════════
+// HISTORIAL DE VISITAS DE MEDICIÓN
+// ══════════════════════════════════════════════
+let VISITAS_HIST_CACHE = [];
+
+async function visitasHistorialAbrir() {
+  const overlay = document.getElementById('visitas-historial-overlay');
+  const lista   = document.getElementById('visitas-historial-lista');
+  overlay.style.display = 'block';
+  lista.innerHTML = '<div style="text-align:center;padding:30px;color:var(--gray-400)">⏳ Cargando visitas…</div>';
+
+  // Cargar de Supabase primero
+  if (SYNC.online) {
+    try {
+      const { data, error } = await sb().from('visitas_medicion')
+        .select('*').order('fecha_visita', { ascending: false }).limit(100);
+      if (!error && data?.length) {
+        VISITAS_HIST_CACHE = data;
+        localStorage.setItem('barrcan_visitas_hist', JSON.stringify(data));
+      }
+    } catch(e) { console.warn('visitas hist:', e.message); }
+  }
+
+  // Fallback local
+  if (!VISITAS_HIST_CACHE.length) {
+    try { VISITAS_HIST_CACHE = JSON.parse(localStorage.getItem('barrcan_visitas_hist') || '[]'); } catch(e){}
+  }
+
+  visitasHistorialRender(VISITAS_HIST_CACHE);
+}
+
+function visitasHistorialRender(datos) {
+  const lista = document.getElementById('visitas-historial-lista');
+  if (!datos.length) {
+    lista.innerHTML = '<div style="text-align:center;padding:40px;color:var(--gray-400)">Sin visitas registradas aún</div>';
+    return;
+  }
+  lista.innerHTML = datos.map(v => {
+    const fecha = v.fecha_visita
+      ? new Date(v.fecha_visita+'T12:00:00').toLocaleDateString('es-MX',{weekday:'short',day:'numeric',month:'short',year:'2-digit'})
+      : '—';
+    return `
+    <div style="background:var(--white);border-radius:var(--radius);padding:13px 14px;
+                margin-bottom:8px;box-shadow:var(--shadow-sm);border-left:4px solid var(--blue)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+        <div>
+          <div style="font-size:11px;font-family:'DM Mono',monospace;color:var(--blue);font-weight:700">${v.folio||'—'}</div>
+          <div style="font-size:14px;font-weight:700;color:var(--navy);margin-top:2px">${v.cliente_nombre||'—'}</div>
+          ${v.cliente_tel ? `<div style="font-size:11px;color:var(--gray-400)">📞 ${v.cliente_tel}</div>` : ''}
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:var(--gray-400)">${fecha}</div>
+          ${v.hora_visita ? `<div style="font-size:11px;color:var(--gray-400)">⏰ ${v.hora_visita.slice(0,5)}</div>` : ''}
+          <div style="font-size:11px;color:var(--gray-600);font-weight:600">👷 ${v.tecnico||'—'}</div>
+        </div>
+      </div>
+      ${v.dir_obra ? `<div style="font-size:11px;color:var(--gray-400);margin-bottom:4px">📍 ${v.dir_obra}</div>` : ''}
+      ${v.desc_obra ? `<div style="font-size:11px;color:var(--navy);margin-bottom:6px;line-height:1.4">${v.desc_obra.slice(0,100)}${v.desc_obra.length>100?'…':''}</div>` : ''}
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${v.num_piezas ? `<span style="font-size:10px;background:rgba(46,109,164,0.08);color:var(--blue);padding:2px 7px;border-radius:8px;font-weight:600">${v.num_piezas} piezas</span>` : ''}
+        ${v.escaleras && v.escaleras!=='no_indicado' ? `<span style="font-size:10px;background:var(--gray-100);color:var(--gray-600);padding:2px 7px;border-radius:8px">🪜 ${v.escaleras}</span>` : ''}
+        ${v.num_fotos ? `<span style="font-size:10px;background:rgba(200,146,58,0.08);color:var(--gold);padding:2px 7px;border-radius:8px;font-weight:600">📷 ${v.num_fotos} fotos</span>` : ''}
+        ${v.aplica_cobro && v.monto ? `<span style="font-size:10px;background:rgba(39,174,96,0.08);color:#27AE60;padding:2px 7px;border-radius:8px;font-weight:700">💰 $${fmt(v.monto)}</span>` : ''}
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <button onclick="visitasHistorialCrearOT('${v.folio||''}')"
+          style="flex:1;padding:8px;background:rgba(27,58,92,0.06);color:var(--navy);
+                 border:1.5px solid var(--navy);border-radius:var(--radius-sm);
+                 font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer">
+          + Crear OT desde esta visita
+        </button>
+        ${v.reporte_url ? `
+        <button onclick="entAbrirReporteUrl('${v.reporte_url}')"
+          style="padding:8px 12px;background:rgba(46,109,164,0.08);color:var(--blue);
+                 border:1px solid rgba(46,109,164,0.2);border-radius:var(--radius-sm);
+                 font-size:12px;font-weight:700;cursor:pointer">
+          📄 Ver
+        </button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function visitasHistorialFiltrar(q) {
+  const term = q.toLowerCase().replace(/\s+/g,'');
+  const filtradas = !term ? VISITAS_HIST_CACHE
+    : VISITAS_HIST_CACHE.filter(v =>
+        (v.folio||'').toLowerCase().includes(term) ||
+        (v.cliente_nombre||'').toLowerCase().replace(/\s+/g,'').includes(term) ||
+        (v.cliente_tel||'').replace(/\D/g,'').includes(term.replace(/\D/g,'')) ||
+        (v.dir_obra||'').toLowerCase().includes(term) ||
+        (v.desc_obra||'').toLowerCase().includes(term)
+      );
+  visitasHistorialRender(filtradas);
+}
+
+function visitasHistorialCrearOT(folio) {
+  // Buscar la visita y precargar datos en la nueva OT
+  const v = VISITAS_HIST_CACHE.find(x => x.folio === folio);
+  if (!v) { ordenAbrir(); return; }
+  document.getElementById('visitas-historial-overlay').style.display = 'none';
+  ordenAbrir();
+  setTimeout(() => {
+    const campos = {
+      'orden-folio-buscar': v.folio || '',
+      'orden-cliente':      v.cliente_nombre || '',
+      'orden-tel':          v.cliente_tel || '',
+      'orden-dir':          v.dir_obra || '',
+      'orden-desc':         v.desc_obra || '',
+      'orden-notas':        v.notas_tecnico || ''
+    };
+    Object.entries(campos).forEach(([id, val]) => {
+      const el = document.getElementById(id);
+      if (el) el.value = val;
+    });
+    if (v.num_piezas) {
+      const el = document.getElementById('orden-num-piezas');
+      if (el) el.value = v.num_piezas;
+    }
+    toast('✅ Datos de visita cargados en la OT');
+  }, 400);
+}
+
 async function entVerHistorialReportes() {
   const overlay = document.getElementById('ent-reportes-overlay');
   const lista   = document.getElementById('ent-reportes-lista');
@@ -9268,7 +9527,59 @@ function sb() {
 }
 
 // ══════════════════════════════════════════════
-// SISTEMA OFFLINE-FIRST — BarrCan v5
+// ══════════════════════════════════════════════
+// BarrCan App — Control de Versiones
+// ══════════════════════════════════════════════
+// v30 — 24/Jun/2026
+//   · Presupuesto-contrato rediseñado fiel al formato Word original CACN-094B
+//   · 3 páginas: Lista de precios + Nota / Condiciones de venta / Política de pagos + Almacenamiento + Tiempo
+//   · Logo en membrete, tabla de pagos con montos calculados, datos bancarios con RFC
+//   · Nota del segundo pago destacada, tabla completa de almacenamiento, firmas
+// ──────────────────────────────────────────────
+// v29 — 24/Jun/2026
+//   · Logo BarrCan en: reporte de entrega, recibo, presupuesto-contrato, orden de taller, orden de instalación
+//   · Fix campo ent-folio renombrado a ent-num-cliente con prefijo CACN visible
+// ──────────────────────────────────────────────
+// v28 — 24/Jun/2026
+//   · Historial de visitas de medición con búsqueda y sync Supabase
+//   · Botón "Historial Visitas" en módulo de clientes
+//   · Crear OT directamente desde una visita del historial
+//   · Buscador de cliente en formulario de reporte de entrega
+//   · Número de cliente visible en el reporte de entrega generado
+//   · Tabla presupuestos_atrasados: sync Supabase, buscador, botón pago directo
+// ──────────────────────────────────────────────
+// v27 — 24/Jun/2026
+//   · Buscador universal de clientes (clienteBuscar) en OT, contrato, pagos, presupuestos
+//   · Modal de detalle de OT rediseñado con 4 tabs: OT / Taller / Instalación / Pagos
+//   · Opción "Pago total 100%" en módulo de pagos
+//   · Sync offline robusto: pagos y reportes de entrega suben al reconectar
+//   · Recibo con título dinámico, nota de factura y fecha tentativa de instalación
+//   · Fix: recibo no se congelaba al guardar (botón deshabilitado durante proceso)
+//   · Fix: cliCargar siempre sincroniza con Supabase si hay conexión
+//   · Vidrio templado: 6mm=$800, 9mm=$1,800
+// ──────────────────────────────────────────────
+// v26 — 23/Jun/2026
+//   · Fotos en visitas: galería + cámara (sin capture=environment)
+//   · Formas de pago: Efectivo / Transferencia / Tarjeta con foto de voucher
+//   · Reportes entre dispositivos: siempre carga de Supabase primero
+//   · Buscador clientes en presupuesto/contrato con caché automático
+//   · Fix: función entVerHistorialReportes duplicada eliminada
+// ──────────────────────────────────────────────
+// v25 — 22/Jun/2026
+//   · Reporte de entrega: flujo Generar → Imprimir PDF → WhatsApp manual
+//   · Panel de acciones post-reporte con botón WA y encuesta
+//   · Recibo con fecha tentativa 5-7 días hábiles
+//   · Barra de impresión en todos los documentos generados
+//   · Config: template literals → HTML estático (no más código visible)
+// ══════════════════════════════════════════════
+const APP_VERSION = 'v30';
+
+const BARRCAN_LOGO_B64 = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/4REKRXhpZgAATU0AKgAAAAgABQESAAMAAAABAAEAAAE7AAIAAAARAAAIVodpAAQAAAABAAAIaJydAAEAAAAiAAAQ4OocAAcAAAgMAAAASgAAAAAc6gAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAE1BVVJJQ0lPIEJBUlJFUkEAAAAFkAMAAgAAABQAABC2kAQAAgAAABQAABDKkpEAAgAAAAMzNgAAkpIAAgAAAAMzNgAA6hwABwAACAwAAAiqAAAAABzqAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAMjAyMzoxMDoxNSAwMjozMzo0OQAyMDIzOjEwOjE1IDAyOjMzOjQ5AAAATQBBAFUAUgBJAEMASQBPACAAQgBBAFIAUgBFAFIAQQAAAP/hCyNodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvADw/eHBhY2tldCBiZWdpbj0n77u/JyBpZD0nVzVNME1wQ2VoaUh6cmVTek5UY3prYzlkJz8+DQo8eDp4bXBtZXRhIHhtbG5zOng9ImFkb2JlOm5zOm1ldGEvIj48cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPjxyZGY6RGVzY3JpcHRpb24gcmRmOmFib3V0PSJ1dWlkOmZhZjViZGQ1LWJhM2QtMTFkYS1hZDMxLWQzM2Q3NTE4MmYxYiIgeG1sbnM6ZGM9Imh0dHA6Ly9wdXJsLm9yZy9kYy9lbGVtZW50cy8xLjEvIi8+PHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9InV1aWQ6ZmFmNWJkZDUtYmEzZC0xMWRhLWFkMzEtZDMzZDc1MTgyZjFiIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iPjx4bXA6Q3JlYXRlRGF0ZT4yMDIzLTEwLTE1VDAyOjMzOjQ5LjM1ODwveG1wOkNyZWF0ZURhdGU+PC9yZGY6RGVzY3JpcHRpb24+PHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9InV1aWQ6ZmFmNWJkZDUtYmEzZC0xMWRhLWFkMzEtZDMzZDc1MTgyZjFiIiB4bWxuczpkYz0iaHR0cDovL3B1cmwub3JnL2RjL2VsZW1lbnRzLzEuMS8iPjxkYzpjcmVhdG9yPjxyZGY6U2VxIHhtbG5zOnJkZj0iaHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyI+PHJkZjpsaT5NQVVSSUNJTyBCQVJSRVJBPC9yZGY6bGk+PC9yZGY6U2VxPg0KCQkJPC9kYzpjcmVhdG9yPjwvcmRmOkRlc2NyaXB0aW9uPjwvcmRmOlJERj48L3g6eG1wbWV0YT4NCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAKICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIAogICAgICAgICAg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';
+function logoImg(size=50) {
+  return `<img src="${BARRCAN_LOGO_B64}" style="width:${size}px;height:${size}px;object-fit:contain;vertical-align:middle">`;
+}
+
+// SISTEMA OFFLINE-FIRST — BarrCan v27
 // ══════════════════════════════════════════════
 // Capas de almacenamiento:
 //   1. Memoria (STATE) — sesión activa
@@ -10565,45 +10876,115 @@ function ordenesRenderLista() {
   if (ORDEN_FILTRO !== 'todos') {
     filtradas = ORDENES_CACHE.filter(o => o.estado === ORDEN_FILTRO);
   }
+  // Filtrar por tipo de tab
+  if (OT_TAB_ACTIVO === 'taller') {
+    filtradas = filtradas.filter(o => ['pendiente','produccion'].includes(o.estado));
+  } else if (OT_TAB_ACTIVO === 'instalacion') {
+    filtradas = filtradas.filter(o => ['en_camino','programada','completada'].includes(o.estado));
+  }
 
   if (!filtradas.length) {
     lista.innerHTML = `<div style="text-align:center;padding:40px 20px;color:var(--gray-400)">
-      <div style="font-size:40px;margin-bottom:10px">📦</div>
-      <div style="font-size:14px">Sin órdenes ${ORDEN_FILTRO !== 'todos' ? 'en este estado' : ''}</div></div>`;
+      <div style="font-size:40px;margin-bottom:10px">${OT_TAB_ACTIVO==='taller'?'🔧':OT_TAB_ACTIVO==='instalacion'?'🚚':'📦'}</div>
+      <div style="font-size:14px">Sin órdenes ${ORDEN_FILTRO !== 'todos' ? 'en este estado' : ''}</div>
+      <div style="font-size:12px;margin-top:6px;color:var(--gray-300)">
+        ${OT_TAB_ACTIVO==='taller'?'Las órdenes pendientes y en producción aparecen aquí':
+          OT_TAB_ACTIVO==='instalacion'?'Las órdenes programadas y completadas aparecen aquí':
+          'Crea una nueva orden para comenzar'}
+      </div></div>`;
     return;
   }
 
   lista.innerHTML = filtradas.map(o => {
     const est  = ORDEN_ESTADOS[o.estado] || ORDEN_ESTADOS.pendiente;
-    const tec  = TECNICO_LABELS[o.tecnico_id] || o.tecnico_id;
+    const tec  = TECNICO_LABELS[o.tecnico_id] || o.tecnico_id || '—';
     const fecha = o.fecha_instalacion
       ? new Date(o.fecha_instalacion + 'T12:00:00').toLocaleDateString('es-MX',{weekday:'short',day:'numeric',month:'short'})
       : '—';
     const hoy   = new Date().toISOString().split('T')[0];
     const esHoy = o.fecha_instalacion === hoy;
+    const saldoColor = o.saldo_pendiente > 0 ? 'var(--gold)' : '#27AE60';
+    const saldoLabel = o.saldo_pendiente > 0 ? `💰 $${fmt(o.saldo_pendiente)}` : '✅ Liquidado';
 
     return `
-    <div class="orden-card ${o.estado}" onclick="ordenDetalleAbrir('${o.id}')">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-        <div style="font-size:15px;font-weight:700;color:var(--navy);flex:1;padding-right:8px">
-          ${o.cliente_nombre || '—'}
+    <div class="orden-card ${o.estado}" style="cursor:pointer" onclick="ordenDetalleAbrir('${o.id}')">
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div style="flex:1;padding-right:8px">
+          <div style="font-size:15px;font-weight:700;color:var(--navy)">${o.cliente_nombre || '—'}</div>
+          ${o.folio_cotizacion ? `<div style="font-size:10px;color:var(--blue);font-family:'DM Mono',monospace;margin-top:2px">CACN-${o.folio_cotizacion.replace(/^CACN-/i,'')}</div>` : ''}
         </div>
         <span class="orden-estado-badge ${est.badge}">${est.emoji} ${est.label}</span>
       </div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
-        <span style="font-size:11px;background:var(--gray-100);color:var(--gray-600);padding:2px 8px;border-radius:4px">
-          📅 ${esHoy ? '🔴 HOY' : fecha} ${o.hora_instalacion ? '· ' + o.hora_instalacion.slice(0,5) : ''}
+
+      <!-- Info chips -->
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">
+        <span style="font-size:11px;background:${esHoy?'rgba(192,57,43,0.1)':'var(--gray-100)'};
+          color:${esHoy?'var(--red)':'var(--gray-600)'};padding:3px 8px;border-radius:4px;font-weight:${esHoy?'700':'400'}">
+          📅 ${esHoy ? '🔴 HOY' : fecha}${o.hora_instalacion ? ' · '+o.hora_instalacion.slice(0,5) : ''}
         </span>
-        <span style="font-size:11px;background:var(--gray-100);color:var(--gray-600);padding:2px 8px;border-radius:4px">
-          ${tec}
+        <span style="font-size:11px;background:var(--gray-100);color:var(--gray-600);padding:3px 8px;border-radius:4px">
+          👷 ${tec}
         </span>
-        ${o.folio_cotizacion ? `<span style="font-size:11px;background:rgba(46,109,164,0.08);color:var(--blue);padding:2px 8px;border-radius:4px;font-family:'DM Mono',monospace">${o.folio_cotizacion}</span>` : ''}
+        <span style="font-size:11px;background:${o.saldo_pendiente>0?'rgba(200,146,58,0.1)':'rgba(39,174,96,0.1)'};
+          color:${saldoColor};padding:3px 8px;border-radius:4px;font-weight:700">
+          ${saldoLabel}
+        </span>
       </div>
-      ${o.dir_obra ? `<div style="font-size:11px;color:var(--gray-400)">📍 ${o.dir_obra}</div>` : ''}
-      ${o.saldo_pendiente > 0 ? `<div style="font-size:12px;color:var(--gold);font-weight:700;margin-top:4px">💰 Saldo: $${fmt(o.saldo_pendiente)}</div>` : ''}
-      ${o.notas_tecnico ? `<div style="font-size:11px;color:var(--gray-400);margin-top:3px;font-style:italic">📝 ${o.notas_tecnico}</div>` : ''}
+
+      ${o.dir_obra ? `<div style="font-size:11px;color:var(--gray-400);margin-bottom:6px">📍 ${o.dir_obra}</div>` : ''}
+      ${o.descripcion_trabajo ? `<div style="font-size:11px;color:var(--gray-500);margin-bottom:8px">📝 ${o.descripcion_trabajo.slice(0,60)}${o.descripcion_trabajo.length>60?'…':''}</div>` : ''}
+
+      <!-- Acciones rápidas -->
+      <div style="display:flex;gap:6px;margin-top:6px;border-top:1px solid var(--gray-100);padding-top:8px"
+           onclick="event.stopPropagation()">
+        <button onclick="pagoAbrir('${o.id}')"
+          style="flex:1;padding:8px;background:rgba(200,146,58,0.08);color:var(--gold);
+                 border:1px solid rgba(200,146,58,0.2);border-radius:6px;
+                 font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;cursor:pointer">
+          💰 Pago
+        </button>
+        <button onclick="otGenerarOrdenTaller('${o.id}')"
+          style="flex:1;padding:8px;background:rgba(46,109,164,0.06);color:var(--blue);
+                 border:1px solid rgba(46,109,164,0.15);border-radius:6px;
+                 font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;cursor:pointer">
+          🔧 Taller
+        </button>
+        <button onclick="otGenerarOrdenInstalacion('${o.id}')"
+          style="flex:1;padding:8px;background:rgba(39,174,96,0.06);color:#27AE60;
+                 border:1px solid rgba(39,174,96,0.15);border-radius:6px;
+                 font-family:'DM Sans',sans-serif;font-size:11px;font-weight:700;cursor:pointer">
+          🚚 Instalar
+        </button>
+        <button onclick="ordenAbrir('${o.id}')"
+          style="padding:8px 10px;background:var(--off-white);color:var(--gray-400);
+                 border:1px solid var(--gray-200);border-radius:6px;cursor:pointer;font-size:13px">
+          ✏️
+        </button>
+      </div>
     </div>`;
   }).join('');
+}
+
+// ── Tabs de tipo de orden ─────────────────────
+let OT_TAB_ACTIVO = 'ot';
+
+function otCambiarTab(btn) {
+  OT_TAB_ACTIVO = btn.dataset.tab;
+  document.querySelectorAll('.ot-tab-btn').forEach(b => {
+    const activo = b === btn;
+    b.style.background = activo ? 'var(--white)' : 'none';
+    b.style.color = activo ? 'var(--navy)' : 'var(--gray-400)';
+    b.style.boxShadow = activo ? '0 1px 4px rgba(0,0,0,0.08)' : 'none';
+  });
+  // Actualizar label del botón nueva
+  const lbl = document.getElementById('ot-btn-nueva-label');
+  if (lbl) {
+    lbl.textContent = OT_TAB_ACTIVO === 'taller' ? 'Nueva Orden de Taller'
+      : OT_TAB_ACTIVO === 'instalacion' ? 'Nueva Orden de Instalación'
+      : 'Nueva Orden de Trabajo';
+  }
+  ordenesRenderLista();
 }
 
 function ordenFiltrar(btn) {
@@ -10613,7 +10994,273 @@ function ordenFiltrar(btn) {
   ordenesRenderLista();
 }
 
-// ── Abrir formulario nueva orden ──────────────
+// ── Orden de Taller ───────────────────────────
+function otGenerarOrdenTaller(ordenId) {
+  const o = ORDENES_CACHE.find(x => x.id === ordenId);
+  if (!o) return;
+
+  const folio    = o.folio_cotizacion ? `CACN-${o.folio_cotizacion.replace(/^CACN-/i,'')}` : '—';
+  const fecha    = new Date().toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'});
+  const piezas   = (() => {
+    try { return JSON.parse(o.piezas_desc || '[]'); } catch(e) { return []; }
+  })();
+
+  const piezasHTML = piezas.length
+    ? piezas.map((p,i) => `
+      <tr>
+        <td style=padding:8px 10px;border:1px solid #ddd;text-align:center>${i+1}</td>
+        <td style=padding:8px 10px;border:1px solid #ddd;font-weight:600>${p}</td>
+        <td style=padding:8px 10px;border:1px solid #ddd></td>
+        <td style=padding:8px 10px;border:1px solid #ddd></td>
+        <td style=padding:8px 10px;border:1px solid #ddd></td>
+      </tr>`).join('')
+    : `<tr><td colspan=5 style=padding:12px;text-align:center;color:#888>
+        Agregar descripción de piezas en la OT</td></tr>`;
+
+  const html = `<!DOCTYPE html><html lang=es><head><meta charset=UTF-8>
+  <meta name=viewport content=width=device-width>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;color:#222;font-size:10pt;background:white}
+    .page{max-width:720px;margin:0 auto;padding:24px;padding-bottom:90px}
+    h2{color:#1B3A5C;font-size:11pt;border-bottom:2px solid #C8923A;padding-bottom:4px;margin:16px 0 10px}
+    table{width:100%;border-collapse:collapse}
+    th{background:#1B3A5C;color:white;padding:7px 10px;font-size:9.5pt;text-align:left}
+    .barra-print{position:fixed;bottom:0;left:0;right:0;background:#1B3A5C;padding:10px 20px;
+      display:flex;gap:10px;justify-content:center;z-index:999}
+    .btn-print{padding:11px 24px;background:#C8923A;color:white;border:none;border-radius:8px;
+      font-size:14px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif}
+    .btn-cerrar{padding:11px 18px;background:rgba(255,255,255,0.15);color:white;border:none;
+      border-radius:8px;font-size:13px;cursor:pointer;font-family:Arial,sans-serif}
+    @media print{.barra-print{display:none!important}.page{padding:16px}}
+  </style></head><body>
+  <div class=barra-print>
+    <button class=btn-print onclick="window.print()">🖨️ Imprimir</button>
+    <button class=btn-cerrar onclick="window.close()">✕ Cerrar</button>
+  </div>
+  <div class=page>
+    <div style=text-align:center;margin-bottom:16px>
+      <div style=display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:8px>
+        <img src="${BARRCAN_LOGO_B64}" style=width:56px;height:56px;object-fit:contain>
+        <div style=text-align:left>
+          <div style=font-size:18pt;font-weight:900;color:#1B3A5C;letter-spacing:2px>BarrCan</div>
+          <div style=font-size:8pt;color:#C8923A;letter-spacing:3px;text-transform:uppercase>Cancelería · Aluminio · Vidrio</div>
+        </div>
+      </div>
+      <div style=font-size:13pt;font-weight:700;color:#1B3A5C;margin-top:8px;
+        border-top:2px solid #1B3A5C;border-bottom:2px solid #1B3A5C;padding:5px 0>
+        ORDEN DE TALLER
+      </div>
+    </div>
+
+    <table style=margin-bottom:14px>
+      <tr>
+        <td style=padding:5px 8px;border:1px solid #ddd;font-weight:700;width:25%>Folio</td>
+        <td style=padding:5px 8px;border:1px solid #ddd;font-family:monospace>${folio}</td>
+        <td style=padding:5px 8px;border:1px solid #ddd;font-weight:700;width:20%>Fecha</td>
+        <td style=padding:5px 8px;border:1px solid #ddd>${fecha}</td>
+      </tr>
+      <tr>
+        <td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Cliente</td>
+        <td style=padding:5px 8px;border:1px solid #ddd colspan=3>${o.cliente_nombre||'—'}</td>
+      </tr>
+      <tr>
+        <td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Instalación</td>
+        <td style=padding:5px 8px;border:1px solid #ddd>${o.fecha_instalacion||'—'}</td>
+        <td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Técnico</td>
+        <td style=padding:5px 8px;border:1px solid #ddd>${TECNICO_LABELS[o.tecnico_id]||o.tecnico_id||'—'}</td>
+      </tr>
+      <tr>
+        <td style=padding:5px 8px;border:1px solid #ddd;font-weight:700>Obra</td>
+        <td style=padding:5px 8px;border:1px solid #ddd colspan=3>${o.dir_obra||'—'}</td>
+      </tr>
+    </table>
+
+    <h2>Descripción del trabajo</h2>
+    <div style=padding:10px 12px;border:1px solid #ddd;border-radius:4px;min-height:40px;font-size:10pt;margin-bottom:14px>
+      ${o.descripcion_trabajo||'—'}
+    </div>
+
+    <h2>Piezas a fabricar</h2>
+    <table style=margin-bottom:14px>
+      <thead>
+        <tr>
+          <th style=width:40px>#</th>
+          <th>Descripción / Sistema</th>
+          <th style=width:120px>Medidas (mm)</th>
+          <th style=width:80px>Material</th>
+          <th style=width:80px>✓ Listo</th>
+        </tr>
+      </thead>
+      <tbody>${piezasHTML}</tbody>
+    </table>
+
+    <h2>Notas para taller</h2>
+    <div style=padding:10px 12px;border:1px solid #ddd;border-radius:4px;min-height:60px;font-size:10pt>
+      ${o.notas_tecnico||''}
+    </div>
+
+    <div style=display:flex;gap:20px;margin-top:30px>
+      <div style=flex:1;padding:40px 12px 8px;border-top:1px solid #999;text-align:center;font-size:9pt;color:#555>
+        Firma responsable de taller
+      </div>
+      <div style=flex:1;padding:40px 12px 8px;border-top:1px solid #999;text-align:center;font-size:9pt;color:#555>
+        Control de calidad · Fecha: ___________
+      </div>
+    </div>
+  </div></body></html>`;
+
+  const win = window.open('', '_blank');
+  if (win) { win.document.write(html); win.document.close(); }
+  // Actualizar estado a producción
+  if (o.estado === 'pendiente') {
+    sb().from('ordenes_trabajo').update({ estado:'produccion' }).eq('id', ordenId)
+      .then(() => {
+        o.estado = 'produccion';
+        localStorage.setItem('barrcan_ordenes_cache', JSON.stringify(ORDENES_CACHE));
+        ordenesRenderLista();
+        toast('🔧 Estado → En producción');
+      });
+  }
+}
+
+// ── Orden de Instalación ──────────────────────
+function otGenerarOrdenInstalacion(ordenId) {
+  const o = ORDENES_CACHE.find(x => x.id === ordenId);
+  if (!o) return;
+
+  const folio  = o.folio_cotizacion ? `CACN-${o.folio_cotizacion.replace(/^CACN-/i,'')}` : '—';
+  const fecha  = o.fecha_instalacion
+    ? new Date(o.fecha_instalacion+'T12:00:00').toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long',year:'numeric'})
+    : '—';
+  const hora   = o.hora_instalacion?.slice(0,5) || '—';
+  const piezas = (() => {
+    try { return JSON.parse(o.piezas_desc || '[]'); } catch(e) { return []; }
+  })();
+
+  const html = `<!DOCTYPE html><html lang=es><head><meta charset=UTF-8>
+  <meta name=viewport content=width=device-width>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;color:#222;font-size:10pt;background:white}
+    .page{max-width:720px;margin:0 auto;padding:24px;padding-bottom:90px}
+    h2{color:#1B3A5C;font-size:11pt;border-bottom:2px solid #27AE60;padding-bottom:4px;margin:16px 0 10px}
+    table{width:100%;border-collapse:collapse}
+    th{background:#27AE60;color:white;padding:7px 10px;font-size:9.5pt;text-align:left}
+    td{padding:6px 10px;border:1px solid #ddd;font-size:9.5pt}
+    .check-item{display:flex;align-items:center;gap:10px;padding:8px 12px;
+      border:1px solid #ddd;border-radius:6px;margin-bottom:6px}
+    .barra-print{position:fixed;bottom:0;left:0;right:0;background:#27AE60;padding:10px 20px;
+      display:flex;gap:10px;justify-content:center;z-index:999}
+    .btn-print{padding:11px 24px;background:#1B3A5C;color:white;border:none;border-radius:8px;
+      font-size:14px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif}
+    .btn-wa{padding:11px 20px;background:#25D366;color:white;border:none;border-radius:8px;
+      font-size:13px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif}
+    .btn-cerrar{padding:11px 16px;background:rgba(255,255,255,0.2);color:white;border:none;
+      border-radius:8px;font-size:13px;cursor:pointer;font-family:Arial,sans-serif}
+    @media print{.barra-print{display:none!important}.page{padding:16px}}
+  </style></head><body>
+  <div class=barra-print>
+    <button class=btn-print onclick="window.print()">🖨️ Imprimir</button>
+    ${o.cliente_tel ? `<button class=btn-wa onclick="confirmarWhatsApp()">💬 Confirmar al cliente</button>` : ''}
+    <button class=btn-cerrar onclick="window.close()">✕ Cerrar</button>
+  </div>
+  <div class=page>
+    <div style=margin-bottom:14px;border-bottom:2px solid #27AE60;padding-bottom:10px>
+      <div style=display:flex;align-items:center;gap:12px>
+        <img src="${BARRCAN_LOGO_B64}" style=width:56px;height:56px;object-fit:contain;flex-shrink:0>
+        <div style=flex:1>
+          <div style=font-size:18pt;font-weight:900;color:#1B3A5C;letter-spacing:2px;line-height:1>BarrCan</div>
+          <div style=font-size:7.5pt;color:#C8923A;letter-spacing:3px;text-transform:uppercase>Cancelería · Aluminio · Vidrio</div>
+        </div>
+        <div style=text-align:right>
+          <div style=font-size:12pt;font-weight:700;color:#27AE60;border:2px solid #27AE60;padding:3px 10px;border-radius:4px>ORDEN DE INSTALACIÓN</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Datos principales destacados -->
+    <div style=background:#E8F8F0;border:2px solid #27AE60;border-radius:8px;padding:14px;margin-bottom:14px>
+      <div style=display:flex;justify-content:space-between;align-items:center;margin-bottom:8px>
+        <div>
+          <div style=font-size:15pt;font-weight:800;color:#1B3A5C>${o.cliente_nombre||'—'}</div>
+          <div style=font-size:10pt;color:#555>${o.cliente_tel||''}</div>
+        </div>
+        <div style=text-align:right>
+          <div style=font-size:9pt;color:#888>Folio</div>
+          <div style=font-family:monospace;font-weight:700;color:#1B3A5C>${folio}</div>
+        </div>
+      </div>
+      <div style=display:grid;grid-template-columns:1fr 1fr;gap:8px>
+        <div style=background:white;padding:8px 12px;border-radius:6px;border:1px solid #c3e6cb>
+          <div style=font-size:8pt;color:#888;text-transform:uppercase>Fecha</div>
+          <div style=font-weight:700;color:#1B3A5C>${fecha}</div>
+        </div>
+        <div style=background:white;padding:8px 12px;border-radius:6px;border:1px solid #c3e6cb>
+          <div style=font-size:8pt;color:#888;text-transform:uppercase>Hora</div>
+          <div style=font-size:14pt;font-weight:800;color:#27AE60>${hora}</div>
+        </div>
+      </div>
+    </div>
+
+    <table style=margin-bottom:14px>
+      <tr><td style=font-weight:700;width:30%>Dirección</td><td>${o.dir_obra||'—'}</td></tr>
+      <tr><td style=font-weight:700>Técnico</td><td>${TECNICO_LABELS[o.tecnico_id]||o.tecnico_id||'—'}</td></tr>
+      <tr><td style=font-weight:700>Trabajo</td><td>${o.descripcion_trabajo||'—'}</td></tr>
+      ${o.saldo_pendiente > 0 ? `<tr style=background:#FEF9E7><td style=font-weight:700;color:#E67E22>Cobrar</td><td style=font-weight:800;color:#E67E22;font-size:12pt>$${fmt(o.saldo_pendiente)} MXN</td></tr>` : '<tr style=background:#E8F8F0><td style=font-weight:700;color:#27AE60>Pago</td><td style=font-weight:700;color:#27AE60>✅ Liquidado</td></tr>'}
+    </table>
+
+    ${piezas.length ? `<h2>Piezas a instalar</h2>
+    <table style=margin-bottom:14px>
+      <thead><tr><th style=width:40px>#</th><th>Pieza</th><th style=width:60px>✓</th></tr></thead>
+      <tbody>${piezas.map((p,i)=>`<tr><td style=text-align:center>${i+1}</td><td>${p}</td><td></td></tr>`).join('')}</tbody>
+    </table>` : ''}
+
+    <h2>Checklist de instalación</h2>
+    ${['Herramientas completas cargadas','Producto revisado y sin daños','Cliente contactado y confirmado',
+       'Silicón y consumibles','Alfombra protectora','Cinta masking tape','Nivel y plomada','Taladro y brocas'].map(item=>`
+      <div class=check-item>
+        <div style=width:20px;height:20px;border:2px solid #27AE60;border-radius:4px;flex-shrink:0></div>
+        <span>${item}</span>
+      </div>`).join('')}
+
+    <h2>Notas especiales</h2>
+    <div style=padding:10px 12px;border:1px solid #ddd;border-radius:4px;min-height:60px;font-size:10pt>
+      ${o.notas_tecnico||'Sin notas adicionales'}
+    </div>
+  </div>
+
+  <script>
+  function confirmarWhatsApp() {
+    const tel = '52${(o.cliente_tel||'').replace(/\\D/g,'')}';
+    const msg = encodeURIComponent(
+      '✅ *BarrCan · Confirmación de instalación*\\n' +
+      'Hola ${o.cliente_nombre?.split(' ')[0]||'estimado cliente'}, le confirmamos su instalación:\\n\\n' +
+      '📅 Fecha: ${fecha}\\n' +
+      '⏰ Hora: ${hora}\\n' +
+      '👷 Técnico: ${TECNICO_LABELS[o.tecnico_id]||o.tecnico_id||'BarrCan'}\\n\\n' +
+      'Por favor tenga acceso disponible al área de instalación.\\n' +
+      'Cualquier cambio comuníquese al: 56-15-15-84-15\\n' +
+      '*BarrCan Cancelería*'
+    );
+    window.open('https://wa.me/' + tel + '?text=' + msg, '_blank');
+  }
+  <\/script>
+  </body></html>`;
+
+  const win = window.open('', '_blank');
+  if (win) { win.document.write(html); win.document.close(); }
+  // Actualizar estado a en_camino
+  if (['pendiente','produccion'].includes(o.estado)) {
+    sb().from('ordenes_trabajo').update({ estado:'en_camino' }).eq('id', ordenId)
+      .then(() => {
+        o.estado = 'en_camino';
+        localStorage.setItem('barrcan_ordenes_cache', JSON.stringify(ORDENES_CACHE));
+        ordenesRenderLista();
+        toast('🚚 Estado → En camino');
+      });
+  }
+}
 function ordenAbrir(id = null) {
   ORDEN_EDITANDO = id;
   const titulo = document.getElementById('orden-modal-titulo');
@@ -10807,113 +11454,231 @@ async function ordenGuardar() {
 function ordenDetalleAbrir(id) {
   const o = ORDENES_CACHE.find(x => x.id === id);
   if (!o) return;
+  window._OT_ACTIVA = id;
 
-  const est  = ORDEN_ESTADOS[o.estado] || ORDEN_ESTADOS.pendiente;
-  const tec  = TECNICO_LABELS[o.tecnico_id] || o.tecnico_id;
-  const fecha = o.fecha_instalacion
-    ? new Date(o.fecha_instalacion + 'T12:00:00').toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'})
+  const est   = ORDEN_ESTADOS[o.estado] || ORDEN_ESTADOS.pendiente;
+  const tec   = TECNICO_LABELS[o.tecnico_id] || o.tecnico_id || '—';
+  const folio = o.folio_cotizacion
+    ? (o.folio_cotizacion.startsWith('CACN-') ? o.folio_cotizacion : `CACN-${o.folio_cotizacion}`)
     : '—';
+  const fecha = o.fecha_instalacion
+    ? new Date(o.fecha_instalacion+'T12:00:00').toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'})
+    : 'Sin fecha';
 
-  const botonesEstado = Object.entries(ORDEN_ESTADOS)
-    .filter(([k]) => k !== o.estado && k !== 'cancelada')
-    .map(([k, v]) => `
-      <button onclick="ordenCambiarEstado('${id}','${k}')"
-        style="padding:10px 16px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);
-               background:none;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;
-               font-weight:600;color:var(--navy)">
-        ${v.emoji} Marcar ${v.label}
-      </button>`).join('');
+  const piezas = (() => { try { return JSON.parse(o.piezas_desc||'[]'); } catch(e) { return []; } })();
+  const numPiezas = o.num_piezas || piezas.length || 1;
 
   document.getElementById('orden-detalle-contenido').innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--navy)">
-        Detalle de Orden
+    <!-- Header -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div>
+        <div style="font-size:15px;font-weight:700;color:var(--navy)">${o.cliente_nombre||'—'}</div>
+        <div style="font-size:11px;font-family:'DM Mono',monospace;color:var(--blue)">${folio}</div>
       </div>
-      <span class="orden-estado-badge ${est.badge}">${est.emoji} ${est.label}</span>
+      <span class="orden-estado-badge ${est.badge}" onclick="otMostrarCambioEstado('${id}')"
+        style="cursor:pointer" title="Toca para cambiar estado">${est.emoji} ${est.label}</span>
     </div>
 
-    <div class="wizard-card" style="margin-bottom:12px">
-      <div class="wizard-title">👤 Cliente</div>
-      <div style="font-size:15px;font-weight:700;color:var(--navy)">${o.cliente_nombre}</div>
-      ${o.cliente_tel ? `<div style="font-size:12px;color:var(--gray-400);margin-top:4px">📞 ${o.cliente_tel}</div>` : ''}
-      ${o.dir_obra    ? `<div style="font-size:12px;color:var(--gray-400);margin-top:2px">📍 ${o.dir_obra}</div>` : ''}
-      ${o.folio_cotizacion ? `<div style="font-size:11px;font-family:'DM Mono',monospace;color:var(--blue);margin-top:4px">${o.folio_cotizacion}</div>` : ''}
+    <!-- Tabs -->
+    <div style="display:flex;background:var(--off-white);border-radius:10px;padding:3px;margin-bottom:14px;gap:2px">
+      <button class="ot-dtab active" data-tab="ot" onclick="otDetalleTab(this)"
+        style="flex:1;padding:8px 4px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;
+               font-size:11px;font-weight:700;cursor:pointer;background:white;color:var(--navy);
+               box-shadow:0 1px 4px rgba(0,0,0,0.08)">
+        📋 OT
+      </button>
+      <button class="ot-dtab" data-tab="taller" onclick="otDetalleTab(this)"
+        style="flex:1;padding:8px 4px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;
+               font-size:11px;font-weight:700;cursor:pointer;background:none;color:var(--gray-400)">
+        🔧 Taller
+      </button>
+      <button class="ot-dtab" data-tab="instalacion" onclick="otDetalleTab(this)"
+        style="flex:1;padding:8px 4px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;
+               font-size:11px;font-weight:700;cursor:pointer;background:none;color:var(--gray-400)">
+        🚚 Instalar
+      </button>
+      <button class="ot-dtab" data-tab="pagos" onclick="otDetalleTab(this)"
+        style="flex:1;padding:8px 4px;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;
+               font-size:11px;font-weight:700;cursor:pointer;background:none;color:var(--gray-400)">
+        💰 Pagos
+      </button>
     </div>
 
-    <div class="wizard-card" style="margin-bottom:12px">
-      <div class="wizard-title">📅 Instalación</div>
-      <div style="font-size:14px;font-weight:600;color:var(--navy)">${fecha}</div>
-      ${o.hora_instalacion ? `<div style="font-size:13px;color:var(--gray-400);margin-top:2px">⏰ ${o.hora_instalacion.slice(0,5)} hrs</div>` : ''}
-      <div style="font-size:12px;color:var(--gray-400);margin-top:6px">Técnico: <b>${tec}</b></div>
-      <div style="font-size:12px;color:var(--gray-400)">Asignado por: <b>${TECNICO_LABELS[o.asignado_por] || o.asignado_por || '—'}</b></div>
-    </div>
-
-    ${o.descripcion_trabajo ? `
-    <div class="wizard-card" style="margin-bottom:12px">
-      <div class="wizard-title">🔧 Trabajo</div>
-      <div style="font-size:13px;color:var(--navy)">${o.descripcion_trabajo}</div>
-    </div>` : ''}
-
-    ${o.notas_tecnico ? `
-    <div class="wizard-card" style="margin-bottom:12px">
-      <div class="wizard-title">📝 Instrucciones al técnico</div>
-      <div style="font-size:13px;color:var(--navy)">${o.notas_tecnico}</div>
-    </div>` : ''}
-
-    ${o.saldo_pendiente > 0 ? `
-    <div class="wizard-card" style="margin-bottom:16px;background:linear-gradient(135deg,var(--navy),#1e4a7a)">
-      <div style="display:flex;justify-content:space-between;align-items:center">
+    <!-- TAB: OT -->
+    <div id="ot-dtab-ot">
+      <div class="wizard-card" style="margin-bottom:10px">
+        <div class="wizard-title">👤 Cliente</div>
+        <div style="font-size:14px;font-weight:700;color:var(--navy)">${o.cliente_nombre||'—'}</div>
+        ${o.cliente_tel ? `<div style="font-size:12px;color:var(--gray-400);margin-top:3px">📞 ${o.cliente_tel}</div>` : ''}
+        ${o.dir_obra    ? `<div style="font-size:12px;color:var(--gray-400);margin-top:2px">📍 ${o.dir_obra}</div>` : ''}
+      </div>
+      ${o.descripcion_trabajo ? `
+      <div class="wizard-card" style="margin-bottom:10px">
+        <div class="wizard-title">📝 Descripción del trabajo</div>
+        <div style="font-size:13px;color:var(--navy);line-height:1.5">${o.descripcion_trabajo}</div>
+      </div>` : ''}
+      <div class="wizard-card" style="margin-bottom:10px">
+        <div class="wizard-title">📦 Piezas</div>
+        ${piezas.length ? piezas.map((p,i) => `
+          <div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--gray-100)">
+            <div style="width:22px;height:22px;background:var(--blue);color:white;border-radius:50%;
+                        display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">${i+1}</div>
+            <div style="font-size:12px;color:var(--navy)">${p}</div>
+          </div>`).join('')
+          : `<div style="color:var(--gray-400);font-size:12px">${numPiezas} piezas — ver descripción</div>`}
+      </div>
+      ${o.saldo_pendiente > 0 ? `
+      <div style="background:linear-gradient(135deg,var(--navy),#1e4a7a);border-radius:var(--radius-sm);
+                  padding:12px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center">
         <div>
-          <div style="font-size:10px;color:rgba(255,255,255,0.6);letter-spacing:1px;text-transform:uppercase">Saldo por cobrar</div>
-          <div style="font-family:'Playfair Display',serif;font-size:24px;font-weight:700;color:var(--gold);margin-top:4px">$${fmt(o.saldo_pendiente)}</div>
+          <div style="font-size:9px;color:rgba(255,255,255,0.6);letter-spacing:1px;text-transform:uppercase">Saldo por cobrar</div>
+          <div style="font-size:22px;font-weight:800;color:var(--gold);margin-top:2px">$${fmt(o.saldo_pendiente)}</div>
         </div>
-        <span style="font-size:32px">💰</span>
-      </div>
-    </div>` : `
-    <div style="background:rgba(39,174,96,0.08);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:16px;font-size:13px;color:#27AE60;font-weight:600;text-align:center">
-      ✅ Trabajo liquidado — sin saldo pendiente
-    </div>`}
-
-    <!-- Pagos registrados -->
-    <div class="wizard-card" style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div class="wizard-title" style="margin-bottom:0">💳 Registro de Pagos</div>
-        <button onclick="pagoAbrir('${id}')"
-          style="padding:5px 12px;background:var(--blue);color:white;border:none;
-                 border-radius:var(--radius-sm);font-size:12px;font-weight:700;cursor:pointer">
-          + Pago
+        <button onclick="pagoAbrir('${id}');ordenDetalleCerrar()"
+          style="padding:9px 16px;background:var(--gold);color:white;border:none;border-radius:8px;
+                 font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer">
+          + Registrar pago
+        </button>
+      </div>` : `
+      <div style="background:rgba(39,174,96,0.08);border-radius:var(--radius-sm);padding:10px;
+                  margin-bottom:10px;text-align:center;font-size:13px;color:#27AE60;font-weight:600">
+        ✅ Liquidado
+      </div>`}
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button onclick="ordenAbrir('${id}');ordenDetalleCerrar()"
+          style="flex:1;padding:11px;background:none;border:1.5px solid var(--navy);border-radius:var(--radius-sm);
+                 font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;color:var(--navy);cursor:pointer">
+          ✏️ Editar OT
+        </button>
+        <button onclick="ordenEliminar('${id}')"
+          style="padding:11px 14px;background:none;border:1.5px solid rgba(192,57,43,0.3);border-radius:var(--radius-sm);
+                 font-family:'DM Sans',sans-serif;font-size:13px;color:var(--red);cursor:pointer">
+          🗑️
         </button>
       </div>
-      <div id="orden-pagos-lista-${id}" style="font-size:12px;color:var(--gray-400)">
-        Cargando pagos…
+    </div>
+
+    <!-- TAB: TALLER -->
+    <div id="ot-dtab-taller" style="display:none">
+      <div style="background:rgba(46,109,164,0.06);border-radius:var(--radius-sm);padding:12px;margin-bottom:12px;font-size:12px;color:var(--gray-600)">
+        La orden de taller se imprime y queda en el área de producción para guiar la fabricación.
+      </div>
+      <div class="wizard-card" style="margin-bottom:10px">
+        <div class="wizard-title">📋 Resumen</div>
+        <div style="font-size:12px;color:var(--navy)">
+          <div>Folio: <strong>${folio}</strong></div>
+          <div>Cliente: <strong>${o.cliente_nombre||'—'}</strong></div>
+          <div>Entrega tentativa: <strong>${fecha}</strong></div>
+          <div>Técnico: <strong>${tec}</strong></div>
+          <div>Piezas: <strong>${numPiezas}</strong></div>
+        </div>
+      </div>
+      ${o.notas_tecnico ? `
+      <div class="wizard-card" style="margin-bottom:10px">
+        <div class="wizard-title">📝 Instrucciones especiales</div>
+        <div style="font-size:12px;color:var(--navy)">${o.notas_tecnico}</div>
+      </div>` : ''}
+      <button onclick="otGenerarOrdenTaller('${id}')"
+        style="width:100%;padding:14px;background:linear-gradient(135deg,#2E6DA4,#1B3A5C);color:white;
+               border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;
+               font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;
+               justify-content:center;gap:10px">
+        🖨️ Generar e Imprimir Orden de Taller
+      </button>
+      ${o.estado === 'pendiente' ? `
+      <div style="font-size:11px;color:var(--gray-400);text-align:center;margin-top:8px">
+        Al generar, el estado cambia automáticamente a "En producción"
+      </div>` : ''}
+    </div>
+
+    <!-- TAB: INSTALACIÓN -->
+    <div id="ot-dtab-instalacion" style="display:none">
+      <div class="wizard-card" style="margin-bottom:10px">
+        <div class="wizard-title">📅 Programación</div>
+        <div style="font-size:14px;font-weight:700;color:var(--navy)">${fecha}</div>
+        ${o.hora_instalacion ? `<div style="font-size:13px;color:var(--gray-400);margin-top:4px">⏰ ${o.hora_instalacion.slice(0,5)} hrs</div>` : ''}
+        <div style="font-size:12px;color:var(--gray-400);margin-top:6px">Técnico: <strong>${tec}</strong></div>
+      </div>
+      <div class="wizard-card" style="margin-bottom:10px">
+        <div class="wizard-title">📍 Obra</div>
+        <div style="font-size:13px;color:var(--navy)">${o.dir_obra||'Sin dirección registrada'}</div>
+      </div>
+      <button onclick="otGenerarOrdenInstalacion('${id}')"
+        style="width:100%;padding:14px;background:linear-gradient(135deg,#27AE60,#1e8449);color:white;
+               border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;
+               font-size:15px;font-weight:700;cursor:pointer;margin-bottom:10px;
+               display:flex;align-items:center;justify-content:center;gap:10px">
+        🚚 Generar Orden de Instalación + Notificar Cliente
+      </button>
+      <button onclick="ordenAbrir('${id}');ordenDetalleCerrar()"
+        style="width:100%;padding:11px;background:none;border:1.5px solid var(--gray-200);
+               border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;
+               font-size:13px;color:var(--gray-600);cursor:pointer">
+        📝 Editar fecha/hora/técnico
+      </button>
+    </div>
+
+    <!-- TAB: PAGOS -->
+    <div id="ot-dtab-pagos" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-size:13px;font-weight:700;color:var(--navy)">Historial de pagos</div>
+        <button onclick="pagoAbrir('${id}');ordenDetalleCerrar()"
+          style="padding:7px 14px;background:var(--blue);color:white;border:none;border-radius:8px;
+                 font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer">
+          + Nuevo pago
+        </button>
+      </div>
+      <div id="orden-pagos-lista-${id}">
+        <div style="text-align:center;padding:12px;color:var(--gray-400);font-size:12px">⏳ Cargando…</div>
       </div>
     </div>
 
-    <!-- Cambiar estado -->
-    <div style="margin-bottom:12px">
-      <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--gray-400);margin-bottom:8px">Cambiar estado</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">${botonesEstado}</div>
-    </div>
-
-    <!-- Acciones -->
-    <div style="display:flex;gap:8px;margin-top:8px">
-      <button onclick="ordenAbrir('${id}');ordenDetalleCerrar()"
-        style="flex:1;padding:12px;background:rgba(27,58,92,0.06);border:1.5px solid var(--navy);
-               border-radius:var(--radius);font-family:'DM Sans',sans-serif;font-size:14px;
-               font-weight:600;color:var(--navy);cursor:pointer">
-        ✏️ Editar
-      </button>
-      <button onclick="ordenEliminar('${id}')"
-        style="padding:12px 16px;background:rgba(192,57,43,0.06);border:1.5px solid rgba(192,57,43,0.3);
-               border-radius:var(--radius);font-family:'DM Sans',sans-serif;font-size:14px;
-               font-weight:600;color:var(--red);cursor:pointer">
-        🗑️
-      </button>
+    <!-- Cambio de estado -->
+    <div id="ot-cambio-estado-${id}" style="display:none;margin-top:12px">
+      <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+                  color:var(--gray-400);margin-bottom:8px">Cambiar estado</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${Object.entries(ORDEN_ESTADOS)
+          .filter(([k]) => k !== o.estado && k !== 'cancelada')
+          .map(([k,v]) => `
+          <button onclick="ordenCambiarEstado('${id}','${k}')"
+            style="padding:8px 14px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);
+                   background:none;cursor:pointer;font-family:'DM Sans',sans-serif;
+                   font-size:12px;font-weight:600;color:var(--navy)">
+            ${v.emoji} ${v.label}
+          </button>`).join('')}
+      </div>
     </div>
   `;
 
   document.getElementById('orden-detalle-overlay').style.display = 'block';
   document.getElementById('orden-detalle-modal').style.display   = 'block';
+
+  // Cargar pagos en background
+  setTimeout(() => pagoCargarLista(id), 300);
+}
+
+function otDetalleTab(btn) {
+  const tab = btn.dataset.tab;
+  document.querySelectorAll('.ot-dtab').forEach(b => {
+    const activo = b === btn;
+    b.style.background  = activo ? 'white' : 'none';
+    b.style.color       = activo ? 'var(--navy)' : 'var(--gray-400)';
+    b.style.boxShadow   = activo ? '0 1px 4px rgba(0,0,0,0.08)' : 'none';
+  });
+  ['ot','taller','instalacion','pagos'].forEach(t => {
+    const el = document.getElementById(`ot-dtab-${t}`);
+    if (el) el.style.display = t === tab ? 'block' : 'none';
+  });
+  // Cargar pagos al cambiar a ese tab
+  if (tab === 'pagos' && window._OT_ACTIVA) {
+    pagoCargarLista(window._OT_ACTIVA);
+  }
+}
+
+function otMostrarCambioEstado(id) {
+  const el = document.getElementById(`ot-cambio-estado-${id}`);
+  if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 function ordenDetalleCerrar() {
@@ -11266,11 +12031,16 @@ async function pagoGenerarRecibo(ordenId, monto, fecha, formaPago, concepto = 'a
   </div>
   <div class=page>
     <div class=header>
-      <div class=logo-text>BarrCan</div>
-      <div class=logo-sub>Cancelería · Aluminio · Vidrio</div>
-      <div style=font-size:8pt;color:#666;margin-top:4px>
-        PRIV. SANTA CRUZ No.23 COL. SAN SIMÓN TICUMAC CP. 03660<br>
-        BENITO JUÁREZ, CDMX · TEL: 56-15-15-84-15 · www.BarrCan.com.mx
+      <div style=display:flex;align-items:center;gap:14px;justify-content:center>
+        <img src="${BARRCAN_LOGO_B64}" style=width:60px;height:60px;object-fit:contain>
+        <div style=text-align:left>
+          <div class=logo-text>BarrCan</div>
+          <div class=logo-sub>Cancelería · Aluminio · Vidrio</div>
+          <div style=font-size:8pt;color:#666;margin-top:2px>TEL: 56-15-15-84-15 · www.BarrCan.com.mx</div>
+        </div>
+      </div>
+      <div style=font-size:7.5pt;color:#888;margin-top:6px>
+        PRIV. SANTA CRUZ No.23 COL. SAN SIMÓN TICUMAC CP. 03660 · BENITO JUÁREZ, CDMX
       </div>
     </div>
 
@@ -12021,6 +12791,110 @@ function presAtrasadosGuardar() {
   localStorage.setItem('barrcan_pres_atrasados', JSON.stringify(PRES_ATRASADOS));
 }
 
+// Sincronizar con Supabase
+async function presAtrasadosSyncSupabase() {
+  try {
+    const { data, error } = await sb().from('presupuestos_atrasados')
+      .select('*').order('created_at', { ascending: false }).limit(200);
+    if (!error && data?.length) {
+      // Merge: Supabase gana sobre local
+      const ids = new Set(data.map(x => x.id));
+      const soloLocales = PRES_ATRASADOS.filter(x => !ids.has(x.id));
+      PRES_ATRASADOS = [...data, ...soloLocales];
+      presAtrasadosGuardar();
+    }
+  } catch(e) { console.warn('presAtrasados sync:', e.message); }
+}
+
+// Card HTML reutilizable
+function presAtrasadoCardHTML(p) {
+  const estadoColors = {
+    activo:'#2E6DA4', aprobado:'#27AE60', en_produccion:'#E67E22',
+    pendiente_entrega:'#8E44AD', entregado:'#C0392B'
+  };
+  const estadoLabels = {
+    activo:'Activo', aprobado:'Aprobado ✓', en_produccion:'En producción',
+    pendiente_entrega:'Pdte. entrega', entregado:'Entregado'
+  };
+  const color = estadoColors[p.estado] || 'var(--gray-400)';
+  return `
+  <div style="background:var(--white);border-radius:var(--radius);padding:12px 14px;
+              margin-bottom:8px;box-shadow:var(--shadow-sm);border-left:4px solid ${color}">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      <div style="flex:1;padding-right:8px">
+        <div style="font-size:12px;font-family:'DM Mono',monospace;color:var(--blue);font-weight:700">${p.folio||'—'}</div>
+        <div style="font-size:14px;font-weight:700;color:var(--navy);margin-top:2px">${p.cliente||'—'}</div>
+        ${p.descripcion ? `<div style="font-size:11px;color:var(--gray-400);margin-top:2px">${p.descripcion.slice(0,60)}${p.descripcion.length>60?'…':''}</div>` : ''}
+        ${p.tel ? `<div style="font-size:11px;color:var(--gray-400);margin-top:1px">📞 ${p.tel}</div>` : ''}
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:15px;font-weight:700;color:var(--gold)">$${fmt(p.monto)}</div>
+        ${p.saldo > 0 ? `<div style="font-size:10px;color:var(--red);font-weight:600">Saldo: $${fmt(p.saldo)}</div>` : ''}
+      </div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:6px">
+      <span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;
+                   background:${color}15;color:${color}">${estadoLabels[p.estado]||p.estado}</span>
+      <div style="display:flex;gap:5px">
+        <button onclick="pagoAbrir(null);presAtrasadoPrellenaFolio('${p.id}')"
+          style="font-size:11px;padding:4px 10px;background:rgba(200,146,58,0.1);color:var(--gold);
+                 border:1px solid rgba(200,146,58,0.2);border-radius:var(--radius-sm);cursor:pointer;font-weight:700">
+          💰 Pago
+        </button>
+        <button onclick="ordenAbrirDesdePresAtrasado('${p.id}')"
+          style="font-size:11px;padding:4px 10px;background:var(--navy);color:white;
+                 border:none;border-radius:var(--radius-sm);cursor:pointer;font-weight:600">
+          + OT
+        </button>
+        <button onclick="presAtrasadoEliminar('${p.id}')"
+          style="font-size:11px;padding:4px 8px;background:none;color:var(--red);
+                 border:1px solid rgba(192,57,43,0.2);border-radius:var(--radius-sm);cursor:pointer">
+          🗑️
+        </button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function presAtrasadosFiltrar(q) {
+  const lista = document.getElementById('pres-atr-lista');
+  if (!lista) return;
+  const term = q.toLowerCase().replace(/\s+/g,'');
+  const filtrados = !term ? PRES_ATRASADOS
+    : PRES_ATRASADOS.filter(p =>
+        (p.folio||'').toLowerCase().includes(term) ||
+        (p.cliente||'').toLowerCase().replace(/\s+/g,'').includes(term) ||
+        (p.tel||'').replace(/\D/g,'').includes(term.replace(/\D/g,'')) ||
+        (p.descripcion||'').toLowerCase().includes(term)
+      );
+  lista.innerHTML = filtrados.length
+    ? filtrados.map(p => presAtrasadoCardHTML(p)).join('')
+    : `<div style="text-align:center;padding:16px;color:var(--gray-400);font-size:12px">Sin resultados</div>`;
+}
+
+function presAtrasadoPrellenaFolio(id) {
+  const p = PRES_ATRASADOS.find(x => x.id === id);
+  if (!p) return;
+  setTimeout(() => {
+    const folioEl = document.getElementById('pago-folio-sufijo');
+    const clienteEl = document.getElementById('pago-cliente-nombre');
+    if (folioEl) folioEl.value = (p.folio||'').replace(/^CACN-/i,'');
+    if (clienteEl) clienteEl.value = p.cliente || '';
+  }, 300);
+}
+
+function presAtrasadoEliminar(id) {
+  if (!confirm('¿Eliminar este presupuesto del historial?')) return;
+  PRES_ATRASADOS = PRES_ATRASADOS.filter(x => x.id !== id);
+  presAtrasadosGuardar();
+  // También eliminar de Supabase si hay conexión
+  if (SYNC.online) {
+    sb().from('presupuestos_atrasados').delete().eq('id', id).catch(()=>{});
+  }
+  renderHistorial();
+  toast('🗑️ Presupuesto eliminado');
+}
+
 function presAtrasadoAgregar(datos) {
   const nuevo = {
     id:         crypto.randomUUID(),
@@ -12036,21 +12910,24 @@ function presAtrasadoAgregar(datos) {
   };
   PRES_ATRASADOS.unshift(nuevo);
   presAtrasadosGuardar();
-  // También intentar subir a Supabase
+  // Guardar en tabla presupuestos_atrasados
   if (SYNC.online) {
-    sb().from('cotizaciones').upsert([{
-      folio:         nuevo.folio,
-      revision:      'A',
-      partidas_json: [],
-      total:         nuevo.monto || 0,
-      status:        'aprobado',
-      notas:         `Retroactivo: ${nuevo.descripcion}`,
-      cliente_nombre: nuevo.cliente,
-      cliente_tel:    nuevo.tel,
-      dir_obra:       nuevo.dir,
-      created_at:    nuevo.created_at
-    }], { onConflict: 'folio' }).then(({error}) => {
-      if (!error) toast('☁️ Presupuesto sincronizado: ' + nuevo.folio);
+    sb().from('presupuestos_atrasados').insert([nuevo]).catch(e => {
+      // Si la tabla no existe, intentar con cotizaciones
+      sb().from('cotizaciones').upsert([{
+        folio:          nuevo.folio,
+        revision:       'A',
+        partidas_json:  [],
+        total:          nuevo.monto || 0,
+        status:         'aprobado',
+        notas:          `Retroactivo: ${nuevo.descripcion}`,
+        cliente_nombre: nuevo.cliente,
+        cliente_tel:    nuevo.tel,
+        dir_obra:       nuevo.dir,
+        created_at:     nuevo.created_at
+      }], { onConflict: 'folio' }).then(({error}) => {
+        if (!error) toast('☁️ Presupuesto sincronizado: ' + nuevo.folio);
+      });
     });
   }
   return nuevo;
