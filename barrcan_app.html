@@ -7600,33 +7600,74 @@ function regenerarFolio() {
   document.getElementById('folio-preview').textContent = buildFolio(region, cli);
 }
 
-// ── Buscador cliente en presupuestos atrasados ───────────────
-function presBuscarCliente(q) {
-  const res = document.getElementById('pres-cli-resultados');
+// ══════════════════════════════════════════════
+// BUSCADOR UNIVERSAL DE CLIENTES
+// Uso: clienteBuscar(query, resultadosId, onSelect)
+// ══════════════════════════════════════════════
+function clienteBuscar(q, resultadosId, onSelect) {
+  const res = document.getElementById(resultadosId);
+  if (!res) return;
   if (!q || q.length < 2) { res.style.display = 'none'; return; }
   const term = q.toLowerCase().replace(/\s+/g,'');
   const matches = (cliListaCache || []).filter(c =>
     (c.nombre||'').toLowerCase().replace(/\s+/g,'').includes(term) ||
     (c.telefono||'').replace(/\D/g,'').includes(term.replace(/\D/g,'')) ||
-    (c.num_cliente||'').toLowerCase().includes(term)
-  ).slice(0, 6);
+    (c.num_cliente||'').toLowerCase().includes(term) ||
+    (c.empresa||'').toLowerCase().includes(term)
+  ).slice(0, 8);
+
   if (!matches.length) {
-    res.innerHTML = `<div style="padding:10px 14px;font-size:12px;color:var(--gray-400)">Sin resultados</div>`;
-    res.style.display = 'block'; return;
+    res.innerHTML = `
+      <div style="padding:12px 14px;text-align:center">
+        <div style="font-size:12px;color:var(--gray-400);margin-bottom:10px">Sin resultados para: <strong>${q}</strong></div>
+        <button onclick="cliAbrirFormulario();document.getElementById('${resultadosId}').style.display='none'"
+          style="padding:8px 16px;background:var(--blue);color:white;border:none;border-radius:8px;
+                 font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer">
+          + Agregar cliente nuevo
+        </button>
+      </div>`;
+    res.style.display = 'block';
+    return;
   }
+
   res.innerHTML = matches.map(c => `
-    <div onclick="presSeleccionarCliente('${c.id}')"
+    <div onclick="clienteSeleccionar('${c.id}','${resultadosId}',null)"
       style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--gray-100);
              display:flex;justify-content:space-between;align-items:center;background:white"
       onmouseover="this.style.background='var(--off-white)'"
       onmouseout="this.style.background='white'">
       <div>
         <div style="font-size:13px;font-weight:700;color:var(--navy)">${c.nombre||'—'}</div>
-        <div style="font-size:11px;color:var(--gray-400)">${c.telefono||''}</div>
+        <div style="font-size:11px;color:var(--gray-400)">${c.telefono||''} ${c.empresa ? '· '+c.empresa : ''}</div>
       </div>
       <div style="font-size:11px;color:var(--blue);font-weight:700;font-family:'DM Mono',monospace">${c.num_cliente||''}</div>
     </div>`).join('');
   res.style.display = 'block';
+
+  // Guardar callback para cuando se seleccione
+  window[`_cliCallback_${resultadosId}`] = onSelect;
+}
+
+function clienteSeleccionar(id, resultadosId, onSelect) {
+  const c = (cliListaCache||[]).find(x=>x.id===id);
+  if (!c) return;
+  const cb = onSelect || window[`_cliCallback_${resultadosId}`];
+  if (cb) cb(c);
+  const res = document.getElementById(resultadosId);
+  if (res) { res.style.display = 'none'; res.innerHTML = ''; }
+}
+
+// ── Adaptadores para cada módulo ──────────────
+function presBuscarCliente(q) {
+  clienteBuscar(q, 'pres-cli-resultados', (c) => {
+    document.getElementById('pres-cliente').value = c.nombre    || '';
+    document.getElementById('pres-tel').value     = c.telefono  || '';
+    document.getElementById('pres-dir').value     = c.direccion || '';
+    const sfx = document.getElementById('pres-folio');
+    if (sfx && !sfx.value && c.num_cliente) sfx.placeholder = `108A-260623-${c.num_cliente}`;
+    document.getElementById('pres-buscar-cli').value = '';
+    toast(`✅ ${c.nombre}`);
+  });
 }
 
 function presSeleccionarCliente(id) {
@@ -7635,10 +7676,6 @@ function presSeleccionarCliente(id) {
   document.getElementById('pres-cliente').value = c.nombre    || '';
   document.getElementById('pres-tel').value     = c.telefono  || '';
   document.getElementById('pres-dir').value     = c.direccion || '';
-  if (c.num_cliente) {
-    const sfx = document.getElementById('pres-folio');
-    if (sfx && !sfx.value) sfx.placeholder = `108A-260623-${c.num_cliente}`;
-  }
   document.getElementById('pres-buscar-cli').value = '';
   document.getElementById('pres-cli-resultados').style.display = 'none';
   toast(`✅ ${c.nombre}`);
@@ -7649,33 +7686,15 @@ function presAutocompletarFolio(val) {
   if (val.toUpperCase().startsWith('CACN-')) inp.value = val.slice(5);
 }
 
-// ── Buscador cliente en pagos ─────────────────────────────────
 function pagoBuscarCliente(q) {
-  const res = document.getElementById('pago-cli-resultados');
-  if (!q || q.length < 2) { res.style.display = 'none'; return; }
-  const term = q.toLowerCase().replace(/\s+/g,'');
-  const matches = (cliListaCache || []).filter(c =>
-    (c.nombre||'').toLowerCase().replace(/\s+/g,'').includes(term) ||
-    (c.telefono||'').replace(/\D/g,'').includes(term.replace(/\D/g,'')) ||
-    (c.num_cliente||'').toLowerCase().includes(term)
-  ).slice(0, 6);
-  if (!matches.length) {
-    res.innerHTML = `<div style="padding:10px 14px;font-size:12px;color:var(--gray-400)">Sin resultados</div>`;
-    res.style.display = 'block'; return;
-  }
-  res.innerHTML = matches.map(c => `
-    <div onclick="pagoSeleccionarCliente('${c.id}')"
-      style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--gray-100);
-             display:flex;justify-content:space-between;align-items:center;background:white"
-      onmouseover="this.style.background='var(--off-white)'"
-      onmouseout="this.style.background='white'">
-      <div>
-        <div style="font-size:13px;font-weight:700;color:var(--navy)">${c.nombre||'—'}</div>
-        <div style="font-size:11px;color:var(--gray-400)">${c.telefono||''}</div>
-      </div>
-      <div style="font-size:11px;color:var(--blue);font-weight:700;font-family:'DM Mono',monospace">${c.num_cliente||''}</div>
-    </div>`).join('');
-  res.style.display = 'block';
+  clienteBuscar(q, 'pago-cli-resultados', (c) => {
+    const nombreEl = document.getElementById('pago-cliente-nombre');
+    if (nombreEl) nombreEl.value = c.nombre || '';
+    const folioEl = document.getElementById('pago-folio-sufijo');
+    if (folioEl && !folioEl.value && c.num_cliente) folioEl.placeholder = `108A-260623-${c.num_cliente}`;
+    document.getElementById('pago-buscar-cli').value = '';
+    toast(`✅ ${c.nombre}`);
+  });
 }
 
 function pagoSeleccionarCliente(id) {
@@ -7683,10 +7702,6 @@ function pagoSeleccionarCliente(id) {
   if (!c) return;
   const nombreEl = document.getElementById('pago-cliente-nombre');
   if (nombreEl) nombreEl.value = c.nombre || '';
-  const folioEl = document.getElementById('pago-folio-sufijo');
-  if (folioEl && !folioEl.value && c.num_cliente) {
-    folioEl.placeholder = `108A-260623-${c.num_cliente}`;
-  }
   document.getElementById('pago-buscar-cli').value = '';
   document.getElementById('pago-cli-resultados').style.display = 'none';
   toast(`✅ ${c.nombre}`);
@@ -7725,42 +7740,14 @@ function abrirModalContrato() {
 }
 
 function ctrBuscarCliente(q) {
-  const res = document.getElementById('ctr-cli-resultados');
-  if (!q || q.length < 2) { res.style.display = 'none'; return; }
-  const term = q.toLowerCase().replace(/\s+/g,'');
-  const matches = (cliListaCache || []).filter(c =>
-    (c.nombre||'').toLowerCase().replace(/\s+/g,'').includes(term) ||
-    (c.telefono||'').replace(/\D/g,'').includes(term.replace(/\D/g,'')) ||
-    (c.num_cliente||'').toLowerCase().includes(term)
-  ).slice(0, 8);
-
-  if (!matches.length) {
-    res.innerHTML = `
-      <div style="padding:12px 14px;text-align:center">
-        <div style="font-size:12px;color:var(--gray-400);margin-bottom:10px">Sin resultados para: <strong>${q}</strong></div>
-        <button onclick="ctrNuevoClienteRapido('${q.replace(/'/g,"")}')"
-          style="padding:8px 16px;background:var(--blue);color:white;border:none;border-radius:8px;
-                 font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer">
-          + Agregar cliente nuevo
-        </button>
-      </div>`;
-    res.style.display = 'block';
-    return;
-  }
-
-  res.innerHTML = matches.map(c => `
-    <div onclick="ctrSeleccionarCliente('${c.id}')"
-      style="padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--gray-100);
-             display:flex;justify-content:space-between;align-items:center;background:white"
-      onmouseover="this.style.background='var(--off-white)'"
-      onmouseout="this.style.background='white'">
-      <div>
-        <div style="font-size:13px;font-weight:700;color:var(--navy)">${c.nombre||'—'}</div>
-        <div style="font-size:11px;color:var(--gray-400)">${c.telefono||''} ${c.empresa ? '· '+c.empresa : ''}</div>
-      </div>
-      <div style="font-size:11px;color:var(--blue);font-weight:700;font-family:'DM Mono',monospace">${c.num_cliente||''}</div>
-    </div>`).join('');
-  res.style.display = 'block';
+  clienteBuscar(q, 'ctr-cli-resultados', (c) => {
+    document.getElementById('ctr-nombre').value     = c.nombre     || '';
+    document.getElementById('ctr-direccion').value  = c.direccion  || '';
+    document.getElementById('ctr-telefono').value   = c.telefono   || '';
+    document.getElementById('ctr-numcliente').value = c.num_cliente || '';
+    document.getElementById('ctr-buscar-cli').value = '';
+    toast(`✅ ${c.nombre}`);
+  });
 }
 
 function ctrSeleccionarCliente(id) {
@@ -7773,6 +7760,16 @@ function ctrSeleccionarCliente(id) {
   document.getElementById('ctr-buscar-cli').value = '';
   document.getElementById('ctr-cli-resultados').style.display = 'none';
   toast(`✅ ${c.nombre}`);
+}
+
+function ordenBuscarCliente(q) {
+  clienteBuscar(q, 'orden-cli-resultados', (c) => {
+    document.getElementById('orden-cliente').value = c.nombre    || '';
+    document.getElementById('orden-tel').value     = c.telefono  || '';
+    document.getElementById('orden-dir').value     = c.direccion || '';
+    document.getElementById('orden-buscar-cli').value = '';
+    toast(`✅ ${c.nombre}`);
+  });
 }
 
 function ctrNuevoClienteRapido(nombrePre) {
@@ -12616,6 +12613,17 @@ function visitasGuardadasAbrir() {
     <!-- Info cotización (se llena al buscar) -->
     <div id="orden-info-cotizacion" style="display:none;background:rgba(46,109,164,0.06);
       border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;font-size:12px">
+    </div>
+
+    <!-- Buscador de cliente en nueva orden -->
+    <div class="form-group">
+      <label class="form-label">Buscar cliente registrado</label>
+      <input type="text" class="form-input" id="orden-buscar-cli"
+        placeholder="Nombre, teléfono o número..."
+        oninput="ordenBuscarCliente(this.value)" autocomplete="off">
+      <div id="orden-cli-resultados" style="display:none;background:var(--white);
+        border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);margin-top:4px;
+        max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1)"></div>
     </div>
 
     <!-- Cliente (editable) -->
