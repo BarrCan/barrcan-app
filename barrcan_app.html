@@ -13765,6 +13765,10 @@ async function visitaGuardar() {
   const numPiezas= document.getElementById('visita-num-piezas').value;
   const tecnico  = document.getElementById('visita-tecnico').value.trim();
 
+  // Validación mínima
+  if (!fecha) { toast('⚠️ Falta la fecha de la visita'); return; }
+  if (!VISITA_CLIENTE && !dirObra) { toast('⚠️ Selecciona un cliente o ingresa la dirección'); return; }
+
   // Herramientas
   const herramientas = [];
   if (document.getElementById('visita-tool-laser').checked) herramientas.push('Láser');
@@ -13774,86 +13778,80 @@ async function visitaGuardar() {
   const otroTool = document.getElementById('visita-tool-otro').value.trim();
   if (otroTool) herramientas.push(otroTool);
 
-  // Escaleras y elevador (botones de opción)
-  const escBtn = document.querySelector('.visita-opcion-btn[data-grupo="escaleras"][style*="var(--blue)"]');
+  // Escaleras y elevador
+  const escBtn  = document.querySelector('.visita-opcion-btn[data-grupo="escaleras"][style*="var(--blue)"]');
   const elevBtn = document.querySelector('.visita-opcion-btn[data-grupo="elevador"][style*="var(--blue)"]');
   let escaleras = escBtn ? escBtn.dataset.val : 'no_indicado';
-  if (escaleras === 'otro') {
-    escaleras = document.getElementById('visita-escaleras-otro').value.trim() || 'otro';
-  }
+  if (escaleras === 'otro') escaleras = document.getElementById('visita-escaleras-otro').value.trim() || 'otro';
   const elevador = elevBtn ? elevBtn.dataset.val : 'no_indicado';
 
   // Cobro
   const aplicaCobro = document.getElementById('visita-aplica-cobro').checked;
   const monto = aplicaCobro ? (parseFloat(document.getElementById('visita-monto').value) || 1000) : 0;
 
+  // Payload limpio — solo columnas que existen en la tabla
   const payload = {
     folio,
-    cliente_id:     VISITA_CLIENTE?.id || null,
-    cliente_nombre: VISITA_CLIENTE?.nombre || '',
-    cliente_tel:    VISITA_CLIENTE?.telefono || '',
+    cliente_nombre:       VISITA_CLIENTE?.nombre  || '',
+    cliente_tel:          VISITA_CLIENTE?.telefono || '',
+    dir_obra:             dirObra,
+    desc_obra:            descObra,
     tecnico,
-    herramientas:   herramientas.join(', '),
-    fecha_visita:   fecha,
-    hora_visita:    hora,
-    dir_obra:       dirObra,
-    nivel,
+    fecha_visita:         fecha || null,
+    hora_visita:          hora  || null,
+    num_piezas:           numPiezas ? parseInt(numPiezas) : null,
     escaleras,
-    elevador,
-    personas_necesarias: personas,
-    obs_logistica:  obsLog,
-    desc_obra:      descObra,
-    notas_tecnico:  notasTec,
-    num_piezas:     numPiezas ? parseInt(numPiezas) : null,
-    num_fotos:      VISITA_FOTOS.length,
-    aplica_cobro:   aplicaCobro,
+    num_fotos:            VISITA_FOTOS.length,
+    aplica_cobro:         aplicaCobro,
     monto,
-    estado:         'registrada'
+    notas_tecnico:        notasTec,
+    created_at:           new Date().toISOString()
   };
 
-  try {
-    if (SYNC.online) {
-      const { error } = await sb().from('visitas_medicion').insert([payload]);
-      if (error) throw error;
-      // Guardar fotos en IndexedDB (no en Supabase por tamaño)
-      if (VISITA_FOTOS.length > 0) {
-        await idbGuardar('fotos_visitas', {
-          id: folio,
-          fotos: VISITA_FOTOS,
-          created_at: new Date().toISOString()
-        });
-      }
-      toast('✅ Visita guardada · ' + folio);
+  // Mostrar spinner
+  const btnGuardar = document.querySelector('[onclick="visitaGuardar()"]');
+  if (btnGuardar) { btnGuardar.disabled = true; btnGuardar.innerHTML = '⏳ Guardando…'; }
+
+  let guardadoOk = false;
+
+  // 1. Intentar Supabase
+  if (SYNC.online) {
+    const { error } = await sb().from('visitas_medicion').insert([payload]);
+    if (!error) {
+      guardadoOk = true;
+      toast('✅ Visita guardada en Supabase · ' + folio);
     } else {
-      // Offline — guardar todo local
-      await idbGuardar('fotos_visitas', {
-        id: folio,
-        fotos: VISITA_FOTOS,
-        payload,
-        created_at: new Date().toISOString()
-      });
-      await encolarPendiente('visita', payload);
-      toast('💾 Visita guardada localmente · ' + folio + ' (se sincronizará con señal)');
+      console.error('Supabase visita error:', error);
+      toast(`⚠️ Error Supabase: ${error.message} — guardando localmente`);
     }
-    visitaCerrar();
-  } catch(e) {
-    // Fallback final — localStorage sin fotos
+  }
+
+  // 2. Siempre guardar en localStorage como respaldo
+  try {
+    const visitas = JSON.parse(localStorage.getItem('barrcan_visitas_local') || '[]');
+    visitas.unshift({ ...payload, _guardado_supabase: guardadoOk });
+    localStorage.setItem('barrcan_visitas_local', JSON.stringify(visitas));
+    if (!guardadoOk) {
+      await encolarPendiente('visita', payload);
+      toast('💾 Guardado localmente · Se sincronizará al conectar · ' + folio);
+      guardadoOk = true;
+    }
+  } catch(e) { console.warn('localStorage visita:', e); }
+
+  // 3. Guardar fotos en IDB
+  if (VISITA_FOTOS.length > 0) {
     try {
       await idbGuardar('fotos_visitas', {
-        id: folio,
-        fotos: VISITA_FOTOS,
-        payload,
-        created_at: new Date().toISOString()
+        id: folio, fotos: VISITA_FOTOS, created_at: new Date().toISOString()
       });
-      await encolarPendiente('visita', payload);
-      toast('💾 Visita guardada localmente · ' + folio);
-    } catch(e2) {
-      // Último recurso — localStorage sin fotos
-      const visitas = JSON.parse(localStorage.getItem('barrcan_visitas') || '[]');
-      visitas.unshift({ ...payload, created_at: new Date().toISOString() });
-      localStorage.setItem('barrcan_visitas', JSON.stringify(visitas));
-      toast('💾 Visita guardada (sin fotos) · ' + folio);
-    }
+    } catch(e) { console.warn('IDB fotos:', e); }
+  }
+
+  if (btnGuardar) { btnGuardar.disabled = false; btnGuardar.innerHTML = '💾 Guardar sin PDF'; }
+
+  if (guardadoOk) {
+    // Actualizar cache local del historial
+    VISITAS_HIST_CACHE.unshift({ ...payload, id: payload.folio });
     visitaCerrar();
   }
 }
