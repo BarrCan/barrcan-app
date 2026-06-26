@@ -13858,166 +13858,127 @@ async function visitaGuardar() {
 
 // ── Generar PDF ───────────────────────────────
 async function visitaGenerarPDF() {
-  const folio     = document.getElementById('visita-folio-badge').textContent;
-  const fecha     = document.getElementById('visita-fecha').value;
-  const hora      = document.getElementById('visita-hora').value;
-  const dirObra   = document.getElementById('visita-dir-obra').value.trim();
-  const nivel     = document.getElementById('visita-nivel').value;
-  const escaleras = document.getElementById('visita-escaleras').checked;
-  const elevador  = document.getElementById('visita-elevador').checked;
-  const elevCabe  = document.getElementById('visita-elevador-cabe').checked;
-  const personas  = document.getElementById('visita-personas').value;
-  const obsLog    = document.getElementById('visita-obs-logistica').value.trim();
-  const descObra  = document.getElementById('visita-desc-obra').value.trim();
-  const notasTec  = document.getElementById('visita-notas-tec').value.trim();
-  const numPiezas = document.getElementById('visita-num-piezas').value;
-  const cliente   = VISITA_CLIENTE;
+  const folio   = document.getElementById('visita-folio-badge').textContent;
+  const fecha   = document.getElementById('visita-fecha').value;
+  const hora    = document.getElementById('visita-hora').value;
+  const dirObra = document.getElementById('visita-dir-obra').value.trim();
+  const descObra= document.getElementById('visita-desc-obra').value.trim();
+  const notasTec= document.getElementById('visita-notas-tec').value.trim();
+  const numPiezas=document.getElementById('visita-num-piezas').value;
+  const cliente = VISITA_CLIENTE;
 
-  // Generar HTML del reporte
+  // Fotos
   const fotosHtml = VISITA_FOTOS.map((f,i) => `
-    <div style="break-inside:avoid;margin-bottom:16px">
-      <img src="${f.dataUrl}" style="width:100%;max-height:220px;object-fit:cover;border-radius:6px;border:1px solid #ddd">
-      <div style="font-size:11px;color:#666;margin-top:4px;padding:0 4px">${i+1}. ${f.desc || 'Sin descripción'}</div>
-    </div>
-  `).join('');
+    <div style="margin-bottom:14px">
+      <img src="${f.dataUrl}" style="width:100%;max-height:220px;object-fit:contain;
+           border-radius:4px;border:1px solid #ddd;background:#f5f5f5">
+      <div style="font-size:10px;color:#666;margin-top:3px">${i+1}. ${f.desc||''}</div>
+    </div>`).join('');
 
-  const accesos = [
-    escaleras ? '✓ Escaleras amplias' : '✗ Sin escaleras amplias',
-    elevador  ? '✓ Elevador disponible' : '✗ Sin elevador',
-    elevCabe  ? '✓ Material cabe en elevador' : ''
-  ].filter(Boolean).join(' &nbsp;|&nbsp; ');
+  // Escaleras seleccionadas
+  const escBtn = document.querySelector('.visita-opcion-btn[data-grupo="escaleras"][style*="var(--blue)"]');
+  const escaleras = escBtn ? escBtn.dataset.val : '—';
+
+  const aplicaCobro = document.getElementById('visita-aplica-cobro').checked;
+  const monto = aplicaCobro ? (parseFloat(document.getElementById('visita-monto').value)||0) : 0;
+
+  const logoB64 = typeof BARRCAN_LOGO_B64 !== 'undefined' ? BARRCAN_LOGO_B64 : '';
 
   const html = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<title>Reporte de Visita ${folio}</title>
+<html lang=es><head><meta charset=UTF-8>
+<meta name=viewport content=width=device-width>
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family: Arial, sans-serif; font-size: 12px; color: #1B3A5C; padding: 24px; }
-  .header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px; padding-bottom:16px; border-bottom:3px solid #1B3A5C; }
-  .logo { font-size:22px; font-weight:900; letter-spacing:-1px; color:#1B3A5C; }
-  .logo span { color:#C8923A; }
-  .folio { text-align:right; }
-  .folio-num { font-size:18px; font-weight:700; color:#2E6DA4; font-family:monospace; }
-  .seccion { margin-bottom:20px; }
-  .seccion-titulo { font-size:11px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#2E6DA4; border-bottom:1px solid #e0e0e0; padding-bottom:4px; margin-bottom:10px; }
-  .dato-row { display:flex; gap:16px; margin-bottom:6px; }
-  .dato-label { font-size:10px; color:#888; min-width:120px; }
-  .dato-val { font-size:12px; font-weight:600; }
-  .fotos-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-  .monto-box { background:#1B3A5C; color:white; padding:16px 20px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; margin-top:20px; }
-  .monto-num { font-size:28px; font-weight:900; color:#C8923A; }
-  .anticipo { font-size:10px; color:rgba(255,255,255,0.6); margin-top:4px; }
-  .firma-box { display:flex; gap:24px; margin-top:24px; }
-  .firma { flex:1; border-top:1px solid #ccc; padding-top:8px; font-size:10px; color:#888; text-align:center; }
-  @media print { body { padding:12px; } }
-</style>
-</head>
-<body>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;font-size:10pt;color:#1B3A5C;background:white}
+  .page{max-width:700px;margin:0 auto;padding:20px 24px 80px}
+  .header{display:flex;align-items:center;gap:14px;margin-bottom:14px;
+          padding-bottom:12px;border-bottom:2.5px solid #1B3A5C}
+  .logo-text{font-size:20pt;font-weight:900;color:#1B3A5C;letter-spacing:1px;line-height:1}
+  .logo-sub{font-size:7pt;color:#C8923A;letter-spacing:3px;text-transform:uppercase}
+  .titulo-doc{text-align:right;font-size:12pt;font-weight:700;color:#1B3A5C;
+              border:2px solid #1B3A5C;padding:4px 10px;border-radius:4px;white-space:nowrap}
+  h2{font-size:9.5pt;font-weight:700;color:#2E6DA4;border-bottom:1px solid #ddd;
+     padding-bottom:3px;margin:14px 0 8px;text-transform:uppercase;letter-spacing:1px}
+  .dato-row{display:flex;margin-bottom:5px;font-size:9.5pt}
+  .dato-lbl{color:#888;min-width:130px;font-size:9pt}
+  .dato-val{font-weight:600}
+  .fotos-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}
+  .monto-box{background:#1B3A5C;color:white;padding:12px 16px;border-radius:6px;
+             display:flex;justify-content:space-between;align-items:center;margin-top:14px}
+  .monto-num{font-size:22pt;font-weight:900;color:#C8923A}
+  .firma-box{display:flex;gap:20px;margin-top:20px}
+  .firma{flex:1;border-top:1px solid #ccc;padding-top:6px;font-size:9pt;color:#888;text-align:center}
+  .barra-print{position:fixed;bottom:0;left:0;right:0;background:#1B3A5C;padding:8px 16px;
+    display:flex;gap:8px;justify-content:center;z-index:999}
+  .btn-print{padding:10px 22px;background:#C8923A;color:white;border:none;border-radius:7px;
+    font-size:13px;font-weight:700;cursor:pointer;font-family:Arial,sans-serif}
+  .btn-cerrar{padding:10px 14px;background:rgba(255,255,255,0.15);color:white;border:none;
+    border-radius:7px;font-size:12px;cursor:pointer;font-family:Arial,sans-serif}
+  @media print{.barra-print{display:none!important}.page{padding:14px}}
+</style></head><body>
+<div class=barra-print>
+  <button class=btn-print onclick="window.print()">&#128424; Imprimir / Guardar PDF</button>
+  <button class=btn-cerrar onclick="window.close()">&#10005; Cerrar</button>
+</div>
+<div class=page>
+  <div class=header>
+    ${logoB64 ? `<img src="${logoB64}" style="width:58px;height:58px;object-fit:contain;flex-shrink:0">` : ''}
+    <div style=flex:1>
+      <div class=logo-text>BarrCan</div>
+      <div class=logo-sub>Cancelería · Aluminio · Vidrio</div>
+      <div style=font-size:8pt;color:#555;margin-top:2px>TEL: 56-15-15-84-15</div>
+    </div>
+    <div class=titulo-doc>REPORTE DE VISITA</div>
+  </div>
 
-  <div class="header">
+  <h2>Datos de la visita</h2>
+  <div class=dato-row><span class=dato-lbl>Folio</span><span class=dato-val style=font-family:monospace;color:#2E6DA4>${folio}</span></div>
+  <div class=dato-row><span class=dato-lbl>Cliente</span><span class=dato-val>${cliente?.nombre||'—'}</span></div>
+  <div class=dato-row><span class=dato-lbl>Teléfono</span><span class=dato-val>${cliente?.telefono||'—'}</span></div>
+  <div class=dato-row><span class=dato-lbl>Dirección de obra</span><span class=dato-val>${dirObra||'—'}</span></div>
+  <div class=dato-row><span class=dato-lbl>Fecha</span><span class=dato-val>${fecha||'—'} ${hora?'· '+hora:''}</span></div>
+  <div class=dato-row><span class=dato-lbl>Num. de piezas</span><span class=dato-val>${numPiezas||'—'}</span></div>
+  <div class=dato-row><span class=dato-lbl>Escaleras</span><span class=dato-val>${escaleras}</span></div>
+
+  ${descObra ? `<h2>Descripción de la obra</h2>
+  <div style=font-size:10pt;line-height:1.6;color:#333>${descObra}</div>` : ''}
+
+  ${notasTec ? `<h2>Notas para el técnico</h2>
+  <div style=font-size:10pt;line-height:1.6;color:#333>${notasTec}</div>` : ''}
+
+  ${aplicaCobro && monto > 0 ? `
+  <div class=monto-box>
     <div>
-      <div class="logo">Barr<span>Can</span></div>
-      <div style="font-size:10px;color:#888;margin-top:2px">CANCELERÍA · CAMPO</div>
+      <div style=font-size:9pt;opacity:0.7>Cobro por visita de medición</div>
+      <div style=font-size:9pt;opacity:0.6;margin-top:2px>Se acredita al anticipo del proyecto</div>
     </div>
-    <div class="folio">
-      <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px">Reporte de Visita</div>
-      <div class="folio-num">${folio}</div>
-      <div style="font-size:10px;color:#888">${fecha} ${hora ? '· ' + hora : ''}</div>
-    </div>
-  </div>
-
-  <!-- Cliente -->
-  <div class="seccion">
-    <div class="seccion-titulo">Cliente</div>
-    ${cliente ? `
-      <div class="dato-row"><span class="dato-label">Nombre:</span><span class="dato-val">${cliente.nombre}${cliente.cargo ? ' · ' + cliente.cargo : ''}</span></div>
-      ${cliente.empresa ? `<div class="dato-row"><span class="dato-label">Empresa:</span><span class="dato-val">${cliente.empresa}</span></div>` : ''}
-      ${cliente.telefono ? `<div class="dato-row"><span class="dato-label">Teléfono:</span><span class="dato-val">${cliente.telefono}</span></div>` : ''}
-    ` : '<div style="color:#888">Cliente no registrado</div>'}
-  </div>
-
-  <!-- Obra -->
-  <div class="seccion">
-    <div class="seccion-titulo">Datos de la Obra</div>
-    ${dirObra ? `<div class="dato-row"><span class="dato-label">Dirección:</span><span class="dato-val">${dirObra}</span></div>` : ''}
-    ${descObra ? `<div class="dato-row"><span class="dato-label">Descripción:</span><span class="dato-val">${descObra}</span></div>` : ''}
-  </div>
-
-  <!-- Logística -->
-  <div class="seccion">
-    <div class="seccion-titulo">Logística y Dificultad</div>
-    <div class="dato-row"><span class="dato-label">Nivel / Piso:</span><span class="dato-val">${nivel === 'PB' ? 'Planta Baja' : 'Piso ' + nivel}</span></div>
-    <div class="dato-row"><span class="dato-label">Acceso:</span><span class="dato-val">${accesos || '—'}</span></div>
-    <div class="dato-row"><span class="dato-label">Personal requerido:</span><span class="dato-val">${personas} persona${personas !== '1' ? 's' : ''}</span></div>
-    ${numPiezas ? `<div class="dato-row"><span class="dato-label">Piezas aprox.:</span><span class="dato-val">${numPiezas}</span></div>` : ''}
-    ${obsLog ? `<div class="dato-row"><span class="dato-label">Observaciones:</span><span class="dato-val">${obsLog}</span></div>` : ''}
-  </div>
-
-  <!-- Notas técnicas -->
-  ${notasTec ? `
-  <div class="seccion">
-    <div class="seccion-titulo">Notas Técnicas</div>
-    <div style="background:#f5f7fa;padding:10px 12px;border-radius:6px;line-height:1.6">${notasTec}</div>
+    <div class=monto-num>$${monto.toLocaleString('es-MX')}</div>
   </div>` : ''}
 
-  <!-- Fotos -->
-  ${VISITA_FOTOS.length ? `
-  <div class="seccion">
-    <div class="seccion-titulo">Fotos de Medición (${VISITA_FOTOS.length})</div>
-    <div class="fotos-grid">${fotosHtml}</div>
-  </div>` : ''}
+  ${VISITA_FOTOS.length > 0 ? `<h2>Evidencia fotográfica (${VISITA_FOTOS.length} fotos)</h2>
+  <div class=fotos-grid>${fotosHtml}</div>` : ''}
 
-  <!-- Monto -->
-  <div class="monto-box">
-    <div>
-      <div style="font-size:10px;color:rgba(255,255,255,0.6);text-transform:uppercase;letter-spacing:1px">Cobro por visita de medición</div>
-      <div class="monto-num">$1,000 MXN</div>
-      <div class="anticipo">Este monto se aplica como anticipo al aprobar el proyecto</div>
-    </div>
-    <div style="font-size:40px">🔑</div>
+  <div class=firma-box style=margin-top:24px>
+    <div class=firma>Firma del cliente<br>___________________<br>${cliente?.nombre||''}</div>
+    <div class=firma>Técnico BarrCan<br>___________________<br>${document.getElementById('visita-tecnico').value||''}</div>
   </div>
-
-  <!-- Firmas -->
-  <div class="firma-box" style="margin-top:32px">
-    <div class="firma">Técnico BarrCan<br><br><br></div>
-    <div class="firma">Cliente<br>${cliente ? cliente.nombre : '_________________'}<br><br></div>
+  <div style=font-size:8pt;color:#aaa;text-align:center;margin-top:14px;border-top:1px solid #eee;padding-top:8px>
+    ${folio} · BarrCan Cancelería · TEL: 56-15-15-84-15
   </div>
+</div></body></html>`;
 
-</body>
-</html>`;
-
-  // Usar html2pdf para generar el PDF directamente
-  const contenedor = document.createElement('div');
-  contenedor.innerHTML = html;
-  document.body.appendChild(contenedor);
-
-  const nombreArchivo = `${folio}.pdf`;
-  try {
-    await html2pdf().set({
-      margin: [10, 10, 10, 10],
-      filename: nombreArchivo,
-      image: { type: 'jpeg', quality: 0.92 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: 'mm', format: 'letter', orientation: 'portrait' }
-    }).from(contenedor).save();
-    toast(`✅ PDF generado: ${nombreArchivo}`);
-  } catch(e) {
-    // Fallback: abrir en nueva ventana
-    const win = window.open('', '_blank');
-    if (win) {
-      win.document.write(html);
-      win.document.close();
-      win.onload = () => setTimeout(() => win.print(), 500);
-    } else {
-      toast('⚠️ Permite ventanas emergentes para generar el PDF');
-    }
-  } finally {
-    document.body.removeChild(contenedor);
+  // Abrir con document.write (mismo método que los otros documentos)
+  const win = window.open('', '_blank');
+  if (win) {
+    win.document.write(html);
+    win.document.close();
+    toast('📄 Reporte abierto · Usa el botón 🖨️ para guardar como PDF');
+  } else {
+    toast('⚠️ Permite ventanas emergentes para ver el reporte');
+    return;
   }
 
-  // Guardar en BD y en lista de visitas
+  // Guardar en BD
   await visitaGuardar();
 }
 
