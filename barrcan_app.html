@@ -11971,58 +11971,69 @@ async function pagosModuloAbrir() {
 }
 
 async function pagosModuloCargar() {
-  const ahora   = new Date();
-  const hoy     = ahora.toISOString().split('T')[0];
-  const mesIni  = `${ahora.getFullYear()}-${String(ahora.getMonth()+1).padStart(2,'0')}-01`;
-  const mesFin  = hoy;
-  const mesNom  = ahora.toLocaleDateString('es-MX',{month:'long',year:'numeric'});
+  const ahora  = new Date();
+  const hoy    = ahora.toISOString().split('T')[0];
+  const mesIni = `${ahora.getFullYear()}-${String(ahora.getMonth()+1).padStart(2,'0')}-01`;
+  const mesNom = ahora.toLocaleDateString('es-MX',{month:'long',year:'numeric'});
 
-  document.getElementById('pm-mes-label').textContent = mesNom;
+  document.getElementById('pm-mes-label').textContent    = mesNom;
   document.getElementById('pagos-mod-subtitulo').textContent = mesNom;
+  document.getElementById('pm-lista-pendientes').innerHTML =
+    '<div style="text-align:center;padding:20px;color:var(--gray-400)">⏳ Cargando…</div>';
+  document.getElementById('pm-lista-cobrados').innerHTML =
+    '<div style="text-align:center;padding:20px;color:var(--gray-400)">⏳ Cargando…</div>';
 
+  // ── Pagos del mes ──
   try {
-    // Cargar pagos del mes
-    const { data: pagos } = await sb().from('pagos')
-      .select('*').gte('fecha_pago', mesIni).lte('fecha_pago', mesFin)
+    const { data: pagos, error: ep } = await sb().from('pagos')
+      .select('*').gte('fecha_pago', mesIni).lte('fecha_pago', hoy)
       .order('fecha_pago', { ascending: false });
-    PM_PAGOS_MES = pagos || [];
+    PM_PAGOS_MES = (!ep && pagos) ? pagos : [];
+  } catch(e) { PM_PAGOS_MES = []; }
 
-    // Cargar OTs con saldo pendiente
-    const { data: ots } = await sb().from('ordenes_trabajo')
-      .select('*').gt('saldo_pendiente', 0)
-      .neq('estado','cancelada').order('fecha_instalacion');
-    PM_OTS_PEND = ots || [];
+  // ── OTs con saldo pendiente ──
+  try {
+    const { data: ots, error: eo } = await sb().from('ordenes_trabajo')
+      .select('*').range(0,999);
+    // Filtrar las que tienen saldo > 0 y no canceladas
+    PM_OTS_PEND = (!eo && ots)
+      ? ots.filter(o => (o.saldo_pendiente||0) > 0 && o.estado !== 'cancelada')
+      : [];
+  } catch(e) { PM_OTS_PEND = []; }
 
-    // Calcular totales
-    const cobradoHoy = PM_PAGOS_MES
-      .filter(p => p.fecha_pago === hoy)
-      .reduce((s,p) => s + (p.monto||0), 0);
-    const cobradoMes = PM_PAGOS_MES.reduce((s,p) => s + (p.monto||0), 0);
-    const porCobrar  = PM_OTS_PEND.reduce((s,o) => s + (o.saldo_pendiente||0), 0);
+  // ── Calcular totales ──
+  const cobradoHoy = PM_PAGOS_MES
+    .filter(p => p.fecha_pago === hoy)
+    .reduce((s,p) => s+(p.monto||0), 0);
+  const cobradoMes = PM_PAGOS_MES.reduce((s,p) => s+(p.monto||0), 0);
+  const porCobrar  = PM_OTS_PEND.reduce((s,o) => s+(o.saldo_pendiente||0), 0);
 
-    document.getElementById('pm-cobrado-hoy').textContent = `$${fmt(cobradoHoy)}`;
-    document.getElementById('pm-cobrado-mes').textContent = `$${fmt(cobradoMes)}`;
-    document.getElementById('pm-por-cobrar').textContent  = `$${fmt(porCobrar)}`;
-    document.getElementById('pm-badge-pend').textContent  = PM_OTS_PEND.length;
+  document.getElementById('pm-cobrado-hoy').textContent = `$${fmt(cobradoHoy)}`;
+  document.getElementById('pm-cobrado-mes').textContent = `$${fmt(cobradoMes)}`;
+  document.getElementById('pm-por-cobrar').textContent  = `$${fmt(porCobrar)}`;
+  document.getElementById('pm-badge-pend').textContent  = PM_OTS_PEND.length;
 
-    pmDibujarGrafica(ahora);
-    pmRenderListas();
-
-  } catch(e) {
-    document.getElementById('pagos-mod-subtitulo').textContent = 'Sin conexión';
+  // ── Gráfica ──
+  try { pmDibujarGrafica(ahora); } catch(e) {
+    console.warn('Gráfica error:', e.message);
+    document.getElementById('pm-grafica').style.display = 'none';
   }
+
+  pmRenderListas();
 }
 
 function pmDibujarGrafica(ahora) {
   const canvas = document.getElementById('pm-grafica');
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  const W = canvas.offsetWidth || 300;
-  canvas.width  = W * window.devicePixelRatio;
-  canvas.height = 160 * window.devicePixelRatio;
-  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
-  const w = W, h = 160;
-  ctx.clearRect(0, 0, w, h);
+  // Forzar ancho correcto en móvil
+  const W = canvas.parentElement?.offsetWidth || 300;
+  const h = 160;
+  canvas.style.width  = '100%';
+  canvas.style.height = h + 'px';
+  canvas.width  = W;
+  canvas.height = h;
+  ctx.clearRect(0, 0, W, h);
 
   // Agrupar pagos por semana del mes
   const diasMes  = new Date(ahora.getFullYear(), ahora.getMonth()+1, 0).getDate();
@@ -12039,8 +12050,8 @@ function pmDibujarGrafica(ahora) {
   const barData = [...cobSem];
   const maxVal  = Math.max(...barData, porCobrar, 1000);
 
-  const pad = { left:50, right:12, top:16, bottom:36 };
-  const bw  = (w - pad.left - pad.right) / semanas.length;
+  const pad = { left:52, right:14, top:18, bottom:36 };
+  const bw  = (W - pad.left - pad.right) / semanas.length;
   const bh  = h - pad.top - pad.bottom;
 
   // Fondo grilla
@@ -12048,9 +12059,9 @@ function pmDibujarGrafica(ahora) {
   ctx.lineWidth   = 0.5;
   [0,0.25,0.5,0.75,1].forEach(r => {
     const y = pad.top + bh * (1-r);
-    ctx.beginPath(); ctx.moveTo(pad.left,y); ctx.lineTo(w-pad.right,y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(pad.left,y); ctx.lineTo(W-pad.right,y); ctx.stroke();
     ctx.fillStyle = '#9baab8';
-    ctx.font = '9px DM Sans, Arial';
+    ctx.font = '9px Arial';
     ctx.textAlign = 'right';
     ctx.fillText(`$${fmt(maxVal*r)}`, pad.left-4, y+3);
   });
@@ -12065,39 +12076,39 @@ function pmDibujarGrafica(ahora) {
 
     ctx.fillStyle = '#2E6DA4';
     ctx.beginPath();
-    ctx.roundRect(x, y, bWidth, barH, [3,3,0,0]);
+    ctx.rect(x, y, bWidth, barH);
     ctx.fill();
 
     if (val > 0) {
       ctx.fillStyle = '#1B3A5C';
-      ctx.font = 'bold 9px DM Sans, Arial';
+      ctx.font = 'bold 9px Arial';
       ctx.textAlign = 'center';
       ctx.fillText(`$${fmt(val)}`, x + bWidth/2, y - 4);
     }
 
     // Etiqueta semana
     ctx.fillStyle = '#9baab8';
-    ctx.font = '9px DM Sans, Arial';
+    ctx.font = '9px Arial';
     ctx.textAlign = 'center';
     ctx.fillText(lbl.split('\n')[0], x + bWidth/2, h - pad.bottom + 14);
-    ctx.fillText(lbl.split('\n')[1], x + bWidth/2, h - pad.bottom + 24);
+    ctx.fillText(lbl.split('\n')[1], x + bWidth/2, h - pad.bottom + 25);
   });
 
   // Línea de pendiente total
   if (porCobrar > 0) {
     const y = pad.top + bh - (porCobrar/maxVal)*bh;
     ctx.strokeStyle = '#E74C3C';
-    ctx.lineWidth   = 2;
-    ctx.setLineDash([6,3]);
+    ctx.lineWidth   = 1.5;
+    ctx.setLineDash([5,3]);
     ctx.beginPath();
     ctx.moveTo(pad.left, y);
-    ctx.lineTo(w - pad.right, y);
+    ctx.lineTo(W - pad.right, y);
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.fillStyle = '#E74C3C';
-    ctx.font = 'bold 9px DM Sans, Arial';
+    ctx.font = 'bold 9px Arial';
     ctx.textAlign = 'right';
-    ctx.fillText(`Por cobrar $${fmt(porCobrar)}`, w-pad.right, y-4);
+    ctx.fillText(`Pend. $${fmt(porCobrar)}`, W-pad.right, y-4);
   }
 }
 
