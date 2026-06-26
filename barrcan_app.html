@@ -8930,19 +8930,25 @@ function visitasHistorialRender(datos) {
         ${v.num_fotos ? `<span style="font-size:10px;background:rgba(200,146,58,0.08);color:var(--gold);padding:2px 7px;border-radius:8px;font-weight:600">📷 ${v.num_fotos} fotos</span>` : ''}
         ${v.aplica_cobro && v.monto ? `<span style="font-size:10px;background:rgba(39,174,96,0.08);color:#27AE60;padding:2px 7px;border-radius:8px;font-weight:700">💰 $${fmt(v.monto)}</span>` : ''}
       </div>
-      <div style="display:flex;gap:6px;margin-top:8px">
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
         <button onclick="visitasHistorialCrearOT('${v.folio||''}')"
           style="flex:1;padding:8px;background:rgba(27,58,92,0.06);color:var(--navy);
                  border:1.5px solid var(--navy);border-radius:var(--radius-sm);
                  font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer">
-          + Crear OT desde esta visita
+          + OT
+        </button>
+        <button onclick="visitasHistorialGenerarPDF('${v.id||v.folio}')"
+          style="padding:8px 12px;background:rgba(230,92,0,0.08);color:#E65C00;
+                 border:1px solid rgba(230,92,0,0.2);border-radius:var(--radius-sm);
+                 font-size:12px;font-weight:700;cursor:pointer">
+          📄 PDF
         </button>
         ${v.reporte_url ? `
-        <button onclick="entAbrirReporteUrl('${v.reporte_url}')"
+        <button onclick="window.open('${v.reporte_url}','_blank')"
           style="padding:8px 12px;background:rgba(46,109,164,0.08);color:var(--blue);
                  border:1px solid rgba(46,109,164,0.2);border-radius:var(--radius-sm);
                  font-size:12px;font-weight:700;cursor:pointer">
-          📄 Ver
+          🔗 Ver
         </button>` : ''}
       </div>
     </div>`;
@@ -8960,6 +8966,88 @@ function visitasHistorialFiltrar(q) {
         (v.desc_obra||'').toLowerCase().includes(term)
       );
   visitasHistorialRender(filtradas);
+}
+
+function visitasHistorialGenerarPDF(idOrFolio) {
+  // Buscar la visita en el cache
+  const v = VISITAS_HIST_CACHE.find(x => x.id === idOrFolio || x.folio === idOrFolio);
+  if (!v) { toast('⚠️ No se encontró la visita'); return; }
+
+  const logoB64 = typeof BARRCAN_LOGO_B64 !== 'undefined' ? BARRCAN_LOGO_B64 : '';
+
+  const html = `<!DOCTYPE html>
+<html lang=es><head><meta charset=UTF-8>
+<meta name=viewport content=width=device-width>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;font-size:10pt;color:#1B3A5C;background:white}
+  .page{max-width:700px;margin:0 auto;padding:20px 24px 80px}
+  .header{display:flex;align-items:center;gap:14px;margin-bottom:14px;
+          padding-bottom:12px;border-bottom:2.5px solid #1B3A5C}
+  h2{font-size:9.5pt;font-weight:700;color:#2E6DA4;border-bottom:1px solid #ddd;
+     padding-bottom:3px;margin:14px 0 8px;text-transform:uppercase;letter-spacing:1px}
+  .dato-row{display:flex;margin-bottom:5px;font-size:9.5pt}
+  .dato-lbl{color:#888;min-width:130px;font-size:9pt}
+  .dato-val{font-weight:600}
+  .barra-print{position:fixed;bottom:0;left:0;right:0;background:#1B3A5C;padding:8px 16px;
+    display:flex;gap:8px;justify-content:center;z-index:999}
+  .btn-print{padding:10px 22px;background:#C8923A;color:white;border:none;border-radius:7px;
+    font-size:13px;font-weight:700;cursor:pointer}
+  .btn-cerrar{padding:10px 14px;background:rgba(255,255,255,0.15);color:white;border:none;
+    border-radius:7px;font-size:12px;cursor:pointer}
+  @media print{.barra-print{display:none!important}.page{padding:14px}}
+</style></head><body>
+<div class=barra-print>
+  <button class=btn-print onclick="window.print()">&#128424; Imprimir / Guardar PDF</button>
+  <button class=btn-cerrar onclick="window.close()">&#10005; Cerrar</button>
+</div>
+<div class=page>
+  <div class=header>
+    ${logoB64 ? `<img src="${logoB64}" style="width:56px;height:56px;object-fit:contain;flex-shrink:0">` : ''}
+    <div style=flex:1>
+      <div style=font-size:18pt;font-weight:900;color:#1B3A5C;letter-spacing:1px>BarrCan</div>
+      <div style=font-size:7pt;color:#C8923A;letter-spacing:3px;text-transform:uppercase>Cancelería · Aluminio · Vidrio</div>
+    </div>
+    <div style=text-align:right;font-size:11pt;font-weight:700;color:#1B3A5C;
+         border:2px solid #1B3A5C;padding:4px 10px;border-radius:4px>REPORTE DE VISITA</div>
+  </div>
+
+  <h2>Datos de la visita</h2>
+  <div class=dato-row><span class=dato-lbl>Folio</span><span class=dato-val style=font-family:monospace;color:#2E6DA4>${v.folio||'—'}</span></div>
+  <div class=dato-row><span class=dato-lbl>Cliente</span><span class=dato-val>${v.cliente_nombre||'—'}</span></div>
+  <div class=dato-row><span class=dato-lbl>Teléfono</span><span class=dato-val>${v.cliente_tel||'—'}</span></div>
+  <div class=dato-row><span class=dato-lbl>Dirección de obra</span><span class=dato-val>${v.dir_obra||'—'}</span></div>
+  <div class=dato-row><span class=dato-lbl>Fecha</span><span class=dato-val>${v.fecha_visita||'—'} ${v.hora_visita?'· '+v.hora_visita:''}</span></div>
+  <div class=dato-row><span class=dato-lbl>Técnico</span><span class=dato-val>${v.tecnico||'—'}</span></div>
+  <div class=dato-row><span class=dato-lbl>Num. piezas</span><span class=dato-val>${v.num_piezas||'—'}</span></div>
+  <div class=dato-row><span class=dato-lbl>Escaleras</span><span class=dato-val>${v.escaleras||'—'}</span></div>
+  <div class=dato-row><span class=dato-lbl>Fotos tomadas</span><span class=dato-val>${v.num_fotos||0}</span></div>
+  ${v.desc_obra ? `<h2>Descripción de la obra</h2>
+  <div style=font-size:10pt;line-height:1.6;color:#333>${v.desc_obra}</div>` : ''}
+  ${v.notas_tecnico ? `<h2>Notas para el técnico</h2>
+  <div style=font-size:10pt;line-height:1.6;color:#333>${v.notas_tecnico}</div>` : ''}
+  ${v.aplica_cobro && v.monto ? `
+  <div style=background:#1B3A5C;color:white;padding:12px 16px;border-radius:6px;
+       display:flex;justify-content:space-between;align-items:center;margin-top:14px>
+    <div style=font-size:9pt;opacity:0.7>Cobro por visita de medición</div>
+    <div style=font-size:22pt;font-weight:900;color:#C8923A>$${fmt(v.monto)}</div>
+  </div>` : ''}
+  <div style=display:flex;gap:20px;margin-top:24px>
+    <div style=flex:1;border-top:1px solid #ccc;padding-top:6px;font-size:9pt;color:#888;text-align:center>
+      Firma del cliente<br>___________________<br>${v.cliente_nombre||''}
+    </div>
+    <div style=flex:1;border-top:1px solid #ccc;padding-top:6px;font-size:9pt;color:#888;text-align:center>
+      Técnico BarrCan<br>___________________<br>${v.tecnico||''}
+    </div>
+  </div>
+  <div style=font-size:8pt;color:#aaa;text-align:center;margin-top:14px;border-top:1px solid #eee;padding-top:8px>
+    ${v.folio} · BarrCan Cancelería · TEL: 56-15-15-84-15
+  </div>
+</div></body></html>`;
+
+  const win = window.open('', '_blank');
+  if (win) { win.document.write(html); win.document.close(); }
+  else toast('⚠️ Permite ventanas emergentes');
 }
 
 function visitasHistorialCrearOT(folio) {
@@ -10938,23 +11026,43 @@ function flCalcular() {
     </div>
   </div>
 
-  <!-- Botón generar PDF -->
-  <button onclick="visitaGenerarPDF()"
-    style="width:100%;padding:16px;background:linear-gradient(135deg,#E65C00,#F9D423);
+  <!-- Botón principal: GUARDAR -->
+  <button onclick="visitaGuardarYOfrecer()"
+    style="width:100%;padding:16px;background:linear-gradient(135deg,var(--navy),#2E6DA4);
            border:none;border-radius:var(--radius);font-family:'DM Sans',sans-serif;
            font-size:16px;font-weight:700;color:white;cursor:pointer;
-           box-shadow:0 4px 20px rgba(230,92,0,0.4);display:flex;align-items:center;
-           justify-content:center;gap:10px;margin-bottom:12px">
-    <span style="font-size:20px">📄</span> Generar PDF
+           box-shadow:0 4px 20px rgba(27,58,92,0.4);display:flex;align-items:center;
+           justify-content:center;gap:10px;margin-bottom:12px" id="btn-visita-guardar">
+    <span style="font-size:20px">💾</span> Guardar visita
   </button>
 
-  <button onclick="visitaGuardar()"
-    style="width:100%;padding:13px;background:rgba(27,58,92,0.08);border:1.5px solid var(--navy);
-           border-radius:var(--radius);font-family:'DM Sans',sans-serif;font-size:14px;
-           font-weight:600;color:var(--navy);cursor:pointer">
-    💾 Guardar sin PDF
-  </button>
+</div>
 
+<!-- Panel post-guardado -->
+<div id="visita-post-guardado" style="display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,0.6);z-index:900;backdrop-filter:blur(4px);
+  display:none;align-items:center;justify-content:center;padding:24px">
+  <div style="background:var(--white);border-radius:16px;padding:24px;max-width:340px;width:100%;text-align:center">
+    <div style="font-size:48px;margin-bottom:12px">✅</div>
+    <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--navy);margin-bottom:6px">
+      ¡Visita guardada!
+    </div>
+    <div id="visita-post-folio" style="font-size:12px;font-family:monospace;color:var(--blue);margin-bottom:18px"></div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button onclick="visitaPostGenerarPDF()"
+        style="padding:13px;background:linear-gradient(135deg,#E65C00,#F9D423);
+               color:white;border:none;border-radius:var(--radius);font-family:'DM Sans',sans-serif;
+               font-size:14px;font-weight:700;cursor:pointer">
+        📄 Generar e imprimir PDF
+      </button>
+      <button onclick="visitaPostCerrar()"
+        style="padding:12px;background:none;border:1.5px solid var(--navy);
+               border-radius:var(--radius);font-family:'DM Sans',sans-serif;
+               font-size:14px;font-weight:600;color:var(--navy);cursor:pointer">
+        ✓ Listo, cerrar
+      </button>
+    </div>
+  </div>
 </div>
 
 <!-- Mini modal cliente rápido -->
@@ -13752,7 +13860,51 @@ async function visitaGuardarClienteRapido() {
 }
 
 // ── Guardar en Supabase ───────────────────────
-async function visitaGuardar() {
+// ── Nuevo flujo: guardar primero, PDF opcional después ────────
+let VISITA_FOLIO_GUARDADO = null;
+
+async function visitaGuardarYOfrecer() {
+  const btn = document.getElementById('btn-visita-guardar');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span>⏳</span> Guardando…'; }
+
+  // Reutiliza visitaGuardar pero sin cerrar
+  const folio = document.getElementById('visita-folio-badge').textContent;
+  const fecha = document.getElementById('visita-fecha').value;
+
+  if (!fecha) {
+    toast('⚠️ Falta la fecha de la visita');
+    if (btn) { btn.disabled = false; btn.innerHTML = '<span>💾</span> Guardar visita'; }
+    return;
+  }
+
+  await visitaGuardar(false); // false = no cerrar automáticamente
+
+  VISITA_FOLIO_GUARDADO = folio;
+
+  // Mostrar panel post-guardado
+  const panel = document.getElementById('visita-post-guardado');
+  const folioEl = document.getElementById('visita-post-folio');
+  if (folioEl) folioEl.textContent = folio;
+  if (panel) panel.style.display = 'flex';
+
+  if (btn) { btn.disabled = false; btn.innerHTML = '<span>💾</span> Guardar visita'; }
+}
+
+function visitaPostGenerarPDF() {
+  document.getElementById('visita-post-guardado').style.display = 'none';
+  visitaGenerarPDF();
+  // No cierra el formulario — el PDF se abre en nueva pestaña
+  setTimeout(() => {
+    document.getElementById('visita-post-guardado').style.display = 'flex';
+  }, 500);
+}
+
+function visitaPostCerrar() {
+  document.getElementById('visita-post-guardado').style.display = 'none';
+  visitaCerrar();
+}
+
+async function visitaGuardar(cerrarAlFinal = true) {
   const folio    = document.getElementById('visita-folio-badge').textContent;
   const fecha    = document.getElementById('visita-fecha').value;
   const hora     = document.getElementById('visita-hora').value;
@@ -13847,12 +13999,15 @@ async function visitaGuardar() {
     } catch(e) { console.warn('IDB fotos:', e); }
   }
 
-  if (btnGuardar) { btnGuardar.disabled = false; btnGuardar.innerHTML = '💾 Guardar sin PDF'; }
+  if (btn) { btn.disabled = false; btn.innerHTML = '💾 Guardar sin PDF'; }
 
-  if (guardadoOk) {
+  if (guardadoOk && cerrarAlFinal) {
     // Actualizar cache local del historial
     VISITAS_HIST_CACHE.unshift({ ...payload, id: payload.folio });
     visitaCerrar();
+  } else if (guardadoOk) {
+    // Solo actualizar cache, no cerrar
+    VISITAS_HIST_CACHE.unshift({ ...payload, id: payload.folio });
   }
 }
 
