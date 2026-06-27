@@ -2471,6 +2471,14 @@ select.form-select { padding-right: 36px; cursor: pointer; }
           style="width:100%;padding:12px;background:rgba(200,146,58,0.06);border:1.5px solid rgba(200,146,58,0.2);border-radius:var(--radius);color:var(--gold);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;margin-top:8px">
           🔄 Recargar lista de clientes (si solo salen 7)
         </button>
+
+        <!-- Versión de la app -->
+        <div style="margin-top:14px;padding:10px 14px;background:var(--off-white);
+          border-radius:var(--radius-sm);display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:12px;color:var(--gray-400)">Versión instalada</span>
+          <span id="app-version-display" style="font-size:13px;font-weight:700;color:var(--navy);
+            font-family:'DM Mono',monospace"></span>
+        </div>
       </div>
     </div>
 
@@ -6526,6 +6534,10 @@ function switchTab(name) {
   // Cargar clientes al entrar a esa pestaña
   if (name === 'clientes') { cliCargar(); }
   if (name === 'ordenes')  { ordenesCargar(); }
+  if (name === 'config') {
+    const vEl = document.getElementById('app-version-display');
+    if (vEl) vEl.textContent = `${APP_VERSION} · ${new Date().toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'2-digit'})}`;
+  }
 
   const expBar = document.getElementById('export-bar');
   const selBar = document.getElementById('barra-seleccion');
@@ -16133,16 +16145,14 @@ function pinAcceso() {
 // ── Precarga masiva para funcionamiento offline ───────────────
 async function appPrecargarDatos() {
   if (!SYNC.online) {
-    // Sin conexión: cargar todo desde caché local
     appCargarDesdeCache();
     return;
   }
   try {
-    // Cargar en paralelo todos los módulos críticos
     const [ordenes, garantias, clientes, precios] = await Promise.allSettled([
       sb().from('ordenes_trabajo').select('*').order('fecha_instalacion', { ascending: false }).limit(100),
       sb().from('garantias').select('*').order('created_at', { ascending: false }).limit(100),
-      sb().from('clientes').select('*').order('nombre').range(0, 999),
+      sb().from('clientes').select('*', { count: 'exact' }).order('nombre').range(0, 999),
       sb().from('config_precios').select('*').limit(50)
     ]);
 
@@ -16155,10 +16165,14 @@ async function appPrecargarDatos() {
       localStorage.setItem('barrcan_garantias_cache', JSON.stringify(GARANTIAS_CACHE));
     }
     if (clientes.status === 'fulfilled' && !clientes.value.error) {
-      const cliData = clientes.value.data || [];
-      cliListaCache = cliData;  // ← actualizar la variable que usa el buscador
+      const cliData  = clientes.value.data  || [];
+      const cliCount = clientes.value.count ?? cliData.length;
+      console.log(`[BarrCan] Clientes recibidos: ${cliData.length} / total en BD: ${cliCount}`);
+      cliListaCache = cliData;
       clientesGuardarCache(cliData);
-      console.log(`[BarrCan] ${cliData.length} clientes cargados en caché`);
+      toast(`📋 ${cliData.length} clientes cargados`);
+    } else if (clientes.status === 'rejected' || clientes.value?.error) {
+      console.warn('[BarrCan] Error cargando clientes:', clientes.value?.error?.message || clientes.reason);
     }
 
     localStorage.setItem('barrcan_precarga_ts', Date.now().toString());
