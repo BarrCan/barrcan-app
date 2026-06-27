@@ -2538,8 +2538,29 @@ select.form-select { padding-right: 36px; cursor: pointer; }
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
     <button onclick="cerrarEntrega()" style="width:36px;height:36px;border-radius:50%;border:none;background:var(--gray-100);font-size:18px;cursor:pointer;flex-shrink:0">←</button>
     <div>
-      <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--navy)">Reporte de Entrega</div>
-      <div style="font-size:11px;color:var(--gray-400)">Completa todos los campos para generar el reporte</div>
+      <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--navy)" id="ent-header-titulo">Reporte de Entrega</div>
+      <div style="font-size:11px;color:var(--gray-400)" id="ent-header-sub">Completa todos los campos para generar el reporte</div>
+    </div>
+  </div>
+
+  <!-- Selector tipo de entrega -->
+  <div style="background:var(--white);border-radius:var(--radius);padding:14px;margin-bottom:14px;box-shadow:var(--shadow-sm)">
+    <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--gray-400);margin-bottom:10px">Tipo de entrega</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button id="ent-tipo-instalacion" onclick="entCambiarTipo('instalacion')"
+        style="padding:12px 8px;border:2px solid var(--blue);border-radius:var(--radius-sm);
+               background:rgba(46,109,164,0.08);cursor:pointer;font-family:'DM Sans',sans-serif;
+               font-size:12px;font-weight:700;color:var(--blue);text-align:center">
+        🔧 Instalación completa<br>
+        <span style="font-size:10px;font-weight:400;opacity:0.7">Requiere firma + fotos + actas</span>
+      </button>
+      <button id="ent-tipo-puerta" onclick="entCambiarTipo('puerta')"
+        style="padding:12px 8px;border:2px solid var(--gray-200);border-radius:var(--radius-sm);
+               background:none;cursor:pointer;font-family:'DM Sans',sans-serif;
+               font-size:12px;font-weight:700;color:var(--gray-400);text-align:center">
+        📦 Entrega en puerta<br>
+        <span style="font-size:10px;font-weight:400;opacity:0.7">Foto + firma + pago</span>
+      </button>
     </div>
   </div>
 
@@ -2680,11 +2701,205 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     📋 Ver reportes generados
   </button>
 
+  <!-- Botón generar reporte -->
+  <div id="ent-alerta-incompleto" style="display:none;background:rgba(192,57,43,0.08);border:1.5px solid rgba(192,57,43,0.25);border-radius:var(--radius);padding:12px 14px;margin-bottom:12px;font-size:12px;color:var(--red)"></div>
+
+  <button class="btn-calcular" onclick="entGenerarReporte()" style="background:linear-gradient(135deg,#27ae60,#2ecc71);box-shadow:0 6px 20px rgba(39,174,96,0.35)">
+    <span>📄</span> GENERAR REPORTE Y ENVIAR ENCUESTA
+  </button>
+
+  <button onclick="entVerHistorialReportes()"
+    style="width:100%;margin-top:10px;padding:12px;background:rgba(46,109,164,0.08);
+           color:var(--blue);border:1.5px solid rgba(46,109,164,0.25);border-radius:var(--radius-sm);
+           font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer">
+    📋 Ver reportes generados
+  </button>
+
   <!-- Área de impresión del reporte -->
   <div id="ent-print-area" style="display:none"></div>
 </div>
 
-<!-- Overlay historial de reportes -->
+<!-- ══════════ ENTREGA EN PUERTA ══════════ -->
+<div id="puerta-overlay" style="display:none;position:fixed;inset:0;background:var(--off-white);z-index:300;overflow-y:auto;padding:16px 16px 100px">
+
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+    <button onclick="puertaCerrar()" style="width:36px;height:36px;border-radius:50%;border:none;background:var(--gray-100);font-size:18px;cursor:pointer;flex-shrink:0">←</button>
+    <div>
+      <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--navy)">📦 Entrega en Puerta</div>
+      <div style="font-size:11px;color:var(--gray-400)">Foto de evidencia · Firma · Pago</div>
+    </div>
+  </div>
+
+  <!-- Cliente -->
+  <div class="wizard-card" style="margin-bottom:12px">
+    <div class="wizard-title">👤 Datos del cliente</div>
+    <div class="form-group" style="margin-bottom:8px">
+      <label class="form-label">Buscar cliente</label>
+      <input type="text" class="form-input" id="puerta-buscar-cli"
+        placeholder="Nombre, teléfono o número..."
+        oninput="clienteBuscar(this.value,'puerta-cli-resultados',(c)=>{
+          document.getElementById('puerta-cliente').value=c.nombre||'';
+          document.getElementById('puerta-tel').value=c.telefono||'';
+          document.getElementById('puerta-folio').value=(c.num_cliente||'');
+          document.getElementById('puerta-buscar-cli').value='';
+          toast('✅ '+c.nombre);
+        })" autocomplete="off">
+      <div id="puerta-cli-resultados" style="display:none;background:var(--white);
+        border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);margin-top:4px;
+        max-height:160px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1)"></div>
+    </div>
+    <div class="form-group" style="margin-bottom:8px">
+      <label class="form-label">Nombre *</label>
+      <input type="text" id="puerta-cliente" class="form-input" placeholder="Nombre del cliente">
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Teléfono</label>
+        <input type="tel" id="puerta-tel" class="form-input" inputmode="tel" placeholder="55 1234 5678">
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Folio CACN</label>
+        <input type="text" id="puerta-folio" class="form-input" placeholder="094B-260610-32J" style="font-family:monospace;font-size:12px">
+      </div>
+    </div>
+  </div>
+
+  <!-- Descripción del producto -->
+  <div class="wizard-card" style="margin-bottom:12px">
+    <div class="wizard-title">📦 Producto entregado</div>
+    <div class="form-group" style="margin-bottom:8px">
+      <label class="form-label">Descripción *</label>
+      <textarea id="puerta-desc" class="form-input" rows="2" style="resize:none"
+        placeholder="Ej: Espejo biselado 60×90 cm, empacado en cartón"></textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Fecha</label>
+        <input type="date" id="puerta-fecha" class="form-input">
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Num. piezas</label>
+        <input type="number" id="puerta-piezas" class="form-input" value="1" min="1" inputmode="numeric">
+      </div>
+    </div>
+  </div>
+
+  <!-- Foto de evidencia -->
+  <div class="wizard-card" style="margin-bottom:12px">
+    <div class="wizard-title">📷 Foto de evidencia</div>
+    <div style="font-size:11px;color:var(--gray-400);margin-bottom:10px">Toma foto del producto entregado en la puerta del domicilio</div>
+    <input type="file" id="puerta-foto-input" accept="image/*" multiple
+      style="display:none" onchange="puertaCargarFotos(this)">
+    <button onclick="document.getElementById('puerta-foto-input').click()"
+      style="width:100%;padding:14px;background:var(--off-white);border:2px dashed var(--gray-200);
+             border-radius:var(--radius-sm);cursor:pointer;font-size:13px;color:var(--gray-400);
+             font-family:'DM Sans',sans-serif;font-weight:600">
+      📷 Tomar foto / Subir desde galería
+    </button>
+    <div id="puerta-fotos-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px"></div>
+  </div>
+
+  <!-- Firma digital -->
+  <div class="wizard-card" style="margin-bottom:12px">
+    <div class="wizard-title">✍️ Firma de recibido</div>
+    <div style="font-size:11px;color:var(--gray-400);margin-bottom:8px">El cliente firma aquí para confirmar que recibió el producto</div>
+    <canvas id="puerta-canvas-firma" width="340" height="130"
+      style="width:100%;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);
+             background:white;touch-action:none;cursor:crosshair"></canvas>
+    <button onclick="puertaLimpiarFirma()"
+      style="margin-top:6px;padding:6px 14px;background:none;border:1px solid var(--gray-200);
+             border-radius:var(--radius-sm);font-size:12px;color:var(--gray-400);cursor:pointer">
+      🗑️ Limpiar firma
+    </button>
+  </div>
+
+  <!-- Pago -->
+  <div class="wizard-card" style="margin-bottom:12px">
+    <div class="wizard-title">💰 Saldo pendiente</div>
+    <div class="form-row">
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">¿Cobrar saldo?</label>
+        <select id="puerta-aplica-cobro" class="form-select" onchange="puertaToggleCobro()">
+          <option value="no">No — ya está liquidado</option>
+          <option value="si">Sí — cobrar saldo</option>
+        </select>
+      </div>
+      <div class="form-group" id="puerta-monto-group" style="margin-bottom:0;display:none">
+        <label class="form-label">Monto a cobrar</label>
+        <div class="input-unit">
+          <input type="number" id="puerta-monto" class="form-input" inputmode="numeric" placeholder="0">
+          <span class="unit-label">$</span>
+        </div>
+      </div>
+    </div>
+    <div id="puerta-forma-cobro-group" style="display:none;margin-top:10px">
+      <label class="form-label">Forma de pago</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:6px">
+        <button class="puerta-forma-btn active" data-forma="efectivo" onclick="puertaSelForma(this)"
+          style="padding:10px 6px;border:2px solid var(--blue);border-radius:var(--radius-sm);
+                 background:rgba(46,109,164,0.08);cursor:pointer;font-size:11px;font-weight:700;color:var(--blue)">
+          💵 Efectivo
+        </button>
+        <button class="puerta-forma-btn" data-forma="transferencia" onclick="puertaSelForma(this)"
+          style="padding:10px 6px;border:2px solid var(--gray-200);border-radius:var(--radius-sm);
+                 background:none;cursor:pointer;font-size:11px;font-weight:700;color:var(--gray-400)">
+          📲 Transferencia
+        </button>
+        <button class="puerta-forma-btn" data-forma="tarjeta" onclick="puertaSelForma(this)"
+          style="padding:10px 6px;border:2px solid var(--gray-200);border-radius:var(--radius-sm);
+                 background:none;cursor:pointer;font-size:11px;font-weight:700;color:var(--gray-400)">
+          💳 Tarjeta
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Control interno -->
+  <div class="wizard-card" style="margin-bottom:16px">
+    <div class="wizard-title">🏢 Control interno (uso BarrCan)</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button id="puerta-ctrl-factura" onclick="puertaToggleCtrl('factura')"
+        style="padding:10px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);
+               background:none;cursor:pointer;font-size:12px;font-weight:600;color:var(--gray-400);
+               font-family:'DM Sans',sans-serif">
+        🧾 Facturado
+      </button>
+      <button id="puerta-ctrl-recibo" onclick="puertaToggleCtrl('recibo')"
+        style="padding:10px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);
+               background:none;cursor:pointer;font-size:12px;font-weight:600;color:var(--gray-400);
+               font-family:'DM Sans',sans-serif">
+        🧾 Con recibo
+      </button>
+      <button id="puerta-ctrl-garantia" onclick="puertaToggleCtrl('garantia')"
+        style="padding:10px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);
+               background:none;cursor:pointer;font-size:12px;font-weight:600;color:var(--gray-400);
+               font-family:'DM Sans',sans-serif">
+        🛡️ Con garantía
+      </button>
+      <button id="puerta-ctrl-singarantia" onclick="puertaToggleCtrl('singarantia')"
+        style="padding:10px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);
+               background:none;cursor:pointer;font-size:12px;font-weight:600;color:var(--gray-400);
+               font-family:'DM Sans',sans-serif">
+        ⚠️ Sin garantía
+      </button>
+    </div>
+    <div class="form-group" style="margin-top:10px;margin-bottom:0">
+      <label class="form-label">Notas internas</label>
+      <textarea id="puerta-notas-int" class="form-input" rows="2" style="resize:none"
+        placeholder="Observaciones para control interno..."></textarea>
+    </div>
+  </div>
+
+  <!-- Botón generar -->
+  <button onclick="puertaGenerarReporte()"
+    style="width:100%;padding:15px;background:linear-gradient(135deg,#27AE60,#2ECC71);
+           color:white;border:none;border-radius:var(--radius);font-family:'DM Sans',sans-serif;
+           font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(39,174,96,0.35);
+           display:flex;align-items:center;justify-content:center;gap:10px">
+    <span style="font-size:20px">📄</span> Generar Comprobante de Entrega
+  </button>
+
+</div>
 <div id="ent-reportes-overlay" style="display:none;position:fixed;inset:0;background:var(--off-white);z-index:500;overflow-y:auto;padding:16px 16px 120px">
   <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
     <button onclick="document.getElementById('ent-reportes-overlay').style.display='none'"
@@ -8429,6 +8644,175 @@ const ENT = {
   evidencias: {},  // { ev1: dataURL, ... }
   firmas: { tec: false, cli: false }
 };
+
+// ══════════════════════════════════════════════
+// ENTREGA EN PUERTA
+// ══════════════════════════════════════════════
+let PUERTA_FOTOS       = [];
+let PUERTA_FORMA_SEL   = 'efectivo';
+let PUERTA_CTRL        = new Set();
+let PUERTA_FIRMA_CTX   = null;
+let PUERTA_FIRMA_DRAW  = false;
+
+function entCambiarTipo(tipo) {
+  const btnIns    = document.getElementById('ent-tipo-instalacion');
+  const btnPuerta = document.getElementById('ent-tipo-puerta');
+  const overlay   = document.getElementById('entrega-overlay');
+  if (tipo === 'puerta') {
+    btnPuerta.style.borderColor = 'var(--blue)'; btnPuerta.style.background = 'rgba(46,109,164,0.08)'; btnPuerta.style.color = 'var(--blue)';
+    btnIns.style.borderColor = 'var(--gray-200)'; btnIns.style.background = 'none'; btnIns.style.color = 'var(--gray-400)';
+    setTimeout(() => { overlay.style.display = 'none'; puertaAbrir(); }, 150);
+  } else {
+    btnIns.style.borderColor = 'var(--blue)'; btnIns.style.background = 'rgba(46,109,164,0.08)'; btnIns.style.color = 'var(--blue)';
+    btnPuerta.style.borderColor = 'var(--gray-200)'; btnPuerta.style.background = 'none'; btnPuerta.style.color = 'var(--gray-400)';
+  }
+}
+
+function puertaAbrir() {
+  PUERTA_FOTOS = []; PUERTA_FORMA_SEL = 'efectivo'; PUERTA_CTRL = new Set();
+  ['puerta-buscar-cli','puerta-cliente','puerta-tel','puerta-folio','puerta-desc','puerta-notas-int'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  document.getElementById('puerta-fecha').value  = new Date().toISOString().split('T')[0];
+  document.getElementById('puerta-piezas').value = '1';
+  document.getElementById('puerta-aplica-cobro').value = 'no';
+  document.getElementById('puerta-monto-group').style.display = 'none';
+  document.getElementById('puerta-forma-cobro-group').style.display = 'none';
+  document.getElementById('puerta-fotos-grid').innerHTML = '';
+  ['factura','recibo','garantia','singarantia'].forEach(k => {
+    const btn = document.getElementById(`puerta-ctrl-${k}`);
+    if (btn) { btn.style.borderColor='var(--gray-200)'; btn.style.background='none'; btn.style.color='var(--gray-400)'; }
+  });
+  document.querySelectorAll('.puerta-forma-btn').forEach(b => {
+    const a = b.dataset.forma === 'efectivo';
+    b.style.borderColor = a ? 'var(--blue)' : 'var(--gray-200)';
+    b.style.background  = a ? 'rgba(46,109,164,0.08)' : 'none';
+    b.style.color       = a ? 'var(--blue)' : 'var(--gray-400)';
+  });
+  document.getElementById('puerta-overlay').style.display = 'block';
+  setTimeout(() => puertaIniciarFirma(), 300);
+  if (!cliListaCache.length) { const c = clientesCargarCache(); if (c.length) cliListaCache = c; }
+}
+
+function puertaCerrar() {
+  document.getElementById('puerta-overlay').style.display = 'none';
+  document.getElementById('entrega-overlay').style.display = 'block';
+  const bI = document.getElementById('ent-tipo-instalacion');
+  const bP = document.getElementById('ent-tipo-puerta');
+  if (bI) { bI.style.borderColor='var(--blue)'; bI.style.background='rgba(46,109,164,0.08)'; bI.style.color='var(--blue)'; }
+  if (bP) { bP.style.borderColor='var(--gray-200)'; bP.style.background='none'; bP.style.color='var(--gray-400)'; }
+}
+
+function puertaCargarFotos(input) {
+  const grid = document.getElementById('puerta-fotos-grid');
+  Array.from(input.files).forEach(file => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const dataUrl = e.target.result;
+      const idx = PUERTA_FOTOS.length;
+      PUERTA_FOTOS.push({ dataUrl });
+      const div = document.createElement('div');
+      div.style.cssText = 'position:relative;aspect-ratio:1';
+      div.innerHTML = `<img src="${dataUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200)">
+        <button onclick="this.parentElement.remove();PUERTA_FOTOS.splice(${idx},1)" style="position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,0.6);color:white;border:none;font-size:11px;cursor:pointer">✕</button>`;
+      grid.appendChild(div);
+    };
+    reader.readAsDataURL(file);
+  });
+  input.value = '';
+}
+
+function puertaIniciarFirma() {
+  const canvas = document.getElementById('puerta-canvas-firma');
+  if (!canvas) return;
+  const r = canvas.getBoundingClientRect();
+  canvas.width = r.width || 340; canvas.height = r.height || 130;
+  PUERTA_FIRMA_CTX = canvas.getContext('2d');
+  PUERTA_FIRMA_CTX.strokeStyle = '#1B3A5C'; PUERTA_FIRMA_CTX.lineWidth = 2; PUERTA_FIRMA_CTX.lineCap = 'round';
+  const gp = e => { const rc = canvas.getBoundingClientRect(); const s = e.touches ? e.touches[0] : e; return { x: s.clientX-rc.left, y: s.clientY-rc.top }; };
+  canvas.onmousedown = canvas.ontouchstart = e => { e.preventDefault(); PUERTA_FIRMA_DRAW=true; const p=gp(e); PUERTA_FIRMA_CTX.beginPath(); PUERTA_FIRMA_CTX.moveTo(p.x,p.y); };
+  canvas.onmousemove = canvas.ontouchmove  = e => { e.preventDefault(); if(!PUERTA_FIRMA_DRAW)return; const p=gp(e); PUERTA_FIRMA_CTX.lineTo(p.x,p.y); PUERTA_FIRMA_CTX.stroke(); };
+  canvas.onmouseup  = canvas.ontouchend   = () => { PUERTA_FIRMA_DRAW=false; };
+}
+
+function puertaLimpiarFirma() {
+  const c = document.getElementById('puerta-canvas-firma');
+  if (c && PUERTA_FIRMA_CTX) PUERTA_FIRMA_CTX.clearRect(0,0,c.width,c.height);
+}
+
+function puertaToggleCobro() {
+  const si = document.getElementById('puerta-aplica-cobro').value === 'si';
+  document.getElementById('puerta-monto-group').style.display       = si ? 'block' : 'none';
+  document.getElementById('puerta-forma-cobro-group').style.display = si ? 'block' : 'none';
+}
+
+function puertaSelForma(btn) {
+  PUERTA_FORMA_SEL = btn.dataset.forma;
+  document.querySelectorAll('.puerta-forma-btn').forEach(b => {
+    const a = b===btn; b.style.borderColor=a?'var(--blue)':'var(--gray-200)'; b.style.background=a?'rgba(46,109,164,0.08)':'none'; b.style.color=a?'var(--blue)':'var(--gray-400)';
+  });
+}
+
+function puertaToggleCtrl(key) {
+  const btn = document.getElementById(`puerta-ctrl-${key}`);
+  if (!btn) return;
+  if (PUERTA_CTRL.has(key)) { PUERTA_CTRL.delete(key); btn.style.borderColor='var(--gray-200)'; btn.style.background='none'; btn.style.color='var(--gray-400)'; }
+  else { PUERTA_CTRL.add(key); btn.style.borderColor='var(--blue)'; btn.style.background='rgba(46,109,164,0.08)'; btn.style.color='var(--blue)'; }
+}
+
+async function puertaGenerarReporte() {
+  const cliente = document.getElementById('puerta-cliente').value.trim();
+  const desc    = document.getElementById('puerta-desc').value.trim();
+  if (!cliente) { toast('⚠️ Ingresa el nombre del cliente'); return; }
+  if (!desc)    { toast('⚠️ Describe el producto entregado'); return; }
+  const tel    = document.getElementById('puerta-tel').value.trim();
+  const folio  = document.getElementById('puerta-folio').value.trim();
+  const fecha  = document.getElementById('puerta-fecha').value;
+  const piezas = document.getElementById('puerta-piezas').value;
+  const notasIn= document.getElementById('puerta-notas-int').value.trim();
+  const aplica = document.getElementById('puerta-aplica-cobro').value === 'si';
+  const monto  = aplica ? (parseFloat(document.getElementById('puerta-monto').value)||0) : 0;
+  const folioFull = folio ? `CACN-${folio.replace(/^CACN-/i,'')}` : `ENT-${Date.now().toString().slice(-6)}`;
+  const logoB64 = typeof BARRCAN_LOGO_B64 !== 'undefined' ? BARRCAN_LOGO_B64 : '';
+  const canvas  = document.getElementById('puerta-canvas-firma');
+  const firmaB64 = canvas ? canvas.toDataURL('image/png') : '';
+  const dataF = canvas && PUERTA_FIRMA_CTX ? PUERTA_FIRMA_CTX.getImageData(0,0,canvas.width,canvas.height).data : [];
+  const firmaVacia = !Array.from(dataF).some(v=>v>10);
+  const fotosHtml = PUERTA_FOTOS.map(f=>`<img src="${f.dataUrl}" style="width:100%;max-height:200px;object-fit:contain;border-radius:4px;border:1px solid #ddd;margin-bottom:8px">`).join('');
+  const ctrlLabels = { factura:'🧾 Facturado', recibo:'🧾 Con recibo', garantia:'🛡️ Con garantía', singarantia:'⚠️ Sin garantía' };
+  const ctrlHtml = [...PUERTA_CTRL].map(k=>`<span style="background:rgba(46,109,164,0.08);color:#1B3A5C;padding:3px 10px;border-radius:10px;font-size:9pt;font-weight:700;margin-right:6px">${ctrlLabels[k]||k}</span>`).join('');
+  const formaStr = { efectivo:'💵 Efectivo', transferencia:'📲 Transferencia', tarjeta:'💳 Tarjeta' }[PUERTA_FORMA_SEL]||PUERTA_FORMA_SEL;
+  const fechaFmt = fecha ? new Date(fecha+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'}) : '—';
+
+  const html = `<!DOCTYPE html><html lang=es><head><meta charset=UTF-8><meta name=viewport content=width=device-width>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:9.5pt;color:#1B3A5C;background:white}.page{max-width:620px;margin:0 auto;padding:18px 22px 80px}.header{display:flex;align-items:center;gap:12px;margin-bottom:12px;padding-bottom:10px;border-bottom:2.5px solid #1B3A5C}h2{font-size:9pt;font-weight:700;color:#2E6DA4;border-bottom:1px solid #eee;padding-bottom:2px;margin:12px 0 7px;text-transform:uppercase;letter-spacing:0.5px}.dato-row{display:flex;margin-bottom:4px;font-size:9pt}.dato-lbl{color:#888;min-width:110px}.dato-val{font-weight:600}.ctrl-box{background:#f5f7fa;border-radius:6px;padding:10px 12px;margin-top:10px}.barra-print{position:fixed;bottom:0;left:0;right:0;background:#1B3A5C;padding:8px 14px;display:flex;gap:8px;justify-content:center;z-index:999}.btn-print{padding:9px 20px;background:#C8923A;color:white;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer}.btn-cerrar{padding:9px 12px;background:rgba(255,255,255,0.15);color:white;border:none;border-radius:7px;font-size:12px;cursor:pointer}@media print{.barra-print{display:none!important}.page{padding:12px}}</style></head><body>
+<div class=barra-print><button class=btn-print onclick="window.print()">&#128424; Imprimir / Guardar PDF</button><button class=btn-cerrar onclick="window.close()">&#10005; Cerrar</button></div>
+<div class=page>
+  <div class=header>${logoB64?`<img src="${logoB64}" style="width:52px;height:52px;object-fit:contain;flex-shrink:0">`:''}
+    <div style=flex:1><div style=font-size:16pt;font-weight:900;color:#1B3A5C;letter-spacing:1px>BarrCan</div><div style=font-size:7pt;color:#C8923A;letter-spacing:3px;text-transform:uppercase>Cancelería · Aluminio · Vidrio · TEL: 56-15-15-84-15</div></div>
+    <div style=text-align:right;font-size:10pt;font-weight:700;color:#1B3A5C;border:2px solid #1B3A5C;padding:3px 8px;border-radius:4px;white-space:nowrap>COMPROBANTE<br>DE ENTREGA</div></div>
+  <h2>Datos de la entrega</h2>
+  <div class=dato-row><span class=dato-lbl>Folio</span><span class=dato-val style=font-family:monospace;color:#2E6DA4>${folioFull}</span></div>
+  <div class=dato-row><span class=dato-lbl>Cliente</span><span class=dato-val>${cliente}</span></div>
+  ${tel?`<div class=dato-row><span class=dato-lbl>Teléfono</span><span class=dato-val>${tel}</span></div>`:''}
+  <div class=dato-row><span class=dato-lbl>Fecha</span><span class=dato-val>${fechaFmt}</span></div>
+  <div class=dato-row><span class=dato-lbl>Producto</span><span class=dato-val>${desc}</span></div>
+  <div class=dato-row><span class=dato-lbl>Piezas</span><span class=dato-val>${piezas}</span></div>
+  <div class=dato-row><span class=dato-lbl>Tipo</span><span class=dato-val>📦 Entrega en puerta</span></div>
+  ${aplica&&monto>0?`<div style=background:#1B3A5C;color:white;padding:10px 14px;border-radius:6px;display:flex;justify-content:space-between;align-items:center;margin-top:8px><div><div style=font-size:8.5pt;opacity:0.7>Saldo cobrado</div><div style=font-size:8.5pt;opacity:0.6>${formaStr}</div></div><div style=font-size:20pt;font-weight:900;color:#C8923A>$${fmt(monto)}</div></div>`:`<div style=background:rgba(39,174,96,0.08);border:1px solid rgba(39,174,96,0.2);border-radius:6px;padding:8px 12px;margin-top:8px;font-size:9pt;color:#27AE60;font-weight:600>✅ Trabajo liquidado</div>`}
+  ${PUERTA_FOTOS.length>0?`<h2>Evidencia fotográfica (${PUERTA_FOTOS.length})</h2><div style=display:grid;grid-template-columns:1fr 1fr;gap:8px>${fotosHtml}</div>`:''}
+  <h2>Firma de recibido</h2>
+  ${!firmaVacia?`<div style=border:1.5px solid #ddd;border-radius:6px;overflow:hidden><img src="${firmaB64}" style=width:100%;max-height:100px;object-fit:contain></div>`:`<div style=border:1.5px dashed #ccc;border-radius:6px;height:60px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:9pt>Sin firma digital</div>`}
+  <div style=display:flex;gap:16px;margin-top:10px>
+    <div style=flex:1;border-top:1px solid #ccc;padding-top:5px;font-size:8.5pt;color:#888;text-align:center>Nombre y firma del cliente<br>${cliente}</div>
+    <div style=flex:1;border-top:1px solid #ccc;padding-top:5px;font-size:8.5pt;color:#888;text-align:center>Entregado por BarrCan<br>TEL: 56-15-15-84-15</div>
+  </div>
+  ${PUERTA_CTRL.size>0||notasIn?`<div class=ctrl-box style=margin-top:14px><div style=font-size:8.5pt;font-weight:700;color:#1B3A5C;margin-bottom:6px>🏢 Control interno BarrCan</div>${ctrlHtml}${notasIn?`<div style=font-size:8.5pt;color:#555;margin-top:6px>${notasIn}</div>`:''}</div>`:''}
+  <div style=font-size:7.5pt;color:#aaa;text-align:center;margin-top:14px;border-top:1px solid #eee;padding-top:8px>${folioFull} · BarrCan · Entrega en puerta · ${fecha||''}</div>
+</div></body></html>`;
+
+  const win = window.open('', '_blank');
+  if (win) { win.document.write(html); win.document.close(); toast('📄 Comprobante generado'); }
+  else toast('⚠️ Permite ventanas emergentes');
+}
 
 function abrirEntrega() {
   const overlay = document.getElementById('entrega-overlay');
