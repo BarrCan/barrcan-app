@@ -12861,6 +12861,22 @@ async function pagoGuardar() {
   };
 
   try {
+    // Subir comprobante a Storage si existe (evita base64 largo en BD)
+    let comprobanteUrl = null;
+    if (PAGO_COMPROBANTE && SYNC.online) {
+      try {
+        const blob = await fetch(PAGO_COMPROBANTE).then(r => r.blob());
+        const nombre = `comprobantes/${payload.id}.jpg`;
+        const { error: upErr } = await sb().storage.from('reportes')
+          .upload(nombre, blob, { contentType: 'image/jpeg', upsert: true });
+        if (!upErr) {
+          const { data: urlData } = sb().storage.from('reportes').getPublicUrl(nombre);
+          comprobanteUrl = urlData?.publicUrl || null;
+        }
+      } catch(e) { console.warn('Upload comprobante:', e.message); }
+    }
+    payload.comprobante_img = comprobanteUrl || PAGO_COMPROBANTE || null;
+
     if (SYNC.online) {
       const { error } = await sb().from('pagos').insert([payload]);
       if (error) throw error;
@@ -13062,6 +13078,21 @@ async function pagoGenerarRecibo(ordenId, monto, fecha, formaPago, concepto = 'a
 
     ${notaFechaInstalacion}
     ${notaFactura}
+
+    ${formaStr === 'Transferencia bancaria' || formaStr === 'Tarjeta de crédito/débito' ? `
+    <!-- Foto del comprobante -->
+    ${PAGO_COMPROBANTE ? `
+    <div style="margin-bottom:12px">
+      <div style="font-size:9pt;color:#888;font-weight:700;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">
+        📎 Comprobante de pago
+      </div>
+      <img src="${PAGO_COMPROBANTE}" style="width:100%;max-height:200px;object-fit:contain;
+           border-radius:6px;border:1px solid #ddd;background:#f5f5f5">
+    </div>` : `
+    <div style="background:#FFF8E1;border:1px dashed #F39C12;border-radius:6px;
+         padding:10px 14px;margin-bottom:12px;font-size:8.5pt;color:#E67E22;text-align:center">
+      ⚠️ Sin foto de comprobante adjunta
+    </div>`}` : ''}
 
     <div class=sello>
       ✅ Pago recibido conforme · ${fmtFecha(fechaStr)}<br>
