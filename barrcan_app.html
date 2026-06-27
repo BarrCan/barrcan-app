@@ -8033,6 +8033,18 @@ function clienteBuscar(q, resultadosId, onSelect) {
   const res = document.getElementById(resultadosId);
   if (!res) return;
   if (!q || q.length < 2) { res.style.display = 'none'; return; }
+
+  // Si hay muy pocos clientes en caché, intentar recargar
+  if (cliListaCache.length <= 7 && SYNC.online) {
+    clientesCargarTodos(true).then(() => clienteBuscarFiltrar(q, resultadosId, onSelect));
+    return;
+  }
+  clienteBuscarFiltrar(q, resultadosId, onSelect);
+}
+
+function clienteBuscarFiltrar(q, resultadosId, onSelect) {
+  const res = document.getElementById(resultadosId);
+  if (!res) return;
   const term = q.toLowerCase().replace(/\s+/g,'');
   const matches = (cliListaCache || []).filter(c =>
     (c.nombre||'').toLowerCase().replace(/\s+/g,'').includes(term) ||
@@ -8689,7 +8701,7 @@ function puertaAbrir() {
   });
   document.getElementById('puerta-overlay').style.display = 'block';
   setTimeout(() => puertaIniciarFirma(), 300);
-  if (!cliListaCache.length) { const c = clientesCargarCache(); if (c.length) cliListaCache = c; }
+  clientesCargarTodos(cliListaCache.length <= 7);
 }
 
 function puertaCerrar() {
@@ -12775,16 +12787,8 @@ function pagoAbrir(ordenId) {
     b.style.color       = activo ? 'var(--blue)' : 'var(--gray-400)';
   });
 
-  // Cargar cache de clientes si está vacío
-  if (!cliListaCache.length) {
-    const cache = clientesCargarCache();
-    if (cache.length) cliListaCache = cache;
-    else if (SYNC.online) {
-      sb().from('clientes').select('*').order('nombre').range(0,999).then(({data}) => {
-        if (data?.length) { cliListaCache = data; clientesGuardarCache(data); }
-      });
-    }
-  }
+  // Cargar todos los clientes (forzar si hay pocos)
+  clientesCargarTodos(cliListaCache.length <= 7);
 
   document.getElementById('pago-modal-overlay').style.display = 'block';
   document.getElementById('pago-modal').style.display = 'block';
@@ -13813,11 +13817,8 @@ function presAtrasadoAbrirModal(idEditar = null) {
     document.getElementById('pres-estado').value = 'activo';
   }
 
-  // Cargar cache de clientes para el buscador
-  if (!cliListaCache.length) {
-    const cache = clientesCargarCache();
-    if (cache.length) cliListaCache = cache;
-  }
+  // Cargar todos los clientes para el buscador
+  clientesCargarTodos(cliListaCache.length <= 7);
 
   document.getElementById('pres-error').style.display = 'none';
   document.getElementById('pres-modal-overlay').style.display = 'block';
@@ -14125,8 +14126,8 @@ async function visitaCargarDropdown() {
   const sel = document.getElementById('visita-cliente-sel');
   sel.innerHTML = '<option value="">— Buscar cliente —</option>';
   try {
-    const { data } = await sb().from('clientes').select('id,nombre,telefono,empresa,cargo').order('nombre').range(0,999);
-    if (data) {
+    const data = await clientesCargarTodos();
+    if (data.length) {
       data.forEach(c => {
         const opt = document.createElement('option');
         opt.value = c.id;
@@ -15498,6 +15499,32 @@ async function cliCargar() {
       <div style="font-size:36px;margin-bottom:12px">📵</div>
       <div style="font-size:14px;font-weight:600">Sin conexión</div>
       <div style="font-size:12px;margin-top:6px">Los clientes se cargarán cuando regrese la señal</div></div>`;
+  }
+}
+
+// ── Carga centralizada de clientes — SIEMPRE range(0,999) ─────
+async function clientesCargarTodos(forzar = false) {
+  // Si ya tenemos más de 7 en caché y no se fuerza, reusar
+  if (!forzar && cliListaCache.length > 7) return cliListaCache;
+
+  if (!SYNC.online) {
+    const cache = clientesCargarCache();
+    if (cache.length) { cliListaCache = cache; return cache; }
+    return [];
+  }
+
+  try {
+    const { data, error } = await sb().from('clientes')
+      .select('*').order('nombre').range(0, 999);
+    if (error) throw error;
+    cliListaCache = data || [];
+    clientesGuardarCache(cliListaCache);
+    return cliListaCache;
+  } catch(e) {
+    console.warn('clientesCargarTodos:', e.message);
+    const cache = clientesCargarCache();
+    if (cache.length) { cliListaCache = cache; return cache; }
+    return [];
   }
 }
 
