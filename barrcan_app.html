@@ -2467,6 +2467,10 @@ select.form-select { padding-right: 36px; cursor: pointer; }
           style="width:100%;padding:14px;background:rgba(192,57,43,0.06);border:1.5px solid rgba(192,57,43,0.2);border-radius:var(--radius);color:var(--red);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer">
           🔒 Cerrar sesión ahora
         </button>
+        <button onclick="limpiarCacheClientes()"
+          style="width:100%;padding:12px;background:rgba(200,146,58,0.06);border:1.5px solid rgba(200,146,58,0.2);border-radius:var(--radius);color:var(--gold);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;margin-top:8px">
+          🔄 Recargar lista de clientes (si solo salen 7)
+        </button>
       </div>
     </div>
 
@@ -15535,8 +15539,11 @@ async function cliCargar() {
 
 // ── Carga centralizada de clientes — SIEMPRE range(0,999) ─────
 async function clientesCargarTodos(forzar = false) {
-  // Si ya tenemos más de 7 en caché y no se fuerza, reusar
-  if (!forzar && cliListaCache.length > 7) return cliListaCache;
+  // Verificar edad del caché — si tiene más de 5 min, refrescar
+  const edadMin = clientesCacheEdad();
+  const cacheOk = cliListaCache.length > 7 && edadMin < 5;
+
+  if (!forzar && cacheOk) return cliListaCache;
 
   if (!SYNC.online) {
     const cache = clientesCargarCache();
@@ -15557,6 +15564,14 @@ async function clientesCargarTodos(forzar = false) {
     if (cache.length) { cliListaCache = cache; return cache; }
     return [];
   }
+}
+
+function limpiarCacheClientes() {
+  localStorage.removeItem('barrcan_clientes_cache');
+  localStorage.removeItem('barrcan_clientes_ts');
+  cliListaCache = [];
+  toast('🗑️ Caché de clientes limpiado — recargando…');
+  clientesCargarTodos(true).then(() => toast(`✅ ${cliListaCache.length} clientes cargados`));
 }
 
 async function cliSyncBackground() {
@@ -16098,6 +16113,12 @@ function pinAcceso() {
       sbInit();
       // Precarga agresiva para modo offline
       appPrecargarDatos();
+      // Forzar carga de TODOS los clientes al iniciar
+      if (SYNC.online) {
+        clientesCargarTodos(true).then(data => {
+          if (data.length) console.log(`✅ ${data.length} clientes cargados en caché`);
+        });
+      }
     }, 100);
   }
   pinResetInactividad();
