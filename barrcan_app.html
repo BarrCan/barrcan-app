@@ -2705,20 +2705,6 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     📋 Ver reportes generados
   </button>
 
-  <!-- Botón generar reporte -->
-  <div id="ent-alerta-incompleto" style="display:none;background:rgba(192,57,43,0.08);border:1.5px solid rgba(192,57,43,0.25);border-radius:var(--radius);padding:12px 14px;margin-bottom:12px;font-size:12px;color:var(--red)"></div>
-
-  <button class="btn-calcular" onclick="entGenerarReporte()" style="background:linear-gradient(135deg,#27ae60,#2ecc71);box-shadow:0 6px 20px rgba(39,174,96,0.35)">
-    <span>📄</span> GENERAR REPORTE Y ENVIAR ENCUESTA
-  </button>
-
-  <button onclick="entVerHistorialReportes()"
-    style="width:100%;margin-top:10px;padding:12px;background:rgba(46,109,164,0.08);
-           color:var(--blue);border:1.5px solid rgba(46,109,164,0.25);border-radius:var(--radius-sm);
-           font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer">
-    📋 Ver reportes generados
-  </button>
-
   <!-- Área de impresión del reporte -->
   <div id="ent-print-area" style="display:none"></div>
 </div>
@@ -2899,8 +2885,15 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     style="width:100%;padding:15px;background:linear-gradient(135deg,#27AE60,#2ECC71);
            color:white;border:none;border-radius:var(--radius);font-family:'DM Sans',sans-serif;
            font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(39,174,96,0.35);
-           display:flex;align-items:center;justify-content:center;gap:10px">
+           display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px">
     <span style="font-size:20px">📄</span> Generar Comprobante de Entrega
+  </button>
+
+  <button onclick="entVerHistorialReportes()"
+    style="width:100%;padding:12px;background:rgba(46,109,164,0.08);
+           color:var(--blue);border:1.5px solid rgba(46,109,164,0.25);border-radius:var(--radius-sm);
+           font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer">
+    📋 Ver reportes generados
   </button>
 
 </div>
@@ -15570,8 +15563,20 @@ function limpiarCacheClientes() {
   localStorage.removeItem('barrcan_clientes_cache');
   localStorage.removeItem('barrcan_clientes_ts');
   cliListaCache = [];
-  toast('🗑️ Caché de clientes limpiado — recargando…');
-  clientesCargarTodos(true).then(() => toast(`✅ ${cliListaCache.length} clientes cargados`));
+  toast('🗑️ Limpiando caché — cargando de Supabase…');
+
+  // Diagnóstico: verificar cuántos devuelve sin rango
+  sb().from('clientes').select('*', { count: 'exact' }).range(0, 999)
+    .then(({ data, count, error }) => {
+      if (error) {
+        toast(`❌ Error Supabase: ${error.message}`);
+        return;
+      }
+      cliListaCache = data || [];
+      clientesGuardarCache(cliListaCache);
+      toast(`✅ Supabase devuelve ${count} total, cargados ${cliListaCache.length}`);
+      if (document.getElementById('cli-lista')) cliRenderLista(cliListaCache);
+    });
 }
 
 async function cliSyncBackground() {
@@ -16150,8 +16155,10 @@ async function appPrecargarDatos() {
       localStorage.setItem('barrcan_garantias_cache', JSON.stringify(GARANTIAS_CACHE));
     }
     if (clientes.status === 'fulfilled' && !clientes.value.error) {
-      window._clientesCache = clientes.value.data || [];
-      localStorage.setItem('barrcan_clientes_cache', JSON.stringify(window._clientesCache));
+      const cliData = clientes.value.data || [];
+      cliListaCache = cliData;  // ← actualizar la variable que usa el buscador
+      clientesGuardarCache(cliData);
+      console.log(`[BarrCan] ${cliData.length} clientes cargados en caché`);
     }
 
     localStorage.setItem('barrcan_precarga_ts', Date.now().toString());
