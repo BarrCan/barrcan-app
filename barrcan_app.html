@@ -2471,6 +2471,10 @@ select.form-select { padding-right: 36px; cursor: pointer; }
           style="width:100%;padding:12px;background:rgba(200,146,58,0.06);border:1.5px solid rgba(200,146,58,0.2);border-radius:var(--radius);color:var(--gold);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;margin-top:8px">
           🔄 Recargar lista de clientes (si solo salen 7)
         </button>
+        <button onclick="sincronizarTodoOffline()"
+          style="width:100%;padding:12px;background:rgba(39,174,96,0.06);border:1.5px solid rgba(39,174,96,0.2);border-radius:var(--radius);color:#27AE60;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer;margin-top:8px">
+          ☁️ Sincronizar TODO para uso offline
+        </button>
 
         <!-- Versión de la app -->
         <div style="margin-top:14px;padding:10px 14px;background:var(--off-white);
@@ -9305,21 +9309,31 @@ async function visitasHistorialAbrir() {
   overlay.style.display = 'block';
   lista.innerHTML = '<div style="text-align:center;padding:30px;color:var(--gray-400)">⏳ Cargando visitas…</div>';
 
-  // Cargar de Supabase primero
+  // Cargar de Supabase si hay conexión
   if (SYNC.online) {
     try {
       const { data, error } = await sb().from('visitas_medicion')
         .select('*').order('fecha_visita', { ascending: false }).limit(100);
       if (!error && data?.length) {
         VISITAS_HIST_CACHE = data;
+        // Guardar en local como caché
         localStorage.setItem('barrcan_visitas_hist', JSON.stringify(data));
       }
     } catch(e) { console.warn('visitas hist:', e.message); }
   }
 
-  // Fallback local
+  // Si Supabase devolvió datos vacíos o sin conexión, cargar localStorage
   if (!VISITAS_HIST_CACHE.length) {
-    try { VISITAS_HIST_CACHE = JSON.parse(localStorage.getItem('barrcan_visitas_hist') || '[]'); } catch(e){}
+    try {
+      const local = JSON.parse(localStorage.getItem('barrcan_visitas_hist') || '[]');
+      const localVisitas = JSON.parse(localStorage.getItem('barrcan_visitas_local') || '[]');
+      // Combinar ambas fuentes, sin duplicados por folio
+      const todos = [...local];
+      localVisitas.forEach(v => {
+        if (!todos.find(x => x.folio === v.folio)) todos.push(v);
+      });
+      VISITAS_HIST_CACHE = todos.sort((a,b) => (b.fecha_visita||'') > (a.fecha_visita||'') ? 1 : -1);
+    } catch(e) {}
   }
 
   visitasHistorialRender(VISITAS_HIST_CACHE);
@@ -14364,28 +14378,22 @@ let VISITA_FOLIO_GUARDADO = null;
 async function visitaGuardarYOfrecer() {
   const btn = document.getElementById('btn-visita-guardar');
   if (btn) { btn.disabled = true; btn.innerHTML = '<span>⏳</span> Guardando…'; }
-
-  // Reutiliza visitaGuardar pero sin cerrar
-  const folio = document.getElementById('visita-folio-badge').textContent;
-  const fecha = document.getElementById('visita-fecha').value;
-
-  if (!fecha) {
-    toast('⚠️ Falta la fecha de la visita');
+  try {
+    const fecha = document.getElementById('visita-fecha').value;
+    if (!fecha) { toast('⚠️ Falta la fecha de la visita'); return; }
+    const folio = document.getElementById('visita-folio-badge').textContent;
+    await visitaGuardar(false);
+    VISITA_FOLIO_GUARDADO = folio;
+    const panel  = document.getElementById('visita-post-guardado');
+    const folioEl= document.getElementById('visita-post-folio');
+    if (folioEl) folioEl.textContent = folio;
+    if (panel)   panel.style.display = 'flex';
+  } catch(e) {
+    toast('❌ Error: ' + e.message);
+    console.error('visitaGuardarYOfrecer:', e);
+  } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = '<span>💾</span> Guardar visita'; }
-    return;
   }
-
-  await visitaGuardar(false); // false = no cerrar automáticamente
-
-  VISITA_FOLIO_GUARDADO = folio;
-
-  // Mostrar panel post-guardado
-  const panel = document.getElementById('visita-post-guardado');
-  const folioEl = document.getElementById('visita-post-folio');
-  if (folioEl) folioEl.textContent = folio;
-  if (panel) panel.style.display = 'flex';
-
-  if (btn) { btn.disabled = false; btn.innerHTML = '<span>💾</span> Guardar visita'; }
 }
 
 function visitaPostGenerarPDF() {
@@ -14458,35 +14466,49 @@ async function visitaGuardar(cerrarAlFinal = true) {
     created_at:           new Date().toISOString()
   };
 
-  // Mostrar spinner
-  const btnGuardar = document.querySelector('[onclick="visitaGuardar()"]');
+  // Mostrar spinner en el botón correcto
+  const btnGuardar = document.getElementById('btn-visita-guardar') ||
+                     document.querySelector('[onclick="visitaGuardarYOfrecer()"]') ||
+                     document.querySelector('[onclick="visitaGuardar()"]');
   if (btnGuardar) { btnGuardar.disabled = true; btnGuardar.innerHTML = '⏳ Guardando…'; }
 
   let guardadoOk = false;
 
-  // 1. Intentar Supabase
-  if (SYNC.online) {
-    const { error } = await sb().from('visitas_medicion').insert([payload]);
-    if (!error) {
-      guardadoOk = true;
-      toast('✅ Visita guardada en Supabase · ' + folio);
-    } else {
-      console.error('Supabase visita error:', error);
-      toast(`⚠️ Error Supabase: ${error.message} — guardando localmente`);
-    }
-  }
-
-  // 2. Siempre guardar en localStorage como respaldo
+  // 1. Siempre guardar en localStorage PRIMERO (offline-first)
   try {
     const visitas = JSON.parse(localStorage.getItem('barrcan_visitas_local') || '[]');
-    visitas.unshift({ ...payload, _guardado_supabase: guardadoOk });
+    visitas.unshift({ ...payload, _guardado_supabase: false });
     localStorage.setItem('barrcan_visitas_local', JSON.stringify(visitas));
-    if (!guardadoOk) {
+  } catch(e) { console.warn('localStorage visita:', e); }
+
+  // 2. Intentar Supabase
+  if (SYNC.online) {
+    try {
+      const { error } = await sb().from('visitas_medicion').insert([payload]);
+      if (!error) {
+        guardadoOk = true;
+        // Actualizar flag en localStorage
+        try {
+          const visitas = JSON.parse(localStorage.getItem('barrcan_visitas_local') || '[]');
+          const idx = visitas.findIndex(v => v.folio === folio);
+          if (idx >= 0) { visitas[idx]._guardado_supabase = true; localStorage.setItem('barrcan_visitas_local', JSON.stringify(visitas)); }
+        } catch(e) {}
+        toast('✅ Visita guardada · ' + folio);
+      } else {
+        toast(`⚠️ ${error.message} — guardado localmente`);
+        await encolarPendiente('visita', payload);
+        guardadoOk = true;
+      }
+    } catch(e) {
+      toast('💾 Sin conexión · Guardado localmente · ' + folio);
       await encolarPendiente('visita', payload);
-      toast('💾 Guardado localmente · Se sincronizará al conectar · ' + folio);
       guardadoOk = true;
     }
-  } catch(e) { console.warn('localStorage visita:', e); }
+  } else {
+    await encolarPendiente('visita', payload);
+    toast('💾 Sin conexión · Guardado localmente · ' + folio);
+    guardadoOk = true;
+  }
 
   // 3. Guardar fotos en IDB
   if (VISITA_FOTOS.length > 0) {
@@ -14497,7 +14519,7 @@ async function visitaGuardar(cerrarAlFinal = true) {
     } catch(e) { console.warn('IDB fotos:', e); }
   }
 
-  if (btn) { btn.disabled = false; btn.innerHTML = '💾 Guardar sin PDF'; }
+  if (btnGuardar) { btnGuardar.disabled = false; btnGuardar.innerHTML = '<span style="font-size:20px">💾</span> Guardar visita'; }
 
   if (guardadoOk && cerrarAlFinal) {
     // Actualizar cache local del historial
@@ -15636,23 +15658,25 @@ async function clientesCargarTodos(forzar = false) {
 }
 
 function limpiarCacheClientes() {
+  // Solo limpiar caché de clientes — NO tocar presupuestos, órdenes ni visitas
   localStorage.removeItem('barrcan_clientes_cache');
   localStorage.removeItem('barrcan_clientes_ts');
   cliListaCache = [];
-  toast('🗑️ Limpiando caché — cargando de Supabase…');
-
-  // Diagnóstico: verificar cuántos devuelve sin rango
-  sb().from('clientes').select('*', { count: 'exact' }).range(0, 999)
+  toast('🔄 Recargando clientes de Supabase…');
+  sb().from('clientes').select('*', { count: 'exact' }).order('nombre').range(0, 999)
     .then(({ data, count, error }) => {
-      if (error) {
-        toast(`❌ Error Supabase: ${error.message}`);
-        return;
-      }
+      if (error) { toast(`❌ Error: ${error.message}`); return; }
       cliListaCache = data || [];
       clientesGuardarCache(cliListaCache);
-      toast(`✅ Supabase devuelve ${count} total, cargados ${cliListaCache.length}`);
+      toast(`✅ ${cliListaCache.length} clientes (BD total: ${count})`);
       if (document.getElementById('cli-lista')) cliRenderLista(cliListaCache);
     });
+}
+
+function sincronizarTodoOffline() {
+  if (!SYNC.online) { toast('📵 Sin conexión'); return; }
+  toast('⏳ Sincronizando todo…');
+  appPrecargarDatos();
 }
 
 async function cliSyncBackground() {
@@ -16212,54 +16236,128 @@ async function appPrecargarDatos() {
     appCargarDesdeCache();
     return;
   }
+
+  console.log('[BarrCan] Iniciando precarga completa…');
+
+  const guardar = (key, data) => {
+    try { localStorage.setItem(key, JSON.stringify(data)); } catch(e) {}
+  };
+
+  // ── 1. Clientes (crítico para técnicos offline) ──
   try {
-    const [ordenes, garantias, clientes, precios] = await Promise.allSettled([
-      sb().from('ordenes_trabajo').select('*').order('fecha_instalacion', { ascending: false }).limit(100),
-      sb().from('garantias').select('*').order('created_at', { ascending: false }).limit(100),
-      sb().from('clientes').select('*', { count: 'exact' }).order('nombre').range(0, 999),
-      sb().from('config_precios').select('*').limit(50)
-    ]);
+    const { data, error } = await sb().from('clientes')
+      .select('*').order('nombre').range(0, 999);
+    if (!error && data?.length) {
+      cliListaCache = data;
+      guardar('barrcan_clientes_cache', data);
+      guardar('barrcan_clientes_ts', Date.now());
+      console.log(`[BarrCan] ✅ ${data.length} clientes`);
+    }
+  } catch(e) { console.warn('[BarrCan] clientes:', e.message); }
 
-    if (ordenes.status === 'fulfilled' && !ordenes.value.error) {
-      ORDENES_CACHE = ordenes.value.data || [];
-      localStorage.setItem('barrcan_ordenes_cache', JSON.stringify(ORDENES_CACHE));
+  // ── 2. Órdenes de trabajo ──
+  try {
+    const { data, error } = await sb().from('ordenes_trabajo')
+      .select('*').order('created_at', { ascending: false }).range(0, 200);
+    if (!error && data) {
+      ORDENES_CACHE = data;
+      guardar('barrcan_ordenes_cache', data);
+      console.log(`[BarrCan] ✅ ${data.length} órdenes`);
     }
-    if (garantias.status === 'fulfilled' && !garantias.value.error) {
-      GARANTIAS_CACHE = garantias.value.data || [];
-      localStorage.setItem('barrcan_garantias_cache', JSON.stringify(GARANTIAS_CACHE));
-    }
-    if (clientes.status === 'fulfilled' && !clientes.value.error) {
-      const cliData  = clientes.value.data  || [];
-      const cliCount = clientes.value.count ?? cliData.length;
-      console.log(`[BarrCan] Clientes recibidos: ${cliData.length} / total en BD: ${cliCount}`);
-      cliListaCache = cliData;
-      clientesGuardarCache(cliData);
-      toast(`📋 ${cliData.length} clientes cargados`);
-    } else if (clientes.status === 'rejected' || clientes.value?.error) {
-      console.warn('[BarrCan] Error cargando clientes:', clientes.value?.error?.message || clientes.reason);
-    }
+  } catch(e) { console.warn('[BarrCan] ordenes:', e.message); }
 
-    localStorage.setItem('barrcan_precarga_ts', Date.now().toString());
-    console.log('[BarrCan] Precarga offline completada ✅');
-  } catch(e) {
-    console.warn('[BarrCan] Precarga parcial:', e.message);
-    appCargarDesdeCache();
-  }
+  // ── 3. Presupuestos atrasados ──
+  try {
+    const { data, error } = await sb().from('presupuestos_atrasados')
+      .select('*').order('created_at', { ascending: false }).range(0, 200);
+    if (!error && data?.length) {
+      // Merge con los locales para no perder nada
+      const localIds = new Set(data.map(x => x.id));
+      const soloLocales = PRES_ATRASADOS.filter(x => !localIds.has(x.id));
+      PRES_ATRASADOS = [...data, ...soloLocales];
+      guardar('barrcan_pres_atrasados', PRES_ATRASADOS);
+      console.log(`[BarrCan] ✅ ${PRES_ATRASADOS.length} presupuestos`);
+    }
+  } catch(e) { console.warn('[BarrCan] presupuestos:', e.message); }
+
+  // ── 4. Garantías ──
+  try {
+    const { data, error } = await sb().from('garantias')
+      .select('*').order('created_at', { ascending: false }).range(0, 100);
+    if (!error && data) {
+      GARANTIAS_CACHE = data;
+      guardar('barrcan_garantias_cache', data);
+      console.log(`[BarrCan] ✅ ${data.length} garantías`);
+    }
+  } catch(e) { console.warn('[BarrCan] garantias:', e.message); }
+
+  // ── 5. Visitas de medición ──
+  try {
+    const { data, error } = await sb().from('visitas_medicion')
+      .select('*').order('created_at', { ascending: false }).range(0, 100);
+    if (!error && data?.length) {
+      VISITAS_HIST_CACHE = data;
+      guardar('barrcan_visitas_hist', data);
+      console.log(`[BarrCan] ✅ ${data.length} visitas`);
+    }
+  } catch(e) { console.warn('[BarrCan] visitas:', e.message); }
+
+  // ── 6. Reportes de entrega ──
+  try {
+    const { data, error } = await sb().from('reportes_entrega')
+      .select('*').order('created_at', { ascending: false }).range(0, 50);
+    if (!error && data?.length) {
+      guardar('barrcan_reportes_historial', data);
+      console.log(`[BarrCan] ✅ ${data.length} reportes entrega`);
+    }
+  } catch(e) { console.warn('[BarrCan] reportes:', e.message); }
+
+  // ── 7. Pagos del mes ──
+  try {
+    const mesIni = new Date();
+    mesIni.setDate(1);
+    const { data, error } = await sb().from('pagos')
+      .select('*').gte('fecha_pago', mesIni.toISOString().split('T')[0])
+      .order('fecha_pago', { ascending: false });
+    if (!error && data?.length) {
+      guardar('barrcan_pagos_mes', data);
+      console.log(`[BarrCan] ✅ ${data.length} pagos del mes`);
+    }
+  } catch(e) { console.warn('[BarrCan] pagos:', e.message); }
+
+  guardar('barrcan_precarga_ts', Date.now());
+  console.log('[BarrCan] ✅ Precarga completa');
+  toast(`✅ ${cliListaCache.length} clientes · ${ORDENES_CACHE.length} OTs · ${PRES_ATRASADOS.length} presupuestos listos offline`);
 }
 
 function appCargarDesdeCache() {
   try {
+    // Órdenes
     const o = localStorage.getItem('barrcan_ordenes_cache');
     if (o) ORDENES_CACHE = JSON.parse(o);
+
+    // Garantías
     const g = localStorage.getItem('barrcan_garantias_cache');
     if (g) GARANTIAS_CACHE = JSON.parse(g);
+
+    // Clientes — usar cliListaCache, NO window._clientesCache
     const c = localStorage.getItem('barrcan_clientes_cache');
-    if (c) window._clientesCache = JSON.parse(c);
+    if (c) cliListaCache = JSON.parse(c);
+
+    // Presupuestos atrasados
+    const pa = localStorage.getItem('barrcan_pres_atrasados');
+    if (pa) PRES_ATRASADOS = JSON.parse(pa);
+
+    // Visitas
+    const vh = localStorage.getItem('barrcan_visitas_hist');
+    if (vh) VISITAS_HIST_CACHE = JSON.parse(vh);
+
     const ts = localStorage.getItem('barrcan_precarga_ts');
     if (ts) {
       const mins = Math.round((Date.now() - parseInt(ts)) / 60000);
-      if (mins > 0) toast(`📦 Datos en caché · Última sync: hace ${mins} min`);
+      toast(`📦 Modo offline · Caché de hace ${mins} min`);
     }
+    console.log(`[BarrCan] Cache: ${ORDENES_CACHE.length} OTs, ${cliListaCache.length} clientes, ${PRES_ATRASADOS.length} presupuestos`);
   } catch(e) { console.warn('[BarrCan] Error cargando caché:', e.message); }
 }
 
