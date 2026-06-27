@@ -2607,12 +2607,9 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     <!-- Buscador de cliente en entrega -->
     <div class="form-group" style="margin-bottom:10px">
       <label class="form-label">Buscar cliente registrado</label>
-      <input type="text" class="form-input" id="ent-buscar-cli"
-        placeholder="Nombre, teléfono o número..."
-        oninput="entBuscarCliente(this.value)" autocomplete="off">
-      <div id="ent-cli-resultados" style="display:none;background:var(--white);
-        border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);margin-top:4px;
-        max-height:160px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1)"></div>
+      <select id="ent-cli-select" class="form-select" onchange="entDropdownSeleccionar()">
+        <option value="">— Selecciona cliente —</option>
+      </select>
     </div>
 
     <div class="form-group">
@@ -2732,19 +2729,10 @@ select.form-select { padding-right: 36px; cursor: pointer; }
   <div class="wizard-card" style="margin-bottom:12px">
     <div class="wizard-title">👤 Datos del cliente</div>
     <div class="form-group" style="margin-bottom:8px">
-      <label class="form-label">Buscar cliente</label>
-      <input type="text" class="form-input" id="puerta-buscar-cli"
-        placeholder="Nombre, teléfono o número..."
-        oninput="clienteBuscar(this.value,'puerta-cli-resultados',(c)=>{
-          document.getElementById('puerta-cliente').value=c.nombre||'';
-          document.getElementById('puerta-tel').value=c.telefono||'';
-          document.getElementById('puerta-folio').value=(c.num_cliente||'');
-          document.getElementById('puerta-buscar-cli').value='';
-          toast('✅ '+c.nombre);
-        })" autocomplete="off">
-      <div id="puerta-cli-resultados" style="display:none;background:var(--white);
-        border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);margin-top:4px;
-        max-height:160px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1)"></div>
+      <label class="form-label">Seleccionar cliente</label>
+      <select id="puerta-cli-select" class="form-select" onchange="puertaDropdownSeleccionar()">
+        <option value="">— Selecciona cliente —</option>
+      </select>
     </div>
     <div class="form-group" style="margin-bottom:8px">
       <label class="form-label">Nombre *</label>
@@ -3051,14 +3039,10 @@ select.form-select { padding-right: 36px; cursor: pointer; }
 
       <!-- Buscador de clientes guardados -->
       <div class="form-group">
-        <label class="form-label">Buscar cliente registrado</label>
-        <input type="text" class="form-input" id="ctr-buscar-cli"
-          placeholder="Nombre o teléfono..."
-          oninput="ctrBuscarCliente(this.value)"
-          autocomplete="off">
-        <div id="ctr-cli-resultados" style="display:none;background:var(--white);border:1.5px solid var(--gray-200);
-          border-radius:var(--radius-sm);margin-top:4px;max-height:180px;overflow-y:auto;
-          box-shadow:0 4px 12px rgba(0,0,0,0.1)"></div>
+        <label class="form-label">Seleccionar cliente registrado</label>
+        <select id="ctr-cli-select" class="form-select" onchange="ctrDropdownSeleccionar()">
+          <option value="">— Selecciona cliente —</option>
+        </select>
       </div>
 
       <div class="form-group">
@@ -8103,7 +8087,65 @@ function clienteSeleccionar(id, resultadosId, onSelect) {
   if (res) { res.style.display = 'none'; res.innerHTML = ''; }
 }
 
-// ── Adaptadores para cada módulo ──────────────
+// ── Callbacks de dropdown por módulo ──────────
+function pagoDropdownSeleccionar() {
+  const c = cliDropdownGetCliente('pago-cli-select');
+  if (!c) return;
+  const set = (id, val) => { const el=document.getElementById(id); if(el) el.value=val||''; };
+  set('pago-cliente-nombre', c.nombre);
+  set('pago-cliente-tel',    c.telefono);
+  set('pago-cliente-dir',    c.dir_obra || c.direccion || '');
+  const folioEl = document.getElementById('pago-folio-sufijo');
+  if (folioEl && !folioEl.value && c.num_cliente) folioEl.placeholder = `108A-260623-${c.num_cliente}`;
+}
+
+function presDropdownSeleccionar() {
+  const c = cliDropdownGetCliente('pres-cli-select');
+  if (!c) return;
+  const set = (id, val) => { const el=document.getElementById(id); if(el) el.value=val||''; };
+  set('pres-cliente', c.nombre);
+  set('pres-tel',     c.telefono);
+  set('pres-dir',     c.dir_obra || c.direccion || '');
+  const sfx = document.getElementById('pres-folio');
+  if (sfx && !sfx.value && c.num_cliente) sfx.placeholder = `108A-260623-${c.num_cliente}`;
+}
+
+function ctrDropdownSeleccionar() {
+  const c = cliDropdownGetCliente('ctr-cli-select');
+  if (!c) return;
+  const set = (id, val) => { const el=document.getElementById(id); if(el) el.value=val||''; };
+  set('ctr-nombre',     c.nombre);
+  set('ctr-direccion',  c.dir_obra || c.direccion || '');
+  set('ctr-telefono',   c.telefono);
+  set('ctr-numcliente', c.num_cliente || '');
+}
+
+function ordenDropdownSeleccionar() {
+  const c = cliDropdownGetCliente('orden-cli-select');
+  if (!c) return;
+  const set = (id, val) => { const el=document.getElementById(id); if(el) el.value=val||''; };
+  set('orden-cliente', c.nombre);
+  set('orden-tel',     c.telefono);
+  set('orden-dir',     c.dir_obra || c.direccion || '');
+}
+
+function puertaDropdownSeleccionar() {
+  const c = cliDropdownGetCliente('puerta-cli-select');
+  if (!c) return;
+  const set = (id, val) => { const el=document.getElementById(id); if(el) el.value=val||''; };
+  set('puerta-cliente', c.nombre);
+  set('puerta-tel',     c.telefono);
+}
+
+function entDropdownSeleccionar() {
+  const c = cliDropdownGetCliente('ent-cli-select');
+  if (!c) return;
+  const set = (id, val) => { const el=document.getElementById(id); if(el) el.value=val||''; };
+  set('ent-cliente',     c.nombre);
+  set('ent-tel',         c.telefono);
+  set('ent-num-cliente', c.num_cliente || '');
+  entActualizarProgreso();
+}
 function presBuscarCliente(q) {
   clienteBuscar(q, 'pres-cli-resultados', (c) => {
     document.getElementById('pres-cliente').value = c.nombre    || '';
@@ -8163,27 +8205,7 @@ function abrirModalContrato() {
     return;
   }
   regenerarFolio();
-  // Limpiar buscador
-  const buscar = document.getElementById('ctr-buscar-cli');
-  if (buscar) buscar.value = '';
-  const res = document.getElementById('ctr-cli-resultados');
-  if (res) { res.style.display = 'none'; res.innerHTML = ''; }
-
-  // Cargar cache de clientes si está vacío
-  if (!cliListaCache.length) {
-    const cache = clientesCargarCache();
-    if (cache.length) {
-      cliListaCache = cache;
-    } else if (SYNC.online) {
-      // Cargar en background sin bloquear
-      sb().from('clientes').select('*').order('nombre').range(0,999).then(({ data }) => {
-        if (data?.length) {
-          cliListaCache = data;
-          clientesGuardarCache(data);
-        }
-      });
-    }
-  }
+  cliDropdownCargar('ctr-cli-select');
 
   document.getElementById('modal-contrato-overlay').style.display = 'block';
   document.getElementById('modal-contrato').style.display = 'block';
@@ -8710,7 +8732,7 @@ function puertaAbrir() {
   });
   document.getElementById('puerta-overlay').style.display = 'block';
   setTimeout(() => puertaIniciarFirma(), 300);
-  clientesCargarTodos(cliListaCache.length <= 7);
+  cliDropdownCargar('puerta-cli-select');
 }
 
 function puertaCerrar() {
@@ -8842,6 +8864,7 @@ function abrirEntrega() {
   entRenderEvidencias();
   entIniciarFirmas();
   entActualizarProgreso();
+  cliDropdownCargar('ent-cli-select');
 
   // Fecha de hoy por defecto
   const fEl = document.getElementById('ent-fecha');
@@ -11974,6 +11997,7 @@ function ordenAbrir(id = null) {
   document.getElementById('orden-hora').value    = '09:00';
   document.getElementById('orden-info-cotizacion').style.display = 'none';
   document.getElementById('orden-error').style.display = 'none';
+  cliDropdownCargar('orden-cli-select');
 
   // Fecha de mañana por defecto
   const manana = new Date();
@@ -12785,9 +12809,10 @@ function pagoAbrir(ordenId) {
     }
   }
 
-  // Mostrar sección referencia SIEMPRE
+  // Mostrar sección referencia SIEMPRE y cargar dropdown
   const refSec = document.getElementById('pago-ref-section');
   if (refSec) refSec.style.display = 'block';
+  cliDropdownCargar('pago-cli-select');
 
   document.querySelectorAll('.pago-forma-btn').forEach(b => {
     const activo = b.dataset.forma === 'efectivo';
@@ -13857,8 +13882,8 @@ function presAtrasadoAbrirModal(idEditar = null) {
     document.getElementById('pres-estado').value = 'activo';
   }
 
-  // Cargar todos los clientes para el buscador
-  clientesCargarTodos(cliListaCache.length <= 7);
+  // Cargar todos los clientes para el dropdown
+  cliDropdownCargar('pres-cli-select');
 
   document.getElementById('pres-error').style.display = 'none';
   document.getElementById('pres-modal-overlay').style.display = 'block';
@@ -14162,6 +14187,54 @@ function visitaCerrar() {
 }
 
 // ── Cargar dropdown de clientes ───────────────
+// ══════════════════════════════════════════════
+// DROPDOWN UNIVERSAL DE CLIENTES
+// Carga directo de Supabase, sin depender del caché
+// ══════════════════════════════════════════════
+async function cliDropdownCargar(selectId, placeholder = '— Selecciona cliente —') {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  sel.innerHTML = `<option value="">${placeholder}</option>`;
+  sel.disabled = true;
+  try {
+    const { data, error } = await sb().from('clientes')
+      .select('id,nombre,telefono,empresa,dir_obra,direccion,num_cliente')
+      .order('nombre').range(0, 999);
+    if (error) throw error;
+    const lista = data || [];
+    // También actualizar el caché global
+    if (lista.length > cliListaCache.length) {
+      cliListaCache = lista;
+      clientesGuardarCache(lista);
+    }
+    lista.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = `${c.num_cliente ? c.num_cliente+' · ' : ''}${c.nombre}${c.empresa ? ' ('+c.empresa+')' : ''}`;
+      opt.dataset.c = JSON.stringify(c);
+      sel.appendChild(opt);
+    });
+  } catch(e) {
+    console.warn('cliDropdownCargar:', e.message);
+    // Fallback: usar caché local
+    cliListaCache.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id;
+      opt.textContent = `${c.nombre}${c.empresa ? ' ('+c.empresa+')' : ''}`;
+      opt.dataset.c = JSON.stringify(c);
+      sel.appendChild(opt);
+    });
+  }
+  sel.disabled = false;
+}
+
+function cliDropdownGetCliente(selectId) {
+  const sel = document.getElementById(selectId);
+  if (!sel || !sel.value) return null;
+  const opt = sel.options[sel.selectedIndex];
+  try { return JSON.parse(opt.dataset.c); } catch(e) { return null; }
+}
+
 async function visitaCargarDropdown() {
   const sel = document.getElementById('visita-cliente-sel');
   sel.innerHTML = '<option value="">— Buscar cliente —</option>';
@@ -14644,15 +14717,12 @@ function visitasGuardadasAbrir() {
       border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:14px;font-size:12px">
     </div>
 
-    <!-- Buscador de cliente en nueva orden -->
+    <!-- Dropdown de cliente en nueva orden -->
     <div class="form-group">
-      <label class="form-label">Buscar cliente registrado</label>
-      <input type="text" class="form-input" id="orden-buscar-cli"
-        placeholder="Nombre, teléfono o número..."
-        oninput="ordenBuscarCliente(this.value)" autocomplete="off">
-      <div id="orden-cli-resultados" style="display:none;background:var(--white);
-        border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);margin-top:4px;
-        max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1)"></div>
+      <label class="form-label">Seleccionar cliente registrado</label>
+      <select id="orden-cli-select" class="form-select" onchange="ordenDropdownSeleccionar()">
+        <option value="">— Selecciona cliente —</option>
+      </select>
     </div>
 
     <!-- Cliente (editable) -->
@@ -14810,13 +14880,10 @@ function visitasGuardadasAbrir() {
     <div id="pago-ref-section" style="background:var(--off-white);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:14px">
       <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--blue);margin-bottom:10px">Referencia del presupuesto</div>
       <div class="form-group">
-        <label class="form-label">Buscar cliente</label>
-        <input type="text" class="form-input" id="pago-buscar-cli"
-          placeholder="Nombre, teléfono o número..."
-          oninput="pagoBuscarCliente(this.value)" autocomplete="off">
-        <div id="pago-cli-resultados" style="display:none;background:var(--white);
-          border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);margin-top:4px;
-          max-height:160px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1)"></div>
+        <label class="form-label">Seleccionar cliente</label>
+        <select id="pago-cli-select" class="form-select" onchange="pagoDropdownSeleccionar()">
+          <option value="">— Selecciona cliente —</option>
+        </select>
       </div>
       <div class="form-group" style="margin-bottom:6px">
         <label class="form-label">Folio del presupuesto</label>
@@ -15226,13 +15293,10 @@ function visitasGuardadasAbrir() {
     </div>
 
     <div class="form-group">
-      <label class="form-label">Buscar cliente registrado</label>
-      <input type="text" class="form-input" id="pres-buscar-cli"
-        placeholder="Nombre, teléfono o número de cliente..."
-        oninput="presBuscarCliente(this.value)" autocomplete="off">
-      <div id="pres-cli-resultados" style="display:none;background:var(--white);
-        border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);margin-top:4px;
-        max-height:180px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.1)"></div>
+      <label class="form-label">Seleccionar cliente registrado</label>
+      <select id="pres-cli-select" class="form-select" onchange="presDropdownSeleccionar()">
+        <option value="">— Selecciona cliente —</option>
+      </select>
     </div>
 
     <div class="form-group">
