@@ -9339,63 +9339,6 @@ async function visitasHistorialAbrir() {
   visitasHistorialRender(VISITAS_HIST_CACHE);
 }
 
-function visitasHistorialRender(datos) {
-  const lista = document.getElementById('visitas-historial-lista');
-  if (!datos.length) {
-    lista.innerHTML = '<div style="text-align:center;padding:40px;color:var(--gray-400)">Sin visitas registradas aún</div>';
-    return;
-  }
-  lista.innerHTML = datos.map(v => {
-    const fecha = v.fecha_visita
-      ? new Date(v.fecha_visita+'T12:00:00').toLocaleDateString('es-MX',{weekday:'short',day:'numeric',month:'short',year:'2-digit'})
-      : '—';
-    return `
-    <div style="background:var(--white);border-radius:var(--radius);padding:13px 14px;
-                margin-bottom:8px;box-shadow:var(--shadow-sm);border-left:4px solid var(--blue)">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
-        <div>
-          <div style="font-size:11px;font-family:'DM Mono',monospace;color:var(--blue);font-weight:700">${v.folio||'—'}</div>
-          <div style="font-size:14px;font-weight:700;color:var(--navy);margin-top:2px">${v.cliente_nombre||'—'}</div>
-          ${v.cliente_tel ? `<div style="font-size:11px;color:var(--gray-400)">📞 ${v.cliente_tel}</div>` : ''}
-        </div>
-        <div style="text-align:right">
-          <div style="font-size:11px;color:var(--gray-400)">${fecha}</div>
-          ${v.hora_visita ? `<div style="font-size:11px;color:var(--gray-400)">⏰ ${v.hora_visita.slice(0,5)}</div>` : ''}
-          <div style="font-size:11px;color:var(--gray-600);font-weight:600">👷 ${v.tecnico||'—'}</div>
-        </div>
-      </div>
-      ${v.dir_obra ? `<div style="font-size:11px;color:var(--gray-400);margin-bottom:4px">📍 ${v.dir_obra}</div>` : ''}
-      ${v.desc_obra ? `<div style="font-size:11px;color:var(--navy);margin-bottom:6px;line-height:1.4">${v.desc_obra.slice(0,100)}${v.desc_obra.length>100?'…':''}</div>` : ''}
-      <div style="display:flex;gap:6px;flex-wrap:wrap">
-        ${v.num_piezas ? `<span style="font-size:10px;background:rgba(46,109,164,0.08);color:var(--blue);padding:2px 7px;border-radius:8px;font-weight:600">${v.num_piezas} piezas</span>` : ''}
-        ${v.escaleras && v.escaleras!=='no_indicado' ? `<span style="font-size:10px;background:var(--gray-100);color:var(--gray-600);padding:2px 7px;border-radius:8px">🪜 ${v.escaleras}</span>` : ''}
-        ${v.num_fotos ? `<span style="font-size:10px;background:rgba(200,146,58,0.08);color:var(--gold);padding:2px 7px;border-radius:8px;font-weight:600">📷 ${v.num_fotos} fotos</span>` : ''}
-        ${v.aplica_cobro && v.monto ? `<span style="font-size:10px;background:rgba(39,174,96,0.08);color:#27AE60;padding:2px 7px;border-radius:8px;font-weight:700">💰 $${fmt(v.monto)}</span>` : ''}
-      </div>
-      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-        <button onclick="visitasHistorialCrearOT('${v.folio||''}')"
-          style="flex:1;padding:8px;background:rgba(27,58,92,0.06);color:var(--navy);
-                 border:1.5px solid var(--navy);border-radius:var(--radius-sm);
-                 font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer">
-          + OT
-        </button>
-        <button onclick="visitasHistorialGenerarPDF('${v.id||v.folio}')"
-          style="padding:8px 12px;background:rgba(230,92,0,0.08);color:#E65C00;
-                 border:1px solid rgba(230,92,0,0.2);border-radius:var(--radius-sm);
-                 font-size:12px;font-weight:700;cursor:pointer">
-          📄 PDF
-        </button>
-        ${v.reporte_url ? `
-        <button onclick="window.open('${v.reporte_url}','_blank')"
-          style="padding:8px 12px;background:rgba(46,109,164,0.08);color:var(--blue);
-                 border:1px solid rgba(46,109,164,0.2);border-radius:var(--radius-sm);
-                 font-size:12px;font-weight:700;cursor:pointer">
-          🔗 Ver
-        </button>` : ''}
-      </div>
-    </div>`;
-  }).join('');
-}
 
 function visitasHistorialFiltrar(q) {
   const term = q.toLowerCase().replace(/\s+/g,'');
@@ -9410,15 +9353,129 @@ function visitasHistorialFiltrar(q) {
   visitasHistorialRender(filtradas);
 }
 
-function visitasHistorialGenerarPDF(idOrFolio) {
-  // Buscar la visita en el cache
+// Renderizar historial de visitas con botones editar/borrar para MAU
+function visitasHistorialRender(datos) {
+  const lista = document.getElementById('visitas-historial-lista');
+  if (!datos.length) {
+    lista.innerHTML = '<div style="text-align:center;padding:40px;color:var(--gray-400)">Sin visitas registradas</div>';
+    return;
+  }
+  const esMAU = USUARIO_ACTIVO && USUARIO_ACTIVO.id === 'MAU';
+  lista.innerHTML = '';
+
+  datos.forEach(v => {
+    const fecha = v.fecha_visita
+      ? new Date(v.fecha_visita+'T12:00:00').toLocaleDateString('es-MX',{weekday:'short',day:'numeric',month:'short',year:'2-digit'})
+      : '---';
+
+    const telHtml   = v.cliente_tel  ? '<div style="font-size:11px;color:var(--gray-400)">Tel: '+v.cliente_tel+'</div>' : '';
+    const horaHtml  = v.hora_visita  ? '<div style="font-size:11px;color:var(--gray-400)">'+v.hora_visita.slice(0,5)+'</div>' : '';
+    const dirHtml   = v.dir_obra     ? '<div style="font-size:11px;color:var(--gray-400);margin-bottom:4px">'+v.dir_obra+'</div>' : '';
+    const descHtml  = v.desc_obra    ? '<div style="font-size:11px;color:var(--navy);margin-bottom:6px">'+v.desc_obra.slice(0,100)+(v.desc_obra.length>100?'...':'')+'</div>' : '';
+    const piezasHtml= v.num_piezas   ? '<span style="font-size:10px;background:rgba(46,109,164,0.08);color:var(--blue);padding:2px 7px;border-radius:8px;font-weight:600">'+v.num_piezas+' piezas</span>' : '';
+    const fotosHtml2= v.num_fotos    ? '<span style="font-size:10px;background:rgba(200,146,58,0.08);color:var(--gold);padding:2px 7px;border-radius:8px;font-weight:600">'+v.num_fotos+' fotos</span>' : '';
+    const montoHtml = v.aplica_cobro && v.monto ? '<span style="font-size:10px;background:rgba(39,174,96,0.08);color:#27AE60;padding:2px 7px;border-radius:8px;font-weight:700">$'+fmt(v.monto)+'</span>' : '';
+
+    const div = document.createElement('div');
+    div.style.cssText = 'background:var(--white);border-radius:var(--radius);padding:13px 14px;margin-bottom:8px;box-shadow:var(--shadow-sm);border-left:4px solid var(--blue)';
+    div.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'+
+        '<div>'+
+          '<div style="font-size:11px;font-family:monospace;color:var(--blue);font-weight:700">'+(v.folio||'---')+'</div>'+
+          '<div style="font-size:14px;font-weight:700;color:var(--navy);margin-top:2px">'+(v.cliente_nombre||'---')+'</div>'+
+          telHtml+
+        '</div>'+
+        '<div style="text-align:right">'+
+          '<div style="font-size:11px;color:var(--gray-400)">'+fecha+'</div>'+
+          horaHtml+
+          '<div style="font-size:11px;color:var(--gray-600);font-weight:600">'+( v.tecnico||'---')+'</div>'+
+        '</div>'+
+      '</div>'+
+      dirHtml+descHtml+
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">'+piezasHtml+fotosHtml2+montoHtml+'</div>'+
+      '<div class="vis-acciones" style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"></div>';
+
+    // Botones
+    const acc = div.querySelector('.vis-acciones');
+
+    const btnOT = document.createElement('button');
+    btnOT.style.cssText = 'flex:1;padding:8px;background:rgba(27,58,92,0.06);color:var(--navy);border:1.5px solid var(--navy);border-radius:var(--radius-sm);font-family:var(--font-sans);font-size:12px;font-weight:700;cursor:pointer';
+    btnOT.textContent = '+ OT';
+    btnOT.onclick = () => visitasHistorialCrearOT(v.folio||'');
+    acc.appendChild(btnOT);
+
+    const btnPDF = document.createElement('button');
+    btnPDF.style.cssText = 'padding:8px 12px;background:rgba(230,92,0,0.08);color:#E65C00;border:1px solid rgba(230,92,0,0.2);border-radius:var(--radius-sm);font-size:12px;font-weight:700;cursor:pointer';
+    btnPDF.textContent = 'PDF';
+    btnPDF.onclick = () => visitasHistorialGenerarPDF(v.id||v.folio);
+    acc.appendChild(btnPDF);
+
+    if (esMAU) {
+      const btnDel = document.createElement('button');
+      btnDel.style.cssText = 'padding:8px 10px;background:rgba(192,57,43,0.06);color:var(--red);border:1px solid rgba(192,57,43,0.2);border-radius:var(--radius-sm);font-size:12px;cursor:pointer';
+      btnDel.textContent = 'Borrar';
+      btnDel.onclick = () => visitaHistorialBorrar(v.id||'', v.folio||'');
+      acc.appendChild(btnDel);
+    }
+
+    lista.appendChild(div);
+  });
+}
+
+
+async function visitaHistorialBorrar(id, folio) {
+  if (USUARIO_ACTIVO?.id !== 'MAU') { toast('⚠️ Solo el administrador puede borrar'); return; }
+  if (!confirm('Borrar la visita ' + folio + '? Esta accion no se puede deshacer.')) return;
+  try {
+    // Borrar de Supabase
+    if (id && SYNC.online) {
+      await sb().from('visitas_medicion').delete().eq('id', id);
+    }
+    // Borrar del caché local
+    VISITAS_HIST_CACHE = VISITAS_HIST_CACHE.filter(v => v.id !== id && v.folio !== folio);
+    localStorage.setItem('barrcan_visitas_hist', JSON.stringify(VISITAS_HIST_CACHE));
+    // Borrar del localStorage local
+    const local = JSON.parse(localStorage.getItem('barrcan_visitas_local') || '[]')
+      .filter(v => v.folio !== folio);
+    localStorage.setItem('barrcan_visitas_local', JSON.stringify(local));
+    toast('🗑️ Visita eliminada');
+    visitasHistorialRender(VISITAS_HIST_CACHE);
+  } catch(e) { toast('❌ Error: ' + e.message); }
+}
+
+async function visitasHistorialGenerarPDF(idOrFolio) {
   const v = VISITAS_HIST_CACHE.find(x => x.id === idOrFolio || x.folio === idOrFolio);
   if (!v) { toast('⚠️ No se encontró la visita'); return; }
 
   const logoB64 = typeof BARRCAN_LOGO_B64 !== 'undefined' ? BARRCAN_LOGO_B64 : '';
 
-  const html = `<!DOCTYPE html>
-<html lang=es><head><meta charset=UTF-8>
+  // Recuperar fotos desde IDB
+  let fotos = [];
+  try {
+    const idbData = await idbObtener('fotos_visitas', v.folio || v.id);
+    if (idbData?.fotos?.length) fotos = idbData.fotos;
+  } catch(e) { console.warn('Sin fotos en IDB:', e.message); }
+
+  // También intentar fotos_urls si se guardó en Supabase
+  if (!fotos.length && v.fotos_urls) {
+    try {
+      const urls = typeof v.fotos_urls === 'string' ? JSON.parse(v.fotos_urls) : v.fotos_urls;
+      if (Array.isArray(urls)) fotos = urls.map(u => ({ dataUrl: u }));
+    } catch(e) {}
+  }
+
+  let fotosHtml = '';
+  if (fotos.length) {
+    const fItems = fotos.map(f => {
+      const desc = f.desc ? '<div style="font-size:8.5pt;color:#666;margin-top:3px">'+f.desc+'</div>' : '';
+      return '<div><img src="'+(f.dataUrl||f)+'" style="width:100%;border-radius:4px;border:1px solid #ddd;object-fit:cover;max-height:200px">'+desc+'</div>';
+    }).join('');
+    fotosHtml = '<h2>Evidencia fotografica ('+fotos.length+' fotos)</h2><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">'+fItems+'</div>';
+  } else {
+    fotosHtml = '<div style="font-size:9pt;color:#aaa;margin-top:8px;font-style:italic">Sin fotos registradas</div>';
+  }
+
+  const html = `<!DOCTYPE html><html lang=es><head><meta charset=UTF-8>
 <meta name=viewport content=width=device-width>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
@@ -9431,7 +9488,7 @@ function visitasHistorialGenerarPDF(idOrFolio) {
   .dato-row{display:flex;margin-bottom:5px;font-size:9.5pt}
   .dato-lbl{color:#888;min-width:130px;font-size:9pt}
   .dato-val{font-weight:600}
-  .barra-print{position:fixed;bottom:0;left:0;right:0;background:#1B3A5C;padding:8px 16px;
+  .barra-print{position:fixed;bottom:0;left:0;right:0;background:#1B3A5C;padding:8px 14px;
     display:flex;gap:8px;justify-content:center;z-index:999}
   .btn-print{padding:10px 22px;background:#C8923A;color:white;border:none;border-radius:7px;
     font-size:13px;font-weight:700;cursor:pointer}
@@ -9445,10 +9502,10 @@ function visitasHistorialGenerarPDF(idOrFolio) {
 </div>
 <div class=page>
   <div class=header>
-    ${logoB64 ? `<img src="${logoB64}" style="width:56px;height:56px;object-fit:contain;flex-shrink:0">` : ''}
+    ${logoB64 ? `<img src="${logoB64}" style="width:58px;height:58px;object-fit:contain;flex-shrink:0">` : ''}
     <div style=flex:1>
-      <div style=font-size:18pt;font-weight:900;color:#1B3A5C;letter-spacing:1px>BarrCan</div>
-      <div style=font-size:7pt;color:#C8923A;letter-spacing:3px;text-transform:uppercase>Cancelería · Aluminio · Vidrio</div>
+      <div style=font-size:20pt;font-weight:900;color:#1B3A5C;letter-spacing:2px;line-height:1>BarrCan</div>
+      <div style=font-size:7.5pt;color:#C8923A;letter-spacing:3px;text-transform:uppercase>Cancelería · Aluminio · Vidrio</div>
     </div>
     <div style=text-align:right;font-size:11pt;font-weight:700;color:#1B3A5C;
          border:2px solid #1B3A5C;padding:4px 10px;border-radius:4px>REPORTE DE VISITA</div>
@@ -9459,21 +9516,26 @@ function visitasHistorialGenerarPDF(idOrFolio) {
   <div class=dato-row><span class=dato-lbl>Cliente</span><span class=dato-val>${v.cliente_nombre||'—'}</span></div>
   <div class=dato-row><span class=dato-lbl>Teléfono</span><span class=dato-val>${v.cliente_tel||'—'}</span></div>
   <div class=dato-row><span class=dato-lbl>Dirección de obra</span><span class=dato-val>${v.dir_obra||'—'}</span></div>
-  <div class=dato-row><span class=dato-lbl>Fecha</span><span class=dato-val>${v.fecha_visita||'—'} ${v.hora_visita?'· '+v.hora_visita:''}</span></div>
+  <div class=dato-row><span class=dato-lbl>Fecha</span><span class=dato-val>${v.fecha_visita||'—'} ${v.hora_visita?'· '+v.hora_visita.slice(0,5):''}</span></div>
   <div class=dato-row><span class=dato-lbl>Técnico</span><span class=dato-val>${v.tecnico||'—'}</span></div>
   <div class=dato-row><span class=dato-lbl>Num. piezas</span><span class=dato-val>${v.num_piezas||'—'}</span></div>
   <div class=dato-row><span class=dato-lbl>Escaleras</span><span class=dato-val>${v.escaleras||'—'}</span></div>
-  <div class=dato-row><span class=dato-lbl>Fotos tomadas</span><span class=dato-val>${v.num_fotos||0}</span></div>
+
   ${v.desc_obra ? `<h2>Descripción de la obra</h2>
   <div style=font-size:10pt;line-height:1.6;color:#333>${v.desc_obra}</div>` : ''}
+
   ${v.notas_tecnico ? `<h2>Notas para el técnico</h2>
   <div style=font-size:10pt;line-height:1.6;color:#333>${v.notas_tecnico}</div>` : ''}
+
   ${v.aplica_cobro && v.monto ? `
   <div style=background:#1B3A5C;color:white;padding:12px 16px;border-radius:6px;
-       display:flex;justify-content:space-between;align-items:center;margin-top:14px>
+       display:flex;justify-content:space-between;align-items:center;margin:14px 0>
     <div style=font-size:9pt;opacity:0.7>Cobro por visita de medición</div>
     <div style=font-size:22pt;font-weight:900;color:#C8923A>$${fmt(v.monto)}</div>
   </div>` : ''}
+
+  ${fotosHtml}
+
   <div style=display:flex;gap:20px;margin-top:24px>
     <div style=flex:1;border-top:1px solid #ccc;padding-top:6px;font-size:9pt;color:#888;text-align:center>
       Firma del cliente<br>___________________<br>${v.cliente_nombre||''}
@@ -9569,27 +9631,39 @@ async function entVerHistorialReportes() {
       <div style="font-size:11px;color:var(--gray-400);margin-bottom:8px">
         👷 ${r.tecnico || '—'} · Registrado por: ${r.registrado_por || '—'}
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        ${r.reporte_url ? `
-          <button onclick="entAbrirReporteUrl('${r.reporte_url.replace(/'/g,'')}')"
-            style="display:block;width:100%;padding:9px;background:rgba(46,109,164,0.08);color:var(--blue);
-                   border:1px solid rgba(46,109,164,0.2);border-radius:var(--radius-sm);
-                   font-size:12px;font-weight:700;text-align:center;cursor:pointer;font-family:'DM Sans',sans-serif">
-            📄 Ver reporte
-          </button>
-          <button onclick="entReenviarWA('${(r.cliente_tel||'').replace(/'/g,'')}','${(r.cliente_nombre||'').replace(/'/g,'')}','${(r.folio||'').replace(/'/g,'')}','${(r.reporte_url||'').replace(/'/g,'')}')"
-            style="padding:9px;background:rgba(37,211,102,0.08);color:#25D366;
-                   border:1px solid rgba(37,211,102,0.2);border-radius:var(--radius-sm);
-                   font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">
-            💬 Reenviar WA
-          </button>
-        ` : `<div style="grid-column:1/-1;font-size:11px;color:var(--gray-400);text-align:center;padding:6px">
-          ⚠️ Reporte sin URL permanente
-        </div>`}
-      </div>
+      <div class="ent-rep-acciones" data-url="${r.reporte_url||''}" data-tel="${(r.cliente_tel||'').replace(/"/g,'')}" data-nom="${(r.cliente_nombre||'').replace(/"/g,'')}" data-fol="${(r.folio||'').replace(/"/g,'')}"></div>
     </div>
   `).join('');
-}
+
+  // Construir botones con DOM (evita comillas anidadas en template literal)
+  lista.querySelectorAll('.ent-rep-acciones').forEach(div => {
+    const url = div.dataset.url;
+    const tel = div.dataset.tel;
+    const nom = div.dataset.nom;
+    const fol = div.dataset.fol;
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:8px';
+
+    if (url) {
+      const btnVer = document.createElement('button');
+      btnVer.textContent = '📄 Ver reporte';
+      btnVer.style.cssText = 'padding:9px;background:rgba(46,109,164,0.08);color:var(--blue);border:1px solid rgba(46,109,164,0.2);border-radius:var(--radius-sm);font-size:12px;font-weight:700;cursor:pointer';
+      btnVer.onclick = () => entAbrirReporteUrl(url);
+      grid.appendChild(btnVer);
+      const btnWA = document.createElement('button');
+      btnWA.textContent = '💬 Reenviar WA';
+      btnWA.style.cssText = 'padding:9px;background:rgba(37,211,102,0.08);color:#25D366;border:1px solid rgba(37,211,102,0.2);border-radius:var(--radius-sm);font-size:12px;font-weight:700;cursor:pointer';
+      btnWA.onclick = () => entReenviarWA(tel, nom, fol, url);
+      grid.appendChild(btnWA);
+    } else {
+      const aviso = document.createElement('div');
+      aviso.style.cssText = 'grid-column:1/-1;font-size:11px;color:var(--gray-400);text-align:center;padding:8px;background:var(--off-white);border-radius:var(--radius-sm)';
+      aviso.textContent = '📄 Generado localmente — sin URL permanente';
+      grid.appendChild(aviso);
+    }
+    div.replaceWith(grid);
+  });
+} // fin entVerHistorialReportes
 
 async function entAbrirReporteUrl(url) {
   toast('⏳ Abriendo reporte…');
