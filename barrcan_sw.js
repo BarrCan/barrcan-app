@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════
-// BarrCan Service Worker v5 — Offline First
+// BarrCan Service Worker v4 — Offline First
 // Estrategia: Cache First para app shell
 // Supabase y APIs externas: Network Only
 // ══════════════════════════════════════════════
@@ -8,12 +8,14 @@ const CACHE_VERSION = 'barrcan-v5';
 
 const RECURSOS_CORE = [
   './barrcan_app.html',
+  './garantia_publica.html',
 ];
 
 const DOMINIOS_CACHEABLE = [
   'fonts.googleapis.com',
   'fonts.gstatic.com',
   'cdn.jsdelivr.net',
+  'cdnjs.cloudflare.com',
 ];
 
 // Dominios que NUNCA se cachean (siempre network)
