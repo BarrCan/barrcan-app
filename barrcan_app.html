@@ -7,8 +7,21 @@
   ██████╔╝██║  ██║██║  ██║██║  ██║╚██████╗██║  ██║██║ ╚████║
   ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝
 
-  VERSIÓN : v35-fix
-  FECHA   : 2026-06-24
+  VERSIÓN : v36
+  FECHA   : 2026-06-30
+  CAMBIOS :
+    v36 — Historial mejorado:
+    - FIX: guardarCotizacion anti-duplicados (botón deshabilitado + dedup por ts+sistema)
+    - ADD: botón 💲 para modificar precio final directamente desde historial
+    - ADD: botón 💰 seguimiento de pagos vinculado a cada cotización
+    - FIX: syncTodo procesa cliente_update y garantia offline (v35-fix)
+    - FIX: Garantía Extendida usa tiers de precio fijo (= Shopify) (v35-fix)
+    - FIX: pagoGuardar race condition corregido (v35-fix)
+    - FIX: Domo SVG comilla rota en interLines (v35-fix)
+    - FIX: gtiaDetWhatsApp duplicada eliminada (v35-fix)
+    - FIX: SW registra barrcan_sw.js correctamente (v35-fix)
+    - FIX: visitasGuardadasAbrir lee clave correcta localStorage (v35-fix)
+    - FIX: pinCerrarSesion cierra todos los overlays (v35-fix)
   CAMBIOS :
     - Buscador universal de clientes (clienteBuscar) reutilizable en toda la app
     - Buscador de cliente en formulario de nueva OT
@@ -1080,7 +1093,7 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     <div class="offline-badge">
       <div class="offline-dot"></div>
       <span id="conn-status">Offline-First</span>
-      <span style="font-size:9px;color:rgba(255,255,255,0.3);margin-left:4px">v35f</span>
+      <span style="font-size:9px;color:rgba(255,255,255,0.3);margin-left:4px">v36</span>
     </div>
   </div>
 
@@ -7339,7 +7352,22 @@ function renderFilaCosto(label, monto, esGif=false, esUtilidad=false, esAlerta=f
 // ══════════════════════════════════════════════
 function guardarCotizacion() {
   if (!STATE.ultimoResultado) return;
+
+  // ── Anti-duplicados: bloquear botón y verificar si ya fue guardado ──
+  const btn = document.querySelector('.btn-save');
+  if (btn && btn.disabled) return;          // ya se está guardando
+  if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+
   const r = STATE.ultimoResultado;
+
+  // Dedup por timestamp del resultado — mismo ts = misma cotización
+  const yaExiste = STATE.historial.some(h => h.ts === r.ts && h.sistema === r.sistema);
+  if (yaExiste) {
+    toast('⚠️ Esta cotización ya está guardada');
+    if (btn) { btn.disabled = false; btn.textContent = '💾'; }
+    return;
+  }
+
   const item = {
     id: Date.now(),
     sistema: r.sistema,
@@ -7347,17 +7375,22 @@ function guardarCotizacion() {
     L: r.L,
     H: r.H,
     precio: r.precioFinal,
+    precioOriginal: r.precioFinal,   // para saber si fue modificado manualmente
     ts: r.ts,
-    _r: r  // objeto completo para presupuesto global
+    _r: r
   };
   STATE.historial.unshift(item);
-  if (STATE.historial.length > 50) STATE.historial.pop();
+  if (STATE.historial.length > 100) STATE.historial.pop();
   guardarEnStorage();
   actualizarCfgTotal();
-  // Sincronizar con Supabase
   sbGuardarCotizacion(item);
   actualizarBadgeSync();
-  toast('✅ Cotización guardada');
+  toast('✅ Cotización guardada · ' + r.sistema);
+
+  // Rehabilitar botón después de 1.5s (previene triple-tap)
+  setTimeout(() => {
+    if (btn) { btn.disabled = false; btn.textContent = '💾'; }
+  }, 1500);
 }
 
 // ══════════════════════════════════════════════
@@ -7478,18 +7511,33 @@ function renderHistorial() {
           </div>
 
           <!-- Botones acción -->
-          <div style=display:flex;gap:8px>
+          <div style=display:flex;gap:8px;margin-bottom:8px>
             <button onclick=event.stopPropagation();abrirModal(${h.id})
               style=flex:1;padding:9px;border:1.5px solid var(--blue);border-radius:var(--radius-sm);background:rgba(46,109,164,0.06);color:var(--blue);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px>
               ✏️ Editar / Recalcular
             </button>
+            <button onclick=event.stopPropagation();histEditarPrecio(${h.id})
+              title="Modificar precio final"
+              style=width:38px;padding:9px;border:1.5px solid rgba(200,146,58,0.4);border-radius:var(--radius-sm);background:rgba(200,146,58,0.06);color:var(--gold);font-size:14px;cursor:pointer>
+              💲
+            </button>
             <button onclick=event.stopPropagation();eliminarCotizacion(${h.id})
+              title="Eliminar cotización"
               style=width:38px;padding:9px;border:1.5px solid rgba(192,57,43,0.25);border-radius:var(--radius-sm);background:rgba(192,57,43,0.05);color:var(--red);font-size:14px;cursor:pointer>
               🗑
             </button>
           </div>
 
-          <div class=hist-date style=margin-top:6px>${h.ts}</div>
+          <!-- Botón seguimiento de pago -->
+          <button onclick=event.stopPropagation();histAbrirPago(${h.id})
+            style=width:100%;padding:8px;border:1.5px solid rgba(45,125,70,0.3);border-radius:var(--radius-sm);background:rgba(45,125,70,0.05);color:var(--green);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px>
+            💰 Registrar / Ver pagos · $${fmt(h.precio)}
+          </button>
+
+          <div class=hist-date style=margin-top:6px>
+            ${h.ts}
+            ${h.precioOriginal && h.precio !== h.precioOriginal ? '<span style=color:var(--gold);font-weight:700;margin-left:6px>· Precio modificado</span>' : ''}
+          </div>
         </div>
 
       </div>`;
@@ -7686,6 +7734,215 @@ function eliminarCotizacion(id) {
   actualizarCfgTotal();
   renderHistorial();
   toast('🗑️ Eliminada');
+}
+
+// ── Modificar precio final directamente desde historial ──────────
+function histEditarPrecio(id) {
+  const idx = STATE.historial.findIndex(h => h.id === id);
+  if (idx === -1) return;
+  const h = STATE.historial[idx];
+
+  const nuevoPrecio = parseFloat(
+    prompt(`Precio actual: $${fmt(h.precio)} MXN\n\nIngresa el nuevo precio final al cliente:`, h.precio)
+  );
+  if (!nuevoPrecio || isNaN(nuevoPrecio) || nuevoPrecio <= 0) {
+    toast('⚠️ Precio inválido · Operación cancelada');
+    return;
+  }
+
+  // Guardar precio original si aún no fue modificado
+  if (!h.precioOriginal) h.precioOriginal = h.precio;
+
+  STATE.historial[idx] = { ...h, precio: nuevoPrecio };
+  guardarEnStorage();
+  actualizarCfgTotal();
+  renderHistorial();
+  toast(`✅ Precio actualizado a $${fmt(nuevoPrecio)} MXN`);
+}
+
+// ── Abrir módulo de pagos vinculado a cotización del historial ────
+function histAbrirPago(id) {
+  const h = STATE.historial.find(x => x.id === id);
+  if (!h) return;
+
+  // Buscar si existe una OT vinculada al folio de esta cotización
+  const folio = h.contrato ? h.contrato.folio : null;
+  if (folio) {
+    // Buscar OT en cache
+    const ot = (ORDENES_CACHE || []).find(o =>
+      o.folio_cotizacion === folio || o.folio_cotizacion?.includes(folio)
+    );
+    if (ot) {
+      pagoAbrir(ot.id);
+      toast(`💰 Pagos de OT: ${folio}`);
+      return;
+    }
+  }
+
+  // Si no hay OT vinculada — mostrar modal de registro rápido de pago
+  histPagoRapidoAbrir(h);
+}
+
+// ── Registro rápido de pago sin OT formal ─────────────────────────
+let HIST_PAGO_RAPIDO_ID = null;
+
+function histPagoRapidoAbrir(h) {
+  HIST_PAGO_RAPIDO_ID = h.id;
+  const folio = h.contrato?.folio || `COT-${h.id}`;
+  const total  = h.precio;
+  const pagado = (h.pagos || []).reduce((s, p) => s + p.monto, 0);
+  const saldo  = total - pagado;
+
+  // Crear overlay si no existe
+  let ov = document.getElementById('hist-pago-overlay');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'hist-pago-overlay';
+    ov.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:800;backdrop-filter:blur(3px)';
+    ov.innerHTML = `
+      <div style="position:absolute;bottom:0;left:0;right:0;background:var(--white);
+                  border-radius:20px 20px 0 0;padding:20px;max-height:90vh;overflow-y:auto;
+                  box-shadow:0 -8px 40px rgba(0,0,0,0.3)">
+        <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 16px"></div>
+        <div id="hist-pago-titulo" style="font-family:'Playfair Display',serif;font-size:17px;font-weight:700;color:var(--navy);margin-bottom:4px"></div>
+        <div id="hist-pago-resumen" style="font-size:12px;color:var(--gray-400);margin-bottom:16px"></div>
+
+        <div id="hist-pago-lista" style="margin-bottom:16px"></div>
+
+        <div style="background:var(--gray-100);border-radius:var(--radius-sm);padding:12px;margin-bottom:14px">
+          <div style="font-size:11px;font-weight:700;color:var(--navy);margin-bottom:10px;text-transform:uppercase;letter-spacing:1px">Registrar nuevo pago</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+            <div>
+              <div style="font-size:11px;color:var(--gray-600);margin-bottom:4px">Monto</div>
+              <input type="number" id="hpr-monto" class="form-input" placeholder="0.00" inputmode="decimal">
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--gray-600);margin-bottom:4px">Fecha</div>
+              <input type="date" id="hpr-fecha" class="form-input">
+            </div>
+          </div>
+          <div style="margin-bottom:8px">
+            <div style="font-size:11px;color:var(--gray-600);margin-bottom:4px">Concepto</div>
+            <select id="hpr-concepto" class="form-input">
+              <option value="anticipo">Anticipo 50%</option>
+              <option value="segundo_pago">Segundo pago 35%</option>
+              <option value="liquidacion">Liquidación final 15%</option>
+              <option value="pago_total">Pago total</option>
+              <option value="otro">Otro</option>
+            </select>
+          </div>
+          <div style="margin-bottom:10px">
+            <div style="font-size:11px;color:var(--gray-600);margin-bottom:4px">Forma de pago</div>
+            <select id="hpr-forma" class="form-input">
+              <option value="transferencia">Transferencia</option>
+              <option value="efectivo">Efectivo</option>
+              <option value="tarjeta">Tarjeta</option>
+            </select>
+          </div>
+          <button onclick="histPagoRapidoGuardar()"
+            style="width:100%;padding:12px;background:var(--green);color:white;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">
+            💾 Registrar Pago
+          </button>
+        </div>
+
+        <button onclick="histPagoRapidoCerrar()"
+          style="width:100%;padding:10px;background:none;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);color:var(--gray-600);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer">
+          Cerrar
+        </button>
+      </div>`;
+    document.body.appendChild(ov);
+  }
+
+  // Poblar datos
+  document.getElementById('hist-pago-titulo').textContent = `💰 Pagos · ${folio}`;
+  document.getElementById('hist-pago-resumen').innerHTML =
+    `Total: <b>$${fmt(total)}</b> · Cobrado: <b style="color:var(--green)">$${fmt(pagado)}</b> · Saldo: <b style="color:${saldo>0?'var(--red)':'var(--green)}">$${fmt(saldo)}</b>`;
+
+  // Fecha por defecto = hoy
+  document.getElementById('hpr-fecha').value = new Date().toISOString().split('T')[0];
+
+  // Sugerir monto según concepto
+  const inp = document.getElementById('hpr-monto');
+  inp.value = parseFloat((total * 0.5).toFixed(2));
+  document.getElementById('hpr-concepto').addEventListener('change', function() {
+    const pcts = { anticipo:0.50, segundo_pago:0.35, liquidacion:0.15, pago_total:1.0, otro:0 };
+    const p = pcts[this.value] || 0;
+    inp.value = p > 0 ? parseFloat((total * p).toFixed(2)) : '';
+  }, { once: false });
+
+  // Render lista pagos anteriores
+  histPagoRapidoRenderLista(h);
+
+  ov.style.display = 'block';
+}
+
+function histPagoRapidoRenderLista(h) {
+  const lista = document.getElementById('hist-pago-lista');
+  const pagos = h.pagos || [];
+  if (!pagos.length) {
+    lista.innerHTML = '<div style="text-align:center;padding:12px;color:var(--gray-400);font-size:12px">Sin pagos registrados aún</div>';
+    return;
+  }
+  lista.innerHTML = pagos.map((p, i) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:8px 10px;background:rgba(45,125,70,0.06);border-radius:6px;
+                border-left:3px solid var(--green);margin-bottom:6px">
+      <div>
+        <div style="font-size:12px;font-weight:700;color:var(--navy)">${p.concepto || 'Pago'} · ${p.forma || ''}</div>
+        <div style="font-size:10px;color:var(--gray-400)">${p.fecha || ''}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--green)">$${fmt(p.monto)}</div>
+        <button onclick="histPagoRapidoEliminar(${i})"
+          style="width:22px;height:22px;border:none;background:rgba(192,57,43,0.1);color:var(--red);border-radius:4px;cursor:pointer;font-size:11px">✕</button>
+      </div>
+    </div>`).join('');
+}
+
+function histPagoRapidoGuardar() {
+  const monto   = parseFloat(document.getElementById('hpr-monto').value) || 0;
+  const fecha   = document.getElementById('hpr-fecha').value;
+  const concepto= document.getElementById('hpr-concepto').value;
+  const forma   = document.getElementById('hpr-forma').value;
+
+  if (!monto || monto <= 0) { toast('⚠️ Ingresa el monto'); return; }
+  if (!fecha) { toast('⚠️ Ingresa la fecha'); return; }
+
+  const idx = STATE.historial.findIndex(h => h.id === HIST_PAGO_RAPIDO_ID);
+  if (idx === -1) { toast('⚠️ Cotización no encontrada'); return; }
+
+  const h = STATE.historial[idx];
+  if (!h.pagos) h.pagos = [];
+  h.pagos.push({ monto, fecha, concepto, forma, ts: new Date().toISOString() });
+  STATE.historial[idx] = h;
+  guardarEnStorage();
+
+  // Actualizar UI
+  const total  = h.precio;
+  const pagado = h.pagos.reduce((s, p) => s + p.monto, 0);
+  const saldo  = total - pagado;
+  document.getElementById('hist-pago-resumen').innerHTML =
+    `Total: <b>$${fmt(total)}</b> · Cobrado: <b style="color:var(--green)">$${fmt(pagado)}</b> · Saldo: <b style="color:${saldo>0?'var(--red)':'var(--green)}">$${fmt(saldo)}</b>`;
+  histPagoRapidoRenderLista(h);
+  renderHistorial();
+  toast(`✅ Pago de $${fmt(monto)} registrado`);
+}
+
+function histPagoRapidoEliminar(pagoIdx) {
+  if (!confirm('¿Eliminar este pago?')) return;
+  const idx = STATE.historial.findIndex(h => h.id === HIST_PAGO_RAPIDO_ID);
+  if (idx === -1) return;
+  STATE.historial[idx].pagos.splice(pagoIdx, 1);
+  guardarEnStorage();
+  histPagoRapidoRenderLista(STATE.historial[idx]);
+  renderHistorial();
+  toast('🗑️ Pago eliminado');
+}
+
+function histPagoRapidoCerrar() {
+  const ov = document.getElementById('hist-pago-overlay');
+  if (ov) ov.style.display = 'none';
+  HIST_PAGO_RAPIDO_ID = null;
 }
 
 function toggleSeleccion(id) {
