@@ -7,9 +7,12 @@
   ██████╔╝██║  ██║██║  ██║██║  ██║╚██████╗██║  ██║██║ ╚████║
   ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝
 
-  VERSIÓN : v36.1.1
+  VERSIÓN : v36.2.1
   FECHA   : 2026-06-30
   CAMBIOS :
+    v36.2 — Hotfix crítico:
+    - FIX: renderHistorial crash por comillas anidadas en template literal (catálogo vacío)
+    - FIX: renderCatalogo con try/catch y null guard
     v36.1 — Pagos e historial:
     - FIX: limpiarDuplicadosHistorial() — elimina los 54 registros repetidos
     - ADD: botón 🧹 en Config para limpiar duplicados sin borrar todo
@@ -1099,7 +1102,7 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     <div class="offline-badge">
       <div class="offline-dot"></div>
       <span id="conn-status">Offline-First</span>
-      <span style="font-size:9px;color:rgba(255,255,255,0.3);margin-left:4px">v36.1</span>
+      <span style="font-size:9px;color:rgba(255,255,255,0.3);margin-left:4px">v36.2</span>
     </div>
   </div>
 
@@ -2468,7 +2471,14 @@ select.form-select { padding-right: 36px; cursor: pointer; }
         </div>
       </div>
 
-      <button onclick="limpiarDuplicadosHistorial()"
+      <button onclick="limpiarCacheApp()"
+                style="width:100%;padding:10px 14px;background:rgba(46,109,164,0.08);
+                       border:1.5px solid rgba(46,109,164,0.3);border-radius:var(--radius-sm);
+                       color:var(--blue);font-family:'DM Sans',sans-serif;font-size:13px;
+                       font-weight:600;cursor:pointer;margin-bottom:8px">
+                🔄 Limpiar caché y actualizar app
+              </button>
+              <button onclick="limpiarDuplicadosHistorial()"
                 style="width:100%;padding:10px 14px;background:rgba(200,146,58,0.08);
                        border:1.5px solid rgba(200,146,58,0.3);border-radius:var(--radius-sm);
                        color:var(--gold);font-family:'DM Sans',sans-serif;font-size:13px;
@@ -6424,7 +6434,9 @@ const GRUPOS_ABIERTOS = new Set(['clight']); // primero abierto por defecto
 
 function renderCatalogo() {
   const cont = document.getElementById('catalog-grupos');
+  if (!cont) return; // Guard: DOM no listo aún
 
+  try {
   cont.innerHTML = FAMILIAS.map(fam => {
 
     // ── Header de sección visual (Nacional, Española, etc.) ──
@@ -6493,6 +6505,16 @@ function renderCatalogo() {
       </div>
     `;
   }).join('');
+  } catch(e) {
+    console.error('[BarrCan] renderCatalogo crash:', e);
+    cont.innerHTML = `<div style="padding:20px;color:var(--red);font-size:12px;background:rgba(192,57,43,0.08);border-radius:8px;margin:12px">
+      ⚠️ Error al cargar catálogo<br>
+      <span style="font-size:10px;opacity:.7">${e.message}</span><br><br>
+      <button onclick="location.reload()" style="padding:8px 16px;background:var(--blue);color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer">
+        🔄 Recargar app
+      </button>
+    </div>`;
+  }
 }
 
 function toggleGrupo(id) {
@@ -7549,7 +7571,7 @@ function renderHistorial() {
 
           <div class=hist-date style=margin-top:6px>
             ${h.ts}
-            ${h.precioOriginal && h.precio !== h.precioOriginal ? '<span style=color:var(--gold);font-weight:700;margin-left:6px>· Precio modificado</span>' : ''}
+            ${h.precioOriginal && h.precio !== h.precioOriginal ? ` <b style="color:#C8923A">· Precio modificado</b>` : ``}
           </div>
         </div>
 
@@ -8486,6 +8508,26 @@ function limpiarHistorial() {
   renderHistorial();
   actualizarCfgTotal();
   toast('🗑️ Historial eliminado');
+}
+
+// ── Limpiar caché del Service Worker ────────────────────────────
+async function limpiarCacheApp() {
+  if (!confirm('¿Limpiar caché de la app? Se recargará con la versión más reciente.')) return;
+  try {
+    // Eliminar todos los cachés del SW
+    const keys = await caches.keys();
+    await Promise.all(keys.map(k => caches.delete(k)));
+    // Desregistrar todos los SWs
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r => r.unregister()));
+    }
+    toast('✅ Caché limpiado · Recargando...');
+    setTimeout(() => location.reload(true), 1000);
+  } catch(e) {
+    toast('⚠️ ' + e.message);
+    location.reload(true);
+  }
 }
 
 // ── Limpiar duplicados del historial ─────────────────────────────
@@ -11288,10 +11330,23 @@ async function sbInit() {
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', async () => {
     try {
+      // Desregistrar SWs viejos que puedan servir JS con errores
+      const registros = await navigator.serviceWorker.getRegistrations();
+      for (const reg of registros) {
+        const swUrl = reg.active?.scriptURL || '';
+        // Si el SW activo no es nuestra versión actual, eliminarlo
+        if (swUrl && !swUrl.includes('barrcan_sw.js')) {
+          await reg.unregister();
+          console.log('[BarrCan] SW viejo eliminado:', swUrl);
+        }
+      }
+      // Registrar SW actual
       const reg = await navigator.serviceWorker.register('./barrcan_sw.js', { scope: './' });
       console.log('[BarrCan] SW registrado · scope:', reg.scope);
+      // Forzar activación inmediata si hay nueva versión
+      if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
     } catch(e) {
-      console.log('[BarrCan] SW no disponible en este contexto:', e.message);
+      console.log('[BarrCan] SW no disponible:', e.message);
     }
   });
 }
