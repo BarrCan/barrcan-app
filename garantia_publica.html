@@ -145,43 +145,9 @@
       <div class="info-note">Lo encuentras en tu presupuesto-contrato</div>
     </div>
     <div class="form-group">
-      <label class="form-label">¿Cuándo fue instalado? (fecha aproximada)</label>
+      <label class="form-label">Fecha aproximada de instalación</label>
       <input type="date" id="g-fecha-inst" class="form-input">
-      <div class="info-note">📌 Esto es para verificar si aplica garantía — <strong>no es la fecha de visita</strong></div>
     </div>
-  </div>
-
-  <!-- Tipo de reporte: Falla o Garantía -->
-  <div class="card">
-    <div class="card-title">📋 ¿Qué tipo de reporte es?</div>
-    <div style="font-size:12px;color:var(--gray-400);margin-bottom:12px">
-      Selecciona una o ambas opciones según tu situación
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:4px" id="g-reporte-tipo-grid">
-      <button id="rt-falla" onclick="selReporteTipo('falla')"
-        style="padding:12px 6px;border:2px solid var(--gray-200);border-radius:10px;
-               background:none;cursor:pointer;font-family:inherit;transition:all 0.2s;text-align:center">
-        <div style="font-size:22px">🔧</div>
-        <div style="font-size:11px;font-weight:700;color:var(--gray-600);margin-top:4px">Falla</div>
-        <div style="font-size:10px;color:var(--gray-400)">Problema de uso</div>
-      </button>
-      <button id="rt-garantia" onclick="selReporteTipo('garantia')"
-        style="padding:12px 6px;border:2px solid var(--gray-200);border-radius:10px;
-               background:none;cursor:pointer;font-family:inherit;transition:all 0.2s;text-align:center">
-        <div style="font-size:22px">🛡️</div>
-        <div style="font-size:11px;font-weight:700;color:var(--gray-600);margin-top:4px">Garantía</div>
-        <div style="font-size:10px;color:var(--gray-400)">Defecto de instalación</div>
-      </button>
-      <button id="rt-ambas" onclick="selReporteTipo('ambas')"
-        style="padding:12px 6px;border:2px solid var(--gray-200);border-radius:10px;
-               background:none;cursor:pointer;font-family:inherit;transition:all 0.2s;text-align:center">
-        <div style="font-size:22px">🔧🛡️</div>
-        <div style="font-size:11px;font-weight:700;color:var(--gray-600);margin-top:4px">Ambas</div>
-        <div style="font-size:10px;color:var(--gray-400)">Falla + Garantía</div>
-      </button>
-    </div>
-    <div id="g-tipo-reporte-badge" style="display:none;margin-top:8px;padding:8px 12px;
-      border-radius:8px;font-size:12px;font-weight:700;text-align:center"></div>
   </div>
 
   <!-- Tipo de problema -->
@@ -300,36 +266,8 @@ function sb() {
   return _sb;
 }
 
-let TIPO_SEL       = '';
-let PRIOR_SEL      = '';
-let REPORTE_TIPO   = ''; // 'falla' | 'garantia' | 'ambas'
-
-function selReporteTipo(tipo) {
-  REPORTE_TIPO = tipo;
-  const btns = {
-    falla:    document.getElementById('rt-falla'),
-    garantia: document.getElementById('rt-garantia'),
-    ambas:    document.getElementById('rt-ambas')
-  };
-  const colores = { falla:'#E67E22', garantia:'#2E6DA4', ambas:'#8E44AD' };
-  Object.entries(btns).forEach(([k,b]) => {
-    const activo = k === tipo;
-    b.style.borderColor = activo ? colores[tipo] : 'var(--gray-200)';
-    b.style.background  = activo ? `${colores[tipo]}15` : 'none';
-  });
-  const badge = document.getElementById('g-tipo-reporte-badge');
-  if (tipo === 'ambas') {
-    badge.style.display = 'block';
-    badge.style.background = 'rgba(142,68,173,0.1)';
-    badge.style.color = '#8E44AD';
-    badge.style.border = '1px solid rgba(142,68,173,0.3)';
-    badge.textContent = '⚡ Prioridad incrementada — Falla + Garantía activa';
-    // Subir prioridad automáticamente si no hay una ya seleccionada de mayor nivel
-    if (!PRIOR_SEL || PRIOR_SEL === 'normal') PRIOR_SEL = 'alta';
-  } else {
-    badge.style.display = 'none';
-  }
-}
+let TIPO_SEL  = '';
+let PRIOR_SEL = '';
 let MEDIA     = [];
 
 const PRIOR_LABELS = {
@@ -351,11 +289,16 @@ function selTipo(btn) {
 }
 
 function agregarMedia(input) {
+  const MAX_SIZE_MB = 5;
   Array.from(input.files).forEach(file => {
     if (MEDIA.length >= 6) { alert('Máximo 6 archivos'); return; }
+    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
+      alert(`"${file.name}" supera ${MAX_SIZE_MB} MB. Comprime el archivo o graba un video más corto.`);
+      return;
+    }
     const reader = new FileReader();
     reader.onload = e => {
-      MEDIA.push({ dataUrl: e.target.result, tipo: file.type, nombre: file.name });
+      MEDIA.push({ dataUrl: e.target.result, tipo: file.type, nombre: file.name, size: file.size });
       renderMedia();
     };
     reader.readAsDataURL(file);
@@ -377,82 +320,35 @@ function renderMedia() {
   ).join('');
 }
 
-// Convierte dataURL a Blob para subir a Storage
-function dataURLtoBlob(dataUrl) {
-  const [header, data] = dataUrl.split(',');
-  const mime = header.match(/:(.*?);/)[1];
-  const bytes = atob(data);
-  const arr = new Uint8Array(bytes.length);
-  for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-  return new Blob([arr], { type: mime });
-}
-
-async function subirFotos(folio) {
-  if (!MEDIA.length) return [];
-  const urls = [];
-  for (let i = 0; i < MEDIA.length; i++) {
-    const m = MEDIA[i];
-    try {
-      const ext  = m.tipo.startsWith('video') ? 'mp4' : m.tipo.split('/')[1] || 'jpg';
-      const path = `${folio}/foto_${i + 1}.${ext}`;
-      const blob = dataURLtoBlob(m.dataUrl);
-      const { error } = await sb().storage
-        .from('garantias')
-        .upload(path, blob, { contentType: m.tipo, upsert: true });
-      if (error) { console.warn('Upload error foto', i, error.message); continue; }
-      const { data } = sb().storage.from('garantias').getPublicUrl(path);
-      if (data?.publicUrl) urls.push(data.publicUrl);
-    } catch(e) { console.warn('Error subiendo foto', i, e.message); }
-  }
-  return urls;
-}
-
 async function enviarReporte() {
   const nombre = document.getElementById('g-nombre').value.trim();
   const tel    = document.getElementById('g-tel').value.trim();
   const desc   = document.getElementById('g-desc').value.trim();
   const errEl  = document.getElementById('g-error');
 
-  if (!nombre)      { mostrarError('⚠️ Tu nombre es obligatorio'); return; }
-  if (!tel)         { mostrarError('⚠️ Tu teléfono es obligatorio'); return; }
-  if (!REPORTE_TIPO){ mostrarError('⚠️ Indica si es Falla, Garantía o Ambas'); return; }
-  if (!TIPO_SEL)    { mostrarError('⚠️ Selecciona el tipo de problema'); return; }
-  if (!desc)        { mostrarError('⚠️ Describe el problema con más detalle'); return; }
+  if (!nombre) { mostrarError('⚠️ Tu nombre es obligatorio'); return; }
+  if (!tel)    { mostrarError('⚠️ Tu teléfono es obligatorio'); return; }
+  if (!TIPO_SEL){ mostrarError('⚠️ Selecciona el tipo de problema'); return; }
+  if (!desc)   { mostrarError('⚠️ Describe el problema con más detalle'); return; }
   errEl.style.display = 'none';
 
   const btn = document.getElementById('g-btn-enviar');
   btn.disabled = true;
+  btn.innerHTML = '<span style="font-size:18px">⏳</span> Enviando…';
 
   const folio = 'GTI-' + Date.now().toString().slice(-6);
-
-  // Prioridad: si es "ambas" subir a alta automáticamente
-  let priorFinal = PRIOR_SEL || 'normal';
-  if (REPORTE_TIPO === 'ambas' && priorFinal === 'normal') priorFinal = 'alta';
-
-  // Subir fotos si las hay
-  let fotosUrls = [];
-  if (MEDIA.length > 0) {
-    btn.innerHTML = `<span style="font-size:18px">📤</span> Subiendo fotos…`;
-    fotosUrls = await subirFotos(folio);
-    btn.innerHTML = `<span style="font-size:18px">⏳</span> Guardando reporte…`;
-  } else {
-    btn.innerHTML = `<span style="font-size:18px">⏳</span> Enviando…`;
-  }
-
   const payload = {
     cliente_nombre:    nombre,
     cliente_tel:       tel,
     folio_contrato:    document.getElementById('g-folio').value.trim() || null,
     tipo_problema:     TIPO_SEL,
-    reporte_tipo:      REPORTE_TIPO,
-    prioridad:         priorFinal,
+    prioridad:         PRIOR_SEL || 'normal',
     descripcion:       desc,
     fecha_instalacion: document.getElementById('g-fecha-inst').value || null,
     disponibilidad:    document.getElementById('g-disponibilidad').value,
     estado:            'nuevo',
     registrado_por:    'cliente_web',
-    num_evidencias:    MEDIA.length,
-    fotos_urls:        fotosUrls
+    notas_internas:    `Folio cliente: ${folio}${MEDIA.length ? ' · ' + MEDIA.length + ' foto(s) adjunta(s) vía WA' : ''}`
   };
 
   try {
@@ -460,6 +356,7 @@ async function enviarReporte() {
     if (error) throw error;
     mostrarEnviado(folio, nombre, tel, payload);
   } catch(e) {
+    // Si falla Supabase, igual notificar por WhatsApp
     console.warn('Supabase error:', e.message);
     mostrarEnviado(folio, nombre, tel, payload);
   }
