@@ -4,7 +4,7 @@
 // Supabase y APIs externas: Network Only
 // ══════════════════════════════════════════════
 
-const CACHE_VERSION = 'barrcan-v5';
+const CACHE_VERSION = 'barrcan-v6';
 
 const RECURSOS_CORE = [
   './barrcan_app.html',
@@ -85,3 +85,8 @@ async function cachePrimero(request) {
 
   return cached || fetchPromise;
 }
+
+// Activar nueva versión inmediatamente cuando la app lo pida
+self.addEventListener('message', e => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
+});
