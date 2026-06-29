@@ -7868,8 +7868,9 @@ function histPagoRapidoAbrir(h) {
 
   // Poblar datos
   document.getElementById('hist-pago-titulo').textContent = `💰 Pagos · ${folio}`;
+  const _sc1 = saldo > 0 ? 'var(--red)' : 'var(--green)';
   document.getElementById('hist-pago-resumen').innerHTML =
-    `Total: <b>$${fmt(total)}</b> · Cobrado: <b style="color:var(--green)">$${fmt(pagado)}</b> · Saldo: <b style="color:${saldo>0?'var(--red)':'var(--green)}">$${fmt(saldo)}</b>`;
+    `Total: <b>$${fmt(total)}</b> · Cobrado: <b style="color:var(--green)">$${fmt(pagado)}</b> · Saldo: <b style="color:${_sc1}">$${fmt(saldo)}</b>`;
 
   // Fecha por defecto = hoy
   document.getElementById('hpr-fecha').value = new Date().toISOString().split('T')[0];
@@ -7955,8 +7956,9 @@ async function histPagoRapidoGuardar() {
   const desc    = h.sistema ? `${h.sistema} ${h.L}×${h.H}mm` : '—';
 
   // Actualizar resumen en panel
+  const _saldoColor2 = saldo > 0 ? 'var(--red)' : 'var(--green)';
   document.getElementById('hist-pago-resumen').innerHTML =
-    `Total: <b>$${fmt(total)}</b> · Cobrado: <b style="color:var(--green)">$${fmt(pagado)}</b> · Saldo: <b style="color:${saldo>0?'var(--red)':'var(--green)}">$${fmt(saldo)}</b>`;
+    `Total: <b>$${fmt(total)}</b> · Cobrado: <b style="color:var(--green)">$${fmt(pagado)}</b> · Saldo: <b style="color:${_saldoColor2}">$${fmt(saldo)}</b>`;
   histPagoRapidoRenderLista(h);
   renderHistorial();
   toast(`✅ Pago de $${fmt(monto)} registrado`);
