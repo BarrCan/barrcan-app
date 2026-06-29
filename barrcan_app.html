@@ -7,9 +7,15 @@
   ██████╔╝██║  ██║██║  ██║██║  ██║╚██████╗██║  ██║██║ ╚████║
   ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝
 
-  VERSIÓN : v36
+  VERSIÓN : v36.1.1
   FECHA   : 2026-06-30
   CAMBIOS :
+    v36.1 — Pagos e historial:
+    - FIX: limpiarDuplicadosHistorial() — elimina los 54 registros repetidos
+    - ADD: botón 🧹 en Config para limpiar duplicados sin borrar todo
+    - ADD: panel de pagos pre-llena monto con saldo pendiente real
+    - ADD: concepto sugerido automáticamente según % ya pagado
+    - ADD: recibo desde historial muestra total/pagado/saldo actualizado
     v36 — Historial mejorado:
     - FIX: guardarCotizacion anti-duplicados (botón deshabilitado + dedup por ts+sistema)
     - ADD: botón 💲 para modificar precio final directamente desde historial
@@ -1093,7 +1099,7 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     <div class="offline-badge">
       <div class="offline-dot"></div>
       <span id="conn-status">Offline-First</span>
-      <span style="font-size:9px;color:rgba(255,255,255,0.3);margin-left:4px">v36</span>
+      <span style="font-size:9px;color:rgba(255,255,255,0.3);margin-left:4px">v36.1</span>
     </div>
   </div>
 
@@ -2462,7 +2468,14 @@ select.form-select { padding-right: 36px; cursor: pointer; }
         </div>
       </div>
 
-      <button class="btn-limpiar" onclick="limpiarHistorial()">🗑️ Limpiar historial completo</button>
+      <button onclick="limpiarDuplicadosHistorial()"
+                style="width:100%;padding:10px 14px;background:rgba(200,146,58,0.08);
+                       border:1.5px solid rgba(200,146,58,0.3);border-radius:var(--radius-sm);
+                       color:var(--gold);font-family:'DM Sans',sans-serif;font-size:13px;
+                       font-weight:600;cursor:pointer;margin-bottom:8px">
+                🧹 Eliminar duplicados del historial
+              </button>
+              <button class="btn-limpiar" onclick="limpiarHistorial()">🗑️ Limpiar historial completo</button>
 
       <div style="height:12px"></div>
 
@@ -7861,14 +7874,29 @@ function histPagoRapidoAbrir(h) {
   // Fecha por defecto = hoy
   document.getElementById('hpr-fecha').value = new Date().toISOString().split('T')[0];
 
-  // Sugerir monto según concepto
+  // Pre-llenar monto con saldo pendiente real
   const inp = document.getElementById('hpr-monto');
-  inp.value = parseFloat((total * 0.5).toFixed(2));
-  document.getElementById('hpr-concepto').addEventListener('change', function() {
+  inp.value = parseFloat(saldo.toFixed(2));
+
+  // Seleccionar concepto sugerido según % pagado
+  const pctPagado = total > 0 ? pagado / total : 0;
+  const selectConc = document.getElementById('hpr-concepto');
+  if (pctPagado === 0)       selectConc.value = 'anticipo';
+  else if (pctPagado < 0.55) selectConc.value = 'segundo_pago';
+  else if (pctPagado < 0.90) selectConc.value = 'liquidacion';
+  else                        selectConc.value = 'pago_total';
+
+  // Actualizar monto al cambiar concepto
+  const updateMonto = function() {
     const pcts = { anticipo:0.50, segundo_pago:0.35, liquidacion:0.15, pago_total:1.0, otro:0 };
-    const p = pcts[this.value] || 0;
-    inp.value = p > 0 ? parseFloat((total * p).toFixed(2)) : '';
-  }, { once: false });
+    const p = pcts[selectConc.value] || 0;
+    inp.value = p > 0 ? parseFloat((total * p).toFixed(2)) : parseFloat(saldo.toFixed(2));
+  };
+  // Reemplazar listener previo
+  const selectNew = selectConc.cloneNode(true);
+  selectConc.parentNode.replaceChild(selectNew, selectConc);
+  selectNew.value = document.getElementById('hpr-concepto')?.value || 'anticipo';
+  selectNew.addEventListener('change', updateMonto);
 
   // Render lista pagos anteriores
   histPagoRapidoRenderLista(h);
@@ -7899,11 +7927,11 @@ function histPagoRapidoRenderLista(h) {
     </div>`).join('');
 }
 
-function histPagoRapidoGuardar() {
+async function histPagoRapidoGuardar() {
   const monto   = parseFloat(document.getElementById('hpr-monto').value) || 0;
   const fecha   = document.getElementById('hpr-fecha').value;
-  const concepto= document.getElementById('hpr-concepto').value;
-  const forma   = document.getElementById('hpr-forma').value;
+  const concepto= document.getElementById('hpr-concepto')?.value || 'anticipo';
+  const forma   = document.getElementById('hpr-forma')?.value || 'efectivo';
 
   if (!monto || monto <= 0) { toast('⚠️ Ingresa el monto'); return; }
   if (!fecha) { toast('⚠️ Ingresa la fecha'); return; }
@@ -7917,15 +7945,186 @@ function histPagoRapidoGuardar() {
   STATE.historial[idx] = h;
   guardarEnStorage();
 
-  // Actualizar UI
+  // Calcular saldo actualizado
   const total  = h.precio;
   const pagado = h.pagos.reduce((s, p) => s + p.monto, 0);
-  const saldo  = total - pagado;
+  const saldo  = Math.max(0, total - pagado);
+  const folio  = h.contrato?.folio || `COT-${h.id}`;
+  const cliente = h.contrato?.nombre || h._r?.cliente || '—';
+  const dir     = h.contrato?.direccion || '—';
+  const desc    = h.sistema ? `${h.sistema} ${h.L}×${h.H}mm` : '—';
+
+  // Actualizar resumen en panel
   document.getElementById('hist-pago-resumen').innerHTML =
     `Total: <b>$${fmt(total)}</b> · Cobrado: <b style="color:var(--green)">$${fmt(pagado)}</b> · Saldo: <b style="color:${saldo>0?'var(--red)':'var(--green)}">$${fmt(saldo)}</b>`;
   histPagoRapidoRenderLista(h);
   renderHistorial();
   toast(`✅ Pago de $${fmt(monto)} registrado`);
+
+  // Generar recibo con saldo real
+  await histGenerarRecibo({
+    folio, cliente, dir, desc,
+    total, pagado, saldo, monto,
+    fecha, concepto, forma
+  });
+}
+
+// ── Generar recibo desde historial con saldo real ─────────────────
+async function histGenerarRecibo(d) {
+  function fmtFecha(iso) {
+    if (!iso) return '—';
+    const [y,m,dia] = iso.split('-');
+    const meses = ['','enero','febrero','marzo','abril','mayo','junio',
+      'julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    return `${parseInt(dia)} de ${meses[parseInt(m)]} de ${y}`;
+  }
+  function diasHabiles(desde, dias) {
+    const d = new Date(desde + 'T12:00:00');
+    let agr = 0;
+    while (agr < dias) {
+      d.setDate(d.getDate() + 1);
+      if (d.getDay() !== 0 && d.getDay() !== 6) agr++;
+    }
+    return d.toISOString().split('T')[0];
+  }
+
+  const folioRec  = `REC-${Date.now().toString().slice(-6)}`;
+  const formaStr  = d.forma === 'tarjeta' ? 'Tarjeta de crédito/débito'
+    : d.forma === 'transferencia' ? 'Transferencia bancaria' : 'Efectivo';
+  const titulo    = d.concepto === 'pago_total' ? 'RECIBO DE PAGO TOTAL'
+    : d.concepto === 'liquidacion' ? 'RECIBO DE LIQUIDACIÓN'
+    : d.concepto === 'segundo_pago' ? 'RECIBO DE SEGUNDO PAGO'
+    : 'RECIBO DE ANTICIPO';
+
+  const fechaMin = diasHabiles(d.fecha, 5);
+  const fechaMax = diasHabiles(d.fecha, 7);
+  const rangoFechas = `${fmtFecha(fechaMin)} al ${fmtFecha(fechaMax)}`;
+  const mostrarFecha = ['anticipo','pago_total'].includes(d.concepto);
+
+  const logo = typeof BARRCAN_LOGO_B64 !== 'undefined' ? BARRCAN_LOGO_B64 : '';
+
+  const html = `<!DOCTYPE html><html lang=es><head><meta charset=UTF-8>
+  <meta name=viewport content=width=device-width>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;color:#222;background:white;font-size:9pt}
+    .page{max-width:520px;margin:0 auto;padding:14px 18px 80px}
+    .header{text-align:center;border-bottom:2px solid #1B3A5C;padding-bottom:10px;margin-bottom:12px}
+    table{width:100%;border-collapse:collapse;margin-bottom:10px}
+    td{padding:5px 8px;border:1px solid #ddd;font-size:8.5pt}
+    .lbl{font-weight:700;background:#f5f7fa;width:36%}
+    .monto-box{background:#1B3A5C;color:white;border-radius:6px;padding:12px 16px;
+      display:flex;justify-content:space-between;align-items:center;margin:10px 0}
+    .saldo-box{border:1.5px solid #E67E22;border-radius:6px;padding:10px 14px;
+      background:#FEF9E7;margin-bottom:10px}
+    .saldo-row{display:flex;justify-content:space-between;align-items:center;
+      padding:3px 0;font-size:9pt}
+    .saldo-total{font-size:11pt;font-weight:800;color:#1B3A5C}
+    .saldo-pend{font-size:13pt;font-weight:800;color:${d.saldo<=0?'#27AE60':'#E67E22'}}
+    .fecha-box{background:#EAF4FF;border:1.5px solid #2E6DA4;border-radius:6px;
+      padding:10px 14px;margin:10px 0;text-align:center}
+    .sello{border:1.5px dashed #1B3A5C;border-radius:6px;padding:8px;
+      text-align:center;margin-top:12px;font-size:8.5pt;color:#1B3A5C}
+    .footer{margin-top:10px;padding-top:8px;border-top:1px solid #ddd;
+      font-size:7pt;color:#888;text-align:center;line-height:1.9}
+    .barra{position:fixed;bottom:0;left:0;right:0;background:#1B3A5C;
+      padding:8px 16px;display:flex;gap:8px;justify-content:center;z-index:999}
+    .btn-p{padding:10px 22px;background:#C8923A;color:white;border:none;
+      border-radius:7px;font-size:13px;font-weight:700;cursor:pointer}
+    .btn-c{padding:10px 14px;background:rgba(255,255,255,.15);color:white;
+      border:none;border-radius:7px;font-size:12px;cursor:pointer}
+    @media print{.barra{display:none!important}@page{size:letter;margin:8mm 12mm}}
+  </style></head><body>
+  <div class=barra>
+    <button class=btn-p onclick="window.print()">🖨️ Imprimir / PDF</button>
+    <button class=btn-c onclick="window.close()">✕ Cerrar</button>
+  </div>
+  <div class=page>
+    <div class=header>
+      <div style=display:flex;align-items:center;gap:14px;justify-content:center>
+        <img src="${logo}" style=width:56px;height:56px;object-fit:contain>
+        <div style=text-align:left>
+          <div style=font-size:16pt;font-weight:900;color:#1B3A5C;letter-spacing:2px>BarrCan</div>
+          <div style=font-size:7pt;color:#C8923A;letter-spacing:3px;text-transform:uppercase>Cancelería · Aluminio · Vidrio</div>
+          <div style=font-size:7.5pt;color:#666;margin-top:2px>TEL: 56-15-15-84-15 · www.BarrCan.com.mx</div>
+        </div>
+      </div>
+      <div style=font-size:7pt;color:#888;margin-top:5px>PRIV. SANTA CRUZ No.23 COL. SAN SIMÓN TICUMAC CP. 03660 · BENITO JUÁREZ, CDMX</div>
+    </div>
+
+    <div style=font-size:11pt;font-weight:700;color:#1B3A5C;text-align:center;
+         border-top:1px dashed #aaa;border-bottom:1px dashed #aaa;padding:5px 0;margin-bottom:8px>
+      ${titulo}
+    </div>
+    <div style=font-size:8.5pt;color:#C8923A;font-weight:700;text-align:center;
+         margin-bottom:10px;font-family:monospace>
+      Folio: ${folioRec} &nbsp;·&nbsp; Pedido: ${d.folio}
+    </div>
+
+    <table>
+      <tr><td class=lbl>Cliente</td><td><strong>${d.cliente}</strong></td></tr>
+      ${d.dir && d.dir!=='—' ? `<tr><td class=lbl>Dirección</td><td>${d.dir}</td></tr>` : ''}
+      ${d.desc && d.desc!=='—' ? `<tr><td class=lbl>Descripción</td><td>${d.desc}</td></tr>` : ''}
+      <tr><td class=lbl>Fecha de pago</td><td>${fmtFecha(d.fecha)}</td></tr>
+      <tr><td class=lbl>Forma de pago</td><td>${formaStr}</td></tr>
+    </table>
+
+    <!-- Monto de este pago -->
+    <div class=monto-box>
+      <div>
+        <div style=font-size:8.5pt;opacity:.8>${titulo.replace('RECIBO DE ','').replace('RECIBO ','')}</div>
+        <div style=font-size:16pt;font-weight:800;color:#F1C40F>$${fmt(d.monto)} MXN</div>
+      </div>
+      <div style=font-size:28pt>✅</div>
+    </div>
+
+    <!-- Desglose total / pagado / saldo -->
+    <div class=saldo-box>
+      <div style=font-size:8.5pt;font-weight:700;color:#E67E22;text-transform:uppercase;
+           letter-spacing:1px;margin-bottom:6px>Estado de cuenta del proyecto</div>
+      <div class=saldo-row>
+        <span>Total del proyecto</span>
+        <span class=saldo-total>$${fmt(d.total)} MXN</span>
+      </div>
+      <div class=saldo-row>
+        <span>Total cobrado (incl. este pago)</span>
+        <span style=color:#27AE60;font-weight:700>$${fmt(d.pagado)} MXN</span>
+      </div>
+      <div class=saldo-row style=border-top:1px solid #E67E22;margin-top:6px;padding-top:6px>
+        <span style=font-weight:700>${d.saldo<=0?'✅ LIQUIDADO':'Saldo pendiente'}</span>
+        <span class=saldo-pend>$${fmt(d.saldo)} MXN</span>
+      </div>
+    </div>
+
+    ${mostrarFecha ? `<div class=fecha-box>
+      <div style=font-size:8pt;font-weight:700;color:#2E6DA4;text-transform:uppercase;
+           letter-spacing:1px;margin-bottom:4px>📅 Fecha tentativa de instalación</div>
+      <div style=font-size:10.5pt;font-weight:800;color:#1B3A5C>${rangoFechas}</div>
+      <div style=font-size:7.5pt;color:#555;margin-top:4px;font-style:italic>
+        Plazo estimado de 5 a 7 días hábiles a partir de la recepción del anticipo.
+      </div>
+    </div>` : ''}
+
+    <div style=margin-top:10px;padding:9px 14px;background:#FFF8E1;border:1px solid #F39C12;
+      border-radius:6px;font-size:8.5pt;color:#555>
+      <strong>¿Requiere factura electrónica (CFDI)?</strong><br>
+      Envíe sus datos fiscales a <strong>ventas@barrcan.com.mx</strong><br>
+      <span style=color:#888>Este recibo no tiene validez fiscal.</span>
+    </div>
+
+    <div class=sello>
+      ✅ Pago recibido conforme · ${fmtFecha(d.fecha)}<br>
+      <strong>BarrCan Cancelería</strong> · TEL: 56-15-15-84-15
+    </div>
+    <div class=footer>
+      Este recibo es comprobante del pago indicado. El saldo restante deberá cubrirse conforme a lo acordado.<br>
+      ${folioRec} · BarrCan Cancelería · ${fmtFecha(d.fecha)}
+    </div>
+  </div></body></html>`;
+
+  const win = window.open('', '_blank');
+  if (win) { win.document.write(html); win.document.close(); }
+  else toast('⚠️ Activa ventanas emergentes para ver el recibo');
 }
 
 function histPagoRapidoEliminar(pagoIdx) {
@@ -8285,6 +8484,31 @@ function limpiarHistorial() {
   renderHistorial();
   actualizarCfgTotal();
   toast('🗑️ Historial eliminado');
+}
+
+// ── Limpiar duplicados del historial ─────────────────────────────
+function limpiarDuplicadosHistorial() {
+  const total = STATE.historial.length;
+  const vistos = new Set();
+  STATE.historial = STATE.historial.filter(h => {
+    // Clave única: ts del resultado + sistema (cubre nuevos registros)
+    // Para registros viejos sin ts usa sistema+L+H+precio
+    const clave = h.ts
+      ? `${h.sistema}|${h.ts}`
+      : `${h.sistema}|${h.L}|${h.H}|${h.precio}`;
+    if (vistos.has(clave)) return false;
+    vistos.add(clave);
+    return true;
+  });
+  const eliminados = total - STATE.historial.length;
+  if (eliminados === 0) {
+    toast('✅ Sin duplicados encontrados en el historial');
+    return;
+  }
+  guardarEnStorage();
+  actualizarCfgTotal();
+  renderHistorial();
+  toast(`🧹 ${eliminados} duplicado${eliminados>1?'s':''} eliminado${eliminados>1?'s':''} · Quedan ${STATE.historial.length}`);
 }
 
 function actualizarCfgTotal() {
