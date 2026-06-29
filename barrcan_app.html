@@ -4411,24 +4411,27 @@ const DB = {
     {
       id:"GTIA_ESTANDAR", nombre:"Garantía Extendida Estándar 1 año", serie:"Garantía Extendida", emoji:"🛡️",
       tipo:"Garantia", esGarantia:true, deducible:1100,
-      // Tiers de precio fijo (mismos que Shopify)
-      tiers: [
-        { label:'Básica',   sku:'GE-EST-BASICA',   rangoMin:0,     rangoMax:8000,  precio:990  },
-        { label:'Media',    sku:'GE-EST-MEDIA',    rangoMin:8001,  rangoMax:16000, precio:1690 },
-        { label:'Avanzada', sku:'GE-EST-AVANZADA', rangoMin:16001, rangoMax:25000, precio:2490 },
-        { label:'Premium',  sku:'GE-EST-PREMIUM',  rangoMin:25001, rangoMax:99999, precio:3490 }
+      // Rangos de prima fija según precio del cancel (sincronizado con Shopify)
+      primaRangos:[
+        { hasta:8000,  prima:1500, sku:"GE-EST-BASICA",   label:"Básica"   },
+        { hasta:15000, prima:2800, sku:"GE-EST-ESTANDAR", label:"Estándar" },
+        { hasta:22000, prima:4500, sku:"GE-EST-PLUS",     label:"Plus"     },
+        { hasta:Infinity, prima:5500, sku:"GE-EST-PREMIUM", label:"Premium" }
       ],
-      desc:'Cobertura de reemplazo ante fallas estructurales. 2 intervenciones MO en CDMX. No cubre fuerza mayor. Deducible $1,100 por evento.',
+      desc:'Cobertura de reemplazo ante fallas estructurales. 2 intervenciones MO en CDMX. No cubre fuerza mayor.',
       holgura:0, factorGIF:1.0, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
       id:"GTIA_PREMIUM", nombre:"Garantía Extendida Premium + Sísmica", serie:"Garantía Extendida", emoji:"🛡️",
-      tipo:"Garantia", esGarantia:true, deducible:1100,
-      // Tier único (deferred - precio a confirmar)
-      tiers: [
-        { label:'Premium+', sku:'GE-PREM-SISMICA', rangoMin:0, rangoMax:99999, precio:4990 }
+      tipo:"Garantia", esGarantia:true, deducible:1400,
+      // Rangos de prima fija — nivel Premium (disponible en versión futura)
+      primaRangos:[
+        { hasta:8000,  prima:2500, sku:"GE-PREM-BASICA",   label:"Básica"   },
+        { hasta:15000, prima:4900, sku:"GE-PREM-ESTANDAR", label:"Estándar" },
+        { hasta:22000, prima:7500, sku:"GE-PREM-PLUS",     label:"Plus"     },
+        { hasta:Infinity, prima:9500, sku:"GE-PREM-PREMIUM", label:"Premium" }
       ],
-      desc:'Cobertura Estándar + daños por sismo, temblor e inundación sobre vidrio templado. Deducible $1,100.',
+      desc:'Cobertura Estándar + daños por sismo, temblor e inundación sobre vidrio templado.',
       holgura:0, factorGIF:1.0, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     }
   ]
@@ -5481,8 +5484,8 @@ function svgPorTipo(tipo, serie, id) {
     'MANT_CANCEL_SELLADO':    () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🔒</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">SELLADO CANCEL</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">$450/pieza</text>`),
     'MANT_CANCEL_HULES':      () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🔄</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">CAMBIO HULES</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">$380/pieza</text>`),
     'MANT_CANCEL_BISAGRAS':   () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🔩</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">BISAGRAS CANCEL</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">$520/juego</text>`),
-    'GTIA_ESTANDAR':          () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🛡️</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">GE ESTÁNDAR</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">Precio fijo · Ded.$1,100</text>`),
-    'GTIA_PREMIUM':           () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🏆</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="#C8923A" font-family="Arial" font-weight="700">GE PREMIUM</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">Precio fijo · Ded.$1,100</text>`),
+    'GTIA_ESTANDAR':          () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🛡️</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">GE ESTÁNDAR</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">20% · Ded.$1,100</text>`),
+    'GTIA_PREMIUM':           () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🏆</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="#C8923A" font-family="Arial" font-weight="700">GE PREMIUM</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">35% · Ded.$1,400</text>`),
 
     // ════════════════════════════════════════
 
@@ -6217,8 +6220,8 @@ function renderResultado(r) {
   // ── Caso especial: GARANTÍA EXTENDIDA ──
   if (STATE.ultimoResultado && STATE.ultimoResultado.esGarantia) {
     const g = STATE.ultimoResultado;
-    const tierLabel = g.gtiaTier ? `Tier ${g.gtiaTier}` : 'Precio fijo';
-    const skuLabel  = g.gtiaSku  ? ` · ${g.gtiaSku}` : '';
+    const nivelLabel = g.gtiaNivel ? `Nivel ${g.gtiaNivel}` : 'Prima fija';
+    const skuLabel   = g.gtiaSKU   ? ` · ${g.gtiaSKU}`     : '';
     el.innerHTML = `
       <div class="slide-up">
         <div class="resultado-header">
@@ -6232,9 +6235,9 @@ function renderResultado(r) {
         </div>
         <div class="desglose-card fade-in" style="margin-top:16px">
           <div class="desglose-header">🛡️ Desglose Garantía</div>
-          <div class="desglose-row"><span>Costo del producto</span><span>$${fmt(g.gtiaCostoCancel)}</span></div>
-          <div class="desglose-row"><span>${tierLabel}${skuLabel}</span><span>$${fmt(g.precioFinal)}</span></div>
-          <div class="desglose-row"><span>Deducible por evento</span><span>$${fmt(g.gtiaDeducible)}</span></div>
+          <div class="desglose-row"><span>Costo del cancel</span><span>$${fmt(g.gtiaCostoCancel)}</span></div>
+          <div class="desglose-row"><span>Prima fija — ${nivelLabel}${skuLabel}</span><span>$${fmt(g.precioFinal)}</span></div>
+          <div class="desglose-row"><span>Deducible por evento de vidrio</span><span>$${fmt(g.gtiaDeducible)}</span></div>
           <div class="desglose-row"><span>Límite de responsabilidad</span><span>$${fmt(g.gtiaCostoCancel)}</span></div>
           <div class="desglose-row total-row"><span>PRIMA A PAGAR</span><span>$${fmt(g.precioFinal)}</span></div>
         </div>
@@ -6298,12 +6301,6 @@ function renderResultado(r) {
     `;
     document.getElementById('export-bar').classList.add('visible');
     document.querySelector('.content').style.paddingBottom = '80px';
-    return;
-  }
-
-  // Guard: tipos especiales no deben pasar por renderizado de cancel estándar
-  if (!r || !r.alertaPeso) {
-    el.innerHTML = `<div style="text-align:center;padding:40px;color:var(--gray-400)">Sin resultado para mostrar</div>`;
     return;
   }
 
@@ -7292,9 +7289,6 @@ function cerrarModalContrato() {
 // ── SVG estándar por tipo de ventana ──────────────
 function svgContratoPorTipo(tipo, L, H, idx) {
   // Dimensiones de render proporcionales al claro real
-  if (!L || !H || L <= 0 || H <= 0) {
-    return `<div style="width:120px;height:90px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#aaa;border:1px dashed #ccc;border-radius:4px">${tipo||'Sin diagrama'}</div>`;
-  }
   const maxW = 120, maxH = 90;
   const ratio = Math.min(maxW / L, maxH / H);
   const w = Math.round(L * ratio);
@@ -7558,18 +7552,13 @@ function generarContrato() {
 
   if (STATE.presupuestoGlobal) {
     const g = STATE.presupuestoGlobal;
-    partidas = g.partidas.map(p => {
-      const sisObj = DB.sistemas.find(s=>s.nombre===p.nombre);
-      // Usar dimensiones reales si disponibles; sino aproximar desde vidrio
-      const dimL = p.L || (p.anchoVid ? p.anchoVid + 44 : 0);
-      const dimH = p.H || (p.altoVid  ? p.altoVid  + 44 : 0);
-      return {
-        nombre: p.nombre,
-        tipo: sisObj?.tipo || '',
-        L: dimL, H: dimH,
-        precio: p.precioUnitario
-      };
-    });
+    partidas = g.partidas.map(p => ({
+      nombre: p.nombre,
+      tipo: p.alertaNivel ? DB.sistemas.find(s=>s.nombre===p.nombre)?.tipo || '' : '',
+      L: p.anchoVid + 44, // aproximamos claro desde vidrio
+      H: p.altoVid  + 44,
+      precio: p.precioUnitario
+    }));
     total = g.precioFinalGlobal;
   } else if (STATE.ultimoResultado) {
     const r = STATE.ultimoResultado;
@@ -8240,7 +8229,7 @@ function domoActualizarVista() {
     const paso = 700; // mm
     for (let x = paso; x < ancho; x += paso) {
       const px = ox + (x * ratio);
-      interLines += `<line x1="${px}" y1="${oy}" x2="${px}" y2="${oy+rH}" stroke="${c1}" stroke-width="1.5"/>`;
+      interLines += `<line x1="${px} y1=${oy} x2=${px} y2=${oy+rH} stroke=${c1} stroke-width=1.5/>`;
     }
   }
 
@@ -8771,13 +8760,6 @@ async function syncTodo() {
       } else if (item.tipo === 'visita') {
         const { error } = await sb().from('visitas_medicion').insert([item.dato]);
         if (!error) exitos++;
-      } else if (item.tipo === 'cliente_update') {
-        const { id, ...campos } = item.dato;
-        const { error } = await sb().from('clientes').update(campos).eq('id', id);
-        if (!error) exitos++;
-      } else if (item.tipo === 'garantia') {
-        const { error } = await sb().from('garantias').insert([item.dato]);
-        if (!error) exitos++;
       }
     } catch(e) {
       // Si falla, volver a encolar
@@ -8791,9 +8773,8 @@ async function syncTodo() {
 
   if (exitos > 0) {
     toast(`☁️ ${exitos} registro${exitos>1?'s':''} sincronizado${exitos>1?'s':''}`);
-    // Refrescar listas si había pendientes
-    if (cola.some(i => ['cliente','cliente_update'].includes(i.tipo))) cliCargar();
-    if (cola.some(i => i.tipo === 'garantia')) garantiasRenderLista();
+    // Refrescar clientes si había pendientes
+    if (cola.some(i => i.tipo === 'cliente')) await cliCargar();
   }
 }
 
@@ -8802,11 +8783,22 @@ async function sbFlushCola() {
   await syncTodo();
 }
 
+function sbCargarColaLocal() {
+  try {
+    const raw = localStorage.getItem('barrcan_sync_cola');
+    if (raw) {
+      const ids = JSON.parse(raw).map(x => x.id);
+      SYNC.cola = STATE.historial.filter(h => ids.includes(h.id));
+    }
+  } catch(e){}
+}
+
 // ── Guardar encuesta en Supabase ──────────────
 async function sbGuardarEncuesta(datos) {
   if (!sb() || !SYNC.online) return false;
   try {
     const { error } = await sb()
+      
       .from('encuestas')
       .insert(datos);
     if (error) throw error;
@@ -8822,6 +8814,7 @@ async function sbCargarConfigPrecios() {
   if (!sb() || !SYNC.online) return;
   try {
     const { data, error } = await sb()
+      
       .from('config_precios')
       .select('clave,valor');
     if (error || !data) return;
@@ -8884,6 +8877,7 @@ async function sbActualizarConfigPrecios() {
       updated_at: new Date().toISOString()
     }));
     const { error } = await sb()
+      
       .from('config_precios')
       .upsert(updates, { onConflict: 'clave' });
     if (!error) toast('☁️ Precios guardados en la nube');
@@ -8902,18 +8896,18 @@ async function sbInit() {
 }
 
 // ══════════════════════════════════════════════
-// SERVICE WORKER — gestión de versiones
+// SERVICE WORKER — desregistrar versiones viejas
+// El SW solo se activa cuando la app está en servidor
 // ══════════════════════════════════════════════
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', async () => {
-    try {
-      // Registrar SW actual
-      const reg = await navigator.serviceWorker.register('./barrcan_sw.js', { scope: './' });
-      console.log('[BarrCan] SW registrado · scope:', reg.scope);
-    } catch(e) {
-      // En desarrollo local (file://) el SW no funciona — ignorar
-      console.log('[BarrCan] SW no disponible en este contexto:', e.message);
-    }
+  window.addEventListener('load', () => {
+    // Desregistrar cualquier SW viejo que esté causando DataCloneError
+    navigator.serviceWorker.getRegistrations().then(registros => {
+      registros.forEach(reg => {
+        reg.unregister();
+        console.log('[BarrCan] SW viejo desregistrado');
+      });
+    });
   });
 }
 
@@ -10320,9 +10314,8 @@ async function pagoGuardar() {
       localStorage.setItem('barrcan_ordenes_cache', JSON.stringify(ORDENES_CACHE));
     }
     toast(`✅ Pago de $${fmt(monto)} registrado`);
-    const _oidParaLista = PAGO_ORDEN_ID;
     pagoCerrar();
-    pagoCargarLista(_oidParaLista);
+    pagoCargarLista(PAGO_ORDEN_ID);
     ordenesRenderLista();
   } catch(e) {
     const pagosLocal = JSON.parse(localStorage.getItem('barrcan_pagos_local') || '[]');
@@ -10607,18 +10600,6 @@ async function gtiaGuardar() {
     disponibilidad:document.getElementById('gtia-disponibilidad').value,
     estado:'nuevo', registrado_por:USUARIO_ACTIVO.id
   };
-  if (!SYNC.online) {
-    // Offline: guardar local y encolar para sync posterior
-    const localItem = {...payload, id: crypto.randomUUID(), created_at: new Date().toISOString()};
-    const local = JSON.parse(localStorage.getItem('barrcan_garantias_cache')||'[]');
-    local.unshift(localItem);
-    localStorage.setItem('barrcan_garantias_cache', JSON.stringify(local));
-    GARANTIAS_CACHE = local; garantiasRenderLista();
-    await encolarPendiente('garantia', payload);
-    toast('💾 Ticket guardado localmente — se sincronizará con señal');
-    garantiaCerrar();
-    return;
-  }
   try {
     const {error}=await sb().from('garantias').insert([payload]);
     if(error) throw error;
@@ -10626,13 +10607,11 @@ async function gtiaGuardar() {
     garantiaCerrar(); await garantiasCargar();
     gtiaNotificarWhatsApp(payload);
   } catch(e) {
-    const localItem = {...payload, id: crypto.randomUUID(), created_at: new Date().toISOString()};
-    const local = JSON.parse(localStorage.getItem('barrcan_garantias_cache')||'[]');
-    local.unshift(localItem);
-    localStorage.setItem('barrcan_garantias_cache', JSON.stringify(local));
-    GARANTIAS_CACHE = local; garantiasRenderLista();
-    await encolarPendiente('garantia', payload);
-    toast('💾 Error de red — ticket guardado localmente'); garantiaCerrar();
+    const local=JSON.parse(localStorage.getItem('barrcan_garantias_cache')||'[]');
+    local.unshift({...payload,id:crypto.randomUUID(),created_at:new Date().toISOString()});
+    localStorage.setItem('barrcan_garantias_cache',JSON.stringify(local));
+    GARANTIAS_CACHE=local; garantiasRenderLista();
+    toast('💾 Ticket guardado localmente'); garantiaCerrar();
   }
 }
 
@@ -10783,28 +10762,29 @@ function garantiaWizActualizar() {
   if (costo > 0) garantiaWizCalcPreview(costo);
 }
 
-function gtiaGetTier(sistema, costo) {
-  if (!sistema || !sistema.tiers) return null;
-  return sistema.tiers.find(t => costo >= t.rangoMin && costo <= t.rangoMax) || sistema.tiers[sistema.tiers.length - 1];
+function gtiaGetRango(sistema, costo) {
+  // Devuelve el rango de prima fija correspondiente al costo del cancel
+  const rangos = sistema.primaRangos || [];
+  return rangos.find(r => costo <= r.hasta) || rangos[rangos.length - 1];
 }
 
 function garantiaWizCalcPreview(costo) {
   if (!GTIA_WIZ_SISTEMA) return;
-  const tier     = gtiaGetTier(GTIA_WIZ_SISTEMA, costo);
-  const prima    = tier ? tier.precio : 0;
+  const rango    = gtiaGetRango(GTIA_WIZ_SISTEMA, costo);
+  const prima    = rango ? rango.prima : 0;
   const deducible= GTIA_WIZ_SISTEMA.deducible;
   const inicio   = document.getElementById('gtia-wiz-inicio').value;
   const fin      = inicio ? new Date(new Date(inicio).getTime() + 365*24*3600*1000).toISOString().split('T')[0] : '';
-  const tierLabel= tier ? `${tier.label} (${tier.sku})` : 'Sin tier';
+  const nivelLabel = rango ? `Nivel ${rango.label} (${rango.sku})` : 'Prima fija';
 
   const res = document.getElementById('gtia-wiz-resultado');
   res.style.display = 'block';
-  document.getElementById('gtia-wiz-c-prod').textContent   = '$' + fmt(costo);
-  document.getElementById('gtia-wiz-label-prima').textContent = `Prima — ${tierLabel}`;
-  document.getElementById('gtia-wiz-c-prima').textContent  = '$' + fmt(prima);
-  document.getElementById('gtia-wiz-c-ded').textContent    = '$' + fmt(deducible);
-  document.getElementById('gtia-wiz-c-total').textContent  = '$' + fmt(prima);
-  document.getElementById('gtia-wiz-vigencia').textContent =
+  document.getElementById('gtia-wiz-c-prod').textContent      = '$' + fmt(costo);
+  document.getElementById('gtia-wiz-label-prima').textContent = nivelLabel;
+  document.getElementById('gtia-wiz-c-prima').textContent     = '$' + fmt(prima);
+  document.getElementById('gtia-wiz-c-ded').textContent       = '$' + fmt(deducible);
+  document.getElementById('gtia-wiz-c-total').textContent     = '$' + fmt(prima);
+  document.getElementById('gtia-wiz-vigencia').textContent    =
     inicio && fin ? `Vigencia: ${inicio} → ${fin}` : '';
 }
 
@@ -10817,9 +10797,9 @@ function garantiaWizCalcular() {
   if (!costo) { toast('⚠️ Ingresa el costo del producto'); return; }
   garantiaWizCalcPreview(costo);
 
-  const tier  = gtiaGetTier(GTIA_WIZ_SISTEMA, costo);
-  const prima = tier ? tier.precio : 0;
-  const fin   = inicio ? new Date(new Date(inicio).getTime() + 365*24*3600*1000).toISOString().split('T')[0] : '';
+  const rango  = gtiaGetRango(GTIA_WIZ_SISTEMA, costo);
+  const prima  = rango ? rango.prima : 0;
+  const fin    = inicio ? new Date(new Date(inicio).getTime() + 365*24*3600*1000).toISOString().split('T')[0] : '';
 
   STATE.ultimoResultado = {
     sistemaId:       GTIA_WIZ_SISTEMA.id,
@@ -10829,8 +10809,8 @@ function garantiaWizCalcular() {
     esGarantia:      true,
     gtiaProducto:    producto,
     gtiaCostoCancel: costo,
-    gtiaTier:        tier ? tier.label : '',
-    gtiaSku:         tier ? tier.sku   : '',
+    gtiaNivel:       rango ? rango.label : '',
+    gtiaSKU:         rango ? rango.sku   : '',
     gtiaDeducible:   GTIA_WIZ_SISTEMA.deducible,
     gtiaInicio:      inicio,
     gtiaFin:         fin,
@@ -10839,7 +10819,7 @@ function garantiaWizCalcular() {
     precioFinal:     prima
   };
 
-  toast('✅ Garantía calculada — Tier: ' + (tier ? tier.label : 'N/A'));
+  toast('✅ Garantía calculada');
   switchTab('resultado');
   renderResultado();
 }
@@ -10934,17 +10914,16 @@ function presAtrasadosGuardar() {
 
 function presAtrasadoAgregar(datos) {
   const nuevo = {
-    id:          crypto.randomUUID(),
-    folio:       datos.folio,
-    cliente:     datos.cliente,
-    tel:         datos.tel,
-    dir:         datos.dir,
-    monto:       datos.monto,
-    saldo:       datos.saldo || 0,
+    id:         crypto.randomUUID(),
+    folio:      datos.folio,
+    cliente:    datos.cliente,
+    tel:        datos.tel,
+    dir:        datos.dir,
+    monto:      datos.monto,
     descripcion: datos.descripcion,
-    fecha:       datos.fecha || new Date().toISOString().split('T')[0],
-    estado:      datos.estado || 'activo',
-    created_at:  new Date().toISOString()
+    fecha:      datos.fecha || new Date().toISOString().split('T')[0],
+    estado:     'activo',
+    created_at: new Date().toISOString()
   };
   PRES_ATRASADOS.unshift(nuevo);
   presAtrasadosGuardar();
@@ -10953,13 +10932,16 @@ function presAtrasadoAgregar(datos) {
     sb().from('cotizaciones').upsert([{
       folio:         nuevo.folio,
       revision:      'A',
-      partidas_json: [{ cliente: nuevo.cliente, tel: nuevo.tel, dir: nuevo.dir, descripcion: nuevo.descripcion }],
+      partidas_json: [],
       total:         nuevo.monto || 0,
       status:        'aprobado',
-      notas:         `Retroactivo · ${nuevo.cliente} · ${nuevo.descripcion || ''}`
+      notas:         `Retroactivo: ${nuevo.descripcion}`,
+      cliente_nombre: nuevo.cliente,
+      cliente_tel:    nuevo.tel,
+      dir_obra:       nuevo.dir,
+      created_at:    nuevo.created_at
     }], { onConflict: 'folio' }).then(({error}) => {
       if (!error) toast('☁️ Presupuesto sincronizado: ' + nuevo.folio);
-      else console.warn('[Supabase] Error presAtrasado:', error.message);
     });
   }
   return nuevo;
@@ -11051,23 +11033,16 @@ function visitaCerrar() {
 async function visitaCargarDropdown() {
   const sel = document.getElementById('visita-cliente-sel');
   sel.innerHTML = '<option value="">— Buscar cliente —</option>';
-  // Usar cache local como fuente inmediata
-  const fuenteLocal = cliListaCache.length ? cliListaCache : JSON.parse(localStorage.getItem('barrcan_clientes_cache') || '[]');
-  const poblarOpciones = lista => {
-    lista.sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||'')).forEach(c => {
-      const opt = document.createElement('option');
-      opt.value = c.id;
-      opt.textContent = (c.empresa ? `${c.empresa} · ` : '') + c.nombre;
-      opt.dataset.cliente = JSON.stringify(c);
-      sel.appendChild(opt);
-    });
-  };
-  if (fuenteLocal.length) poblarOpciones(fuenteLocal);
   try {
-    const { data } = await sb().from('clientes').select('id,nombre,telefono,empresa,cargo,direccion').order('nombre');
-    if (data && data.length) {
-      sel.innerHTML = '<option value="">— Buscar cliente —</option>';
-      poblarOpciones(data);
+    const { data } = await sb().from('clientes').select('id,nombre,telefono,empresa,cargo').order('nombre');
+    if (data) {
+      data.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = (c.empresa ? `${c.empresa} · ` : '') + c.nombre;
+        opt.dataset.cliente = JSON.stringify(c);
+        sel.appendChild(opt);
+      });
     }
   } catch(e) { console.warn('Error cargando clientes visita:', e); }
 }
@@ -11237,18 +11212,6 @@ async function visitaGuardar() {
     estado:         'registrada'
   };
 
-  // Guardar resumen en localStorage para vista rápida (siempre)
-  const guardarResumenLocal = () => {
-    try {
-      const lista = JSON.parse(localStorage.getItem('barrcan_visitas') || '[]');
-      if (!lista.find(v => v.folio === folio)) {
-        lista.unshift({ folio, cliente_nombre: payload.cliente_nombre, dir_obra: payload.dir_obra, fecha_visita: payload.fecha_visita });
-        if (lista.length > 50) lista.pop();
-        localStorage.setItem('barrcan_visitas', JSON.stringify(lista));
-      }
-    } catch(e2) {}
-  };
-
   try {
     if (SYNC.online) {
       const { error } = await sb().from('visitas_medicion').insert([payload]);
@@ -11261,7 +11224,6 @@ async function visitaGuardar() {
           created_at: new Date().toISOString()
         });
       }
-      guardarResumenLocal();
       toast('✅ Visita guardada · ' + folio);
     } else {
       // Offline — guardar todo local
@@ -11272,7 +11234,6 @@ async function visitaGuardar() {
         created_at: new Date().toISOString()
       });
       await encolarPendiente('visita', payload);
-      guardarResumenLocal();
       toast('💾 Visita guardada localmente · ' + folio + ' (se sincronizará con señal)');
     }
     visitaCerrar();
@@ -11305,15 +11266,9 @@ async function visitaGenerarPDF() {
   const hora      = document.getElementById('visita-hora').value;
   const dirObra   = document.getElementById('visita-dir-obra').value.trim();
   const nivel     = document.getElementById('visita-nivel').value;
-  // Leer estado de los botones de selección (reemplazaron los checkboxes)
-  const escBtn   = document.querySelector('.visita-opcion-btn[data-grupo="escaleras"][style*="var(--blue)"]');
-  const elevBtn  = document.querySelector('.visita-opcion-btn[data-grupo="elevador"][style*="var(--blue)"]');
-  let escVal = escBtn ? escBtn.dataset.val : 'no_indicado';
-  if (escVal === 'otro') escVal = document.getElementById('visita-escaleras-otro').value.trim() || 'otro';
-  const elevVal  = elevBtn ? elevBtn.dataset.val : 'no_indicado';
-  const escaleras = escVal === 'amplia';
-  const elevador  = elevVal === 'si';
-  const elevCabe  = elevVal === 'si_cabe';
+  const escaleras = document.getElementById('visita-escaleras').checked;
+  const elevador  = document.getElementById('visita-elevador').checked;
+  const elevCabe  = document.getElementById('visita-elevador-cabe').checked;
   const personas  = document.getElementById('visita-personas').value;
   const obsLog    = document.getElementById('visita-obs-logistica').value.trim();
   const descObra  = document.getElementById('visita-desc-obra').value.trim();
@@ -11330,8 +11285,9 @@ async function visitaGenerarPDF() {
   `).join('');
 
   const accesos = [
-    escVal !== 'no_indicado' ? (escaleras ? '✓ Escaleras amplias' : `Escaleras: ${escVal}`) : '⚠️ Escaleras no indicadas',
-    elevVal !== 'no_indicado' ? (elevador ? '✓ Elevador disponible' : elevCabe ? '✓ Elevador (material cabe)' : '✗ Sin elevador') : '⚠️ Elevador no indicado'
+    escaleras ? '✓ Escaleras amplias' : '✗ Sin escaleras amplias',
+    elevador  ? '✓ Elevador disponible' : '✗ Sin elevador',
+    elevCabe  ? '✓ Material cabe en elevador' : ''
   ].filter(Boolean).join(' &nbsp;|&nbsp; ');
 
   const html = `<!DOCTYPE html>
@@ -12626,6 +12582,7 @@ async function cliEliminar() {
 
   try {
     const { error } = await sb()
+      
       .from('clientes')
       .delete()
       .eq('id', cliEditandoId);
@@ -12879,7 +12836,7 @@ function pinAcceso() {
 // ── Roles ─────────────────────────────────────
 function pinAplicarRol() {
   const esTecnico = USUARIO_ACTIVO.rol === 'tecnico';
-  const tabsAdmin = ['tab-catalogo','tab-resultado','tab-historial','tab-ordenes','tab-garantias','tab-clientes','tab-config'];
+  const tabsAdmin = ['tab-catalogo','tab-cotizar','tab-historial','tab-ordenes','tab-garantias','tab-clientes','tab-config'];
   tabsAdmin.forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = esTecnico ? 'none' : '';
@@ -12914,16 +12871,13 @@ function pinCerrarSesion(porInactividad = false) {
   USUARIO_ACTIVO = { id:'', nombre:'', apodo:'', rol:'admin', emoji:'', color:'' };
   pinUsuarioSelId = '';
   // Restaurar tabs
-  ['tab-catalogo','tab-resultado','tab-historial','tab-ordenes','tab-garantias','tab-clientes','tab-config'].forEach(id => {
+  ['tab-catalogo','tab-cotizar','tab-historial','tab-ordenes','tab-garantias','tab-clientes','tab-config'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = '';
   });
   // Cerrar modales abiertos
   ['modal-overlay','modal-contrato-overlay','entrega-overlay',
-   'visita-overlay','cli-modal-overlay','garantias-overlay',
-   'visitas-guardadas-overlay','pres-modal-overlay','pago-modal-overlay',
-   'garantia-modal-overlay','gtia-det-overlay',
-   'orden-modal-overlay','orden-detalle-overlay'].forEach(id => {
+   'visita-overlay','cli-modal-overlay'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.style.display = 'none';
   });
