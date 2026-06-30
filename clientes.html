@@ -2,11 +2,21 @@
 ══════════════════════════════════════════════════════════════════
   BARRCAN · MÓDULO: CLIENTES (standalone)
 ══════════════════════════════════════════════════════════════════
-  VERSIÓN : v1.2
+  VERSIÓN : v1.3
   FECHA   : 2026-06-30
-  ESTADO  : Modo offline-first real — captura sin conexión
+  ESTADO  : Importar contactos del teléfono
 
   NOTAS DE CONTROL:
+  v1.3 — 2026-06-30
+    - ADD: botón "📇 Importar de contactos" en el formulario — usa la
+      Contact Picker API nativa de Chrome Android para traer nombre,
+      teléfono y email directo del directorio del celular
+    - ADD: el botón se oculta automáticamente en navegadores sin
+      soporte (iPhone/Safari, Desktop) para no mostrar una opción
+      que fallaría al tocarla
+    - NOTA: requiere HTTPS (GitHub Pages cumple) y solo funciona en
+      Chrome para Android — no disponible en iOS ni escritorio
+
   v1.2 — 2026-06-30
     - ADD: modo offline-first verdadero — si la app detecta que no hay
       señal (navigator.onLine = false), guarda directo en local SIN
@@ -1178,6 +1188,16 @@ body{min-height:100vh}
                color:var(--gray-600);font-size:16px;cursor:pointer">✕</button>
     </div>
 
+    <!-- Importar desde contactos del teléfono -->
+    <button id="cli-btn-importar-contacto" onclick="cliImportarContacto()"
+      style="width:100%;padding:11px;margin-bottom:14px;background:rgba(46,109,164,0.06);
+             border:1.5px dashed var(--blue);border-radius:var(--radius);
+             color:var(--blue);font-family:'DM Sans',sans-serif;font-size:13px;
+             font-weight:700;cursor:pointer;display:flex;align-items:center;
+             justify-content:center;gap:6px">
+      <span style="font-size:16px">📇</span> Importar de contactos
+    </button>
+
     <!-- Num. cliente (editable) -->
     <div style="background:rgba(27,58,92,0.04);border-radius:var(--radius);
                 padding:10px 14px;margin-bottom:14px">
@@ -1573,6 +1593,46 @@ function cliBuscar() {
 }
 
 // ── Abrir formulario nuevo ────────────────────
+// ── Importar contacto del teléfono (Contact Picker API) ───────────
+// Soportado en Chrome Android. NO soportado en iPhone/Safari ni Desktop.
+async function cliImportarContacto() {
+  if (!('contacts' in navigator && 'ContactsManager' in window)) {
+    toast('⚠️ Tu navegador no soporta importar contactos (funciona en Chrome Android)');
+    return;
+  }
+  try {
+    const props = ['name', 'tel', 'email'];
+    const opts = { multiple: false };
+    const contactos = await navigator.contacts.select(props, opts);
+    if (!contactos || !contactos.length) return; // usuario canceló
+
+    const c = contactos[0];
+    const nombreCompleto = (c.name && c.name[0]) ? c.name[0] : '';
+    const telefono = (c.tel && c.tel[0]) ? c.tel[0].replace(/[^\d+]/g, '') : '';
+    const email = (c.email && c.email[0]) ? c.email[0] : '';
+
+    // Separar tratamiento si el nombre ya lo trae
+    const tratos = ['Sr.','Sra.','Srita.','Ing.','Arq.','Lic.','Dr.','Dra.'];
+    const primerPalabra = nombreCompleto.split(' ')[0];
+    if (tratos.includes(primerPalabra)) {
+      document.getElementById('cli-inp-tratamiento').value = primerPalabra;
+      document.getElementById('cli-inp-nombre').value = nombreCompleto.slice(primerPalabra.length).trim();
+    } else {
+      document.getElementById('cli-inp-nombre').value = nombreCompleto;
+    }
+    if (telefono) document.getElementById('cli-inp-tel').value = telefono;
+    if (email) document.getElementById('cli-inp-email').value = email;
+
+    toast('📇 Contacto importado · revisa y completa los datos faltantes');
+    document.getElementById('cli-inp-nombre').focus();
+  } catch(e) {
+    // El usuario canceló el selector — no es un error real
+    if (e.name !== 'AbortError') {
+      toast('⚠️ No se pudo importar: ' + e.message);
+    }
+  }
+}
+
 function cliAbrirFormulario() {
   cliEditandoId = null;
   document.getElementById('cli-modal-titulo').textContent = 'Nuevo Cliente';
@@ -1865,6 +1925,12 @@ function cliMostrarPendientes() {
   } else if (cliListaCache.length) {
     cont.textContent = `${cliListaCache.length} cliente${cliListaCache.length>1?'s':''}`;
   }
+}
+
+// ── Ocultar botón de importar si el navegador no lo soporta ──────
+if (!('contacts' in navigator && 'ContactsManager' in window)) {
+  const btnImport = document.getElementById('cli-btn-importar-contacto');
+  if (btnImport) btnImport.style.display = 'none';
 }
 
 // ── Iniciar ────────────────────────────────────
