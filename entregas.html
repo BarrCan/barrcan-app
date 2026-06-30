@@ -1050,11 +1050,30 @@ body{min-height:100vh}
 ══════════════════════════════════════════════════════════════════
   BARRCAN · MÓDULO: ENTREGAS (standalone)
 ══════════════════════════════════════════════════════════════════
-  VERSIÓN : v1.1
+  VERSIÓN : v1.2
   FECHA   : 2026-06-30
-  ESTADO  : Corrección de bugs reportados tras primera prueba
+  ESTADO  : Corrección crítica — reportes no se guardaban en absoluto
 
   NOTAS DE CONTROL:
+  v1.2 — 2026-06-30
+    - FIX CRÍTICO: el insert a reportes_entrega enviaba un campo
+      dir_obra:null que la tabla real en Supabase no reconocía
+      ("Could not find the 'dir_obra' column... in the schema cache").
+      Esto causaba que NINGÚN reporte se guardara, ni online ni
+      offline, porque el error no era de red sino de estructura de
+      datos y antes solo se mostraba en pantalla sin respaldar nada.
+    - FIX: ahora CUALQUIER error al guardar (de red, de columna, o
+      desconocido) respalda el reporte en localStorage de inmediato.
+      Antes solo los errores de red activaban el respaldo offline —
+      los errores de "columna no encontrada" se perdían sin guardar
+      nada en ningún lado.
+    - ADD: mensaje de error diferenciado — si es un problema de
+      estructura de BD (columna faltante), se lo indica claramente
+      al usuario aclarando que NO es un error de su captura y que
+      el reporte ya quedó respaldado localmente
+    - Ver archivo adjunto verificar_reportes_entrega.sql para
+      confirmar/forzar el refresco de columnas en Supabase
+
   v1.1 — 2026-06-30
     - FIX: "limbo" después de imprimir — puertaGenerarReporte() ahora
       tiene try/catch/finally global. Si window.open() es bloqueado por
@@ -1584,7 +1603,7 @@ async function puertaGenerarReporte() {
     // (control interno y notas internas se guardan en BD pero NUNCA se imprimen al cliente)
     const dbPayload = {
       folio: folioFull, cliente_nombre: cliente, cliente_tel: tel || null,
-      fecha_entrega: fecha, tecnico: 'BarrCan', dir_obra: null,
+      fecha_entrega: fecha, tecnico: 'BarrCan',
       monto: aplica ? String(monto) : null, registrado_por: 'campo', whatsapp_enviado: false
     };
 
@@ -1608,13 +1627,31 @@ async function puertaGenerarReporte() {
         return true;
       } catch(e) {
         const esRed = /failed to fetch|network|timeout|fetch/i.test(e.message||'');
+        const esColumna = /column|schema cache|does not exist/i.test(e.message||'');
+
         if (esRed && intento<3) { await new Promise(r=>setTimeout(r,1000*intento)); return intentar(intento+1); }
+
         if (esRed) {
+          // Falla de red real → guardar offline y reintentar luego
           SYNC.online = false; detectarConexion();
           puertaGuardarOffline(dbPayload);
           puertaReset();
+        } else if (esColumna) {
+          // Error de estructura de BD (columna no existe / caché desactualizado de Supabase)
+          // NUNCA perder la captura del técnico: guardar local SIEMPRE y avisar claro
+          puertaGuardarOffline(dbPayload);
+          puertaReset();
+          errEl.innerHTML = `⚠️ Error de configuración en el servidor (no de tu captura).<br>
+            <span style="font-size:11px">${e.message}</span><br>
+            <b>Tu reporte se guardó localmente</b> y aparece en "Reportes recientes" marcado
+            como pendiente. Avisa al administrador para revisar la tabla en Supabase.`;
+          errEl.style.display = 'block';
         } else {
-          errEl.textContent = '❌ ' + e.message; errEl.style.display='block';
+          // Cualquier otro error desconocido → también respaldar localmente, nunca perder datos
+          puertaGuardarOffline(dbPayload);
+          puertaReset();
+          errEl.textContent = '⚠️ ' + e.message + ' — el reporte se guardó localmente como respaldo.';
+          errEl.style.display = 'block';
         }
         return false;
       }
