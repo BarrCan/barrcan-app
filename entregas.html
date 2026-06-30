@@ -1050,11 +1050,25 @@ body{min-height:100vh}
 ══════════════════════════════════════════════════════════════════
   BARRCAN · MÓDULO: ENTREGAS (standalone)
 ══════════════════════════════════════════════════════════════════
-  VERSIÓN : v1.2
+  VERSIÓN : v1.3
   FECHA   : 2026-06-30
   ESTADO  : Corrección crítica — reportes no se guardaban en absoluto
 
   NOTAS DE CONTROL:
+  v1.3 — 2026-06-30
+    - FIX CRÍTICO: payload contenía campo 'monto' que NO existe en la
+      tabla reportes_entrega. Columnas reales confirmadas en Supabase:
+      id, folio, cliente_nombre, cliente_tel, fecha_entrega, tecnico,
+      registrado_por, reporte_url, whatsapp_enviado, tel_destino,
+      created_at, dir_obra. Payload corregido exactamente a esas.
+    - ADD: panel de acciones post-impresión — al guardar el reporte
+      aparece automáticamente con 3 opciones:
+        · 📲 Enviar comprobante por WhatsApp al teléfono del cliente
+        · ⭐ Enviar encuesta de satisfacción por WhatsApp
+        · 📄 Ver / reimprimir el comprobante (solo si aún está en memoria)
+    - ADD: el panel post-impresión también aparece en modo offline para
+      que siempre se pueda enviar el WhatsApp aunque no haya guardado aún
+
   v1.2 — 2026-06-30
     - FIX CRÍTICO: el insert a reportes_entrega enviaba un campo
       dir_obra:null que la tabla real en Supabase no reconocía
@@ -1503,6 +1517,126 @@ function puertaConstruirHTML(d) {
 </div></body></html>`;
 }
 
+// ── URL de encuesta de satisfacción ────────────────────────────
+const ENCUESTA_URL = 'https://barrcan.github.io/barrcan-app/garantia_publica.html';
+const WA_NUMERO_BARRCAN = '525615158415';
+
+// ── Verificar si el usuario actual es admin ───────────────────
+function esAdmin() {
+  // Lee el rol de la sesión activa (mismo localStorage que usa la app principal)
+  try {
+    const usuario = JSON.parse(localStorage.getItem('barrcan_usuario_activo') || '{}');
+    return usuario.rol === 'admin' || usuario.id === 'MAU' || usuario.id === 'LUIS';
+  } catch(e) { return false; }
+}
+
+// ── Modal de acciones post-impresión ─────────────────────────
+function puertaMostrarAccionesPost(folio, tel, htmlComprobante) {
+  // Crear/reusar el overlay
+  let ov = document.getElementById('post-print-ov');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'post-print-ov';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:900;backdrop-filter:blur(4px);display:flex;align-items:flex-end';
+    ov.innerHTML = `
+      <div style="width:100%;background:var(--white);border-radius:20px 20px 0 0;
+        padding:20px 20px 36px;box-shadow:0 -8px 40px rgba(0,0,0,.3)">
+        <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 16px"></div>
+        <div style="font-family:'Playfair Display',serif;font-size:17px;font-weight:700;color:var(--navy);margin-bottom:4px" id="ppa-folio"></div>
+        <div style="font-size:12px;color:var(--gray-400);margin-bottom:20px">¿Qué deseas hacer ahora?</div>
+
+        <button id="ppa-btn-wa" onclick="puertaEnviarWA()"
+          style="width:100%;padding:14px;margin-bottom:10px;background:#25D366;border:none;
+          border-radius:var(--radius);color:white;font-family:'DM Sans',sans-serif;
+          font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;
+          justify-content:center;gap:8px">
+          <span style="font-size:18px">📲</span> Enviar comprobante por WhatsApp
+        </button>
+
+        <button id="ppa-btn-encuesta" onclick="puertaEnviarEncuesta()"
+          style="width:100%;padding:14px;margin-bottom:10px;background:rgba(46,109,164,0.08);
+          border:1.5px solid var(--blue);border-radius:var(--radius);color:var(--blue);
+          font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;
+          display:flex;align-items:center;justify-content:center;gap:8px">
+          <span style="font-size:18px">⭐</span> Enviar encuesta de satisfacción
+        </button>
+
+        <button id="ppa-btn-ver" onclick="puertaReverReporte()"
+          style="width:100%;padding:14px;margin-bottom:10px;background:rgba(39,174,96,0.08);
+          border:1.5px solid var(--green);border-radius:var(--radius);color:var(--green);
+          font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;
+          display:flex;align-items:center;justify-content:center;gap:8px">
+          <span style="font-size:18px">📄</span> Ver / reimprimir comprobante
+        </button>
+
+        <div id="ppa-btn-editar-wrap">
+          <button onclick="puertaCerrarAccionesPost()"
+            style="width:100%;padding:12px;background:none;border:1.5px solid var(--gray-200);
+            border-radius:var(--radius);color:var(--gray-600);font-family:'DM Sans',sans-serif;
+            font-size:14px;cursor:pointer">
+            ✓ Listo — cerrar
+          </button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+  }
+
+  // Guardar datos en el elemento para usarlos en los botones
+  ov.dataset.folio = folio || '';
+  ov.dataset.tel   = tel   || '';
+  ov.dataset.html  = htmlComprobante || '';
+
+  document.getElementById('ppa-folio').textContent = '✅ ' + (folio || 'Reporte guardado');
+
+  // Solo admins pueden ver el botón "Ver/reimprimir"
+  document.getElementById('ppa-btn-ver').style.display = htmlComprobante ? 'flex' : 'none';
+
+  ov.style.display = 'flex';
+}
+
+function puertaCerrarAccionesPost() {
+  const ov = document.getElementById('post-print-ov');
+  if (ov) ov.style.display = 'none';
+}
+
+function puertaEnviarWA() {
+  const ov = document.getElementById('post-print-ov');
+  const folio = ov?.dataset.folio || '';
+  const tel   = (ov?.dataset.tel || '').replace(/\D/g,'');
+  const texto = encodeURIComponent(
+    `Hola, le compartimos el comprobante de entrega de su pedido *${folio}*. ` +
+    `Por favor confirme de recibido. \n\n` +
+    `*BarrCan Cancelería* — 📞 56-15-15-84-15\n` +
+    `www.BarrCan.com.mx`
+  );
+  const destino = tel ? `52${tel}` : WA_NUMERO_BARRCAN;
+  window.open(`https://wa.me/${destino}?text=${texto}`, '_blank');
+}
+
+function puertaEnviarEncuesta() {
+  const ov = document.getElementById('post-print-ov');
+  const folio = encodeURIComponent(ov?.dataset.folio || '');
+  const tel   = (ov?.dataset.tel || '').replace(/\D/g,'');
+  const enlace = `${ENCUESTA_URL}?folio=${folio}`;
+  const texto = encodeURIComponent(
+    `Hola, gracias por preferirnos 🙏\n\n` +
+    `¿Podría dedicarnos 1 minuto para calificar su experiencia con *BarrCan*?\n\n` +
+    `👉 ${enlace}\n\n` +
+    `Su opinión nos ayuda a mejorar. ¡Muchas gracias!`
+  );
+  const destino = tel ? `52${tel}` : WA_NUMERO_BARRCAN;
+  window.open(`https://wa.me/${destino}?text=${texto}`, '_blank');
+}
+
+function puertaReverReporte() {
+  const ov = document.getElementById('post-print-ov');
+  const html = ov?.dataset.html;
+  if (!html) { toast('⚠️ El comprobante no está disponible'); return; }
+  const win = window.open('', '_blank');
+  if (win) { win.document.write(html); win.document.close(); }
+  else toast('⚠️ El navegador bloqueó la ventana — permite ventanas emergentes');
+}
+
 function puertaReset() {
   PUERTA_FOTOS = []; PUERTA_FORMA_SEL = 'efectivo'; PUERTA_CTRL = new Set();
   ['puerta-cliente','puerta-tel','puerta-folio','puerta-desc','puerta-notas-int'].forEach(id => {
@@ -1543,6 +1677,7 @@ function puertaGuardarOffline(payload) {
   localStorage.setItem('barrcan_reportes_historial', JSON.stringify(local));
 
   entRenderHistorial();
+  puertaMostrarAccionesPost(payload.folio, payload.cliente_tel, null);
   toast('💾 Guardado sin conexión · se sincronizará automáticamente');
 }
 
@@ -1585,11 +1720,12 @@ async function puertaGenerarReporte() {
 
     // Intentar abrir el comprobante — si el navegador bloquea el popup,
     // seguir con el guardado de todos modos (no debe trabar el flujo)
+    let _htmlComprobante = '';
     try {
-      const html = puertaConstruirHTML(payloadComprobante);
+      _htmlComprobante = puertaConstruirHTML(payloadComprobante);
       const win = window.open('', '_blank');
       if (win) {
-        win.document.write(html);
+        win.document.write(_htmlComprobante);
         win.document.close();
       } else {
         toast('⚠️ El navegador bloqueó la ventana del comprobante — permite ventanas emergentes para verlo');
@@ -1604,7 +1740,9 @@ async function puertaGenerarReporte() {
     const dbPayload = {
       folio: folioFull, cliente_nombre: cliente, cliente_tel: tel || null,
       fecha_entrega: fecha, tecnico: 'BarrCan',
-      monto: aplica ? String(monto) : null, registrado_por: 'campo', whatsapp_enviado: false
+      tel_destino: tel || null,
+      registrado_por: 'campo', whatsapp_enviado: false,
+      dir_obra: null
     };
 
     if (!SYNC.online) {
@@ -1623,6 +1761,7 @@ async function puertaGenerarReporte() {
         localStorage.setItem('barrcan_reportes_historial', JSON.stringify(local));
         toast('✅ Reporte guardado · ' + folioFull);
         entRenderHistorial();
+        puertaMostrarAccionesPost(folioFull, tel||null, _htmlComprobante);
         puertaReset();
         return true;
       } catch(e) {
