@@ -1050,11 +1050,33 @@ body{min-height:100vh}
 ══════════════════════════════════════════════════════════════════
   BARRCAN · MÓDULO: ENTREGAS (standalone)
 ══════════════════════════════════════════════════════════════════
-  VERSIÓN : v1.0
+  VERSIÓN : v1.1
   FECHA   : 2026-06-30
-  ESTADO  : Base inicial — Entrega en Puerta + conexión a Clientes
+  ESTADO  : Corrección de bugs reportados tras primera prueba
 
   NOTAS DE CONTROL:
+  v1.1 — 2026-06-30
+    - FIX: "limbo" después de imprimir — puertaGenerarReporte() ahora
+      tiene try/catch/finally global. Si window.open() es bloqueado por
+      el navegador o falla por cualquier razón, el flujo continúa
+      (guarda el reporte igual) y el botón SIEMPRE se reactiva al final.
+      Antes un fallo silencioso ahí dejaba el botón deshabilitado para
+      siempre sin posibilidad de reintentar.
+    - FIX: "Reportes recientes" atascado en "Cargando…" — entCargarHistorial()
+      ahora resuelve el estado en TODOS los casos: éxito con datos, éxito
+      sin datos, error de red, y sin conexión. Antes un error en la
+      consulta a Supabase solo hacía console.warn y dejaba el mensaje
+      de carga para siempre.
+    - FIX: información de "Control interno" (facturado/con recibo/con
+      garantía/notas internas) YA NO aparece en el comprobante que ve
+      el cliente — se sigue guardando en Supabase para consulta interna,
+      pero el HTML impreso/enviado al cliente solo muestra los datos
+      de la entrega en sí.
+    - CHG: el título "📋 Reportes recientes" ahora es clickeable —
+      abre una hoja nueva y limpia con el historial COMPLETO (no solo
+      los últimos 15), en formato tabla, con folio/cliente/teléfono/
+      fecha/técnico/monto/estado de sincronización, lista para imprimir.
+
   v1.0 — Creación inicial
     - FIX: el reporte de entrega en puerta en la app principal NUNCA
       se guardaba en Supabase (tabla reportes_entrega) — solo generaba
@@ -1101,7 +1123,7 @@ body{min-height:100vh}
       <!-- ═══ HISTORIAL DE REPORTES (ARRIBA) ═══ -->
       <div class="wizard-card" style="margin-bottom:16px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <div class="wizard-title" style="margin:0">📋 Reportes recientes</div>
+          <div class="wizard-title" style="margin:0;cursor:pointer" onclick="entAbrirHistorialCompleto()" title="Ver historial completo en una nueva ventana">📋 Reportes recientes <span style="font-size:11px;font-weight:400;color:var(--blue);text-decoration:underline">ver todo →</span></div>
           <button onclick="entCargarHistorial()" style="padding:6px 10px;background:rgba(46,109,164,0.08);
             border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);
             font-size:11px;font-weight:700;cursor:pointer">🔄 Actualizar</button>
@@ -1458,7 +1480,6 @@ function puertaConstruirHTML(d) {
     <div style=flex:1;border-top:1px solid #ccc;padding-top:5px;font-size:8.5pt;color:#888;text-align:center>Nombre y firma del cliente<br>${d.cliente}</div>
     <div style=flex:1;border-top:1px solid #ccc;padding-top:5px;font-size:8.5pt;color:#888;text-align:center>Entregado por BarrCan<br>TEL: 56-15-15-84-15</div>
   </div>
-  ${(d.ctrl&&d.ctrl.length>0)||d.notasIn?`<div class=ctrl-box style=margin-top:14px><div style=font-size:8.5pt;font-weight:700;color:#1B3A5C;margin-bottom:6px>🏢 Control interno BarrCan</div>${ctrlHtml}${d.notasIn?`<div style=font-size:8.5pt;color:#555;margin-top:6px>${d.notasIn}</div>`:''}</div>`:''}
   <div style=font-size:7.5pt;color:#aaa;text-align:center;margin-top:14px;border-top:1px solid #eee;padding-top:8px>${d.folio} · BarrCan · Entrega en puerta · ${d.fecha||''}</div>
 </div></body></html>`;
 }
@@ -1515,78 +1536,101 @@ async function puertaGenerarReporte() {
   if (!cliente) { errEl.textContent='⚠️ Ingresa el nombre del cliente'; errEl.style.display='block'; return; }
   if (!desc)    { errEl.textContent='⚠️ Describe el producto entregado'; errEl.style.display='block'; return; }
 
-  const tel    = document.getElementById('puerta-tel').value.trim();
-  const folio  = document.getElementById('puerta-folio').value.trim();
-  const fecha  = document.getElementById('puerta-fecha').value;
-  const piezas = document.getElementById('puerta-piezas').value;
-  const notasIn= document.getElementById('puerta-notas-int').value.trim();
-  const aplica = document.getElementById('puerta-aplica-cobro').value === 'si';
-  const monto  = aplica ? (parseFloat(document.getElementById('puerta-monto').value)||0) : 0;
-  const folioFull = folio ? `CACN-${folio.replace(/^CACN-/i,'')}` : `ENT-${Date.now().toString().slice(-6)}`;
-
-  const canvas  = document.getElementById('puerta-canvas-firma');
-  const firmaB64 = canvas ? canvas.toDataURL('image/png') : '';
-  const dataF = canvas && PUERTA_FIRMA_CTX ? PUERTA_FIRMA_CTX.getImageData(0,0,canvas.width,canvas.height).data : [];
-  const firmaVacia = !Array.from(dataF).some(v=>v>10);
-
-  const payload = {
-    folio: folioFull, cliente_nombre: cliente, cliente_tel: tel || null,
-    fecha_entrega: fecha, dir_obra: null, monto: aplica ? String(monto) : null,
-    tecnico: 'BarrCan', registrado_por: 'campo', whatsapp_enviado: false,
-    // Extras para el comprobante (no van a Supabase, solo al HTML local)
-    desc, piezas, aplica, forma: PUERTA_FORMA_SEL, ctrl: [...PUERTA_CTRL],
-    notasIn, fotos: PUERTA_FOTOS, firmaB64, firmaVacia, fecha,
-  };
-
-  // Construir y abrir el comprobante SIEMPRE (online u offline)
-  const html = puertaConstruirHTML(payload);
-  const win = window.open('', '_blank');
-  if (win) { win.document.write(html); win.document.close(); }
-
   const btn = document.getElementById('puerta-btn-guardar');
+  if (btn.disabled) return; // evitar doble-tap
   btn.disabled = true;
+  btn.innerHTML = '<span>⏳</span> Generando…';
 
-  // Payload limpio solo con columnas reales de reportes_entrega
-  const dbPayload = {
-    folio: payload.folio, cliente_nombre: payload.cliente_nombre, cliente_tel: payload.cliente_tel,
-    fecha_entrega: payload.fecha_entrega, tecnico: payload.tecnico, dir_obra: payload.dir_obra,
-    monto: payload.monto, registrado_por: payload.registrado_por, whatsapp_enviado: false
-  };
+  // ── try/catch/finally global: pase lo que pase, el botón se reactiva ──
+  try {
+    const tel    = document.getElementById('puerta-tel').value.trim();
+    const folio  = document.getElementById('puerta-folio').value.trim();
+    const fecha  = document.getElementById('puerta-fecha').value;
+    const piezas = document.getElementById('puerta-piezas').value;
+    const notasIn= document.getElementById('puerta-notas-int').value.trim();
+    const aplica = document.getElementById('puerta-aplica-cobro').value === 'si';
+    const monto  = aplica ? (parseFloat(document.getElementById('puerta-monto').value)||0) : 0;
+    const folioFull = folio ? `CACN-${folio.replace(/^CACN-/i,'')}` : `ENT-${Date.now().toString().slice(-6)}`;
 
-  if (!SYNC.online) {
-    puertaGuardarOffline(dbPayload);
-    puertaReset();
-    btn.disabled = false;
-    return;
-  }
+    const canvas  = document.getElementById('puerta-canvas-firma');
+    const firmaB64 = canvas ? canvas.toDataURL('image/png') : '';
+    const dataF = canvas && PUERTA_FIRMA_CTX ? PUERTA_FIRMA_CTX.getImageData(0,0,canvas.width,canvas.height).data : [];
+    const firmaVacia = !Array.from(dataF).some(v=>v>10);
 
-  async function intentar(intento=1) {
+    // Datos SOLO para el comprobante visible al cliente — sin control interno
+    const payloadComprobante = {
+      folio: folioFull, cliente: cliente, tel: tel || null, fecha,
+      desc, piezas, aplica, monto, forma: PUERTA_FORMA_SEL,
+      fotos: PUERTA_FOTOS, firmaB64, firmaVacia,
+    };
+
+    // Intentar abrir el comprobante — si el navegador bloquea el popup,
+    // seguir con el guardado de todos modos (no debe trabar el flujo)
     try {
-      const { error } = await sb().from('reportes_entrega').insert([dbPayload]);
-      if (error) throw error;
-      const local = JSON.parse(localStorage.getItem('barrcan_reportes_historial')||'[]');
-      local.unshift({ ...dbPayload, ts: new Date().toLocaleString('es-MX') });
-      if (local.length>50) local.pop();
-      localStorage.setItem('barrcan_reportes_historial', JSON.stringify(local));
-      toast('✅ Reporte guardado · ' + folioFull);
-      entRenderHistorial();
-      puertaReset();
-      return true;
-    } catch(e) {
-      const esRed = /failed to fetch|network|timeout|fetch/i.test(e.message||'');
-      if (esRed && intento<3) { await new Promise(r=>setTimeout(r,1000*intento)); return intentar(intento+1); }
-      if (esRed) {
-        SYNC.online = false; detectarConexion();
-        puertaGuardarOffline(dbPayload);
-        puertaReset();
+      const html = puertaConstruirHTML(payloadComprobante);
+      const win = window.open('', '_blank');
+      if (win) {
+        win.document.write(html);
+        win.document.close();
       } else {
-        errEl.textContent = '❌ ' + e.message; errEl.style.display='block';
+        toast('⚠️ El navegador bloqueó la ventana del comprobante — permite ventanas emergentes para verlo');
       }
-      return false;
+    } catch(eWin) {
+      console.warn('No se pudo abrir el comprobante:', eWin.message);
+      toast('⚠️ No se pudo abrir el comprobante, pero el reporte se guardará igual');
     }
+
+    // Payload real para Supabase — columnas existentes en reportes_entrega
+    // (control interno y notas internas se guardan en BD pero NUNCA se imprimen al cliente)
+    const dbPayload = {
+      folio: folioFull, cliente_nombre: cliente, cliente_tel: tel || null,
+      fecha_entrega: fecha, tecnico: 'BarrCan', dir_obra: null,
+      monto: aplica ? String(monto) : null, registrado_por: 'campo', whatsapp_enviado: false
+    };
+
+    if (!SYNC.online) {
+      puertaGuardarOffline(dbPayload);
+      puertaReset();
+      return;
+    }
+
+    async function intentar(intento=1) {
+      try {
+        const { error } = await sb().from('reportes_entrega').insert([dbPayload]);
+        if (error) throw error;
+        const local = JSON.parse(localStorage.getItem('barrcan_reportes_historial')||'[]');
+        local.unshift({ ...dbPayload, ts: new Date().toLocaleString('es-MX') });
+        if (local.length>50) local.pop();
+        localStorage.setItem('barrcan_reportes_historial', JSON.stringify(local));
+        toast('✅ Reporte guardado · ' + folioFull);
+        entRenderHistorial();
+        puertaReset();
+        return true;
+      } catch(e) {
+        const esRed = /failed to fetch|network|timeout|fetch/i.test(e.message||'');
+        if (esRed && intento<3) { await new Promise(r=>setTimeout(r,1000*intento)); return intentar(intento+1); }
+        if (esRed) {
+          SYNC.online = false; detectarConexion();
+          puertaGuardarOffline(dbPayload);
+          puertaReset();
+        } else {
+          errEl.textContent = '❌ ' + e.message; errEl.style.display='block';
+        }
+        return false;
+      }
+    }
+    await intentar();
+
+  } catch(eGlobal) {
+    // Cualquier error inesperado no debe dejar la app trabada
+    console.error('puertaGenerarReporte error inesperado:', eGlobal);
+    errEl.textContent = '❌ Error inesperado: ' + eGlobal.message;
+    errEl.style.display = 'block';
+  } finally {
+    // SIEMPRE se ejecuta — el botón nunca queda colgado
+    btn.disabled = false;
+    btn.innerHTML = '<span>📄</span> Generar Comprobante de Entrega';
   }
-  await intentar();
-  btn.disabled = false;
 }
 
 // ══════════════════════════════════════════════
@@ -1596,26 +1640,119 @@ async function entCargarHistorial() {
   const div = document.getElementById('ent-hist-lista');
   const local = JSON.parse(localStorage.getItem('barrcan_reportes_historial')||'[]');
 
-  if (local.length) entRenderHistorial();
-  else div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">Cargando…</div>';
+  // Mostrar de inmediato lo que haya en caché (instantáneo, nunca "colgado")
+  if (local.length) {
+    entRenderHistorial();
+  } else {
+    div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">⏳ Buscando reportes…</div>';
+  }
 
   if (!SYNC.online) {
-    if (!local.length) div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">📵 Sin conexión — sin reportes en caché</div>';
+    if (!local.length) {
+      div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">📵 Sin conexión — sin reportes en caché todavía</div>';
+    }
     return;
   }
 
+  // Pase lo que pase con la consulta a Supabase, SIEMPRE se resuelve el estado de "Cargando…"
   try {
     const { data, error } = await sb().from('reportes_entrega')
       .select('id,folio,cliente_nombre,fecha_entrega,tecnico,monto,reporte_url,created_at')
       .order('created_at',{ascending:false}).limit(30);
     if (error) throw error;
-    if (data) {
-      localStorage.setItem('barrcan_reportes_historial', JSON.stringify(
-        data.map(r=>({...r, ts: new Date(r.created_at).toLocaleString('es-MX')}))
-      ));
+
+    if (data && data.length) {
+      const conPendientes = JSON.parse(localStorage.getItem('barrcan_reportes_historial')||'[]').filter(r=>r._pendiente);
+      const nuevos = data.map(r=>({...r, ts: new Date(r.created_at).toLocaleString('es-MX')}));
+      // Mantener los pendientes locales que aún no estén en Supabase, arriba del todo
+      localStorage.setItem('barrcan_reportes_historial', JSON.stringify([...conPendientes, ...nuevos]));
       entRenderHistorial();
+    } else if (!local.length) {
+      // Sin datos en Supabase y sin caché local — mostrar vacío, no dejar "Cargando…"
+      div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">Sin reportes registrados todavía</div>';
     }
-  } catch(e) { console.warn('entCargarHistorial:', e.message); }
+  } catch(e) {
+    console.warn('entCargarHistorial:', e.message);
+    // Si falló la consulta y no había caché, mostrar el error en vez de dejarlo en "Cargando…"
+    if (!local.length) {
+      div.innerHTML = `<div style="text-align:center;padding:20px;color:var(--red);font-size:13px">
+        ⚠️ No se pudo cargar el historial<br>
+        <button onclick="entCargarHistorial()" style="margin-top:8px;padding:6px 14px;
+          background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:12px;
+          font-weight:700;cursor:pointer">🔄 Reintentar</button>
+      </div>`;
+    }
+  }
+}
+
+// ── Abrir historial COMPLETO en una hoja nueva y limpia ──────────
+async function entAbrirHistorialCompleto() {
+  toast('⏳ Generando historial…');
+  const _logoSrc = document.querySelector('.logo-mark img')?.src || '';
+
+  let datos = JSON.parse(localStorage.getItem('barrcan_reportes_historial')||'[]');
+
+  // Si hay señal, traer el historial completo real de Supabase (no solo los 30 últimos)
+  if (SYNC.online) {
+    try {
+      const { data, error } = await sb().from('reportes_entrega')
+        .select('id,folio,cliente_nombre,cliente_tel,fecha_entrega,tecnico,monto,created_at')
+        .order('created_at',{ascending:false}).range(0, 499);
+      if (!error && data) {
+        datos = data.map(r=>({...r, ts: new Date(r.created_at).toLocaleString('es-MX')}));
+      }
+    } catch(e) { console.warn('entAbrirHistorialCompleto:', e.message); }
+  }
+
+  const filas = datos.map(r => `
+    <tr style="${r._pendiente?'background:#FEF2F0':''}">
+      <td style="padding:9px 12px;border-bottom:1px solid #eee;font-family:monospace;font-size:11px;color:#2E6DA4">${r.folio||'—'}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid #eee;font-weight:600">${r.cliente_nombre||'—'}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid #eee;font-size:12px;color:#666">${r.cliente_tel||'—'}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid #eee;font-size:12px">${r.fecha_entrega||'—'}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid #eee;font-size:12px">${r.tecnico||'—'}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid #eee;text-align:right;font-weight:700;color:${r.monto?'#27AE60':'#aaa'}">${r.monto?'$'+fmt(r.monto):'—'}</td>
+      <td style="padding:9px 12px;border-bottom:1px solid #eee;text-align:center">${r._pendiente?'<span style="color:#C0392B;font-size:10px;font-weight:700">⚠️ PENDIENTE</span>':'<span style="color:#27AE60;font-size:10px;font-weight:700">✓ OK</span>'}</td>
+    </tr>`).join('');
+
+  const html = `<!DOCTYPE html><html lang=es><head><meta charset=UTF-8>
+  <meta name=viewport content=width=device-width>
+  <title>BarrCan · Historial de Entregas</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;background:#F5F7FA;color:#1B3A5C}
+    .wrap{max-width:980px;margin:0 auto;padding:20px}
+    .header{display:flex;align-items:center;gap:14px;margin-bottom:20px;padding-bottom:14px;border-bottom:2px solid #1B3A5C}
+    .header img{width:48px;height:48px;object-fit:contain}
+    .header h1{font-size:18px;color:#1B3A5C}
+    .header p{font-size:11px;color:#888}
+    .contador{font-size:13px;color:#666;margin-bottom:14px}
+    table{width:100%;border-collapse:collapse;background:white;border-radius:10px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+    thead th{background:#1B3A5C;color:white;padding:10px 12px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+    tbody tr:hover{background:#FAFBFC}
+    .empty{text-align:center;padding:60px 20px;color:#999}
+    .btn-imprimir{padding:8px 16px;background:#C8923A;color:white;border:none;border-radius:8px;
+      font-size:13px;font-weight:700;cursor:pointer;margin-bottom:14px}
+    @media print{.btn-imprimir{display:none}}
+  </style></head><body>
+  <div class=wrap>
+    <div class=header>
+      <img src="${_logoSrc}">
+      <div><h1>BarrCan · Historial de Reportes de Entrega</h1>
+      <p>Generado ${new Date().toLocaleString('es-MX')}</p></div>
+    </div>
+    <button class=btn-imprimir onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
+    <div class=contador>${datos.length} reporte${datos.length!==1?'s':''} en total</div>
+    ${datos.length ? `<table>
+      <thead><tr><th>Folio</th><th>Cliente</th><th>Teléfono</th><th>Fecha</th><th>Técnico</th><th style="text-align:right">Monto</th><th style="text-align:center">Estado</th></tr></thead>
+      <tbody>${filas}</tbody>
+    </table>` : '<div class=empty>Sin reportes registrados todavía</div>'}
+  </div>
+  </body></html>`;
+
+  const win = window.open('', '_blank');
+  if (win) { win.document.write(html); win.document.close(); }
+  else toast('⚠️ El navegador bloqueó la ventana — permite ventanas emergentes');
 }
 
 function entRenderHistorial() {
