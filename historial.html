@@ -1050,11 +1050,24 @@ body{min-height:100vh}
 ══════════════════════════════════════════════════════════════════
   BARRCAN · MÓDULO: HISTORIAL — Presupuestos Anteriores (standalone)
 ══════════════════════════════════════════════════════════════════
-  VERSIÓN : v1.0
+  VERSIÓN : v1.1
   FECHA   : 2026-06-30
   ESTADO  : Base inicial — captura de presupuestos atrasados
 
   NOTAS DE CONTROL:
+  v1.1 — 2026-06-30
+    - CHG: campo de folio dividido en 4 sub-campos para captura rápida:
+        · Núm. presupuesto (094) → Revisión (A/B/C) → Fecha YYMMDD →
+          Núm. cliente (32J) — el folio completo se auto-construye
+          en tiempo real: CACN-094B-260610-32J
+    - ADD: acciones rápidas en cada tarjeta de la lista:
+        · 💰 Pago — registra abono directo con WA de confirmación al cliente
+        · ✏️ Editar — abre el formulario con datos pre-llenados
+        · 📋 OT — prepara datos para crear la Orden de Trabajo y
+          redirige al módulo ordenes.html cuando exista
+    - CHG: la lista ahora muestra también teléfono y monto total además
+      del saldo, para tener contexto completo de un vistazo
+
   v1.0 — Creación inicial
     - Réplica del módulo "Presupuesto Anterior" de barrcan_app.html
     - Conecta a Supabase: tabla barrcan.presupuestos_atrasados
@@ -1153,16 +1166,27 @@ body{min-height:100vh}
 
     <div class="form-group">
       <label class="form-label">Folio del presupuesto *</label>
-      <div style="display:flex;gap:6px;align-items:center">
-        <div style="background:var(--off-white);border:1.5px solid var(--gray-200);
-          border-radius:var(--radius-sm);padding:10px 12px;font-size:13px;
-          font-weight:700;color:var(--navy);white-space:nowrap;font-family:'DM Mono',monospace">
-          CACN-
-        </div>
-        <input type="text" id="pres-folio" class="form-input"
-          placeholder="094B-260610-32J" style="flex:1;font-family:'DM Mono',monospace">
+      <div style="display:grid;grid-template-columns:80px 60px 1fr 90px;gap:6px;align-items:center">
+        <input type="number" id="pres-num" class="form-input" placeholder="094" min="1"
+          oninput="presActualizarFolio()" inputmode="numeric"
+          style="font-family:'DM Mono',monospace;font-size:13px">
+        <select id="pres-rev" class="form-select" onchange="presActualizarFolio()"
+          style="font-family:'DM Mono',monospace">
+          <option>A</option><option>B</option><option>C</option><option>D</option><option>E</option>
+        </select>
+        <input type="date" id="pres-fecha-folio" class="form-input"
+          oninput="presActualizarFolio()">
+        <input type="text" id="pres-numcli" class="form-input" placeholder="32J"
+          oninput="presActualizarFolio()" maxlength="6"
+          style="font-family:'DM Mono',monospace;font-size:13px">
       </div>
-      <div style="font-size:10px;color:var(--gray-400);margin-top:3px">Ingresa solo la parte después de CACN-</div>
+      <div style="margin-top:6px;background:rgba(27,58,92,0.04);border-radius:var(--radius-sm);
+        padding:7px 10px;font-family:'DM Mono',monospace;font-size:13px;font-weight:700;
+        color:var(--navy)" id="pres-folio-preview">CACN-</div>
+      <div style="font-size:10px;color:var(--gray-400);margin-top:3px">
+        Núm. presupuesto · Revisión · Fecha (YYMMDD) · Núm. cliente
+      </div>
+      <input type="hidden" id="pres-folio">
     </div>
 
     <div class="form-group">
@@ -1322,6 +1346,140 @@ function cliDropdownGetCliente(selectId) {
   try { return JSON.parse(opt.dataset.c || '{}'); } catch(e) { return null; }
 }
 
+// ── Folio auto-generado ──────────────────────────────────────────
+function presActualizarFolio() {
+  const num   = (document.getElementById('pres-num')?.value || '').padStart(3,'0');
+  const rev   = document.getElementById('pres-rev')?.value || 'A';
+  const fecha = document.getElementById('pres-fecha-folio')?.value || '';
+  const numcli= (document.getElementById('pres-numcli')?.value || '').toUpperCase();
+
+  // Fecha en formato YYMMDD
+  let fechaStr = '';
+  if (fecha) {
+    const [y,m,d] = fecha.split('-');
+    fechaStr = (y||'').slice(-2) + (m||'') + (d||'');
+  }
+
+  const partes = [num+rev, fechaStr, numcli].filter(p => p && p.trim());
+  const folio = partes.length ? 'CACN-' + partes.join('-') : 'CACN-';
+  document.getElementById('pres-folio-preview').textContent = folio;
+  document.getElementById('pres-folio').value = folio;
+}
+
+// ── Acciones rápidas desde la lista ──────────────────────────────
+const WA_BARRCAN = '525615158415';
+const ENCUESTA_LINK = 'https://barrcan.github.io/barrcan-app/garantia_publica.html';
+
+function presAccionPago(id) {
+  const p = PRES_CACHE.find(x => x.id === id);
+  if (!p) return;
+  // Crear overlay de pago rápido
+  let ov = document.getElementById('pres-pago-ov');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'pres-pago-ov';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:900;backdrop-filter:blur(4px);display:flex;align-items:flex-end';
+    ov.innerHTML = `
+      <div style="width:100%;background:var(--white);border-radius:20px 20px 0 0;padding:20px 20px 36px">
+        <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 14px"></div>
+        <div id="pp-titulo" style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:4px"></div>
+        <div id="pp-saldo" style="font-size:12px;color:var(--gray-400);margin-bottom:14px"></div>
+        <div class="r2">
+          <div><label class="form-label">Monto a cobrar</label>
+            <input type="number" id="pp-monto" class="form-input" inputmode="decimal"></div>
+          <div><label class="form-label">Fecha</label>
+            <input type="date" id="pp-fecha" class="form-input"></div>
+        </div>
+        <label class="form-label" style="margin-top:8px">Concepto</label>
+        <select id="pp-concepto" class="form-select">
+          <option value="anticipo">Anticipo 50%</option>
+          <option value="segundo_pago">2° Pago 35%</option>
+          <option value="liquidacion">Liquidación 15%</option>
+          <option value="pago_total">Pago total</option>
+          <option value="otro">Otro</option>
+        </select>
+        <label class="form-label" style="margin-top:8px">Forma de pago</label>
+        <select id="pp-forma" class="form-select">
+          <option value="transferencia">Transferencia</option>
+          <option value="efectivo">Efectivo</option>
+          <option value="tarjeta">Tarjeta</option>
+        </select>
+        <div id="pp-error" style="display:none;color:var(--red);font-size:12px;margin:8px 0"></div>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button class="btn-calcular" onclick="ppGuardar()" style="background:var(--green)">💾 Registrar Pago</button>
+          <button onclick="document.getElementById('pres-pago-ov').style.display='none'"
+            style="width:auto;padding:12px 14px;background:none;border:1.5px solid var(--gray-200);
+            border-radius:var(--radius);color:var(--gray-600);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer">Cancelar</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+  }
+  ov.dataset.id = id;
+  document.getElementById('pp-titulo').textContent = '💰 Pago · ' + p.folio;
+  document.getElementById('pp-saldo').textContent  = `Cliente: ${p.cliente} · Saldo: $${fmt(p.saldo)} · Total: $${fmt(p.monto)}`;
+  document.getElementById('pp-monto').value = p.saldo > 0 ? p.saldo : '';
+  document.getElementById('pp-fecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('pp-error').style.display = 'none';
+  ov.style.display = 'flex';
+}
+
+async function ppGuardar() {
+  const id    = document.getElementById('pres-pago-ov').dataset.id;
+  const monto = parseFloat(document.getElementById('pp-monto').value) || 0;
+  const fecha = document.getElementById('pp-fecha').value;
+  const concepto = document.getElementById('pp-concepto').value;
+  const forma = document.getElementById('pp-forma').value;
+  const errEl = document.getElementById('pp-error');
+  if (!monto) { errEl.textContent='⚠️ Ingresa el monto'; errEl.style.display='block'; return; }
+  if (!fecha) { errEl.textContent='⚠️ Ingresa la fecha'; errEl.style.display='block'; return; }
+
+  const idx = PRES_CACHE.findIndex(x => x.id === id);
+  if (idx < 0) return;
+  const p = PRES_CACHE[idx];
+  if (!p.pagos) p.pagos = [];
+  p.pagos.push({ monto, fecha, concepto, forma, ts: new Date().toISOString() });
+  const nuevoSaldo = Math.max(0, (p.saldo||0) - monto);
+  PRES_CACHE[idx] = { ...p, saldo: nuevoSaldo, estado: nuevoSaldo===0?'entregado':p.estado };
+  localStorage.setItem('barrcan_presupuestos_cache', JSON.stringify(PRES_CACHE));
+
+  // Intentar guardar en Supabase
+  if (SYNC.online) {
+    try {
+      await sb().from('presupuestos_atrasados').update({ saldo: nuevoSaldo, estado: PRES_CACHE[idx].estado }).eq('id', id);
+    } catch(e) { console.warn('ppGuardar sync:', e.message); }
+  }
+  document.getElementById('pres-pago-ov').style.display = 'none';
+  presFiltrar();
+  toast(`✅ Pago $${fmt(monto)} registrado · Saldo: $${fmt(nuevoSaldo)}`);
+
+  // Ofrecer enviar por WhatsApp
+  const tel = (p.tel||'').replace(/\D/g,'');
+  if (tel) {
+    const texto = encodeURIComponent(`Hola ${p.cliente}, confirmamos su pago de *$${fmt(monto)}* (${concepto.replace('_',' ')}) para el presupuesto *${p.folio}*. Saldo restante: *$${fmt(nuevoSaldo)}*. \n\n¡Gracias por su preferencia! 🙌 BarrCan · 56-15-15-84-15`);
+    window.open(`https://wa.me/52${tel}?text=${texto}`, '_blank');
+  }
+}
+
+function presCrearOT(id) {
+  const p = PRES_CACHE.find(x => x.id === id);
+  if (!p) return;
+  // Preparar datos para OT y redirigir o mostrar modal
+  const datos = {
+    folio: p.folio, cliente: p.cliente, tel: p.tel,
+    dir: p.dir, desc: p.descripcion, saldo: p.saldo
+  };
+  // Guardar en sesión para que el módulo de OT lo tome
+  localStorage.setItem('barrcan_nueva_ot_prefill', JSON.stringify(datos));
+  // Abrir módulo de OT (cuando exista) o mostrar confirmación
+  toast(`📋 Datos de OT preparados para: ${p.folio}`);
+
+  // Por ahora confirmar con datos
+  const resumen = `Folio: ${p.folio}\nCliente: ${p.cliente}\nSaldo: $${fmt(p.saldo)}\n\n¿Abrir módulo de Órdenes de Trabajo?`;
+  if (confirm(resumen)) {
+    window.location.href = 'ordenes.html';
+  }
+}
+
 function presDropdownSeleccionar() {
   const c = cliDropdownGetCliente('pres-cli-select');
   if (!c) return;
@@ -1402,20 +1560,35 @@ function presRenderLista(datos) {
   div.innerHTML = datos.slice(0,30).map(p => {
     const color = ESTADO_COLORS[p.estado] || 'var(--gray-400)';
     return `
-    <div onclick="presEditar('${p.id}')" style="cursor:pointer;
-      padding:10px 0;border-bottom:1px solid var(--gray-200);
+    <div style="padding:10px 0;border-bottom:1px solid var(--gray-200);
       ${p._pendiente?'background:rgba(192,57,43,0.04);border-left:3px solid var(--red);padding-left:8px':''}">
-      ${p._pendiente ? '<div style="font-size:9px;font-weight:700;color:var(--red);margin-bottom:2px">⚠️ SIN SINCRONIZAR</div>' : ''}
-      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+      ${p._pendiente ? '<div style="font-size:9px;font-weight:700;color:var(--red);margin-bottom:3px">⚠️ SIN SINCRONIZAR</div>' : ''}
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
         <div>
-          <div style="font-size:13px;font-weight:700;color:var(--navy)">${p.folio||'—'}</div>
-          <div style="font-size:11px;color:var(--gray-400)">${p.cliente} · ${p.fecha||''}</div>
+          <div style="font-size:12px;font-weight:700;color:var(--navy);font-family:'DM Mono',monospace">${p.folio||'—'}</div>
+          <div style="font-size:13px;font-weight:600;color:var(--navy)">${p.cliente}</div>
+          <div style="font-size:10px;color:var(--gray-400)">${p.fecha||''} ${p.tel?'· '+p.tel:''}</div>
         </div>
         <div style="text-align:right">
           <span style="font-size:10px;font-weight:700;color:${color};background:rgba(0,0,0,0.04);
             padding:2px 7px;border-radius:8px">${ESTADO_LABELS[p.estado]||p.estado}</span>
-          ${p.saldo>0?`<div style="font-size:12px;font-weight:700;color:var(--red);margin-top:3px">Saldo $${fmt(p.saldo)}</div>`:''}
+          ${p.saldo>0?`<div style="font-size:12px;font-weight:700;color:var(--red);margin-top:2px">Saldo $${{fmt(p.saldo)}}</div>`:''}
+          ${p.monto>0?`<div style="font-size:10px;color:var(--gray-400)">Total $${{fmt(p.monto)}}</div>`:''}
         </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px">
+        <button onclick="presAccionPago('${p.id}')"
+          style="padding:7px 4px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.3);
+          border-radius:8px;color:var(--green);font-size:11px;font-weight:700;cursor:pointer;
+          font-family:'DM Sans',sans-serif">💰 Pago</button>
+        <button onclick="presEditar('${p.id}')"
+          style="padding:7px 4px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);
+          border-radius:8px;color:var(--blue);font-size:11px;font-weight:700;cursor:pointer;
+          font-family:'DM Sans',sans-serif">✏️ Editar</button>
+        <button onclick="presCrearOT('${p.id}')"
+          style="padding:7px 4px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);
+          border-radius:8px;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer;
+          font-family:'DM Sans',sans-serif">📋 OT</button>
       </div>
     </div>`;
   }).join('');
@@ -1430,6 +1603,12 @@ function presAbrirNuevo() {
   document.getElementById('pres-monto').value = '';
   document.getElementById('pres-saldo').value = '';
   document.getElementById('pres-fecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('pres-fecha-folio').value = new Date().toISOString().split('T')[0];
+  document.getElementById('pres-num').value = '';
+  document.getElementById('pres-rev').value = 'A';
+  document.getElementById('pres-numcli').value = '';
+  document.getElementById('pres-folio-preview').textContent = 'CACN-';
+  document.getElementById('pres-folio').value = '';
   document.getElementById('pres-estado').value = 'activo';
   document.getElementById('pres-error').style.display = 'none';
   document.getElementById('pres-modal-overlay').style.display = 'block';
@@ -1443,7 +1622,25 @@ function presEditar(id) {
   PRES_EDITANDO_ID = id;
   document.getElementById('pres-modal-titulo').textContent = '✏️ Editar Presupuesto';
   document.getElementById('pres-btn-eliminar').style.display = 'block';
-  document.getElementById('pres-folio').value = (p.folio||'').replace(/^CACN-/i,'');
+  // Parsear folio a sus componentes para visualización
+  const folioSinPref = (p.folio||'').replace(/^CACN-/i,'');
+  const partesF = folioSinPref.split('-');
+  const numrev  = partesF[0] || '';
+  const numPart = numrev.replace(/[A-Z]$/i,'');
+  const revPart = numrev.match(/[A-Z]$/i)?.[0] || 'A';
+  document.getElementById('pres-num').value = numPart;
+  document.getElementById('pres-rev').value = revPart;
+  document.getElementById('pres-numcli').value = partesF[2] || '';
+  // Fecha del folio: YYMMDD → YYYY-MM-DD
+  const fechaF = partesF[1] || '';
+  if (fechaF && fechaF.length === 6) {
+    const fy = '20' + fechaF.slice(0,2), fm = fechaF.slice(2,4), fd = fechaF.slice(4,6);
+    document.getElementById('pres-fecha-folio').value = `${fy}-${fm}-${fd}`;
+  } else {
+    document.getElementById('pres-fecha-folio').value = p.fecha || '';
+  }
+  document.getElementById('pres-folio-preview').textContent = p.folio || 'CACN-';
+  document.getElementById('pres-folio').value = p.folio || '';
   document.getElementById('pres-cliente').value = p.cliente || '';
   document.getElementById('pres-tel').value = p.tel || '';
   document.getElementById('pres-dir').value = p.dir || '';
