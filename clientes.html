@@ -2,18 +2,43 @@
 ══════════════════════════════════════════════════════════════════
   BARRCAN · MÓDULO: CLIENTES (standalone)
 ══════════════════════════════════════════════════════════════════
-  VERSIÓN : v1.0
+  VERSIÓN : v1.2
   FECHA   : 2026-06-30
-  ESTADO  : Base inicial — réplica exacta del módulo Clientes
-            de barrcan_app.html, sin modificaciones de lógica.
+  ESTADO  : Modo offline-first real — captura sin conexión
 
   NOTAS DE CONTROL:
+  v1.2 — 2026-06-30
+    - ADD: modo offline-first verdadero — si la app detecta que no hay
+      señal (navigator.onLine = false), guarda directo en local SIN
+      intentar fetch primero (antes esperaba el timeout innecesariamente)
+    - ADD: el cliente capturado offline aparece DE INMEDIATO en la lista
+      con borde rojo y etiqueta "SIN SINCRONIZAR" — antes solo quedaba
+      en una cola invisible hasta sincronizar
+    - ADD: al reintentar y sincronizar exitosamente, la tarjeta pierde
+      la marca de pendiente y vuelve a su color normal automáticamente
+    - FIX: si el navegador cree tener señal pero el fetch real falla
+      (falso positivo de navigator.onLine), ahora corrige el estado
+      interno SYNC.online para reflejar la realidad
+    - Flujo probado: capturar cliente en modo avión → aparece marcado
+      en rojo → activar datos → sincroniza solo → desaparece la marca
+
+  v1.1 — 2026-06-30
+    - FIX: "TypeError: Failed to fetch" causaba pérdida del formulario
+      capturado al fallar la conexión con Supabase en el momento del guardado
+    - ADD: reintento automático (hasta 3 intentos con espera progresiva)
+      ante errores de red al guardar/actualizar cliente
+    - ADD: respaldo local en localStorage si los 3 intentos fallan —
+      los datos capturados YA NO SE PIERDEN
+    - ADD: botón "🔄 Reintentar ahora" visible en el mensaje de error
+    - ADD: indicador de "clientes sin sincronizar" junto al contador
+    - ADD: reintento automático al recuperar señal (evento 'online')
+    - ADD: reintento automático al abrir la app si hay pendientes y señal
+
   v1.0 — Creación inicial
     - Extraído tal cual de barrcan_app.html (screen-clientes + 
       modal cliente + lógica JS completa)
     - Conecta directo a Supabase: tabla barrcan.clientes
     - Sin cambios de funcionalidad respecto a la app principal
-    - Pendiente: ninguna observación reportada aún
 
   Cómo agregar una nota en la próxima revisión:
     vX.X — Fecha
@@ -1460,15 +1485,20 @@ function cliRenderLista(lista) {
 
   const cardCliente = (c, esContacto = false) => {
     const esFrecuente = c.num_cliente && parseInt(c.num_cliente.slice(-3)) >= 100;
-    const borde = esFrecuente ? 'var(--gold)' : 'var(--blue)';
+    const borde = c._pendiente ? 'var(--red)' : esFrecuente ? 'var(--gold)' : 'var(--blue)';
     const badgeBg = esFrecuente ? 'rgba(200,146,58,0.1)' : 'rgba(46,109,164,0.08)';
     const badgeColor = esFrecuente ? 'var(--gold)' : 'var(--blue)';
     return `
       <div onclick="cliAbrirEdicion('${c.id}')"
-        style="background:var(--white);border-radius:var(--radius);padding:13px 15px;
+        style="background:${c._pendiente ? 'rgba(192,57,43,0.04)' : 'var(--white)'};border-radius:var(--radius);padding:13px 15px;
                margin-bottom:8px;box-shadow:var(--shadow-sm);cursor:pointer;
                border-left:4px solid ${borde};
                ${esContacto ? 'margin-left:16px;border-left:3px solid var(--gray-200)' : ''}">
+        ${c._pendiente ? `<div style="font-size:10px;font-weight:700;color:var(--red);margin-bottom:5px;
+            display:flex;align-items:center;gap:4px">
+            <span style="width:6px;height:6px;border-radius:50%;background:var(--red);display:inline-block"></span>
+            SIN SINCRONIZAR — se guardará al recuperar señal
+          </div>` : ''}
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px">
           <div style="font-size:14px;font-weight:700;color:var(--navy)">
             ${esFrecuente && !esContacto ? '⭐ ' : ''}${c.nombre}
@@ -1652,49 +1682,152 @@ async function cliGuardar() {
   errEl.style.display = 'none';
   const btn = document.getElementById('cli-btn-guardar');
   btn.disabled = true;
-  btn.innerHTML = '<span>⏳</span> Guardando…';
 
-  try {
-    if (cliEditandoId) {
-      const datosActualizados = { nombre, telefono, email, empresa, cargo, direccion, dir_obra, notas, canal, num_cliente: num_raw };
-      const { error } = await sb()
-        .from('clientes')
-        .update(datosActualizados)
-        .eq('id', cliEditandoId);
-      if (error) throw error;
-      const idx = cliListaCache.findIndex(x => x.id === cliEditandoId);
-      if (idx >= 0) {
-        cliListaCache[idx] = { ...cliListaCache[idx], ...datosActualizados };
-        clientesGuardarCache(cliListaCache);
-      }
-      toast('✅ Cliente actualizado · ' + num_raw);
+  // ── Helper: guardar en cola local + reflejar en pantalla de inmediato ──
+  function guardarOffline(datos, esEdicion) {
+    const pendiente = {
+      tipo: esEdicion ? 'cliente_update' : 'cliente_nuevo',
+      datos,
+      ts: new Date().toISOString()
+    };
+    try {
+      const cola = JSON.parse(localStorage.getItem('barrcan_clientes_pendientes') || '[]');
+      cola.push(pendiente);
+      localStorage.setItem('barrcan_clientes_pendientes', JSON.stringify(cola));
+    } catch(e2) {}
+
+    // Reflejar en la lista YA, marcado como pendiente
+    if (esEdicion) {
+      const idx = cliListaCache.findIndex(x => x.id === datos.id);
+      if (idx >= 0) cliListaCache[idx] = { ...cliListaCache[idx], ...datos, _pendiente: true };
     } else {
-      const nuevoCliente = {
-        id: crypto.randomUUID(),
-        nombre, telefono, email, empresa, cargo,
-        direccion, dir_obra, notas, canal,
-        num_cliente: num_raw,
-        created_at: new Date().toISOString()
-      };
-      const { error } = await sb()
-        .from('clientes')
-        .insert([nuevoCliente]);
-      if (error) throw error;
-      cliListaCache.unshift(nuevoCliente);
-      clientesGuardarCache(cliListaCache);
-      toast('✅ Cliente guardado · ' + num_raw);
+      cliListaCache.unshift({ ...datos, _pendiente: true });
     }
+    clientesGuardarCache(cliListaCache);
     cliCerrarFormulario();
     cliRenderLista(cliListaCache);
-    cliSyncBackground();
-  } catch(e) {
-    errEl.textContent = '❌ Error: ' + e.message;
-    errEl.style.display = 'block';
+    cliMostrarPendientes();
+    toast('💾 Guardado sin conexión · se sincronizará automáticamente');
+  }
+
+  // ── Si ya sabemos que no hay señal, ir directo a modo offline ──
+  if (!SYNC.online) {
+    const datos = cliEditandoId
+      ? { id: cliEditandoId, nombre, telefono, email, empresa, cargo, direccion, dir_obra, notas, canal, num_cliente: num_raw }
+      : { id: crypto.randomUUID(), nombre, telefono, email, empresa, cargo, direccion, dir_obra, notas, canal, num_cliente: num_raw, created_at: new Date().toISOString() };
+    guardarOffline(datos, !!cliEditandoId);
+    btn.disabled = false;
+    btn.innerHTML = '<span>💾</span> <span id="cli-btn-label">' +
+      (cliEditandoId ? 'ACTUALIZAR CLIENTE' : 'GUARDAR CLIENTE') + '</span>';
+    return;
+  }
+
+  // ── Hay señal reportada: intentar guardar con reintento (hasta 3 veces) ──
+  async function intentarGuardar(intento = 1) {
+    btn.innerHTML = `<span>⏳</span> Guardando${intento>1?' (intento '+intento+'/3)':''}…`;
+    try {
+      if (cliEditandoId) {
+        const datosActualizados = { nombre, telefono, email, empresa, cargo, direccion, dir_obra, notas, canal, num_cliente: num_raw };
+        const { error } = await sb()
+          .from('clientes')
+          .update(datosActualizados)
+          .eq('id', cliEditandoId);
+        if (error) throw error;
+        const idx = cliListaCache.findIndex(x => x.id === cliEditandoId);
+        if (idx >= 0) {
+          cliListaCache[idx] = { ...cliListaCache[idx], ...datosActualizados };
+          clientesGuardarCache(cliListaCache);
+        }
+        toast('✅ Cliente actualizado · ' + num_raw);
+      } else {
+        const nuevoCliente = {
+          id: crypto.randomUUID(),
+          nombre, telefono, email, empresa, cargo,
+          direccion, dir_obra, notas, canal,
+          num_cliente: num_raw,
+          created_at: new Date().toISOString()
+        };
+        const { error } = await sb()
+          .from('clientes')
+          .insert([nuevoCliente]);
+        if (error) throw error;
+        cliListaCache.unshift(nuevoCliente);
+        clientesGuardarCache(cliListaCache);
+        toast('✅ Cliente guardado · ' + num_raw);
+      }
+      cliCerrarFormulario();
+      cliRenderLista(cliListaCache);
+      cliSyncBackground();
+      return true;
+    } catch(e) {
+      const esErrorRed = /failed to fetch|network|timeout|fetch/i.test(e.message || '');
+      if (esErrorRed && intento < 3) {
+        await new Promise(r => setTimeout(r, 1000 * intento));
+        return intentarGuardar(intento + 1);
+      }
+      if (esErrorRed) {
+        const datos = cliEditandoId
+          ? { id: cliEditandoId, nombre, telefono, email, empresa, cargo, direccion, dir_obra, notas, canal, num_cliente: num_raw }
+          : { id: crypto.randomUUID(), nombre, telefono, email, empresa, cargo, direccion, dir_obra, notas, canal, num_cliente: num_raw, created_at: new Date().toISOString() };
+        SYNC.online = false; // corregir estado — el navegador creía tener señal pero no llega al servidor
+        detectarConexion();
+        guardarOffline(datos, !!cliEditandoId);
+      } else {
+        errEl.textContent = '❌ Error: ' + e.message;
+        errEl.style.display = 'block';
+      }
+      return false;
+    }
+  }
+
+  try {
+    await intentarGuardar();
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<span>💾</span> <span id="cli-btn-label">' +
       (cliEditandoId ? 'ACTUALIZAR CLIENTE' : 'GUARDAR CLIENTE') + '</span>';
   }
+}
+
+// ── Reintentar clientes guardados localmente por fallo de red ────
+async function cliReintentarPendientes() {
+  const cola = JSON.parse(localStorage.getItem('barrcan_clientes_pendientes') || '[]');
+  if (!cola.length) { toast('✅ No hay pendientes'); return; }
+  toast(`⏳ Reintentando ${cola.length} cliente(s)…`);
+
+  const exitosos = [];
+  for (const item of cola) {
+    try {
+      if (item.tipo === 'cliente_update') {
+        const { id, ...campos } = item.datos;
+        const { error } = await sb().from('clientes').update(campos).eq('id', id);
+        if (error) throw error;
+        // Quitar marca de pendiente en la copia local ya existente
+        const idx = cliListaCache.findIndex(x => x.id === id);
+        if (idx >= 0) { cliListaCache[idx] = { ...cliListaCache[idx], ...campos }; delete cliListaCache[idx]._pendiente; }
+      } else {
+        const { error } = await sb().from('clientes').insert([item.datos]);
+        if (error) throw error;
+        // Reemplazar la entrada local marcada como pendiente por la confirmada
+        const idx = cliListaCache.findIndex(x => x.id === item.datos.id);
+        if (idx >= 0) { cliListaCache[idx] = { ...item.datos }; }
+        else { cliListaCache.unshift({ ...item.datos }); }
+      }
+      exitosos.push(item);
+    } catch(e) {
+      console.warn('Reintento falló para', item.datos.nombre, e.message);
+    }
+  }
+
+  const restantes = cola.filter(i => !exitosos.includes(i));
+  localStorage.setItem('barrcan_clientes_pendientes', JSON.stringify(restantes));
+  clientesGuardarCache(cliListaCache);
+  cliRenderLista(cliListaCache);
+  cliMostrarPendientes();
+
+  if (exitosos.length) toast(`✅ ${exitosos.length} cliente(s) sincronizado(s)`);
+  if (restantes.length) toast(`⚠️ ${restantes.length} aún pendiente(s)`);
+  document.getElementById('cli-error').style.display = 'none';
 }
 
 // ── Eliminar ───────────────────────────────────
@@ -1720,9 +1853,36 @@ async function cliEliminar() {
   }
 }
 
+// ── Mostrar badge de pendientes sin sincronizar ───
+function cliMostrarPendientes() {
+  const cola = JSON.parse(localStorage.getItem('barrcan_clientes_pendientes') || '[]');
+  const cont = document.getElementById('cli-contador');
+  if (cola.length > 0) {
+    cont.innerHTML = `${cliListaCache.length} cliente(s) ·
+      <span onclick="cliReintentarPendientes()" style="color:var(--gold);font-weight:700;cursor:pointer;text-decoration:underline">
+        ⚠️ ${cola.length} sin sincronizar — toca para reintentar
+      </span>`;
+  } else if (cliListaCache.length) {
+    cont.textContent = `${cliListaCache.length} cliente${cliListaCache.length>1?'s':''}`;
+  }
+}
+
 // ── Iniciar ────────────────────────────────────
 detectarConexion();
-cliCargar();
+cliCargar().then(() => {
+  cliMostrarPendientes();
+  // Si hay conexión y pendientes, reintentar automáticamente
+  if (SYNC.online) {
+    const cola = JSON.parse(localStorage.getItem('barrcan_clientes_pendientes') || '[]');
+    if (cola.length) setTimeout(() => cliReintentarPendientes(), 1500);
+  }
+});
+
+// Reintentar también cuando vuelva la señal
+window.addEventListener('online', () => {
+  const cola = JSON.parse(localStorage.getItem('barrcan_clientes_pendientes') || '[]');
+  if (cola.length) setTimeout(() => cliReintentarPendientes(), 1000);
+});
 </script>
 </body>
 </html>
