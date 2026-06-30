@@ -1050,7 +1050,7 @@ body{min-height:100vh}
 ══════════════════════════════════════════════════════════════════
   BARRCAN · MÓDULO: HISTORIAL — Presupuestos Anteriores (standalone)
 ══════════════════════════════════════════════════════════════════
-  VERSIÓN : v1.1
+  VERSIÓN : v1.2
   FECHA   : 2026-06-30
   ESTADO  : Base inicial — captura de presupuestos atrasados
 
@@ -1322,9 +1322,12 @@ async function cliDropdownCargar(selectId) {
   });
   if (!SYNC.online) return;
   try {
-    const { data, error } = await sb().from('clientes')
+    // Timeout de 4s — si Supabase no responde, el dropdown ya tiene el caché
+    const timeoutPromise = new Promise((_,rej) => setTimeout(()=>rej(new Error('timeout')), 4000));
+    const fetchPromise = sb().from('clientes')
       .select('id,nombre,telefono,empresa,dir_obra,direccion,num_cliente')
       .order('nombre').range(0, 999);
+    const { data, error } = await Promise.race([fetchPromise, timeoutPromise]);
     if (error) throw error;
     cliListaCache = data || [];
     localStorage.setItem('barrcan_clientes_cache', JSON.stringify(cliListaCache));
@@ -1336,7 +1339,10 @@ async function cliDropdownCargar(selectId) {
       opt.dataset.c = JSON.stringify(c);
       sel.appendChild(opt);
     });
-  } catch(e) { console.warn('cliDropdownCargar:', e.message); }
+  } catch(e) {
+    // Timeout o error: el dropdown ya tiene la caché local, no es crítico
+    console.warn('cliDropdownCargar:', e.message);
+  }
 }
 
 function cliDropdownGetCliente(selectId) {
@@ -1373,6 +1379,16 @@ const ENCUESTA_LINK = 'https://barrcan.github.io/barrcan-app/garantia_publica.ht
 function presAccionPago(id) {
   const p = PRES_CACHE.find(x => x.id === id);
   if (!p) return;
+  // Pasar datos a pagos.html via localStorage y redirigir
+  const prefill = {
+    folio: p.folio, cliente: p.cliente, tel: p.tel,
+    monto: p.monto, saldo: p.saldo,
+    desc: p.descripcion
+  };
+  localStorage.setItem('barrcan_pago_prefill', JSON.stringify(prefill));
+  window.location.href = 'pagos.html';
+  return;
+  // ↓ Código de overlay inline (se mantiene como fallback si pagos.html no existe)
   // Crear overlay de pago rápido
   let ov = document.getElementById('pres-pago-ov');
   if (!ov) {
@@ -1498,13 +1514,17 @@ async function presCargar() {
   const div = document.getElementById('pres-lista');
   const local = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache')||'[]');
 
-  if (local.length) { PRES_CACHE = local; presFiltrar(); }
-  else div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">⏳ Buscando presupuestos…</div>';
-
-  if (!SYNC.online) {
-    if (!local.length) div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">📵 Sin conexión — sin caché todavía</div>';
-    return;
+  // Mostrar caché de inmediato (nunca bloquear la UI)
+  if (local.length) {
+    PRES_CACHE = local;
+    presFiltrar();
+  } else {
+    div.innerHTML = SYNC.online
+      ? '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">⏳ Buscando…</div>'
+      : '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">📵 Sin conexión — sin registros en caché</div>';
   }
+
+  if (!SYNC.online) return;
 
   try {
     const { data, error } = await sb().from('presupuestos_atrasados')
@@ -1613,7 +1633,8 @@ function presAbrirNuevo() {
   document.getElementById('pres-error').style.display = 'none';
   document.getElementById('pres-modal-overlay').style.display = 'block';
   document.getElementById('pres-modal').style.display = 'block';
-  cliDropdownCargar('pres-cli-select');
+  // No esperar el dropdown — se carga en background sin bloquear el modal
+  setTimeout(() => cliDropdownCargar('pres-cli-select'), 50);
 }
 
 function presEditar(id) {
@@ -1652,7 +1673,7 @@ function presEditar(id) {
   document.getElementById('pres-error').style.display = 'none';
   document.getElementById('pres-modal-overlay').style.display = 'block';
   document.getElementById('pres-modal').style.display = 'block';
-  cliDropdownCargar('pres-cli-select');
+  setTimeout(() => cliDropdownCargar('pres-cli-select'), 50);
 }
 
 function presCerrarModal() {
@@ -1680,13 +1701,30 @@ function presGuardarOffline(datos, esEdicion) {
 }
 
 async function presGuardar() {
+  // Intentar construir folio desde campos separados primero
+  const numVal  = (document.getElementById('pres-num')?.value   || '').trim();
+  const revVal  = (document.getElementById('pres-rev')?.value   || 'A').trim();
+  const numcliV = (document.getElementById('pres-numcli')?.value|| '').trim().toUpperCase();
+  const fFolioV = document.getElementById('pres-fecha-folio')?.value || '';
+  if (numVal) {
+    // Recalcular folio desde los campos si el hidden no está actualizado
+    const numP = numVal.padStart(3,'0');
+    let fechaStr = '';
+    if (fFolioV) { const [y,m,d]=fFolioV.split('-'); fechaStr=(y||'').slice(-2)+(m||'')+(d||''); }
+    const partes = [numP+revVal, fechaStr, numcliV].filter(Boolean);
+    const folioGenerado = 'CACN-' + partes.join('-');
+    document.getElementById('pres-folio').value = folioGenerado;
+    if (document.getElementById('pres-folio-preview'))
+      document.getElementById('pres-folio-preview').textContent = folioGenerado;
+  }
+
   const folioRaw = document.getElementById('pres-folio').value.trim();
-  const folio = folioRaw ? (folioRaw.toUpperCase().startsWith('CACN-') ? folioRaw : `CACN-${folioRaw}`) : '';
+  const folio = folioRaw ? (folioRaw.toUpperCase().startsWith('CACN-') ? folioRaw.toUpperCase() : `CACN-${folioRaw.toUpperCase()}`) : '';
   const cliente = document.getElementById('pres-cliente').value.trim();
   const errEl = document.getElementById('pres-error');
   errEl.style.display = 'none';
 
-  if (!folio)   { errEl.textContent='⚠️ El folio es obligatorio'; errEl.style.display='block'; return; }
+  if (!folio)   { errEl.textContent='⚠️ Ingresa el número de presupuesto (campo izquierdo)'; errEl.style.display='block'; return; }
   if (!cliente) { errEl.textContent='⚠️ El cliente es obligatorio'; errEl.style.display='block'; return; }
 
   const btn = document.getElementById('pres-btn-guardar');
