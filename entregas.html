@@ -1050,7 +1050,7 @@ body{min-height:100vh}
 ══════════════════════════════════════════════════════════════════
   BARRCAN · MÓDULO: ENTREGAS (standalone)
 ══════════════════════════════════════════════════════════════════
-  VERSIÓN : v1.3
+  VERSIÓN : v1.4
   FECHA   : 2026-06-30
   ESTADO  : Corrección crítica — reportes no se guardaban en absoluto
 
@@ -1665,9 +1665,21 @@ function puertaReset() {
 
 // ── Guardar pendiente local + mostrar en historial de inmediato ──
 function puertaGuardarOffline(payload) {
+  // Solo guardar campos que existen en la tabla reportes_entrega
+  const dbLimpio = {
+    folio:          payload.folio,
+    cliente_nombre: payload.cliente_nombre,
+    cliente_tel:    payload.cliente_tel || null,
+    fecha_entrega:  payload.fecha_entrega,
+    tecnico:        payload.tecnico || 'BarrCan',
+    tel_destino:    payload.tel_destino || payload.cliente_tel || null,
+    registrado_por: payload.registrado_por || 'campo',
+    whatsapp_enviado: false,
+    dir_obra:       payload.dir_obra || null
+  };
   try {
     const cola = JSON.parse(localStorage.getItem('barrcan_entregas_pendientes') || '[]');
-    cola.push({ datos: payload, ts: new Date().toISOString() });
+    cola.push({ datos: dbLimpio, ts: new Date().toISOString() });
     localStorage.setItem('barrcan_entregas_pendientes', JSON.stringify(cola));
   } catch(e) {}
 
@@ -1833,7 +1845,7 @@ async function entCargarHistorial() {
   // Pase lo que pase con la consulta a Supabase, SIEMPRE se resuelve el estado de "Cargando…"
   try {
     const { data, error } = await sb().from('reportes_entrega')
-      .select('id,folio,cliente_nombre,fecha_entrega,tecnico,monto,reporte_url,created_at')
+      .select('id,folio,cliente_nombre,cliente_tel,fecha_entrega,tecnico,reporte_url,whatsapp_enviado,created_at')
       .order('created_at',{ascending:false}).limit(30);
     if (error) throw error;
 
@@ -1887,7 +1899,7 @@ async function entAbrirHistorialCompleto() {
       <td style="padding:9px 12px;border-bottom:1px solid #eee;font-size:12px;color:#666">${r.cliente_tel||'—'}</td>
       <td style="padding:9px 12px;border-bottom:1px solid #eee;font-size:12px">${r.fecha_entrega||'—'}</td>
       <td style="padding:9px 12px;border-bottom:1px solid #eee;font-size:12px">${r.tecnico||'—'}</td>
-      <td style="padding:9px 12px;border-bottom:1px solid #eee;text-align:right;font-weight:700;color:${r.monto?'#27AE60':'#aaa'}">${r.monto?'$'+fmt(r.monto):'—'}</td>
+
       <td style="padding:9px 12px;border-bottom:1px solid #eee;text-align:center">${r._pendiente?'<span style="color:#C0392B;font-size:10px;font-weight:700">⚠️ PENDIENTE</span>':'<span style="color:#27AE60;font-size:10px;font-weight:700">✓ OK</span>'}</td>
     </tr>`).join('');
 
@@ -1920,7 +1932,7 @@ async function entAbrirHistorialCompleto() {
     <button class=btn-imprimir onclick="window.print()">🖨️ Imprimir / Guardar PDF</button>
     <div class=contador>${datos.length} reporte${datos.length!==1?'s':''} en total</div>
     ${datos.length ? `<table>
-      <thead><tr><th>Folio</th><th>Cliente</th><th>Teléfono</th><th>Fecha</th><th>Técnico</th><th style="text-align:right">Monto</th><th style="text-align:center">Estado</th></tr></thead>
+      <thead><tr><th>Folio</th><th>Cliente</th><th>Teléfono</th><th>Fecha</th><th>Técnico</th><th style="text-align:center">Estado</th></tr></thead>
       <tbody>${filas}</tbody>
     </table>` : '<div class=empty>Sin reportes registrados todavía</div>'}
   </div>
@@ -1954,7 +1966,7 @@ function entRenderHistorial() {
         <div style="font-size:13px;font-weight:700;color:var(--navy)">${r.folio||'—'}</div>
         <div style="font-size:11px;color:var(--gray-400)">${r.cliente_nombre} · ${r.fecha_entrega||''}</div>
       </div>
-      ${r.monto?`<div style="font-weight:700;color:var(--green);font-size:13px">$${fmt(r.monto)}</div>`:''}
+
     </div>`).join('');
 }
 
@@ -1966,7 +1978,19 @@ async function entReintentarPendientes() {
   const exitosos = [];
   for (const item of cola) {
     try {
-      const { error } = await sb().from('reportes_entrega').insert([item.datos]);
+      // Asegurar que cada pendiente solo tiene columnas válidas (por si quedaron corruptos)
+      const datosLimpios = {
+        folio:          item.datos.folio,
+        cliente_nombre: item.datos.cliente_nombre,
+        cliente_tel:    item.datos.cliente_tel || null,
+        fecha_entrega:  item.datos.fecha_entrega,
+        tecnico:        item.datos.tecnico || 'BarrCan',
+        tel_destino:    item.datos.tel_destino || item.datos.cliente_tel || null,
+        registrado_por: item.datos.registrado_por || 'campo',
+        whatsapp_enviado: false,
+        dir_obra:       item.datos.dir_obra || null
+      };
+      const { error } = await sb().from('reportes_entrega').insert([datosLimpios]);
       if (error) throw error;
       exitosos.push(item);
     } catch(e) { console.warn('Reintento entrega falló:', e.message); }
