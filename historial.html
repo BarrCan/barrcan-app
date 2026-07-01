@@ -1355,10 +1355,10 @@ function cliDropdownGetCliente(selectId) {
 
 // ── Folio auto-generado ──────────────────────────────────────────
 function presActualizarFolio() {
-  const num   = (document.getElementById('pres-num')?.value || '').padStart(3,'0');
-  const rev   = document.getElementById('pres-rev')?.value || 'A';
-  const fecha = document.getElementById('pres-fecha-folio')?.value || '';
-  const numcli= (document.getElementById('pres-numcli')?.value || '').toUpperCase();
+  const num   = ((document.getElementById('pres-num') ? document.getElementById('pres-num').value : "") || '').padStart(3,'0');
+  const rev   = (document.getElementById('pres-rev') ? document.getElementById('pres-rev').value : "") || 'A';
+  const fecha = (document.getElementById('pres-fecha-folio') ? document.getElementById('pres-fecha-folio').value : "") || '';
+  const numcli= ((document.getElementById('pres-numcli') ? document.getElementById('pres-numcli').value : "") || '').toUpperCase();
 
   // Fecha en formato YYMMDD
   let fechaStr = '';
@@ -1548,11 +1548,12 @@ async function presCargar() {
     const esRed = /failed to fetch|network|fetch/i.test(e.message||'');
     if (esRed) { SYNC.online = false; detectarConexion(); }
     if (!local.length) {
-      div.innerHTML = `<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">
-        ${esRed ? '📵 Sin conexión — sin registros en caché' : '⚠️ Error al cargar'}<br>
-        <button onclick="presCargar()" style="margin-top:8px;padding:6px 14px;background:var(--navy);
-          color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🔄 Reintentar</button>
-      </div>`;
+      const _msgErr = esRed ? '&#128245; Sin conexión' : '&#9888; Error al cargar';
+      div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">'
+        + _msgErr + '<br>'
+        + '<button onclick="presCargar()" style="margin-top:8px;padding:6px 14px;background:var(--navy);'
+        + 'color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">'
+        + 'Reintentar</button></div>';
     }
   }
 }
@@ -1576,50 +1577,43 @@ const ESTADO_COLORS = {
 
 function presRenderLista(datos) {
   const pendientes = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes')||'[]');
-  document.getElementById('pres-contador').innerHTML = PRES_CACHE.length
-    ? `${PRES_CACHE.length} presupuesto${PRES_CACHE.length>1?'s':''}` +
-      (pendientes.length ? ` · <span onclick="presReintentarPendientes()" style="color:var(--gold);font-weight:700;cursor:pointer;text-decoration:underline">⚠️ ${pendientes.length} sin sincronizar</span>` : '')
+  var cntTxt = PRES_CACHE.length
+    ? PRES_CACHE.length + ' presupuesto' + (PRES_CACHE.length>1?'s':'')
+      + (pendientes.length ? ' &middot; <span onclick="presReintentarPendientes()" style="color:var(--gold);font-weight:700;cursor:pointer;text-decoration:underline">' + pendientes.length + ' sin sincronizar</span>' : '')
     : '';
+  document.getElementById('pres-contador').innerHTML = cntTxt;
 
   const div = document.getElementById('pres-lista');
   if (!datos.length) {
     div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">Sin presupuestos registrados</div>';
     return;
   }
-  div.innerHTML = datos.slice(0,30).map(p => {
-    const color = ESTADO_COLORS[p.estado] || 'var(--gray-400)';
-    return `
-    <div style="padding:10px 0;border-bottom:1px solid var(--gray-200);
-      ${p._pendiente?'background:rgba(192,57,43,0.04);border-left:3px solid var(--red);padding-left:8px':''}">
-      ${p._pendiente ? '<div style="font-size:9px;font-weight:700;color:var(--red);margin-bottom:3px">⚠️ SIN SINCRONIZAR</div>' : ''}
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-        <div>
-          <div style="font-size:12px;font-weight:700;color:var(--navy);font-family:'DM Mono',monospace">${p.folio||'—'}</div>
-          <div style="font-size:13px;font-weight:600;color:var(--navy)">${p.cliente}</div>
-          <div style="font-size:10px;color:var(--gray-400)">${p.fecha||''} ${p.tel?'· '+p.tel:''}</div>
-        </div>
-        <div style="text-align:right">
-          <span style="font-size:10px;font-weight:700;color:${color};background:rgba(0,0,0,0.04);
-            padding:2px 7px;border-radius:8px">${ESTADO_LABELS[p.estado]||p.estado}</span>
-          ${p.saldo>0?`<div style="font-size:12px;font-weight:700;color:var(--red);margin-top:2px">Saldo $${{fmt(p.saldo)}}</div>`:''}
-          ${p.monto>0?`<div style="font-size:10px;color:var(--gray-400)">Total $${{fmt(p.monto)}}</div>`:''}
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px">
-        <button onclick="presAccionPago('${p.id}')"
-          style="padding:7px 4px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.3);
-          border-radius:8px;color:var(--green);font-size:11px;font-weight:700;cursor:pointer;
-          font-family:'DM Sans',sans-serif">💰 Pago</button>
-        <button onclick="presEditar('${p.id}')"
-          style="padding:7px 4px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);
-          border-radius:8px;color:var(--blue);font-size:11px;font-weight:700;cursor:pointer;
-          font-family:'DM Sans',sans-serif">✏️ Editar</button>
-        <button onclick="presCrearOT('${p.id}')"
-          style="padding:7px 4px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);
-          border-radius:8px;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer;
-          font-family:'DM Sans',sans-serif">📋 OT</button>
-      </div>
-    </div>`;
+  div.innerHTML = datos.slice(0,30).map(function(p) {
+    var color = ESTADO_COLORS[p.estado] || 'var(--gray-400)';
+    var bgPend = p._pendiente ? 'background:rgba(192,57,43,0.04);border-left:3px solid var(--red);padding-left:8px' : '';
+    var sincTag = p._pendiente ? '<div style="font-size:9px;font-weight:700;color:var(--red);margin-bottom:3px">SIN SINCRONIZAR</div>' : '';
+    var telTag  = p.tel ? ' &middot; ' + p.tel : '';
+    var saldoTag = p.saldo > 0 ? '<div style="font-size:12px;font-weight:700;color:var(--red);margin-top:2px">Saldo $' + fmt(p.saldo) + '</div>' : '';
+    var montoTag = p.monto > 0 ? '<div style="font-size:10px;color:var(--gray-400)">Total $' + fmt(p.monto) + '</div>' : '';
+    return '<div style="padding:10px 0;border-bottom:1px solid var(--gray-200);' + bgPend + '">'
+      + sincTag
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">'
+      + '<div>'
+      + '<div style="font-size:12px;font-weight:700;color:var(--navy)">' + (p.folio||'&mdash;') + '</div>'
+      + '<div style="font-size:13px;font-weight:600;color:var(--navy)">' + p.cliente + '</div>'
+      + '<div style="font-size:10px;color:var(--gray-400)">' + (p.fecha||'') + telTag + '</div>'
+      + '</div>'
+      + '<div style="text-align:right">'
+      + '<span style="font-size:10px;font-weight:700;color:' + color + ';background:rgba(0,0,0,0.04);padding:2px 7px;border-radius:8px">' + (ESTADO_LABELS[p.estado]||p.estado) + '</span>'
+      + saldoTag + montoTag
+      + '</div>'
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px">'
+      + '<button onclick="presAccionPago('' + p.id + '')" style="padding:7px 4px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.3);border-radius:8px;color:var(--green);font-size:11px;font-weight:700;cursor:pointer">Pago</button>'
+      + '<button onclick="presEditar('' + p.id + '')" style="padding:7px 4px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:11px;font-weight:700;cursor:pointer">Editar</button>'
+      + '<button onclick="presCrearOT('' + p.id + '')" style="padding:7px 4px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer">OT</button>'
+      + '</div>'
+      + '</div>';
   }).join('');
 }
 
@@ -1657,7 +1651,7 @@ function presEditar(id) {
   const partesF = folioSinPref.split('-');
   const numrev  = partesF[0] || '';
   const numPart = numrev.replace(/[A-Z]$/i,'');
-  const revPart = numrev.match(/[A-Z]$/i)?.[0] || 'A';
+  const revPart = (numrev.match(/[A-Z]$/i) ? numrev.match(/[A-Z]$/i)[0] : null) || 'A';
   document.getElementById('pres-num').value = numPart;
   document.getElementById('pres-rev').value = revPart;
   document.getElementById('pres-numcli').value = partesF[2] || '';
@@ -1711,10 +1705,10 @@ function presGuardarOffline(datos, esEdicion) {
 
 async function presGuardar() {
   // Intentar construir folio desde campos separados primero
-  const numVal  = (document.getElementById('pres-num')?.value   || '').trim();
-  const revVal  = (document.getElementById('pres-rev')?.value   || 'A').trim();
-  const numcliV = (document.getElementById('pres-numcli')?.value|| '').trim().toUpperCase();
-  const fFolioV = document.getElementById('pres-fecha-folio')?.value || '';
+  const numVal  = ((document.getElementById('pres-num') ? document.getElementById('pres-num').value : "")   || '').trim();
+  const revVal  = ((document.getElementById('pres-rev') ? document.getElementById('pres-rev').value : "")   || 'A').trim();
+  const numcliV = ((document.getElementById('pres-numcli') ? document.getElementById('pres-numcli').value : "")|| '').trim().toUpperCase();
+  const fFolioV = (document.getElementById('pres-fecha-folio') ? document.getElementById('pres-fecha-folio').value : "") || '';
   if (numVal) {
     // Recalcular folio desde los campos si el hidden no está actualizado
     const numP = numVal.padStart(3,'0');
@@ -1806,7 +1800,7 @@ async function presGuardar() {
 async function presEliminar() {
   if (!PRES_EDITANDO_ID) return;
   const p = PRES_CACHE.find(x => x.id === PRES_EDITANDO_ID);
-  if (!confirm(`¿Eliminar el presupuesto ${p?.folio}? Esta acción no se puede deshacer.`)) return;
+  if (!confirm(`¿Eliminar el presupuesto ${(p ? p.folio : "")}? Esta acción no se puede deshacer.`)) return;
   try {
     if (SYNC.online) {
       const { error } = await sb().from('presupuestos_atrasados').delete().eq('id', PRES_EDITANDO_ID);
