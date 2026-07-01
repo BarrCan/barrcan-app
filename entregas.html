@@ -1050,7 +1050,7 @@ body{min-height:100vh}
 ══════════════════════════════════════════════════════════════════
   BARRCAN · MÓDULO: ENTREGAS (standalone)
 ══════════════════════════════════════════════════════════════════
-  VERSIÓN : v1.4
+  VERSIÓN : v1.7
   FECHA   : 2026-06-30
   ESTADO  : Corrección crítica — reportes no se guardaban en absoluto
 
@@ -1530,8 +1530,21 @@ function esAdmin() {
   } catch(e) { return false; }
 }
 
+// ── Variable global para el HTML del comprobante actual ──────────
+let _COMPROBANTE_HTML_ACTUAL = '';
+// Restaurar comprobante si la página se recargó (Android libera memoria)
+try {
+  const _saved = sessionStorage.getItem('barrcan_comprobante_actual');
+  if (_saved) _COMPROBANTE_HTML_ACTUAL = _saved;
+} catch(e) {}
+
 // ── Modal de acciones post-impresión ─────────────────────────
 function puertaMostrarAccionesPost(folio, tel, htmlComprobante) {
+  _COMPROBANTE_HTML_ACTUAL = htmlComprobante || '';
+  // Persistir en sessionStorage para sobrevivir recarga de Android
+  if (htmlComprobante) {
+    try { sessionStorage.setItem('barrcan_comprobante_actual', htmlComprobante); } catch(e) {}
+  }
   // Crear/reusar el overlay
   let ov = document.getElementById('post-print-ov');
   if (!ov) {
@@ -1581,15 +1594,15 @@ function puertaMostrarAccionesPost(folio, tel, htmlComprobante) {
     document.body.appendChild(ov);
   }
 
-  // Guardar datos en el elemento para usarlos en los botones
+  // Guardar solo folio y tel en dataset (strings pequeños)
+  // HTML se guarda en _COMPROBANTE_HTML_ACTUAL (variable global en memoria)
   ov.dataset.folio = folio || '';
   ov.dataset.tel   = tel   || '';
-  ov.dataset.html  = htmlComprobante || '';
 
   document.getElementById('ppa-folio').textContent = '✅ ' + (folio || 'Reporte guardado');
 
   // Solo admins pueden ver el botón "Ver/reimprimir"
-  document.getElementById('ppa-btn-ver').style.display = htmlComprobante ? 'flex' : 'none';
+  document.getElementById('ppa-btn-ver').style.display = _COMPROBANTE_HTML_ACTUAL ? 'flex' : 'none';
 
   ov.style.display = 'flex';
 }
@@ -1597,12 +1610,15 @@ function puertaMostrarAccionesPost(folio, tel, htmlComprobante) {
 function puertaCerrarAccionesPost() {
   const ov = document.getElementById('post-print-ov');
   if (ov) ov.style.display = 'none';
+  // Limpiar al cerrar el panel
+  _COMPROBANTE_HTML_ACTUAL = '';
+  try { sessionStorage.removeItem('barrcan_comprobante_actual'); } catch(e) {}
 }
 
 function puertaEnviarWA() {
   const ov = document.getElementById('post-print-ov');
-  const folio = ov?.dataset.folio || '';
-  const tel   = (ov?.dataset.tel || '').replace(/\D/g,'');
+  const folio = (ov?.dataset.folio || '').trim();
+  const tel   = (ov?.dataset.tel   || '').replace(/\D/g,'');
   const texto = encodeURIComponent(
     `Hola, le compartimos el comprobante de entrega de su pedido *${folio}*. ` +
     `Por favor confirme de recibido. \n\n` +
@@ -1629,11 +1645,12 @@ function puertaEnviarEncuesta() {
 }
 
 function puertaReverReporte() {
-  const ov = document.getElementById('post-print-ov');
-  const html = ov?.dataset.html;
-  if (!html) { toast('⚠️ El comprobante no está disponible'); return; }
+  if (!_COMPROBANTE_HTML_ACTUAL) {
+    toast('⚠️ El comprobante ya no está en memoria — solo disponible inmediatamente después de generarlo');
+    return;
+  }
   const win = window.open('', '_blank');
-  if (win) { win.document.write(html); win.document.close(); }
+  if (win) { win.document.write(_COMPROBANTE_HTML_ACTUAL); win.document.close(); }
   else toast('⚠️ El navegador bloqueó la ventana — permite ventanas emergentes');
 }
 
@@ -1759,6 +1776,7 @@ async function puertaGenerarReporte() {
 
     if (!SYNC.online) {
       puertaGuardarOffline(dbPayload);
+      puertaMostrarAccionesPost(folioFull, tel||null, _htmlComprobante);
       puertaReset();
       return;
     }
@@ -1786,11 +1804,11 @@ async function puertaGenerarReporte() {
           // Falla de red real → guardar offline y reintentar luego
           SYNC.online = false; detectarConexion();
           puertaGuardarOffline(dbPayload);
+          puertaMostrarAccionesPost(folioFull, tel||null, _htmlComprobante);
           puertaReset();
         } else if (esColumna) {
-          // Error de estructura de BD (columna no existe / caché desactualizado de Supabase)
-          // NUNCA perder la captura del técnico: guardar local SIEMPRE y avisar claro
           puertaGuardarOffline(dbPayload);
+          puertaMostrarAccionesPost(folioFull, tel||null, _htmlComprobante);
           puertaReset();
           errEl.innerHTML = `⚠️ Error de configuración en el servidor (no de tu captura).<br>
             <span style="font-size:11px">${e.message}</span><br>
@@ -1800,6 +1818,7 @@ async function puertaGenerarReporte() {
         } else {
           // Cualquier otro error desconocido → también respaldar localmente, nunca perder datos
           puertaGuardarOffline(dbPayload);
+          puertaMostrarAccionesPost(folioFull, tel||null, _htmlComprobante);
           puertaReset();
           errEl.textContent = '⚠️ ' + e.message + ' — el reporte se guardó localmente como respaldo.';
           errEl.style.display = 'block';

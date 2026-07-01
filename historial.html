@@ -1050,7 +1050,7 @@ body{min-height:100vh}
 ══════════════════════════════════════════════════════════════════
   BARRCAN · MÓDULO: HISTORIAL — Presupuestos Anteriores (standalone)
 ══════════════════════════════════════════════════════════════════
-  VERSIÓN : v1.2
+  VERSIÓN : v1.5
   FECHA   : 2026-06-30
   ESTADO  : Base inicial — captura de presupuestos atrasados
 
@@ -1285,6 +1285,8 @@ window.addEventListener('online',  () => { SYNC.online = true;  detectarConexion
 window.addEventListener('offline', () => { SYNC.online = false; detectarConexion(); });
 
 function detectarConexion() {
+  // También actualizar SYNC.online con navigator.onLine como referencia inicial
+  SYNC.online = navigator.onLine;
   document.getElementById('conn-status').textContent = SYNC.online ? 'Online' : 'Offline-First';
 }
 
@@ -1321,6 +1323,7 @@ async function cliDropdownCargar(selectId) {
     sel.appendChild(opt);
   });
   if (!SYNC.online) return;
+  if (!sb()) return;  // CDN no listo aún — ok, el dropdown ya tiene caché local
   try {
     // Timeout de 4s — si Supabase no responde, el dropdown ya tiene el caché
     const timeoutPromise = new Promise((_,rej) => setTimeout(()=>rej(new Error('timeout')), 4000));
@@ -1524,7 +1527,10 @@ async function presCargar() {
       : '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">📵 Sin conexión — sin registros en caché</div>';
   }
 
-  if (!SYNC.online) return;
+  if (!sb()) {
+    console.warn('Supabase CDN no disponible aún');
+    return;
+  }
 
   try {
     const { data, error } = await sb().from('presupuestos_atrasados')
@@ -1532,6 +1538,8 @@ async function presCargar() {
       .order('created_at',{ascending:false}).range(0, 499);
     if (error) throw error;
 
+    // Supabase respondió = hay conexión real, actualizar badge
+    SYNC.online = true; detectarConexion();
     const pendientes = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache')||'[]').filter(p=>p._pendiente);
     PRES_CACHE = [...pendientes, ...(data||[])];
     localStorage.setItem('barrcan_presupuestos_cache', JSON.stringify(PRES_CACHE));
@@ -1846,12 +1854,38 @@ async function presReintentarPendientes() {
   presFiltrar();
 }
 
-// ── Iniciar ────────────────────────────────────
-detectarConexion();
-presCargar();
-if (SYNC.online) {
-  const cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes')||'[]');
-  if (cola.length) setTimeout(()=>presReintentarPendientes(), 1500);
+// ── Iniciar — esperar a que el DOM y Supabase CDN estén listos ────
+function initApp() {
+  // Mostrar caché INMEDIATAMENTE sin esperar nada
+  const local = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache')||'[]');
+  if (local.length) {
+    PRES_CACHE = local;
+    presFiltrar();
+  }
+  // Siempre intentar cargar, la conexión real se detecta al hacer el fetch
+  // navigator.onLine puede ser false en móvil aunque haya internet
+  setTimeout(async () => {
+    if (window.supabase) {
+      await presCargar();
+    } else {
+      // CDN tardó — reintentar
+      setTimeout(async () => {
+        if (window.supabase) await presCargar();
+        else document.getElementById('pres-lista').innerHTML =
+          '<div style="text-align:center;padding:20px;color:var(--red);font-size:13px">Error cargando librerías — recarga la página</div>';
+      }, 2000);
+    }
+    const cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes')||'[]');
+    if (cola.length) setTimeout(()=>presReintentarPendientes(), 1500);
+  }, 200);
+
+  detectarConexion();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
 }
 </script>
 </body>
