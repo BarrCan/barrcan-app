@@ -1050,7 +1050,7 @@ body{min-height:100vh}
 ══════════════════════════════════════════════════════════════════
   BARRCAN · MÓDULO: HISTORIAL — Presupuestos Anteriores (standalone)
 ══════════════════════════════════════════════════════════════════
-  VERSIÓN : v1.5
+  VERSIÓN : v1.6
   FECHA   : 2026-06-30
   ESTADO  : Base inicial — captura de presupuestos atrasados
 
@@ -1280,13 +1280,11 @@ function sb() {
   return _sb;
 }
 
-const SYNC = { online: navigator.onLine };
+const SYNC = { online: true }; // optimista: corregir solo si el fetch falla
 window.addEventListener('online',  () => { SYNC.online = true;  detectarConexion(); presReintentarPendientes(); });
 window.addEventListener('offline', () => { SYNC.online = false; detectarConexion(); });
 
 function detectarConexion() {
-  // También actualizar SYNC.online con navigator.onLine como referencia inicial
-  SYNC.online = navigator.onLine;
   document.getElementById('conn-status').textContent = SYNC.online ? 'Online' : 'Offline-First';
 }
 
@@ -1546,9 +1544,12 @@ async function presCargar() {
     presFiltrar();
   } catch(e) {
     console.warn('presCargar:', e.message);
+    // Si es error de red, marcar offline y actualizar badge
+    const esRed = /failed to fetch|network|fetch/i.test(e.message||'');
+    if (esRed) { SYNC.online = false; detectarConexion(); }
     if (!local.length) {
-      div.innerHTML = `<div style="text-align:center;padding:20px;color:var(--red);font-size:13px">
-        ⚠️ No se pudo cargar<br>
+      div.innerHTML = `<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">
+        ${esRed ? '📵 Sin conexión — sin registros en caché' : '⚠️ Error al cargar'}<br>
         <button onclick="presCargar()" style="margin-top:8px;padding:6px 14px;background:var(--navy);
           color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🔄 Reintentar</button>
       </div>`;
@@ -1879,7 +1880,6 @@ function initApp() {
     if (cola.length) setTimeout(()=>presReintentarPendientes(), 1500);
   }, 200);
 
-  detectarConexion();
 }
 
 if (document.readyState === 'loading') {
