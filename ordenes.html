@@ -3,20 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>BarrCan &middot; Pagos</title>
+<title>BarrCan &middot; Ordenes</title>
 <!--
-  BARRCAN - MODULO: PAGOS
-  VERSION : v3.0
+  BARRCAN - MODULO: ORDENES DE TRABAJO
+  VERSION : v1.0
   FECHA   : 2026-07-01
-  v3.0 - Reconstruccion completa
-    - FIX: offline bug igual que historial v2.0
-      detectarConexion() mismo patron que barrcan_app.html
-      DOMContentLoaded como unico punto de arranque
-      var/function sin arrow functions globales
-    - FIX: recibo en formato media carta (140x216mm)
-    - ADD: foto del comprobante en recibo
-    - ADD: num factura en recibo
-    - ADD: filtro aprobado en dropdown
+  v1.0 - Creacion inicial
+    - Columnas exactas de tabla ordenes_trabajo
+    - Conectado a presupuestos via prefill localStorage
+    - Offline-first: mismo patron que historial.html v2.0
+    - Lista con filtro por estado, cambio rapido de estado
+    - Hoja de trabajo imprimible + WA de confirmacion al cliente
+    - Sin optional chaining, sin template literals peligrosos
 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
@@ -1053,6 +1051,9 @@ select.form-select { padding-right: 36px; cursor: pointer; }
 body{min-height:100vh}
 #app{display:flex;flex-direction:column;min-height:100vh}
 .content{flex:1;padding:16px;max-width:640px;margin:0 auto;width:100%;box-sizing:border-box}
+.ot-filtro{padding:8px 4px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);background:none;cursor:pointer;font-size:11px;font-weight:700;color:var(--gray-400);font-family:"DM Sans",sans-serif}
+.ot-filtro.active{border-color:var(--blue);background:rgba(46,109,164,0.08);color:var(--blue)}
+.estado-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
 </style>
 </head>
 <body>
@@ -1064,730 +1065,513 @@ body{min-height:100vh}
       </div>
       <div><span class="logo-text">BarrCan</span><span class="logo-sub">Canceleria &middot; Campo</span></div>
     </div>
-    <div class="offline-badge"><div class="offline-dot"></div>
+    <div class="offline-badge">
+      <div class="offline-dot"></div>
       <span id="conn-status">Offline-First</span>
-      <span style="font-size:9px;color:rgba(255,255,255,0.3);margin-left:4px">Pagos</span>
+      <span style="font-size:9px;color:rgba(255,255,255,0.3);margin-left:4px">Ordenes</span>
     </div>
   </div>
 
   <div class="content">
-    <p class="section-title">Registro de Pagos</p>
-    <p class="section-sub">Captura pagos &middot; genera recibo RB-100 &middot; env&iacute;a por WhatsApp</p>
+    <p class="section-title">Ordenes de Trabajo</p>
+    <p class="section-sub">Asigna instalaciones a tecnicos</p>
 
-    <!-- HISTORIAL ARRIBA -->
-    <div class="wizard-card" style="margin-bottom:14px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div class="wizard-title" style="margin:0">Pagos recientes</div>
-        <button onclick="pagosCargar()" style="padding:5px 10px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:11px;font-weight:700;cursor:pointer">Actualizar</button>
-      </div>
-      <div id="pagos-contador" style="font-size:11px;color:var(--gray-400);margin-bottom:6px"></div>
-      <div id="pagos-lista"><div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">Cargando...</div></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px">
+      <button class="ot-filtro active" onclick="otSetFiltro(this,'')">Todas</button>
+      <button class="ot-filtro" onclick="otSetFiltro(this,'pendiente')">Pendiente</button>
+      <button class="ot-filtro" onclick="otSetFiltro(this,'en_camino')">En camino</button>
+      <button class="ot-filtro" onclick="otSetFiltro(this,'instalado')">Instalado</button>
     </div>
 
-    <!-- FORMULARIO -->
-    <div class="wizard-card" style="margin-bottom:14px">
-      <div class="wizard-title">Registrar pago</div>
-
-      <label class="form-label">Presupuesto aprobado</label>
-      <select id="pago-pres" class="form-select" onchange="seleccionarPres()" style="margin-bottom:8px">
-        <option value="">&mdash; Selecciona presupuesto aprobado &mdash;</option>
-      </select>
-      <div id="pago-pres-card" style="display:none;background:rgba(39,174,96,0.06);border:1.5px solid rgba(39,174,96,0.2);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:12px">
-        <div style="font-size:10px;color:var(--green);font-weight:700;margin-bottom:2px">VINCULADO</div>
-        <div id="pago-pres-info" style="font-size:13px;font-weight:700;color:var(--navy)"></div>
-        <button onclick="clearPres()" style="font-size:11px;color:var(--gray-400);background:none;border:none;cursor:pointer;text-decoration:underline;padding:2px 0">Desvincular</button>
-      </div>
-
-      <label class="form-label">Folio del presupuesto</label>
-      <input type="text" id="pago-folio" class="form-input" placeholder="CACN-094B-260610-32J" style="font-family:'DM Mono',monospace;font-size:13px">
-      <label class="form-label">Cliente</label>
-      <input type="text" id="pago-cliente" class="form-input" placeholder="Nombre del cliente">
-      <label class="form-label">Tel&eacute;fono</label>
-      <input type="tel" id="pago-tel" class="form-input" placeholder="55 1234 5678" inputmode="tel">
-      <label class="form-label">Descripci&oacute;n de la obra</label>
-      <input type="text" id="pago-desc" class="form-input" placeholder="Ej: Cancel ba&ntilde;o frameless 9mm...">
-
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Total obra</label>
-          <div class="input-unit">
-            <input type="number" id="pago-total" class="form-input" placeholder="0" min="0" inputmode="decimal" oninput="actualizarSaldo()">
-            <span class="input-unit-label">$</span>
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Pagado antes</label>
-          <div class="input-unit">
-            <input type="number" id="pago-ant" class="form-input" placeholder="0" min="0" inputmode="decimal" oninput="actualizarSaldo()">
-            <span class="input-unit-label">$</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Monto de este pago *</label>
-          <div class="input-unit">
-            <input type="number" id="pago-monto" class="form-input" placeholder="0" min="0" inputmode="decimal" oninput="actualizarSaldo()">
-            <span class="input-unit-label">$</span>
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Saldo pendiente</label>
-          <div id="pago-saldo" style="background:var(--gray-100);border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);padding:10px 12px;font-family:'DM Mono',monospace;font-size:15px;font-weight:700;color:var(--red)">$0</div>
-        </div>
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Fecha *</label>
-          <input type="date" id="pago-fecha" class="form-input">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Concepto</label>
-          <select id="pago-concepto" class="form-select">
-            <option value="anticipo">Anticipo 50%</option>
-            <option value="segundo_pago">2&deg; Pago 35%</option>
-            <option value="liquidacion">Liquidaci&oacute;n 15%</option>
-            <option value="pago_total">Pago total</option>
-            <option value="otro">Otro</option>
-          </select>
-        </div>
-      </div>
-
-      <label class="form-label">Forma de pago</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px">
-        <button class="pf-btn active" data-forma="transferencia" onclick="selForma(this)" style="padding:10px 6px;border:2px solid var(--blue);border-radius:var(--radius-sm);background:rgba(46,109,164,0.08);cursor:pointer;font-size:12px;font-weight:700;color:var(--blue);font-family:'DM Sans',sans-serif">Transferencia</button>
-        <button class="pf-btn" data-forma="efectivo" onclick="selForma(this)" style="padding:10px 6px;border:2px solid var(--gray-200);border-radius:var(--radius-sm);background:none;cursor:pointer;font-size:12px;font-weight:700;color:var(--gray-400);font-family:'DM Sans',sans-serif">Efectivo</button>
-        <button class="pf-btn" data-forma="tarjeta" onclick="selForma(this)" style="padding:10px 6px;border:2px solid var(--gray-200);border-radius:var(--radius-sm);background:none;cursor:pointer;font-size:12px;font-weight:700;color:var(--gray-400);font-family:'DM Sans',sans-serif">Tarjeta</button>
-      </div>
-
-      <label class="form-label">Notas / referencia de transferencia</label>
-      <input type="text" id="pago-notas" class="form-input" placeholder="Referencia bancaria, observaciones...">
-
-      <label class="form-label">N&uacute;m. de factura (opcional)</label>
-      <input type="text" id="pago-factura" class="form-input" placeholder="FAC-2026-001 &mdash; dejar vac&iacute;o si no aplica">
-
-      <label class="form-label">Foto del comprobante</label>
-      <input type="file" id="pago-foto-input" accept="image/*" style="display:none" onchange="pagoCargarFoto(this)">
-      <button onclick="document.getElementById('pago-foto-input').click()" style="width:100%;padding:12px;background:var(--off-white);border:2px dashed var(--gray-200);border-radius:var(--radius-sm);cursor:pointer;font-size:13px;color:var(--gray-400);font-family:'DM Sans',sans-serif;font-weight:600;margin-bottom:8px">
-        Subir foto del comprobante
-      </button>
-      <div id="pago-foto-preview" style="display:none;margin-bottom:8px">
-        <div style="position:relative;display:inline-block">
-          <img id="pago-foto-img" style="max-width:100%;max-height:200px;border-radius:var(--radius-sm);border:1px solid var(--gray-200)">
-          <button onclick="pagoQuitarFoto()" style="position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,0.6);color:white;border:none;font-size:12px;cursor:pointer">x</button>
-        </div>
-      </div>
-
-      <div id="pago-error" style="display:none;color:var(--red);font-size:12px;background:rgba(192,57,43,0.06);padding:8px 12px;border-radius:var(--radius-sm);margin-top:10px"></div>
-
-      <button id="pago-btn" onclick="pagoGuardar()" style="width:100%;margin-top:14px;padding:14px;background:linear-gradient(135deg,#27AE60,#2ECC71);border:none;border-radius:var(--radius);color:white;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 6px 20px rgba(39,174,96,0.35)">
-        Registrar Pago y Generar Recibo
-      </button>
+    <div id="ot-contador" style="font-size:11px;color:var(--gray-400);margin-bottom:8px"></div>
+    <div id="ot-lista">
+      <div style="text-align:center;padding:30px;color:var(--gray-400);font-size:13px">Cargando...</div>
     </div>
+
+    <button onclick="otAbrir(null)" style="width:100%;padding:14px;margin-top:14px;
+      background:linear-gradient(135deg,var(--navy),#2A4F7A);color:#fff;border:none;
+      border-radius:var(--radius);font-family:'DM Sans',sans-serif;font-size:14px;
+      font-weight:700;cursor:pointer;box-shadow:var(--shadow-md)">
+      + Nueva Orden de Trabajo
+    </button>
   </div>
 </div>
 
-<!-- Modal post-pago -->
-<div id="pago-post-ov" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:900;backdrop-filter:blur(4px);align-items:flex-end">
-  <div style="width:100%;background:var(--white);border-radius:20px 20px 0 0;padding:20px 20px 36px">
-    <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 14px"></div>
-    <div id="ppo-titulo" style="font-size:17px;font-weight:700;color:var(--navy);margin-bottom:4px"></div>
-    <div style="font-size:11px;color:var(--gray-400);margin-bottom:16px">&iquest;Qu&eacute; deseas hacer ahora?</div>
-    <button onclick="verRecibo()" style="width:100%;padding:13px;margin-bottom:8px;background:rgba(46,109,164,0.08);border:1.5px solid var(--blue);border-radius:var(--radius);color:var(--blue);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">Ver / imprimir recibo</button>
-    <button id="ppo-wa" onclick="enviarWA()" style="width:100%;padding:13px;margin-bottom:8px;background:#25D366;border:none;border-radius:var(--radius);color:white;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">Enviar recibo por WhatsApp</button>
-    <button onclick="document.getElementById('pago-post-ov').style.display='none'" style="width:100%;padding:12px;background:none;border:1.5px solid var(--gray-200);border-radius:var(--radius);color:var(--gray-600);font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer">Listo &mdash; cerrar</button>
-  </div>
-</div>
+<div id="ot-modal-overlay" onclick="otCerrar()"
+  style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:600;backdrop-filter:blur(3px)"></div>
 
-<!-- Modal editar pago -->
-<div id="pago-edit-ov" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:800;backdrop-filter:blur(3px)">
-  <div style="position:absolute;bottom:0;left:0;right:0;background:var(--white);border-radius:20px 20px 0 0;padding:20px;max-height:80vh;overflow-y:auto">
-    <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 14px"></div>
-    <div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:14px">Editar pago</div>
-    <label class="form-label">Monto</label>
-    <div class="input-unit"><input type="number" id="edit-monto" class="form-input" inputmode="decimal"><span class="input-unit-label">$</span></div>
-    <label class="form-label">Fecha</label><input type="date" id="edit-fecha" class="form-input">
-    <label class="form-label">Forma de pago</label>
-    <select id="edit-forma" class="form-select">
-      <option value="transferencia">Transferencia</option>
-      <option value="efectivo">Efectivo</option>
-      <option value="tarjeta">Tarjeta</option>
+<div id="ot-modal" style="display:none;position:fixed;bottom:0;left:0;right:0;
+  background:var(--white);border-radius:20px 20px 0 0;z-index:700;
+  max-height:94vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(0,0,0,0.3)">
+  <div style="padding:16px 20px 44px">
+    <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 16px"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div id="ot-modal-titulo" style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--navy)">Nueva Orden</div>
+      <button onclick="otCerrar()" style="width:32px;height:32px;border-radius:50%;border:none;background:var(--gray-100);color:var(--gray-600);font-size:16px;cursor:pointer">x</button>
+    </div>
+
+    <label class="form-label">Seleccionar de presupuestos</label>
+    <select id="ot-pres-select" class="form-select" onchange="otSeleccionarPres()" style="margin-bottom:12px">
+      <option value="">-- Selecciona para pre-llenar --</option>
     </select>
-    <label class="form-label">Notas</label>
-    <input type="text" id="edit-notas" class="form-input" placeholder="Referencia, observaciones...">
-    <div style="display:flex;gap:8px;margin-top:14px">
-      <button onclick="pagoEditarGuardar()" style="flex:1;padding:12px;background:var(--navy);color:white;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">Guardar cambios</button>
-      <button onclick="document.getElementById('pago-edit-ov').style.display='none'" style="padding:12px 14px;background:none;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);color:var(--gray-600);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer">Cancelar</button>
+
+    <label class="form-label">Folio de referencia</label>
+    <input type="text" id="ot-folio" class="form-input" placeholder="CACN-094B-260610-32J" style="font-family:'DM Mono',monospace;font-size:13px">
+
+    <label class="form-label">Cliente *</label>
+    <input type="text" id="ot-cliente" class="form-input" placeholder="Nombre del cliente">
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Telefono</label>
+        <input type="tel" id="ot-tel" class="form-input" placeholder="55 1234 5678" inputmode="tel">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Saldo a cobrar</label>
+        <div class="input-unit">
+          <input type="number" id="ot-saldo" class="form-input" placeholder="0" min="0" inputmode="decimal">
+          <span class="input-unit-label">$</span>
+        </div>
+      </div>
     </div>
+
+    <label class="form-label">Direccion de la obra *</label>
+    <input type="text" id="ot-dir" class="form-input" placeholder="Calle, num, colonia, municipio">
+
+    <label class="form-label">Descripcion del trabajo *</label>
+    <textarea id="ot-desc" class="form-input" rows="3"
+      placeholder="Ej: Cancel bano frameless 9mm, 120x200cm, acabado negro..." style="resize:none"></textarea>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Fecha de instalacion *</label>
+        <input type="date" id="ot-fecha" class="form-input">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Hora de llegada</label>
+        <input type="time" id="ot-hora" class="form-input">
+      </div>
+    </div>
+
+    <label class="form-label">Tecnico asignado *</label>
+    <div class="form-select-wrap">
+      <select id="ot-tecnico" class="form-select">
+        <option value="">-- Selecciona tecnico --</option>
+        <option value="ESAU">Esau</option>
+        <option value="MIGUEL">Miguel</option>
+        <option value="CARLOS">Carlos</option>
+        <option value="OMAR">Omar</option>
+        <option value="RODRIGO">Rodrigo</option>
+      </select>
+    </div>
+
+    <div class="form-row" style="margin-top:12px">
+      <div class="form-group">
+        <label class="form-label">Num. de piezas</label>
+        <input type="number" id="ot-piezas" class="form-input" value="1" min="1" inputmode="numeric">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Estado</label>
+        <select id="ot-estado" class="form-select">
+          <option value="pendiente">Pendiente</option>
+          <option value="en_camino">En camino</option>
+          <option value="instalado">Instalado</option>
+          <option value="cancelado">Cancelado</option>
+        </select>
+      </div>
+    </div>
+
+    <label class="form-label">Notas para el tecnico</label>
+    <textarea id="ot-notas" class="form-input" rows="2"
+      placeholder="Herramientas especiales, precauciones, acceso al edificio..." style="resize:none"></textarea>
+
+    <div id="ot-error" style="display:none;color:var(--red);font-size:12px;
+      padding:8px 12px;background:rgba(192,57,43,0.08);border-radius:var(--radius-sm);margin-top:10px"></div>
+
+    <button onclick="otGuardar()" id="ot-btn-guardar" class="btn-calcular"
+      style="background:linear-gradient(135deg,var(--navy),#2A4F7A);margin-top:14px;margin-bottom:8px">
+      Guardar Orden de Trabajo
+    </button>
+    <button id="ot-btn-hoja" style="display:none;width:100%;padding:13px;margin-bottom:8px;
+      background:rgba(39,174,96,0.08);border:1.5px solid var(--green);
+      border-radius:var(--radius);color:var(--green);font-family:'DM Sans',sans-serif;
+      font-size:14px;font-weight:600;cursor:pointer" onclick="otGenerarHoja()">
+      Ver / imprimir hoja de trabajo
+    </button>
+    <button id="ot-btn-eliminar" style="display:none;width:100%;padding:13px;
+      background:rgba(192,57,43,0.06);border:1.5px solid rgba(192,57,43,0.2);
+      border-radius:var(--radius);color:var(--red);font-family:'DM Sans',sans-serif;
+      font-size:14px;font-weight:600;cursor:pointer" onclick="otEliminar()">
+      Eliminar orden
+    </button>
   </div>
 </div>
 <script>
-
-// ── Supabase ──────────────────────────────────────────────────────
-var SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co';
-var SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
-var _sbClient = null;
-function sb() {
-  if (!_sbClient && window.supabase) {
-    _sbClient = window.supabase.createClient(SB_URL, SB_KEY, {
-      db: { schema: 'barrcan' },
-      auth: { persistSession: true, storageKey: 'barrcan_auth' }
+var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
+var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
+var _sbClient=null;
+function sb(){
+  if(!_sbClient&&window.supabase){
+    _sbClient=window.supabase.createClient(SB_URL,SB_KEY,{
+      db:{schema:'barrcan'},auth:{persistSession:true,storageKey:'barrcan_auth'}
     });
   }
   return _sbClient;
 }
+var SYNC={online:navigator.onLine};
+window.addEventListener('online', function(){SYNC.online=true;detectarConexion();otCargar();var c=JSON.parse(localStorage.getItem('barrcan_ordenes_pendientes')||'[]');if(c.length)otReintentarPendientes();});
+window.addEventListener('offline',function(){SYNC.online=false;detectarConexion();});
+function detectarConexion(){var b=document.getElementById('conn-status');if(b)b.textContent=navigator.onLine?'Online':'Offline-First';}
+function fmt(n){return Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:0,maximumFractionDigits:2});}
+function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
-// ── Conexion — patron identico a barrcan_app.html y historial v2.0 ──
-var SYNC = { online: navigator.onLine };
-window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
-window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
+var OT_CACHE=[];
+var OT_EDITANDO=null;
+var OT_FILTRO_ESTADO='';
+var _HOJA_OT_HTML='';
 
-function detectarConexion() {
-  var badge = document.getElementById('conn-status');
-  if (badge) badge.textContent = navigator.onLine ? 'Online' : 'Offline-First';
-}
+var ESTADO_CFG={
+  pendiente: {label:'Pendiente', color:'var(--gold)',  bg:'rgba(200,146,58,0.1)'},
+  en_camino: {label:'En camino', color:'var(--blue)',  bg:'rgba(46,109,164,0.1)'},
+  instalado: {label:'Instalado', color:'var(--green)', bg:'rgba(39,174,96,0.1)'},
+  cancelado: {label:'Cancelado', color:'var(--red)',   bg:'rgba(192,57,43,0.1)'}
+};
 
-// ── Helpers ───────────────────────────────────────────────────────
-function fmt(n) { return Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 }); }
+function otGuardarCache(l){try{localStorage.setItem('barrcan_ordenes_cache',JSON.stringify(l));}catch(e){}}
+function otCargarCache(){try{var r=localStorage.getItem('barrcan_ordenes_cache');return r?JSON.parse(r):[]; }catch(e){return [];}}
 
-function toast(msg, dur) {
-  dur = dur || 2800;
-  var el = document.getElementById('_toast');
-  if (!el) {
-    el = document.createElement('div'); el.id = '_toast';
-    el.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';
-    document.body.appendChild(el);
-  }
-  el.textContent = msg; el.style.opacity = '1';
-  clearTimeout(el._t); el._t = setTimeout(function() { el.style.opacity = '0'; }, dur);
-}
-
-// ── Estado ────────────────────────────────────────────────────────
-var PAGOS_CACHE = JSON.parse(localStorage.getItem('barrcan_pagos_cache') || '[]');
-var PRES_LIST   = [];
-var FORMA_SEL   = 'transferencia';
-var PRES_SEL    = null;
-var EDIT_ID     = null;
-var _RECIBO     = '';
-var _LOGO_SRC   = '';
-var _PAGO_FOTO  = null;
-
-// ── Folio RB auto-incremental ─────────────────────────────────────
-function nextFolioRB() {
-  var n = parseInt(localStorage.getItem('barrcan_folio_rb') || '99') + 1;
-  localStorage.setItem('barrcan_folio_rb', String(n));
-  return 'RB-' + n;
-}
-
-// ── Dropdown presupuestos aprobados ───────────────────────────────
-function cargarPresDropdown() {
-  var sel = document.getElementById('pago-pres');
-  if (!sel) return;
-  var local = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]')
-    .filter(function(p) { return p.estado === 'aprobado' && (p.saldo || 0) > 0; });
-  PRES_LIST = local;
-  llenarDrop(local);
-  if (!SYNC.online || !sb()) return;
-  sb().from('presupuestos_atrasados')
-    .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,estado')
-    .eq('estado', 'aprobado').gt('saldo', 0)
-    .order('created_at', { ascending: false }).limit(100)
-    .then(function(result) {
-      if (result.error || !result.data) return;
-      PRES_LIST = result.data;
-      llenarDrop(PRES_LIST);
-    });
-}
-
-function llenarDrop(lista) {
-  var sel = document.getElementById('pago-pres');
-  if (!sel) return;
-  sel.innerHTML = '<option value="">&mdash; Selecciona presupuesto aprobado &mdash;</option>';
-  lista.forEach(function(p) {
-    var o = document.createElement('option');
-    o.value = p.id;
-    o.textContent = (p.folio || '') + ' \u00b7 ' + p.cliente + ' \u00b7 Saldo $' + fmt(p.saldo || 0);
-    o.dataset.p = JSON.stringify(p);
-    sel.appendChild(o);
-  });
-}
-
-function seleccionarPres() {
-  var sel = document.getElementById('pago-pres');
-  if (!sel || !sel.value) { clearPres(); return; }
-  try {
-    var p = JSON.parse(sel.options[sel.selectedIndex].dataset.p || '{}');
-    PRES_SEL = p;
-    var s = function(id, v) { var el = document.getElementById(id); if (el) el.value = v || ''; };
-    s('pago-folio',   p.folio);
-    s('pago-cliente', p.cliente);
-    s('pago-tel',     p.tel);
-    s('pago-desc',    p.descripcion);
-    s('pago-total',   p.monto || 0);
-    var ant = Math.max(0, (p.monto || 0) - (p.saldo || 0));
-    s('pago-ant',   ant || 0);
-    s('pago-monto', p.saldo || 0);
-    actualizarSaldo();
-    // Sugerir concepto segun % pagado
-    var pct = p.monto > 0 ? ant / p.monto : 0;
-    var sc = document.getElementById('pago-concepto');
-    if (sc) sc.value = pct < 0.1 ? 'anticipo' : pct < 0.55 ? 'segundo_pago' : pct < 0.90 ? 'liquidacion' : 'pago_total';
-    document.getElementById('pago-pres-card').style.display = 'block';
-    document.getElementById('pago-pres-info').textContent = p.folio + ' \u00b7 ' + p.cliente + ' \u00b7 Saldo $' + fmt(p.saldo || 0);
-  } catch(e) {}
-}
-
-function clearPres() {
-  PRES_SEL = null;
-  document.getElementById('pago-pres').value = '';
-  document.getElementById('pago-pres-card').style.display = 'none';
-}
-
-function actualizarSaldo() {
-  var total = parseFloat(document.getElementById('pago-total').value) || 0;
-  var ant   = parseFloat(document.getElementById('pago-ant').value)   || 0;
-  var monto = parseFloat(document.getElementById('pago-monto').value) || 0;
-  var saldo = Math.max(0, total - ant - monto);
-  var el = document.getElementById('pago-saldo');
-  el.textContent = '$' + fmt(saldo);
-  el.style.color = saldo <= 0 ? 'var(--green)' : saldo < total * 0.2 ? 'var(--gold)' : 'var(--red)';
-}
-
-// ── Foto comprobante ──────────────────────────────────────────────
-function pagoCargarFoto(input) {
-  if (!input || !input.files || !input.files[0]) return;
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    _PAGO_FOTO = e.target.result;
-    var img  = document.getElementById('pago-foto-img');
-    var prev = document.getElementById('pago-foto-preview');
-    if (img)  img.src = _PAGO_FOTO;
-    if (prev) prev.style.display = 'block';
-  };
-  reader.readAsDataURL(input.files[0]);
-  input.value = '';
-}
-function pagoQuitarFoto() {
-  _PAGO_FOTO = null;
-  var img  = document.getElementById('pago-foto-img');
-  var prev = document.getElementById('pago-foto-preview');
-  if (img)  img.src = '';
-  if (prev) prev.style.display = 'none';
-}
-
-// ── Historial de pagos ────────────────────────────────────────────
-async function pagosCargar() {
-  var div   = document.getElementById('pagos-lista');
-  var local = JSON.parse(localStorage.getItem('barrcan_pagos_cache') || '[]');
-  if (local.length) { PAGOS_CACHE = local; pagosRender(); }
-  else div.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">Sin pagos registrados</div>';
-
-  if (!sb()) return;
-  try {
-    var result = await sb().from('pagos')
-      .select('id,monto,fecha_pago,forma_pago,concepto,notas,created_at')
-      .order('created_at', { ascending: false }).limit(50);
-    if (result.error) throw result.error;
-    SYNC.online = true; detectarConexion();
-    var pendientes = PAGOS_CACHE.filter(function(p) { return p._pendiente; });
-    PAGOS_CACHE = pendientes.concat(result.data || []);
-    localStorage.setItem('barrcan_pagos_cache', JSON.stringify(PAGOS_CACHE));
-    pagosRender();
-  } catch(e) {
-    var esRed = /failed to fetch|network|fetch/i.test(e.message || '');
-    if (esRed) { SYNC.online = false; detectarConexion(); }
-    console.warn('pagosCargar:', e.message);
-    if (!local.length)
-      div.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">'
-        + (esRed ? 'Sin conexion' : 'Error al cargar') + '<br>'
-        + '<button onclick="pagosCargar()" style="margin-top:6px;padding:5px 12px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:11px;cursor:pointer">Reintentar</button></div>';
+async function otCargar(){
+  var div=document.getElementById('ot-lista');
+  var local=otCargarCache();
+  if(local.length){OT_CACHE=local;otRender();}
+  else div.innerHTML='<div style="text-align:center;padding:30px;color:var(--gray-400);font-size:13px">Sin ordenes registradas</div>';
+  if(!sb())return;
+  try{
+    var res=await sb().from('ordenes_trabajo')
+      .select('id,folio_cotizacion,cliente_nombre,cliente_tel,dir_obra,descripcion_trabajo,tecnico_id,fecha_instalacion,hora_instalacion,saldo_pendiente,notas_tecnico,num_piezas,estado,created_at')
+      .order('fecha_instalacion',{ascending:false}).range(0,200);
+    if(res.error)throw res.error;
+    SYNC.online=true;detectarConexion();
+    OT_CACHE=res.data||[];otGuardarCache(OT_CACHE);otRender();
+  }catch(e){
+    var esRed=/failed to fetch|network|fetch/i.test(e.message||'');
+    if(esRed){SYNC.online=false;detectarConexion();}
+    console.warn('otCargar:',e.message);
+    if(!local.length)div.innerHTML='<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">'+(esRed?'Sin conexion':'Error al cargar')+'<br><button onclick="otCargar()" style="margin-top:8px;padding:6px 14px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Reintentar</button></div>';
   }
 }
 
-var CONCEPTO_L = { anticipo: 'Anticipo 50%', segundo_pago: '2\u00b0 Pago 35%', liquidacion: 'Liquidaci\u00f3n 15%', pago_total: 'Pago total', otro: 'Otro' };
-var FORMA_E    = { transferencia: 'Transf.', efectivo: 'Efectivo', tarjeta: 'Tarjeta' };
-
-function pagosRender() {
-  var pend = JSON.parse(localStorage.getItem('barrcan_pagos_pend') || '[]');
-  var el   = document.getElementById('pagos-contador');
-  if (el) {
-    var txt = PAGOS_CACHE.length ? PAGOS_CACHE.length + ' pago' + (PAGOS_CACHE.length > 1 ? 's' : '') : '';
-    if (pend.length) txt += ' &middot; <span onclick="pagoReintentarPendientes()" style="color:var(--gold);font-weight:700;cursor:pointer;text-decoration:underline">' + pend.length + ' sin sincronizar</span>';
-    el.innerHTML = txt;
-  }
-  var div = document.getElementById('pagos-lista');
-  if (!PAGOS_CACHE.length) { div.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">Sin pagos registrados</div>'; return; }
-
-  var hoy = new Date().toISOString().split('T')[0];
-  var totalHoy = PAGOS_CACHE.filter(function(p) { return p.fecha_pago === hoy; })
-    .reduce(function(s, p) { return s + (parseFloat(p.monto) || 0); }, 0);
-
-  var html = totalHoy > 0
-    ? '<div style="background:rgba(39,174,96,0.08);border:1px solid rgba(39,174,96,0.2);border-radius:var(--radius-sm);padding:8px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;color:var(--green);font-weight:700">Cobrado hoy</span><span style="font-size:15px;font-weight:800;color:var(--green)">$' + fmt(totalHoy) + '</span></div>'
-    : '';
-
-  for (var i = 0; i < Math.min(PAGOS_CACHE.length, 20); i++) {
-    var p = PAGOS_CACHE[i];
-    var bgPend = p._pendiente ? 'background:rgba(192,57,43,0.04);border-left:3px solid var(--red);padding-left:8px' : '';
-    var pendTag = p._pendiente ? '<div style="font-size:9px;font-weight:700;color:var(--red);margin-bottom:2px">SIN SINCRONIZAR</div>' : '';
-    var idStr = (p.id || '').replace(/'/g, '');
-    html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--gray-200);' + bgPend + '">'
-      + '<div>' + pendTag
-      + '<div style="font-size:12px;font-weight:700;color:var(--navy)">' + (FORMA_E[p.forma_pago] || '') + ' ' + (CONCEPTO_L[p.concepto] || p.concepto || 'Pago') + '</div>'
-      + '<div style="font-size:10px;color:var(--gray-400)">' + (p.fecha_pago || '') + (p.notas ? ' \u00b7 ' + p.notas.slice(0, 35) : '') + '</div>'
-      + '</div>'
-      + '<div style="display:flex;align-items:center;gap:8px">'
-      + '<div style="font-family:monospace;font-size:15px;font-weight:800;color:var(--green)">$' + fmt(p.monto) + '</div>'
-      + (p.id && !p._pendiente ? '<button onclick="pagoAbrirEdicion(\'' + idStr + '\')" style="width:28px;height:28px;border:1.5px solid var(--gray-200);border-radius:6px;background:none;color:var(--gray-400);font-size:12px;cursor:pointer">&#9999;</button>' : '')
-      + '</div></div>';
-  }
-  div.innerHTML = html;
+function otSetFiltro(btn,estado){
+  OT_FILTRO_ESTADO=estado;
+  document.querySelectorAll('.ot-filtro').forEach(function(b){b.classList.remove('active');});
+  btn.classList.add('active');otRender();
 }
 
-// ── Seleccionar forma ─────────────────────────────────────────────
-function selForma(btn) {
-  FORMA_SEL = btn.dataset.forma;
-  document.querySelectorAll('.pf-btn').forEach(function(b) {
-    var a = b === btn;
-    b.style.borderColor = a ? 'var(--blue)' : 'var(--gray-200)';
-    b.style.background  = a ? 'rgba(46,109,164,0.08)' : 'none';
-    b.style.color       = a ? 'var(--blue)' : 'var(--gray-400)';
-  });
+function otRender(){
+  var datos=OT_FILTRO_ESTADO?OT_CACHE.filter(function(o){return o.estado===OT_FILTRO_ESTADO;}):OT_CACHE;
+  var pend=JSON.parse(localStorage.getItem('barrcan_ordenes_pendientes')||'[]');
+  var cntEl=document.getElementById('ot-contador');
+  if(cntEl)cntEl.textContent=datos.length+' orden'+(datos.length!==1?'es':'')+(pend.length?' ('+pend.length+' sin sync)':'');
+  var div=document.getElementById('ot-lista');
+  if(!datos.length){div.innerHTML='<div style="text-align:center;padding:30px;color:var(--gray-400);font-size:13px">Sin ordenes'+(OT_FILTRO_ESTADO?' en este estado':'')+'</div>';return;}
+  var html='';
+  for(var i=0;i<Math.min(datos.length,80);i++){
+    var o=datos[i];
+    var cfg=ESTADO_CFG[o.estado]||{label:o.estado,color:'var(--gray-400)',bg:'rgba(0,0,0,0.04)'};
+    var bgPend=o._pendiente?'background:rgba(192,57,43,0.04);border-left:3px solid var(--red);padding-left:8px':'';
+    var pendTag=o._pendiente?'<div style="font-size:9px;font-weight:700;color:var(--red);margin-bottom:3px">SIN SINCRONIZAR</div>':'';
+    var idStr=(o.id||'').replace(/'/g,'');
+    html+='<div style="padding:10px 0;border-bottom:1px solid var(--gray-200);'+bgPend+'">'
+      +pendTag
+      +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">'
+      +'<div style="flex:1">'
+      +'<div style="font-size:13px;font-weight:700;color:var(--navy)">'+(o.cliente_nombre||'&mdash;')+'</div>'
+      +'<div style="font-size:11px;color:var(--gray-400)">'+(o.folio_cotizacion||'')+(o.folio_cotizacion?' &middot; ':'')+(o.fecha_instalacion||'')+(o.hora_instalacion?' '+o.hora_instalacion:'')+'</div>'
+      +'<div style="font-size:11px;color:var(--gray-500);margin-top:2px">'+(o.descripcion_trabajo||'').slice(0,60)+'</div>'
+      +'</div>'
+      +'<div style="text-align:right;flex-shrink:0;margin-left:8px">'
+      +'<span class="estado-badge" style="color:'+cfg.color+';background:'+cfg.bg+'">'+cfg.label+'</span>'
+      +(o.saldo_pendiente>0?'<div style="font-size:11px;font-weight:700;color:var(--red);margin-top:4px">Saldo $'+fmt(o.saldo_pendiente)+'</div>':'')
+      +'<div style="font-size:10px;color:var(--gray-400);margin-top:2px">'+( o.tecnico_id||'')+'</div>'
+      +'</div>'
+      +'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px">'
+      +'<button onclick="otAbrir(\''+idStr+'\')" style="padding:7px 4px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:11px;font-weight:700;cursor:pointer">Editar</button>'
+      +'<button onclick="otCambiarEstado(\''+idStr+'\')" style="padding:7px 4px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer">Estado</button>'
+      +'<button onclick="otVerHoja(\''+idStr+'\')" style="padding:7px 4px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.3);border-radius:8px;color:var(--green);font-size:11px;font-weight:700;cursor:pointer">Hoja</button>'
+      +'</div>'
+      +'</div>';
+  }
+  div.innerHTML=html;
 }
 
-// ── Guardar pago ──────────────────────────────────────────────────
-async function pagoGuardar() {
-  var monto    = parseFloat(document.getElementById('pago-monto').value) || 0;
-  var fecha    = document.getElementById('pago-fecha').value;
-  var folio    = document.getElementById('pago-folio').value.trim();
-  var cliente  = document.getElementById('pago-cliente').value.trim();
-  var tel      = document.getElementById('pago-tel').value.trim();
-  var desc     = document.getElementById('pago-desc').value.trim();
-  var notas    = document.getElementById('pago-notas').value.trim();
-  var factura  = document.getElementById('pago-factura') ? document.getElementById('pago-factura').value.trim() : '';
-  var total    = parseFloat(document.getElementById('pago-total').value) || 0;
-  var ant      = parseFloat(document.getElementById('pago-ant').value)   || 0;
-  var saldo    = Math.max(0, total - ant - monto);
-  var concepto = document.getElementById('pago-concepto').value;
-  var errEl    = document.getElementById('pago-error');
-  errEl.style.display = 'none';
-  if (!monto || monto <= 0) { errEl.textContent = 'Ingresa el monto'; errEl.style.display = 'block'; return; }
-  if (!fecha)               { errEl.textContent = 'Ingresa la fecha';  errEl.style.display = 'block'; return; }
+function otCargarPresDropdown(){
+  var sel=document.getElementById('ot-pres-select');if(!sel)return;
+  var local=JSON.parse(localStorage.getItem('barrcan_presupuestos_cache')||'[]').filter(function(p){return p.estado!=='entregado';});
+  sel.innerHTML='<option value="">-- Selecciona para pre-llenar --</option>';
+  local.forEach(function(p){var o=document.createElement('option');o.value=p.id;o.textContent=(p.folio||'')+(p.folio?' - ':'')+p.cliente+(p.saldo>0?' Saldo $'+fmt(p.saldo):'');o.dataset.p=JSON.stringify(p);sel.appendChild(o);});
+  if(!SYNC.online||!sb())return;
+  sb().from('presupuestos_atrasados').select('id,folio,cliente,tel,dir,monto,saldo,descripcion,estado').neq('estado','entregado').order('created_at',{ascending:false}).limit(100).then(function(res){if(res.error||!res.data)return;sel.innerHTML='<option value="">-- Selecciona para pre-llenar --</option>';res.data.forEach(function(p){var o=document.createElement('option');o.value=p.id;o.textContent=(p.folio||'')+(p.folio?' - ':'')+p.cliente+(p.saldo>0?' Saldo $'+fmt(p.saldo):'');o.dataset.p=JSON.stringify(p);sel.appendChild(o);});});
+}
 
-  var btn = document.getElementById('pago-btn');
-  if (btn && btn.disabled) return;
-  if (btn) { btn.disabled = true; btn.textContent = 'Generando recibo...'; }
+function otSeleccionarPres(){
+  var sel=document.getElementById('ot-pres-select');if(!sel||!sel.value)return;
+  try{var p=JSON.parse(sel.options[sel.selectedIndex].dataset.p||'{}');
+    var s=function(id,v){var el=document.getElementById(id);if(el)el.value=v||'';};
+    s('ot-folio',p.folio);s('ot-cliente',p.cliente);s('ot-tel',p.tel);s('ot-dir',p.dir);s('ot-desc',p.descripcion);s('ot-saldo',p.saldo||0);
+  }catch(e){}
+}
 
-  var folioRB = nextFolioRB();
-  var notaPartes = [folio, cliente, notas];
-  if (factura) notaPartes.push('FAC:' + factura);
-  var nota = notaPartes.filter(Boolean).join(' | ');
-
-  var db = {
-    monto:         monto,
-    fecha_pago:    fecha,
-    forma_pago:    FORMA_SEL,
-    concepto:      concepto,
-    notas:         nota.slice(0, 500) || null,
-    registrado_por:'campo',
-    comprobante_img: _PAGO_FOTO || null
-  };
-
-  var fLabels = { transferencia: 'Transferencia bancaria', efectivo: 'Efectivo', tarjeta: 'Tarjeta cr\u00e9dito/d\u00e9bito' };
-  _RECIBO = generarRecibo({
-    folioRB: folioRB, folio: folio, cliente: cliente, tel: tel, desc: desc,
-    monto: monto, total: total, ant: ant, saldo: saldo,
-    fecha: fecha, concepto: concepto, forma: FORMA_SEL,
-    formaLabel: fLabels[FORMA_SEL] || FORMA_SEL,
-    notas: notas, factura: factura, foto: _PAGO_FOTO
-  });
-
-  try {
-    if (!SYNC.online || !sb()) {
-      guardarOffline(db);
-      mostrarPost(folioRB, monto, tel);
-      pagoReset();
-      if (btn) { btn.disabled = false; btn.textContent = 'Registrar Pago y Generar Recibo'; }
-      return;
-    }
-    async function intentar(i) {
-      i = i || 1;
-      try {
-        var result = await sb().from('pagos').insert([db]);
-        if (result.error) throw result.error;
-        PAGOS_CACHE.unshift(Object.assign({}, db, { created_at: new Date().toISOString() }));
-        localStorage.setItem('barrcan_pagos_cache', JSON.stringify(PAGOS_CACHE));
-        if (PRES_SEL && PRES_SEL.id && sb()) {
-          sb().from('presupuestos_atrasados')
-            .update({ saldo: saldo, estado: saldo <= 0 ? 'entregado' : PRES_SEL.estado })
-            .eq('id', PRES_SEL.id).then(function() {});
-        }
-        toast('Pago $' + fmt(monto) + ' registrado \u00b7 Recibo ' + folioRB);
-        pagosRender();
-        mostrarPost(folioRB, monto, tel);
-        pagoReset();
-        return true;
-      } catch(e) {
-        var esRed = /failed to fetch|network|timeout|fetch/i.test(e.message || '');
-        if (esRed && i < 3) {
-          return new Promise(function(resolve) {
-            setTimeout(function() { intentar(i + 1).then(resolve); }, 1000 * i);
-          });
-        }
-        guardarOffline(db);
-        mostrarPost(folioRB, monto, tel);
-        pagoReset();
-        if (!esRed) toast('Error servidor \u2014 guardado localmente');
-        return false;
+function otAbrir(id){
+  OT_EDITANDO=id;
+  var titulo=document.getElementById('ot-modal-titulo');
+  var btnDel=document.getElementById('ot-btn-eliminar');
+  var btnHoja=document.getElementById('ot-btn-hoja');
+  var errEl=document.getElementById('ot-error');
+  if(errEl)errEl.style.display='none';
+  if(id){
+    var o=null;for(var i=0;i<OT_CACHE.length;i++){if(OT_CACHE[i].id===id){o=OT_CACHE[i];break;}}
+    if(!o)return;
+    if(titulo)titulo.textContent='Editar Orden';
+    if(btnDel)btnDel.style.display='block';
+    if(btnHoja)btnHoja.style.display='block';
+    var s=function(eid,v){var el=document.getElementById(eid);if(el)el.value=v||'';};
+    s('ot-folio',o.folio_cotizacion);s('ot-cliente',o.cliente_nombre);s('ot-tel',o.cliente_tel);
+    s('ot-dir',o.dir_obra);s('ot-desc',o.descripcion_trabajo);s('ot-fecha',o.fecha_instalacion);
+    s('ot-hora',o.hora_instalacion);s('ot-tecnico',o.tecnico_id);s('ot-saldo',o.saldo_pendiente||0);
+    s('ot-piezas',o.num_piezas||1);s('ot-notas',o.notas_tecnico);s('ot-estado',o.estado||'pendiente');
+  }else{
+    if(titulo)titulo.textContent='Nueva Orden';
+    if(btnDel)btnDel.style.display='none';
+    if(btnHoja)btnHoja.style.display='none';
+    ['ot-folio','ot-cliente','ot-tel','ot-dir','ot-desc','ot-notas'].forEach(function(cid){var el=document.getElementById(cid);if(el)el.value='';});
+    var fs=document.getElementById('ot-fecha');if(fs)fs.value=new Date().toISOString().split('T')[0];
+    var hs=document.getElementById('ot-hora');if(hs)hs.value='08:00';
+    var ts=document.getElementById('ot-tecnico');if(ts)ts.value='';
+    var ps=document.getElementById('ot-piezas');if(ps)ps.value='1';
+    var es=document.getElementById('ot-estado');if(es)es.value='pendiente';
+    var ss=document.getElementById('ot-saldo');if(ss)ss.value='';
+    var cs=document.getElementById('ot-pres-select');if(cs)cs.value='';
+    try{var raw=localStorage.getItem('barrcan_nueva_ot_prefill');
+      if(raw){var pf=JSON.parse(raw);localStorage.removeItem('barrcan_nueva_ot_prefill');
+        var sf=function(eid,v){var el=document.getElementById(eid);if(el)el.value=v||'';};
+        sf('ot-folio',pf.folio);sf('ot-cliente',pf.cliente||pf.cliente_nombre);sf('ot-tel',pf.tel||pf.cliente_tel);
+        sf('ot-dir',pf.dir||pf.dir_obra);sf('ot-desc',pf.desc||pf.descripcion_trabajo);sf('ot-saldo',pf.saldo||0);
+        toast('Datos pre-llenados desde presupuesto');
       }
+    }catch(e){}
+  }
+  document.getElementById('ot-modal-overlay').style.display='block';
+  document.getElementById('ot-modal').style.display='block';
+  setTimeout(otCargarPresDropdown,50);
+}
+
+function otCerrar(){
+  document.getElementById('ot-modal-overlay').style.display='none';
+  document.getElementById('ot-modal').style.display='none';
+  OT_EDITANDO=null;
+}
+
+function otGuardarOffline(payload,esEdicion){
+  var cola=JSON.parse(localStorage.getItem('barrcan_ordenes_pendientes')||'[]');
+  cola.push({tipo:esEdicion?'update':'nuevo',datos:payload,ts:new Date().toISOString()});
+  localStorage.setItem('barrcan_ordenes_pendientes',JSON.stringify(cola));
+  if(esEdicion){for(var i=0;i<OT_CACHE.length;i++){if(OT_CACHE[i].id===payload.id){OT_CACHE[i]=Object.assign({},OT_CACHE[i],payload,{_pendiente:true});break;}}}
+  else{OT_CACHE.unshift(Object.assign({},payload,{_pendiente:true}));}
+  otGuardarCache(OT_CACHE);otCerrar();otRender();
+  toast('Guardado sin conexion - se sincronizara al reconectar');
+}
+
+async function otGuardar(){
+  var cliente=document.getElementById('ot-cliente').value.trim();
+  var dir=document.getElementById('ot-dir').value.trim();
+  var tecnico=document.getElementById('ot-tecnico').value;
+  var fecha=document.getElementById('ot-fecha').value;
+  var errEl=document.getElementById('ot-error');
+  errEl.style.display='none';
+  if(!cliente){errEl.textContent='El cliente es obligatorio';errEl.style.display='block';return;}
+  if(!dir){errEl.textContent='La direccion es obligatoria';errEl.style.display='block';return;}
+  if(!tecnico){errEl.textContent='Debes asignar un tecnico';errEl.style.display='block';return;}
+  if(!fecha){errEl.textContent='La fecha es obligatoria';errEl.style.display='block';return;}
+  var btn=document.getElementById('ot-btn-guardar');
+  if(btn&&btn.disabled)return;
+  if(btn)btn.disabled=true;
+  var gv=function(id){var el=document.getElementById(id);return el?el.value.trim():'';};
+  var payload={
+    folio_cotizacion:    gv('ot-folio')||null,
+    cliente_nombre:      cliente,
+    cliente_tel:         gv('ot-tel')||null,
+    dir_obra:            dir,
+    descripcion_trabajo: gv('ot-desc')||null,
+    tecnico_id:          tecnico,
+    fecha_instalacion:   fecha,
+    hora_instalacion:    gv('ot-hora')||null,
+    saldo_pendiente:     parseFloat(gv('ot-saldo'))||0,
+    notas_tecnico:       gv('ot-notas')||null,
+    num_piezas:          parseInt(document.getElementById('ot-piezas').value)||1,
+    estado:              gv('ot-estado')||'pendiente'
+  };
+  var esEdicion=!!OT_EDITANDO;
+  if(esEdicion)payload.id=OT_EDITANDO;
+  if(!SYNC.online||!sb()){
+    if(!esEdicion)payload.id=crypto.randomUUID();
+    otGuardarOffline(payload,esEdicion);if(btn)btn.disabled=false;return;
+  }
+  try{
+    if(esEdicion){
+      var id=payload.id;var campos=Object.assign({},payload);delete campos.id;
+      var r=await sb().from('ordenes_trabajo').update(campos).eq('id',id);
+      if(r.error)throw r.error;
+      for(var i=0;i<OT_CACHE.length;i++){if(OT_CACHE[i].id===id){OT_CACHE[i]=Object.assign({},OT_CACHE[i],campos);break;}}
+      toast('Orden actualizada');
+    }else{
+      payload.id=crypto.randomUUID();payload.created_at=new Date().toISOString();
+      var r2=await sb().from('ordenes_trabajo').insert([payload]);
+      if(r2.error)throw r2.error;
+      OT_CACHE.unshift(payload);toast('Orden creada - Tecnico: '+tecnico);
     }
-    await intentar(1);
-  } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Registrar Pago y Generar Recibo'; }
-  }
+    otGuardarCache(OT_CACHE);otCerrar();otRender();
+  }catch(e){
+    var esRed=/failed to fetch|network|fetch/i.test(e.message||'');
+    if(!esEdicion&&!payload.id)payload.id=crypto.randomUUID();
+    if(esRed)SYNC.online=false;
+    otGuardarOffline(payload,esEdicion);
+  }finally{if(btn)btn.disabled=false;}
 }
 
-function guardarOffline(db) {
-  try {
-    var cola = JSON.parse(localStorage.getItem('barrcan_pagos_pend') || '[]');
-    cola.push({ datos: db, ts: new Date().toISOString() });
-    localStorage.setItem('barrcan_pagos_pend', JSON.stringify(cola));
-    PAGOS_CACHE.unshift(Object.assign({}, db, { _pendiente: true, created_at: new Date().toISOString() }));
-    localStorage.setItem('barrcan_pagos_cache', JSON.stringify(PAGOS_CACHE));
-    pagosRender();
-    toast('Pago guardado localmente');
-  } catch(e) {}
+function otCambiarEstado(id){
+  var o=null;for(var i=0;i<OT_CACHE.length;i++){if(OT_CACHE[i].id===id){o=OT_CACHE[i];break;}}
+  if(!o)return;
+  var idx=parseInt(prompt('Cambiar estado de "'+o.cliente_nombre+'":\n\n1: Pendiente\n2: En camino\n3: Instalado\n4: Cancelado\n\nIngresa el numero:'));
+  if(isNaN(idx)||idx<1||idx>4)return;
+  var estados=['pendiente','en_camino','instalado','cancelado'];
+  var nuevo=estados[idx-1];
+  for(var j=0;j<OT_CACHE.length;j++){if(OT_CACHE[j].id===id){OT_CACHE[j].estado=nuevo;break;}}
+  otGuardarCache(OT_CACHE);otRender();
+  if(SYNC.online&&sb()){sb().from('ordenes_trabajo').update({estado:nuevo}).eq('id',id).then(function(r){if(!r.error)toast('Estado: '+nuevo);else toast('Actualizado localmente');});}
+  else toast('Estado actualizado sin conexion');
 }
 
-async function pagoReintentarPendientes() {
-  var cola = JSON.parse(localStorage.getItem('barrcan_pagos_pend') || '[]');
-  if (!cola.length || !sb()) { toast('Sin pendientes'); return; }
-  var ok = [];
-  for (var i = 0; i < cola.length; i++) {
-    try {
-      var r = await sb().from('pagos').insert([cola[i].datos]);
-      if (r.error) throw r.error;
-      ok.push(cola[i]);
-    } catch(e) { console.warn('reintento pago:', e.message); }
-  }
-  var rest = cola.filter(function(item) {
-    for (var j = 0; j < ok.length; j++) { if (ok[j] === item) return false; }
-    return true;
-  });
-  localStorage.setItem('barrcan_pagos_pend', JSON.stringify(rest));
-  if (ok.length) {
-    PAGOS_CACHE.forEach(function(p) { if (p._pendiente) delete p._pendiente; });
-    localStorage.setItem('barrcan_pagos_cache', JSON.stringify(PAGOS_CACHE));
-    toast(ok.length + ' pago(s) sincronizado(s)');
-    pagosRender();
-  }
-  if (rest.length) toast(rest.length + ' aun pendiente(s)');
+async function otEliminar(){
+  if(!OT_EDITANDO)return;
+  var o=null;for(var i=0;i<OT_CACHE.length;i++){if(OT_CACHE[i].id===OT_EDITANDO){o=OT_CACHE[i];break;}}
+  if(!confirm('Eliminar orden de '+(o?o.cliente_nombre:'?')+'?'))return;
+  try{
+    if(SYNC.online&&sb()){var r=await sb().from('ordenes_trabajo').delete().eq('id',OT_EDITANDO);if(r.error)throw r.error;}
+    OT_CACHE=OT_CACHE.filter(function(x){return x.id!==OT_EDITANDO;});
+    otGuardarCache(OT_CACHE);toast('Orden eliminada');otCerrar();otRender();
+  }catch(e){var errEl=document.getElementById('ot-error');if(errEl){errEl.textContent='Error: '+e.message;errEl.style.display='block';}}
 }
 
-// ── Recibo media carta / ticket ───────────────────────────────────
-function generarRecibo(d) {
-  var meses = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
-  function fd(iso) {
-    if (!iso) return '\u2014';
-    var p = iso.split('-');
-    return parseInt(p[2]) + ' de ' + meses[parseInt(p[1])] + ' de ' + p[0];
-  }
-  var sc = d.saldo <= 0 ? '#27AE60' : '#E67E22';
-  // Estado de cuenta solo si hay datos de total
-  var sboxHTML = d.total > 0
-    ? '<div style="border:1.5px solid #E67E22;border-radius:5px;padding:8px 10px;background:#FEF9E7;margin:8px 0">'
-      + '<div style="font-size:7.5pt;font-weight:700;color:#E67E22;margin-bottom:4px">ESTADO DE CUENTA</div>'
-      + '<div style="display:flex;justify-content:space-between;font-size:8pt;padding:2px 0"><span>Total obra</span><span style="font-weight:700">$' + fmt(d.total) + '</span></div>'
-      + (d.ant > 0 ? '<div style="display:flex;justify-content:space-between;font-size:8pt;padding:2px 0"><span>Pagos anteriores</span><span style="color:#888">$' + fmt(d.ant) + '</span></div>' : '')
-      + '<div style="display:flex;justify-content:space-between;font-size:8pt;padding:2px 0"><span>Este pago</span><span style="color:#27AE60;font-weight:700">$' + fmt(d.monto) + '</span></div>'
-      + '<div style="display:flex;justify-content:space-between;border-top:1px solid #E67E22;margin-top:4px;padding-top:4px">'
-      + '<span style="font-size:8pt;font-weight:700">' + (d.saldo <= 0 ? 'LIQUIDADO' : 'Saldo') + '</span>'
-      + '<span style="font-size:11pt;font-weight:800;color:' + sc + '">$' + fmt(d.saldo) + '</span></div></div>'
-    : '';
-
-  return '<!DOCTYPE html><html lang=es><head><meta charset=UTF-8>'
-    + '<meta name=viewport content="width=device-width,initial-scale=1">'
-    + '<style>'
-    + '* { box-sizing:border-box; margin:0; padding:0 }'
-    + 'body { font-family:Arial,sans-serif; font-size:9pt; color:#1B3A5C; background:white }'
-    // Media carta: 5.5" x 8.5" = 140mm x 216mm
-    + '.pg { max-width:140mm; margin:0 auto; padding:10mm 10mm 20mm }'
-    + '.hdr { display:flex; align-items:center; gap:8px; margin-bottom:8px; padding-bottom:8px; border-bottom:2px solid #1B3A5C }'
-    + 'table { width:100%; border-collapse:collapse; margin-bottom:6px }'
-    + 'td { padding:3px 6px; border:1px solid #ddd; font-size:8pt }'
-    + '.lbl { font-weight:700; background:#f5f7fa; width:40% }'
-    + '.mbox { background:#1B3A5C; color:white; border-radius:5px; padding:8px 10px; display:flex; justify-content:space-between; align-items:center; margin:8px 0 }'
-    + '.barra { position:fixed; bottom:0; left:0; right:0; background:#1B3A5C; padding:6px 12px; display:flex; gap:8px; justify-content:center; z-index:999 }'
-    + '.bp { padding:8px 18px; background:#C8923A; color:white; border:none; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer }'
-    + '.bc { padding:8px 10px; background:rgba(255,255,255,.15); color:white; border:none; border-radius:6px; font-size:11px; cursor:pointer }'
-    + '@media print { .barra { display:none!important } .pg { padding:5mm } }'
-    + '@page { size: 140mm 216mm; margin: 0 }'
-    + '</style></head><body>'
-    + '<div class=barra>'
-    + '<button class=bp onclick="window.print()">Imprimir / PDF</button>'
-    + '<button class=bc onclick="window.close()">Cerrar</button>'
-    + '</div>'
-    + '<div class=pg>'
-    + '<div class=hdr>'
-    + '<img src="' + _LOGO_SRC + '" style="width:36px;height:36px;object-fit:contain;flex-shrink:0">'
-    + '<div style="flex:1">'
-    + '<div style="font-size:13pt;font-weight:900;color:#1B3A5C;letter-spacing:1px">BarrCan</div>'
-    + '<div style="font-size:6pt;color:#C8923A;letter-spacing:2px;text-transform:uppercase">Canceleria \u00b7 Aluminio \u00b7 Vidrio</div>'
-    + '</div>'
-    + '<div style="text-align:right;border:1.5px solid #1B3A5C;padding:3px 6px;border-radius:3px">'
-    + '<div style="font-size:7.5pt;font-weight:700">RECIBO DE PAGO</div>'
-    + '<div style="font-size:10pt;font-weight:900;color:#C8923A;font-family:monospace">' + d.folioRB + '</div>'
-    + '</div></div>'
-    + '<table>'
-    + '<tr><td class=lbl>Cliente</td><td><strong>' + (d.cliente || '\u2014') + '</strong></td></tr>'
-    + (d.tel ? '<tr><td class=lbl>Tel\u00e9fono</td><td>' + d.tel + '</td></tr>' : '')
-    + (d.folio ? '<tr><td class=lbl>Presupuesto</td><td style="font-family:monospace;color:#2E6DA4;font-size:7.5pt">' + d.folio + '</td></tr>' : '')
-    + (d.desc ? '<tr><td class=lbl>Descripci\u00f3n</td><td>' + d.desc + '</td></tr>' : '')
-    + '<tr><td class=lbl>Fecha</td><td>' + fd(d.fecha) + '</td></tr>'
-    + '<tr><td class=lbl>Forma</td><td>' + (d.formaLabel || d.forma) + '</td></tr>'
-    + '<tr><td class=lbl>Concepto</td><td>' + (d.concepto || '').replace('_', ' ') + '</td></tr>'
-    + (d.factura ? '<tr><td class=lbl>Factura</td><td style="font-weight:700">' + d.factura + '</td></tr>' : '')
-    + '</table>'
-    + '<div class=mbox>'
-    + '<div><div style="font-size:7.5pt;opacity:.7">Monto recibido</div>'
-    + '<div style="font-size:16pt;font-weight:800;color:#F1C40F">$' + fmt(d.monto) + ' MXN</div></div>'
-    + '<div style="font-size:24pt">&#10003;</div></div>'
-    + sboxHTML
-    + (d.notas ? '<div style="background:#f5f7fa;border-radius:4px;padding:6px 8px;font-size:7.5pt;color:#555;margin-bottom:6px">' + d.notas + '</div>' : '')
-    + (d.foto ? '<div style="margin-bottom:6px"><div style="font-size:7.5pt;font-weight:700;color:#1B3A5C;margin-bottom:3px">Comprobante de pago</div><img src="' + d.foto + '" style="max-width:100%;max-height:150px;border-radius:3px;border:1px solid #ddd"></div>' : '')
-    + '<div style="border:1px dashed #1B3A5C;border-radius:4px;padding:6px;text-align:center;font-size:7.5pt;color:#1B3A5C;margin-top:6px">'
-    + 'Pago recibido conforme \u00b7 ' + fd(d.fecha) + '<br>'
-    + '<strong>BarrCan \u00b7 TEL: 56-15-15-84-15</strong></div>'
-    + '<div style="font-size:6.5pt;color:#aaa;text-align:center;margin-top:8px;border-top:1px solid #eee;padding-top:6px">'
-    + d.folioRB + ' \u00b7 BarrCan \u00b7 ' + (d.fecha || '') + '</div>'
-    + '</div></body></html>';
+function otVerHoja(id){
+  var o=null;for(var i=0;i<OT_CACHE.length;i++){if(OT_CACHE[i].id===id){o=OT_CACHE[i];break;}}
+  if(!o)return;otGenerarHojaDirecta(o);
+}
+function otGenerarHoja(){
+  var o=null;if(OT_EDITANDO){for(var i=0;i<OT_CACHE.length;i++){if(OT_CACHE[i].id===OT_EDITANDO){o=OT_CACHE[i];break;}}}
+  if(!o)return;otGenerarHojaDirecta(o);
 }
 
-// ── Post pago ─────────────────────────────────────────────────────
-function mostrarPost(folioRB, monto, tel) {
-  var ov = document.getElementById('pago-post-ov');
-  ov.dataset.tel = tel || '';
-  document.getElementById('ppo-titulo').textContent = '$' + fmt(monto) + ' \u00b7 Recibo ' + folioRB;
-  document.getElementById('ppo-wa').style.display = tel ? 'flex' : 'none';
-  ov.style.display = 'flex';
-}
-
-function verRecibo() {
-  if (!_RECIBO) { toast('El recibo no esta disponible'); return; }
-  var win = window.open('', '_blank');
-  if (win) { win.document.write(_RECIBO); win.document.close(); }
+function otGenerarHojaDirecta(o){
+  var meses=['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  function fd(iso){if(!iso)return '-';var p=iso.split('-');return parseInt(p[2])+' de '+meses[parseInt(p[1])]+' de '+p[0];}
+  var cfg=ESTADO_CFG[o.estado]||{label:o.estado||'',color:'#666',bg:'#f5f5f5'};
+  var logoSrc=document.querySelector('.logo-mark img')?document.querySelector('.logo-mark img').src:'';
+  var html='<!DOCTYPE html><html lang=es><head><meta charset=UTF-8><meta name=viewport content=width=device-width>'
+    +'<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:9.5pt;color:#1B3A5C}'
+    +'.pg{max-width:580px;margin:0 auto;padding:16px 20px 80px}'
+    +'.hdr{display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-bottom:12px;border-bottom:3px solid #1B3A5C}'
+    +'h2{font-size:9pt;font-weight:700;color:#2E6DA4;border-bottom:1px solid #eee;padding-bottom:3px;margin:12px 0 7px;text-transform:uppercase;letter-spacing:.5px}'
+    +'table{width:100%;border-collapse:collapse;margin-bottom:8px}td{padding:5px 8px;border:1px solid #ddd;font-size:8.5pt}'
+    +'.lbl{font-weight:700;background:#f5f7fa;width:36%}'
+    +'.firma{border-top:1px solid #ccc;padding-top:5px;font-size:8.5pt;color:#888;text-align:center;}'
+    +'.barra{position:fixed;bottom:0;left:0;right:0;background:#1B3A5C;padding:8px 14px;display:flex;gap:8px;justify-content:center;z-index:999}'
+    +'.bp{padding:9px 20px;background:#C8923A;color:white;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer}'
+    +'.bc{padding:9px 12px;background:rgba(255,255,255,.15);color:white;border:none;border-radius:7px;font-size:12px;cursor:pointer}'
+    +'@media print{.barra{display:none!important}}</style></head><body>'
+    +'<div class=barra><button class=bp onclick="window.print()">Imprimir / PDF</button><button class=bc onclick="window.close()">Cerrar</button></div>'
+    +'<div class=pg><div class=hdr>'
+    +'<img src="'+logoSrc+'" style="width:52px;height:52px;object-fit:contain;flex-shrink:0">'
+    +'<div style=flex:1><div style=font-size:16pt;font-weight:900;color:#1B3A5C;letter-spacing:1px>BarrCan</div>'
+    +'<div style=font-size:7pt;color:#C8923A;letter-spacing:3px;text-transform:uppercase>Canceleria - Aluminio - Vidrio</div>'
+    +'<div style=font-size:7.5pt;color:#666;margin-top:2px>TEL: 56-15-15-84-15 - CDMX</div></div>'
+    +'<div style=text-align:right;border:2px solid #1B3A5C;padding:4px 8px;border-radius:4px>'
+    +'<div style=font-size:9pt;font-weight:700;color:#1B3A5C>ORDEN DE TRABAJO</div>'
+    +'<div style=font-size:10pt;font-weight:900;color:#C8923A;font-family:monospace>'+(o.folio_cotizacion||'OT-'+(o.id||'').slice(0,6))+'</div>'
+    +'<div style=font-size:8pt;font-weight:700;color:'+cfg.color+';background:'+cfg.bg+';padding:2px 6px;border-radius:6px;margin-top:2px>'+cfg.label+'</div>'
+    +'</div></div>'
+    +'<h2>Datos del cliente</h2>'
+    +'<table>'
+    +'<tr><td class=lbl>Cliente</td><td><strong>'+(o.cliente_nombre||'-')+'</strong></td></tr>'
+    +(o.cliente_tel?'<tr><td class=lbl>Telefono</td><td>'+o.cliente_tel+'</td></tr>':'')
+    +'<tr><td class=lbl>Direccion</td><td>'+(o.dir_obra||'-')+'</td></tr>'
+    +'<tr><td class=lbl>Fecha</td><td><strong>'+fd(o.fecha_instalacion)+'</strong></td></tr>'
+    +(o.hora_instalacion?'<tr><td class=lbl>Hora</td><td>'+o.hora_instalacion+' hrs</td></tr>':'')
+    +'</table>'
+    +'<h2>Trabajo a realizar</h2>'
+    +'<div style=background:#f5f7fa;border-radius:5px;padding:10px 12px;margin-bottom:10px;font-size:9pt>'+(o.descripcion_trabajo||'Sin descripcion')+'</div>'
+    +(o.num_piezas>1?'<div style=font-size:9pt;margin-bottom:8px><strong>Piezas: '+o.num_piezas+'</strong></div>':'')
+    +'<h2>Tecnico asignado</h2>'
+    +'<div style=background:#1B3A5C;color:white;border-radius:6px;padding:10px 14px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center>'
+    +'<div><div style=font-size:8.5pt;opacity:.7>Tecnico responsable</div>'
+    +'<div style=font-size:14pt;font-weight:800;letter-spacing:1px>'+(o.tecnico_id||'-')+'</div></div>'
+    +'<div style=font-size:28pt>&#128296;</div>'
+    +'</div>'
+    +(o.saldo_pendiente>0?'<div style=background:#FEF9E7;border:1.5px solid #E67E22;border-radius:6px;padding:10px 12px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center>'
+    +'<div style=font-size:9pt;font-weight:700;color:#E67E22>Cobrar al cliente</div>'
+    +'<div style=font-size:16pt;font-weight:800;color:#E67E22>$'+fmt(o.saldo_pendiente)+' MXN</div></div>':'')
+    +(o.notas_tecnico?'<h2>Notas para el tecnico</h2>'
+    +'<div style=background:#FFF8F0;border-left:3px solid #C8923A;padding:10px 12px;font-size:9pt;color:#555;margin-bottom:10px>'+o.notas_tecnico+'</div>':'')
+    +'<div style=display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:14px>'
+    +'<div class=firma>Firma del tecnico<br>'+(o.tecnico_id||'')+'</div>'
+    +'<div class=firma>Firma de recibido<br>'+(o.cliente_nombre||'')+'</div>'
+    +'</div>'
+    +'<div style=font-size:7.5pt;color:#aaa;text-align:center;margin-top:12px;border-top:1px solid #eee;padding-top:8px>'
+    +(o.folio_cotizacion||'OT')+' - BarrCan - '+new Date().toLocaleDateString('es-MX')
+    +'</div></div></body></html>';
+  _HOJA_OT_HTML=html;
+  var win=window.open('','_blank');
+  if(win){win.document.write(html);win.document.close();}
   else toast('Permite ventanas emergentes');
-}
-
-function enviarWA() {
-  var ov  = document.getElementById('pago-post-ov');
-  var tel = (ov.dataset.tel || '').replace(/\D/g, '');
-  var tit = document.getElementById('ppo-titulo').textContent;
-  var folio = document.getElementById('pago-folio').value;
-  var texto = encodeURIComponent(tit + (folio ? ' \u00b7 Ref: ' + folio : '')
-    + '\n\nSe adjunta el recibo correspondiente.'
-    + '\n\nGracias por su preferencia! BarrCan \u00b7 56-15-15-84-15');
-  window.open('https://wa.me/' + (tel ? '52' + tel : '525615158415') + '?text=' + texto, '_blank');
-}
-
-// ── Editar pago ───────────────────────────────────────────────────
-function pagoAbrirEdicion(id) {
-  var p = null;
-  for (var i = 0; i < PAGOS_CACHE.length; i++) { if (PAGOS_CACHE[i].id === id) { p = PAGOS_CACHE[i]; break; } }
-  if (!p) return;
-  EDIT_ID = id;
-  document.getElementById('edit-monto').value = p.monto || '';
-  document.getElementById('edit-fecha').value = p.fecha_pago || '';
-  document.getElementById('edit-forma').value = p.forma_pago || 'transferencia';
-  document.getElementById('edit-notas').value = p.notas || '';
-  document.getElementById('pago-edit-ov').style.display = 'block';
-}
-
-async function pagoEditarGuardar() {
-  if (!EDIT_ID) return;
-  var monto = parseFloat(document.getElementById('edit-monto').value) || 0;
-  var fecha = document.getElementById('edit-fecha').value;
-  var forma = document.getElementById('edit-forma').value;
-  var notas = document.getElementById('edit-notas').value.trim();
-  if (!monto) { toast('El monto es obligatorio'); return; }
-  var upd = { monto: monto, fecha_pago: fecha, forma_pago: forma, notas: notas || null };
-  for (var i = 0; i < PAGOS_CACHE.length; i++) {
-    if (PAGOS_CACHE[i].id === EDIT_ID) { PAGOS_CACHE[i] = Object.assign({}, PAGOS_CACHE[i], upd); break; }
+  if(o.cliente_tel){
+    var tel=o.cliente_tel.replace(/\D/g,'');
+    var msg=encodeURIComponent('Hola '+o.cliente_nombre+', le confirmamos su instalacion programada para el *'+fd(o.fecha_instalacion)+'*'
+      +(o.hora_instalacion?' a las *'+o.hora_instalacion+' hrs*':'')+'.'
+      +(o.dir_obra?' En: '+o.dir_obra:'')
+      +'\nTecnico: *'+(o.tecnico_id||'BarrCan')+'*'
+      +(o.saldo_pendiente>0?'\nSaldo a cobrar: *$'+fmt(o.saldo_pendiente)+' MXN*':'')
+      +'\n\nGracias! BarrCan 56-15-15-84-15');
+    setTimeout(function(){
+      if(confirm('Enviar confirmacion al cliente por WhatsApp?')){
+        window.open('https://wa.me/52'+tel+'?text='+msg,'_blank');
+      }
+    },800);
   }
-  localStorage.setItem('barrcan_pagos_cache', JSON.stringify(PAGOS_CACHE));
-  pagosRender();
-  document.getElementById('pago-edit-ov').style.display = 'none';
-  if (SYNC.online && sb()) {
-    sb().from('pagos').update(upd).eq('id', EDIT_ID).then(function(r) {
-      toast(r.error ? 'Actualizado localmente' : 'Pago actualizado');
-    });
-  } else { toast('Actualizado localmente'); }
-  EDIT_ID = null;
 }
 
-// ── Reset ─────────────────────────────────────────────────────────
-function pagoReset() {
-  _PAGO_FOTO = null;
-  var img  = document.getElementById('pago-foto-img');
-  var prev = document.getElementById('pago-foto-preview');
-  if (img)  img.src = '';
-  if (prev) prev.style.display = 'none';
-  var fact = document.getElementById('pago-factura');
-  if (fact) fact.value = '';
-  var campos = ['pago-folio','pago-cliente','pago-tel','pago-desc','pago-notas','pago-monto','pago-total','pago-ant'];
-  campos.forEach(function(cid) { var el = document.getElementById(cid); if (el) el.value = ''; });
-  document.getElementById('pago-fecha').value    = new Date().toISOString().split('T')[0];
-  document.getElementById('pago-concepto').value = 'anticipo';
-  document.getElementById('pago-saldo').textContent = '$0';
-  document.getElementById('pago-saldo').style.color  = 'var(--red)';
-  document.getElementById('pago-error').style.display = 'none';
-  document.getElementById('pago-pres-card').style.display = 'none';
-  document.getElementById('pago-pres').value = '';
-  PRES_SEL = null; FORMA_SEL = 'transferencia';
-  document.querySelectorAll('.pf-btn').forEach(function(b, i) {
-    b.style.borderColor = i === 0 ? 'var(--blue)' : 'var(--gray-200)';
-    b.style.background  = i === 0 ? 'rgba(46,109,164,0.08)' : 'none';
-    b.style.color       = i === 0 ? 'var(--blue)' : 'var(--gray-400)';
-  });
+async function otReintentarPendientes(){
+  var cola=JSON.parse(localStorage.getItem('barrcan_ordenes_pendientes')||'[]');
+  if(!cola.length||!sb())return;
+  var ok=[];
+  for(var i=0;i<cola.length;i++){
+    var item=cola[i];
+    try{
+      if(item.tipo==='update'){var id=item.datos.id;var c=Object.assign({},item.datos);delete c.id;var r=await sb().from('ordenes_trabajo').update(c).eq('id',id);if(r.error)throw r.error;}
+      else{var r2=await sb().from('ordenes_trabajo').insert([item.datos]);if(r2.error)throw r2.error;}
+      ok.push(item);
+    }catch(e){console.warn('OT reintento:',e.message);}
+  }
+  var rest=cola.filter(function(i2){return ok.indexOf(i2)<0;});
+  localStorage.setItem('barrcan_ordenes_pendientes',JSON.stringify(rest));
+  if(ok.length){OT_CACHE.forEach(function(o){delete o._pendiente;});otGuardarCache(OT_CACHE);otRender();toast(ok.length+' orden(es) sincronizada(s)');}
 }
 
-function cargarPrefill() {
-  try {
-    var raw = localStorage.getItem('barrcan_pago_prefill');
-    if (!raw) return;
-    var p = JSON.parse(raw);
-    localStorage.removeItem('barrcan_pago_prefill');
-    var s = function(id, v) { var el = document.getElementById(id); if (el) el.value = v || ''; };
-    s('pago-folio',   p.folio);
-    s('pago-cliente', p.cliente);
-    s('pago-tel',     p.tel);
-    s('pago-desc',    p.desc || p.descripcion);
-    if (p.monto) s('pago-total', p.monto);
-    if (p.saldo) s('pago-monto', p.saldo);
-    var ant = Math.max(0, (p.monto || 0) - (p.saldo || 0));
-    if (ant) s('pago-ant', ant);
-    actualizarSaldo();
-    toast('Datos pre-llenados desde presupuesto');
-  } catch(e) {}
-}
-
-// ── Init — DOMContentLoaded igual que barrcan_app.html ───────────
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded',function(){
   detectarConexion();
-  _LOGO_SRC = document.querySelector('.logo-mark img') ? document.querySelector('.logo-mark img').src : '';
-  pagoReset();
-  cargarPrefill();
-  var localPres = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]')
-    .filter(function(p) { return p.estado === 'aprobado' && (p.saldo || 0) > 0; });
-  if (localPres.length) llenarDrop(localPres);
-  pagosCargar();
-  cargarPresDropdown();
-  var cola = JSON.parse(localStorage.getItem('barrcan_pagos_pend') || '[]');
-  if (cola.length) setTimeout(pagoReintentarPendientes, 1500);
+  var local=otCargarCache();
+  if(local.length){OT_CACHE=local;otRender();}
+  otCargar();
 });
-
 </script>
 </body>
 </html>
