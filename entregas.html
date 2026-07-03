@@ -1050,7 +1050,7 @@ body{min-height:100vh}
 ══════════════════════════════════════════════════════════════════
   BARRCAN · MÓDULO: ENTREGAS (standalone)
 ══════════════════════════════════════════════════════════════════
-  VERSIÓN : v1.7
+  VERSIÓN : v2.0
   FECHA   : 2026-06-30
   ESTADO  : Corrección crítica — reportes no se guardaban en absoluto
 
@@ -1187,7 +1187,11 @@ body{min-height:100vh}
           </div>
           <div class="form-group" style="margin-bottom:0">
             <label class="form-label">Folio CACN</label>
-            <input type="text" id="puerta-folio" class="form-input" placeholder="094B-260610-32J" style="font-family:monospace;font-size:12px">
+            <select id="puerta-folio-select" class="form-select" onchange="puertaSeleccionarPresupuesto()"
+              style="font-family:monospace;font-size:12px">
+              <option value="">— Selecciona presupuesto —</option>
+            </select>
+            <input type="hidden" id="puerta-folio">
           </div>
         </div>
       </div>
@@ -1240,18 +1244,31 @@ body{min-height:100vh}
 
       <div class="wizard-card" style="margin-bottom:12px">
         <div class="wizard-title">💰 Saldo pendiente</div>
+        <div id="puerta-saldo-info" style="display:none;background:rgba(27,58,92,0.04);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:10px">
+          <div style="font-size:10px;color:var(--gray-400);margin-bottom:4px">CALCULADO DESDE PAGOS REGISTRADOS</div>
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-size:11px;color:var(--gray-400)">Total presupuesto: <span id="puerta-saldo-total" style="font-weight:700;color:var(--navy)">$0</span></div>
+              <div style="font-size:11px;color:var(--gray-400)">Pagos registrados: <span id="puerta-saldo-pagado" style="font-weight:700;color:var(--green)">$0</span></div>
+            </div>
+            <div style="text-align:right">
+              <div style="font-size:10px;color:var(--gray-400)">Saldo pendiente</div>
+              <div id="puerta-saldo-calculado" style="font-size:18px;font-weight:800;color:var(--red)">$0</div>
+            </div>
+          </div>
+        </div>
         <div class="form-row">
           <div class="form-group" style="margin-bottom:0">
-            <label class="form-label">¿Cobrar saldo?</label>
+            <label class="form-label">&iquest;Cobrar saldo?</label>
             <select id="puerta-aplica-cobro" class="form-select" onchange="puertaToggleCobro()">
-              <option value="no">No — ya está liquidado</option>
-              <option value="si">Sí — cobrar saldo</option>
+              <option value="no">No &mdash; ya est&aacute; liquidado</option>
+              <option value="si">S&iacute; &mdash; cobrar saldo</option>
             </select>
           </div>
           <div class="form-group" id="puerta-monto-group" style="margin-bottom:0;display:none">
-            <label class="form-label">Monto a cobrar</label>
+            <label class="form-label">Monto a cobrar (editable)</label>
             <div class="input-unit">
-              <input type="number" id="puerta-monto" class="form-input" inputmode="numeric" placeholder="0">
+              <input type="number" id="puerta-monto" class="form-input" inputmode="decimal" placeholder="0">
               <span class="unit-label">$</span>
             </div>
           </div>
@@ -1334,12 +1351,15 @@ function sb() {
   return _sb;
 }
 
-const SYNC = { online: navigator.onLine };
-window.addEventListener('online',  () => { SYNC.online = true;  detectarConexion(); entReintentarPendientes(); });
-window.addEventListener('offline', () => { SYNC.online = false; detectarConexion(); });
+var SYNC = { online: navigator.onLine };
+window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); entReintentarPendientes(); });
+window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
+// Patron identico a barrcan_app.html — NO lee navigator.onLine en detectarConexion
+// La conexion real se confirma cuando Supabase responde exitosamente
 function detectarConexion() {
-  document.getElementById('conn-status').textContent = SYNC.online ? 'Online' : 'Offline-First';
+  var badge = document.getElementById('conn-status');
+  if (badge) badge.textContent = navigator.onLine ? 'Online' : 'Offline-First';
 }
 
 function fmt(n) { return Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:0,maximumFractionDigits:2}); }
@@ -1410,19 +1430,147 @@ function cliDropdownGetCliente(selectId) {
   try { return JSON.parse(opt.dataset.c || '{}'); } catch(e) { return null; }
 }
 
+// Al seleccionar cliente: llenar nombre, tel y cargar sus presupuestos
 function puertaDropdownSeleccionar() {
-  const c = cliDropdownGetCliente('puerta-cli-select');
+  var c = cliDropdownGetCliente('puerta-cli-select');
   if (!c) return;
   document.getElementById('puerta-cliente').value = c.nombre || '';
   document.getElementById('puerta-tel').value = c.telefono || '';
+  // Cargar presupuestos abiertos de este cliente en el dropdown de folio
+  puertaCargarPresupuestosCliente(c.id, c.nombre);
+}
+
+// Cargar presupuestos del cliente seleccionado (estados abiertos/en proceso)
+function puertaCargarPresupuestosCliente(clienteId, clienteNombre) {
+  var sel = document.getElementById('puerta-folio-select');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Selecciona folio/presupuesto —</option>';
+  document.getElementById('puerta-folio').value = '';
+  // Ocultar saldo info hasta seleccionar presupuesto
+  document.getElementById('puerta-saldo-info').style.display = 'none';
+
+  // Buscar en caché local primero
+  var estadosAbiertos = ['activo', 'aprobado', 'en_produccion', 'pendiente_entrega'];
+  var local = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]')
+    .filter(function(p) {
+      return estadosAbiertos.indexOf(p.estado) >= 0 &&
+        (p.cliente || '').toLowerCase().indexOf((clienteNombre || '').toLowerCase()) >= 0;
+    });
+
+  local.forEach(function(p) {
+    var opt = document.createElement('option');
+    opt.value = p.folio || '';
+    opt.textContent = (p.folio || '') + ' — ' + (p.descripcion || '').slice(0, 40);
+    opt.dataset.p = JSON.stringify(p);
+    sel.appendChild(opt);
+  });
+
+  // Intentar Supabase en background
+  if (!SYNC.online || !sb()) return;
+  sb().from('presupuestos_atrasados')
+    .select('id,folio,cliente,monto,saldo,descripcion,estado')
+    .in('estado', estadosAbiertos)
+    .ilike('cliente', '%' + (clienteNombre || '') + '%')
+    .order('created_at', { ascending: false }).limit(20)
+    .then(function(result) {
+      if (result.error || !result.data || !result.data.length) return;
+      sel.innerHTML = '<option value="">— Selecciona folio/presupuesto —</option>';
+      result.data.forEach(function(p) {
+        var opt = document.createElement('option');
+        opt.value = p.folio || '';
+        opt.textContent = (p.folio || '') + ' — ' + (p.descripcion || '').slice(0, 40);
+        opt.dataset.p = JSON.stringify(p);
+        sel.appendChild(opt);
+      });
+    });
+}
+
+// Al seleccionar un presupuesto: llenar descripción y calcular saldo desde pagos
+function puertaSeleccionarPresupuesto() {
+  var sel = document.getElementById('puerta-folio-select');
+  if (!sel || !sel.value) {
+    document.getElementById('puerta-folio').value = '';
+    document.getElementById('puerta-saldo-info').style.display = 'none';
+    return;
+  }
+  var opt = sel.options[sel.selectedIndex];
+  var p = {};
+  try { p = JSON.parse(opt.dataset.p || '{}'); } catch(e) {}
+
+  // Llenar folio (hidden) y descripción
+  document.getElementById('puerta-folio').value = p.folio || sel.value;
+  var descEl = document.getElementById('puerta-desc');
+  if (descEl && p.descripcion) descEl.value = p.descripcion;
+
+  // Mostrar saldo calculado y buscar pagos registrados
+  puertaCalcularSaldo(p);
+}
+
+// Calcular saldo real: total presupuesto - pagos registrados en Supabase
+function puertaCalcularSaldo(pres) {
+  var infoEl = document.getElementById('puerta-saldo-info');
+  var totalEl = document.getElementById('puerta-saldo-total');
+  var pagadoEl = document.getElementById('puerta-saldo-pagado');
+  var calcEl = document.getElementById('puerta-saldo-calculado');
+  var montoEl = document.getElementById('puerta-monto');
+  var cobroSel = document.getElementById('puerta-aplica-cobro');
+
+  var totalPres = parseFloat(pres.monto) || 0;
+  var saldoPres = parseFloat(pres.saldo) || 0;
+  var pagadoAnt = Math.max(0, totalPres - saldoPres);
+
+  // Mostrar con valores del presupuesto inmediatamente
+  if (infoEl) infoEl.style.display = 'block';
+  if (totalEl) totalEl.textContent = '$' + fmt(totalPres);
+  if (pagadoEl) pagadoEl.textContent = '$' + fmt(pagadoAnt);
+  if (calcEl) {
+    calcEl.textContent = '$' + fmt(saldoPres);
+    calcEl.style.color = saldoPres <= 0 ? 'var(--green)' : 'var(--red)';
+  }
+
+  // Si hay saldo > 0, activar cobro y pre-llenar monto
+  if (saldoPres > 0) {
+    if (cobroSel) cobroSel.value = 'si';
+    puertaToggleCobro();
+    if (montoEl) montoEl.value = saldoPres;
+  } else {
+    if (cobroSel) cobroSel.value = 'no';
+    puertaToggleCobro();
+  }
+
+  // Buscar pagos reales en Supabase para precisar el saldo
+  if (!SYNC.online || !sb() || !pres.folio) return;
+  sb().from('pagos')
+    .select('monto,concepto,fecha_pago')
+    .ilike('notas', '%' + pres.folio + '%')
+    .then(function(result) {
+      if (result.error || !result.data || !result.data.length) return;
+      var totalPagado = result.data.reduce(function(s, p) {
+        return s + (parseFloat(p.monto) || 0);
+      }, 0);
+      var saldoReal = Math.max(0, totalPres - totalPagado);
+      if (pagadoEl) pagadoEl.textContent = '$' + fmt(totalPagado);
+      if (calcEl) {
+        calcEl.textContent = '$' + fmt(saldoReal);
+        calcEl.style.color = saldoReal <= 0 ? 'var(--green)' : 'var(--red)';
+      }
+      if (saldoReal > 0) {
+        if (cobroSel) cobroSel.value = 'si';
+        puertaToggleCobro();
+        if (montoEl) montoEl.value = saldoReal;
+      } else {
+        if (cobroSel) cobroSel.value = 'no';
+        puertaToggleCobro();
+      }
+    });
 }
 
 // ══════════════════════════════════════════════
 // ENTREGA EN PUERTA
 // ══════════════════════════════════════════════
-let PUERTA_FOTOS = [];
-let PUERTA_FORMA_SEL = 'efectivo';
-let PUERTA_CTRL = new Set();
+var PUERTA_FOTOS = [];
+var PUERTA_FORMA_SEL = 'efectivo';
+var PUERTA_CTRL = new Set();
 let PUERTA_FIRMA_CTX = null;
 let PUERTA_FIRMA_DRAW = false;
 
@@ -1617,8 +1765,8 @@ function puertaCerrarAccionesPost() {
 
 function puertaEnviarWA() {
   const ov = document.getElementById('post-print-ov');
-  const folio = (ov?.dataset.folio || '').trim();
-  const tel   = (ov?.dataset.tel   || '').replace(/\D/g,'');
+  const folio = ((ov ? ov.dataset : "").folio || '').trim();
+  const tel   = ((ov ? ov.dataset : "").tel   || '').replace(/\D/g,'');
   const texto = encodeURIComponent(
     `Hola, le compartimos el comprobante de entrega de su pedido *${folio}*. ` +
     `Por favor confirme de recibido. \n\n` +
@@ -1631,8 +1779,8 @@ function puertaEnviarWA() {
 
 function puertaEnviarEncuesta() {
   const ov = document.getElementById('post-print-ov');
-  const folio = encodeURIComponent(ov?.dataset.folio || '');
-  const tel   = (ov?.dataset.tel || '').replace(/\D/g,'');
+  const folio = encodeURIComponent((ov ? ov.dataset : "").folio || '');
+  const tel   = ((ov ? ov.dataset : "").tel || '').replace(/\D/g,'');
   const enlace = `${ENCUESTA_URL}?folio=${folio}`;
   const texto = encodeURIComponent(
     `Hola, gracias por preferirnos 🙏\n\n` +
@@ -1656,7 +1804,12 @@ function puertaReverReporte() {
 
 function puertaReset() {
   PUERTA_FOTOS = []; PUERTA_FORMA_SEL = 'efectivo'; PUERTA_CTRL = new Set();
-  ['puerta-cliente','puerta-tel','puerta-folio','puerta-desc','puerta-notas-int'].forEach(id => {
+  // Limpiar folio select y saldo info
+  var folioSel = document.getElementById('puerta-folio-select');
+  if (folioSel) folioSel.innerHTML = '<option value="">— Selecciona presupuesto —</option>';
+  var saldoInfo = document.getElementById('puerta-saldo-info');
+  if (saldoInfo) saldoInfo.style.display = 'none';
+  ['puerta-cliente','puerta-tel','puerta-folio','puerta-desc','puerta-notas-int'].forEach(function(id) {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   document.getElementById('puerta-cli-select').value = '';
@@ -1854,12 +2007,8 @@ async function entCargarHistorial() {
     div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">⏳ Buscando reportes…</div>';
   }
 
-  if (!SYNC.online) {
-    if (!local.length) {
-      div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">📵 Sin conexión — sin reportes en caché todavía</div>';
-    }
-    return;
-  }
+  // No bloquear por SYNC.online — intentar siempre; la conexión real la confirma Supabase
+  if (!sb()) return;
 
   // Pase lo que pase con la consulta a Supabase, SIEMPRE se resuelve el estado de "Cargando…"
   try {
@@ -1869,10 +2018,10 @@ async function entCargarHistorial() {
     if (error) throw error;
 
     if (data && data.length) {
-      const conPendientes = JSON.parse(localStorage.getItem('barrcan_reportes_historial')||'[]').filter(r=>r._pendiente);
-      const nuevos = data.map(r=>({...r, ts: new Date(r.created_at).toLocaleString('es-MX')}));
-      // Mantener los pendientes locales que aún no estén en Supabase, arriba del todo
-      localStorage.setItem('barrcan_reportes_historial', JSON.stringify([...conPendientes, ...nuevos]));
+      SYNC.online = true; detectarConexion(); // confirmado: hay conexión real
+      var conPendientes = JSON.parse(localStorage.getItem('barrcan_reportes_historial')||'[]').filter(function(r){return r._pendiente;});
+      var nuevos = data.map(function(r){return Object.assign({},r,{ts:new Date(r.created_at).toLocaleString('es-MX')});});
+      localStorage.setItem('barrcan_reportes_historial', JSON.stringify(conPendientes.concat(nuevos)));
       entRenderHistorial();
     } else if (!local.length) {
       // Sin datos en Supabase y sin caché local — mostrar vacío, no dejar "Cargando…"
@@ -1882,12 +2031,13 @@ async function entCargarHistorial() {
     console.warn('entCargarHistorial:', e.message);
     // Si falló la consulta y no había caché, mostrar el error en vez de dejarlo en "Cargando…"
     if (!local.length) {
-      div.innerHTML = `<div style="text-align:center;padding:20px;color:var(--red);font-size:13px">
-        ⚠️ No se pudo cargar el historial<br>
-        <button onclick="entCargarHistorial()" style="margin-top:8px;padding:6px 14px;
-          background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:12px;
-          font-weight:700;cursor:pointer">🔄 Reintentar</button>
-      </div>`;
+      var esRed = /failed to fetch|network|fetch/i.test(e.message || '');
+      if (esRed) { SYNC.online = false; detectarConexion(); }
+      div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">'
+        + (esRed ? 'Sin conexión' : 'Error al cargar historial') + '<br>'
+        + '<button onclick="entCargarHistorial()" style="margin-top:8px;padding:6px 14px;'
+        + 'background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">'
+        + 'Reintentar</button></div>';
     }
   }
 }
@@ -1895,7 +2045,7 @@ async function entCargarHistorial() {
 // ── Abrir historial COMPLETO en una hoja nueva y limpia ──────────
 async function entAbrirHistorialCompleto() {
   toast('⏳ Generando historial…');
-  const _logoSrc = document.querySelector('.logo-mark img')?.src || '';
+  const _logoSrc = (document.querySelector('.logo-mark img') ? document.querySelector('.logo-mark img').src : '');
 
   let datos = JSON.parse(localStorage.getItem('barrcan_reportes_historial')||'[]');
 
@@ -2032,17 +2182,16 @@ async function entReintentarPendientes() {
   entRenderHistorial();
 }
 
-// ── Iniciar ────────────────────────────────────
-detectarConexion();
-puertaReset();
-puertaIniciarFirma();
-cliDropdownCargar('puerta-cli-select');
-entCargarHistorial();
-
-if (SYNC.online) {
-  const cola = JSON.parse(localStorage.getItem('barrcan_entregas_pendientes')||'[]');
-  if (cola.length) setTimeout(()=>entReintentarPendientes(), 1500);
-}
+// ── Init — DOMContentLoaded (patrón barrcan_app.html) ───────────
+document.addEventListener('DOMContentLoaded', function() {
+  detectarConexion();
+  puertaReset();
+  puertaIniciarFirma();
+  cliDropdownCargar('puerta-cli-select');
+  entCargarHistorial();
+  var cola = JSON.parse(localStorage.getItem('barrcan_entregas_pendientes') || '[]');
+  if (cola.length) setTimeout(entReintentarPendientes, 1500);
+});
 </script>
 </body>
 </html>
