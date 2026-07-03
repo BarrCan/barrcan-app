@@ -1282,33 +1282,53 @@ function nextFolioRB() {
 }
 
 // ── Dropdown presupuestos aprobados ───────────────────────────────
+// Estados con saldo pendiente — mismo set que historial.html
+var ESTADOS_CON_SALDO = ['activo', 'aprobado', 'en_produccion', 'pendiente_entrega'];
+
 function cargarPresDropdown() {
   var sel = document.getElementById('pago-pres');
   if (!sel) return;
+  // Cargar desde cache del historial primero (inmediato)
   var local = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]')
-    .filter(function(p) { return p.estado === 'aprobado' && (p.saldo || 0) > 0; });
+    .filter(function(p) {
+      return ESTADOS_CON_SALDO.indexOf(p.estado) >= 0 && (p.saldo || 0) > 0;
+    });
   PRES_LIST = local;
   llenarDrop(local);
-  if (!SYNC.online || !sb()) return;
+  // Siempre intentar Supabase — no bloquear por SYNC.online (puede ser false momentáneamente en móvil)
+  if (!sb()) return;
   sb().from('presupuestos_atrasados')
     .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,estado')
-    .eq('estado', 'aprobado').gt('saldo', 0)
-    .order('created_at', { ascending: false }).limit(100)
+    .in('estado', ESTADOS_CON_SALDO)
+    .gt('saldo', 0)
+    .order('created_at', { ascending: false }).limit(200)
     .then(function(result) {
-      if (result.error || !result.data) return;
+      if (result.error || !result.data || !result.data.length) return; // si falla, conservar cache local
       PRES_LIST = result.data;
       llenarDrop(PRES_LIST);
+      // Actualizar cache compartido con historial
+      var cache = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]');
+      // Fusionar: reemplazar los que vienen de Supabase, conservar los _pendiente locales
+      var pendientes = cache.filter(function(p) { return p._pendiente; });
+      var merged = pendientes.concat(result.data);
+      localStorage.setItem('barrcan_presupuestos_cache', JSON.stringify(merged));
     });
 }
+
+var ESTADO_SHORT = {
+  activo: 'Activo', aprobado: 'Aprobado',
+  en_produccion: 'En prod.', pendiente_entrega: 'Pend. entrega'
+};
 
 function llenarDrop(lista) {
   var sel = document.getElementById('pago-pres');
   if (!sel) return;
-  sel.innerHTML = '<option value="">&mdash; Selecciona presupuesto aprobado &mdash;</option>';
+  sel.innerHTML = '<option value="">&mdash; Selecciona presupuesto &mdash;</option>';
   lista.forEach(function(p) {
     var o = document.createElement('option');
     o.value = p.id;
-    o.textContent = (p.folio || '') + ' \u00b7 ' + p.cliente + ' \u00b7 Saldo $' + fmt(p.saldo || 0);
+    var est = ESTADO_SHORT[p.estado] ? ' [' + ESTADO_SHORT[p.estado] + ']' : '';
+    o.textContent = (p.folio || '') + est + ' · ' + p.cliente + ' · Saldo $' + fmt(p.saldo || 0);
     o.dataset.p = JSON.stringify(p);
     sel.appendChild(o);
   });
@@ -1384,6 +1404,7 @@ async function pagosCargar() {
   if (local.length) { PAGOS_CACHE = local; pagosRender(); }
   else div.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">Sin pagos registrados</div>';
 
+  // No bloquear por SYNC.online — intentar siempre; Supabase confirma conexión real
   if (!sb()) return;
   try {
     var result = await sb().from('pagos')
@@ -1779,11 +1800,21 @@ document.addEventListener('DOMContentLoaded', function() {
   _LOGO_SRC = document.querySelector('.logo-mark img') ? document.querySelector('.logo-mark img').src : '';
   pagoReset();
   cargarPrefill();
+  // Mostrar presupuestos desde cache local inmediatamente (compartido con historial.html)
   var localPres = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]')
-    .filter(function(p) { return p.estado === 'aprobado' && (p.saldo || 0) > 0; });
-  if (localPres.length) llenarDrop(localPres);
+    .filter(function(p) {
+      return ESTADOS_CON_SALDO.indexOf(p.estado) >= 0 && (p.saldo || 0) > 0;
+    });
+  if (localPres.length) {
+    PRES_LIST = localPres;
+    llenarDrop(localPres);
+  } else {
+    // No hay cache — poner aviso mientras Supabase responde
+    var selTemp = document.getElementById('pago-pres');
+    if (selTemp) selTemp.innerHTML = '<option value="">&mdash; Cargando presupuestos&hellip; &mdash;</option>';
+  }
   pagosCargar();
-  cargarPresDropdown();
+  cargarPresDropdown(); // actualiza desde Supabase en background (sin bloquear por SYNC.online)
   var cola = JSON.parse(localStorage.getItem('barrcan_pagos_pend') || '[]');
   if (cola.length) setTimeout(pagoReintentarPendientes, 1500);
 });
