@@ -6,8 +6,12 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
-  VERSIÓN : v3.2
+  VERSIÓN : v3.3
   FECHA   : 2026-07-03
+  v3.3 — 2026-07-03
+    - ADD: campo N° de recibo editable en modal editar pago
+    - ADD: botón "Reimprimir recibo" en modal editar
+      genera el recibo con formato completo desde los datos guardados
   v3.2 — 2026-07-03
     - FIX: reimprimir recibo después de cerrar el modal
       (guardado en sessionStorage + fallback blob URL)
@@ -1217,9 +1221,19 @@ body{min-height:100vh}
 
 <!-- Modal editar pago -->
 <div id="pago-edit-ov" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:800;backdrop-filter:blur(3px)">
-  <div style="position:absolute;bottom:0;left:0;right:0;background:var(--white);border-radius:20px 20px 0 0;padding:20px;max-height:80vh;overflow-y:auto">
+  <div style="position:absolute;bottom:0;left:0;right:0;background:var(--white);border-radius:20px 20px 0 0;padding:20px;max-height:85vh;overflow-y:auto">
     <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 14px"></div>
     <div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:14px">Editar pago</div>
+
+    <label class="form-label">N&uacute;m. de recibo</label>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+      <div style="display:flex;align-items:center;flex:1;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);overflow:hidden">
+        <span style="padding:10px 10px;background:var(--gray-100);font-size:13px;font-weight:700;color:var(--gray-400)">RB-</span>
+        <input type="number" id="edit-folio-num" class="form-input" inputmode="numeric" placeholder="100"
+          style="border:none;border-radius:0;margin:0;flex:1">
+      </div>
+    </div>
+
     <label class="form-label">Monto</label>
     <div class="input-unit"><input type="number" id="edit-monto" class="form-input" inputmode="decimal"><span class="input-unit-label">$</span></div>
     <label class="form-label">Fecha</label><input type="date" id="edit-fecha" class="form-input">
@@ -1231,9 +1245,11 @@ body{min-height:100vh}
     </select>
     <label class="form-label">Notas</label>
     <input type="text" id="edit-notas" class="form-input" placeholder="Referencia, observaciones...">
-    <div style="display:flex;gap:8px;margin-top:14px">
-      <button onclick="pagoEditarGuardar()" style="flex:1;padding:12px;background:var(--navy);color:white;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">Guardar cambios</button>
-      <button onclick="document.getElementById('pago-edit-ov').style.display='none'" style="padding:12px 14px;background:none;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);color:var(--gray-600);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer">Cancelar</button>
+
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+      <button onclick="pagoEditarGuardar()" style="flex:1;min-width:120px;padding:12px;background:var(--navy);color:white;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">Guardar cambios</button>
+      <button onclick="pagoEditarReimprimir()" style="flex:1;min-width:120px;padding:12px;background:rgba(39,174,96,0.08);border:1.5px solid var(--green);border-radius:var(--radius-sm);color:var(--green);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">Reimprimir recibo</button>
+      <button onclick="document.getElementById('pago-edit-ov').style.display='none'" style="width:100%;padding:11px;background:none;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);color:var(--gray-600);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer;margin-top:4px">Cancelar</button>
     </div>
   </div>
 </div>
@@ -1787,6 +1803,13 @@ function pagoAbrirEdicion(id) {
   document.getElementById('edit-fecha').value = p.fecha_pago || '';
   document.getElementById('edit-forma').value = p.forma_pago || 'transferencia';
   document.getElementById('edit-notas').value = p.notas || '';
+  // Mostrar folio_rb si existe en el registro local
+  var numFolioEl = document.getElementById('edit-folio-num');
+  if (numFolioEl) {
+    var folioRaw = p.folio_rb || '';
+    numFolioEl.value = folioRaw.replace('RB-', '') || '';
+    numFolioEl.placeholder = folioRaw || 'Sin recibo asignado';
+  }
   document.getElementById('pago-edit-ov').style.display = 'block';
 }
 
@@ -1797,7 +1820,11 @@ async function pagoEditarGuardar() {
   var forma = document.getElementById('edit-forma').value;
   var notas = document.getElementById('edit-notas').value.trim();
   if (!monto) { toast('El monto es obligatorio'); return; }
+  var numFolioEl = document.getElementById('edit-folio-num');
+  var numFolio   = numFolioEl ? numFolioEl.value.trim() : '';
+  var folioRB    = numFolio ? 'RB-' + numFolio : null;
   var upd = { monto: monto, fecha_pago: fecha, forma_pago: forma, notas: notas || null };
+  if (folioRB) upd.folio_rb = folioRB;
   for (var i = 0; i < PAGOS_CACHE.length; i++) {
     if (PAGOS_CACHE[i].id === EDIT_ID) { PAGOS_CACHE[i] = Object.assign({}, PAGOS_CACHE[i], upd); break; }
   }
@@ -1810,6 +1837,56 @@ async function pagoEditarGuardar() {
     });
   } else { toast('Actualizado localmente'); }
   EDIT_ID = null;
+}
+
+// ── Reimprimir recibo desde edición ─────────────────────────────
+function pagoEditarReimprimir() {
+  if (!EDIT_ID) return;
+  // Buscar el pago en cache
+  var p = null;
+  for (var i = 0; i < PAGOS_CACHE.length; i++) {
+    if (PAGOS_CACHE[i].id === EDIT_ID) { p = PAGOS_CACHE[i]; break; }
+  }
+  if (!p) { toast('No se encontró el pago'); return; }
+
+  // Obtener el número de recibo actualizado del campo
+  var numFolioEl = document.getElementById('edit-folio-num');
+  var numFolio   = numFolioEl ? numFolioEl.value.trim() : '';
+  var folioRB    = numFolio ? 'RB-' + numFolio : (p.folio_rb || 'RB-?');
+
+  // Extraer folio y cliente de las notas (guardadas como "folio | cliente | ref")
+  var partes   = (p.notas || '').split('|');
+  var folio    = partes[0] ? partes[0].trim() : '';
+  var cliente  = partes[1] ? partes[1].trim() : '';
+
+  var fLabels  = { transferencia: 'Transferencia bancaria', efectivo: 'Efectivo', tarjeta: 'Tarjeta crédito/débito' };
+  var html = generarRecibo({
+    folioRB:    folioRB,
+    folio:      folio,
+    cliente:    cliente,
+    tel:        '',
+    desc:       '',
+    monto:      parseFloat(p.monto) || 0,
+    total:      0,
+    ant:        0,
+    saldo:      0,
+    fecha:      p.fecha_pago || '',
+    concepto:   p.concepto || '',
+    forma:      p.forma_pago || '',
+    formaLabel: fLabels[p.forma_pago] || p.forma_pago || '',
+    notas:      p.notas || '',
+    factura:    '',
+    foto:       null
+  });
+
+  var win = window.open('', '_blank');
+  if (win) { win.document.write(html); win.document.close(); }
+  else {
+    try {
+      var blob = new Blob([html], { type: 'text/html' });
+      window.open(URL.createObjectURL(blob), '_blank');
+    } catch(e) { toast('Permite ventanas emergentes'); }
+  }
 }
 
 // ── Reset ─────────────────────────────────────────────────────────
