@@ -6,8 +6,14 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
-  VERSIÓN : v3.1
+  VERSIÓN : v3.2
   FECHA   : 2026-07-03
+  v3.2 — 2026-07-03
+    - FIX: reimprimir recibo después de cerrar el modal
+      (guardado en sessionStorage + fallback blob URL)
+    - FIX: folio RB ahora incrementa correctamente
+      (unifica las dos keys de versiones anteriores)
+    - ADD: botón "N° RB" para editar el número de folio manualmente
   v3.1 — 2026-07-03
     - FIX: cargarPresDropdown no bloquea por SYNC.online
       (causaba dropdown vacío al cargar en móvil)
@@ -1083,7 +1089,10 @@ body{min-height:100vh}
     <div class="wizard-card" style="margin-bottom:14px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <div class="wizard-title" style="margin:0">Pagos recientes</div>
-        <button onclick="pagosCargar()" style="padding:5px 10px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:11px;font-weight:700;cursor:pointer">Actualizar</button>
+        <div style="display:flex;gap:6px">
+          <button onclick="editarFolioRB()" style="padding:5px 10px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer" title="Editar número de folio RB">N° RB</button>
+          <button onclick="pagosCargar()" style="padding:5px 10px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:11px;font-weight:700;cursor:pointer">Actualizar</button>
+        </div>
       </div>
       <div id="pagos-contador" style="font-size:11px;color:var(--gray-400);margin-bottom:6px"></div>
       <div id="pagos-lista"><div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">Cargando...</div></div>
@@ -1202,7 +1211,7 @@ body{min-height:100vh}
     <div style="font-size:11px;color:var(--gray-400);margin-bottom:16px">&iquest;Qu&eacute; deseas hacer ahora?</div>
     <button onclick="verRecibo()" style="width:100%;padding:13px;margin-bottom:8px;background:rgba(46,109,164,0.08);border:1.5px solid var(--blue);border-radius:var(--radius);color:var(--blue);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">Ver / imprimir recibo</button>
     <button id="ppo-wa" onclick="enviarWA()" style="width:100%;padding:13px;margin-bottom:8px;background:#25D366;border:none;border-radius:var(--radius);color:white;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">Enviar recibo por WhatsApp</button>
-    <button onclick="document.getElementById('pago-post-ov').style.display='none'" style="width:100%;padding:12px;background:none;border:1.5px solid var(--gray-200);border-radius:var(--radius);color:var(--gray-600);font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer">Listo &mdash; cerrar</button>
+    <button onclick="pagoPostCerrar()" style="width:100%;padding:12px;background:none;border:1.5px solid var(--gray-200);border-radius:var(--radius);color:var(--gray-600);font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer">Listo &mdash; cerrar</button>
   </div>
 </div>
 
@@ -1281,9 +1290,40 @@ var _PAGO_FOTO  = null;
 
 // ── Folio RB auto-incremental ─────────────────────────────────────
 function nextFolioRB() {
-  var n = parseInt(localStorage.getItem('barrcan_folio_rb') || '99') + 1;
+  // Unificar las dos keys que pueden existir de versiones anteriores
+  var n = parseInt(
+    localStorage.getItem('barrcan_folio_rb') ||
+    localStorage.getItem('barrcan_ultimo_folio_recibo') ||
+    '99'
+  ) + 1;
   localStorage.setItem('barrcan_folio_rb', String(n));
+  localStorage.setItem('barrcan_ultimo_folio_recibo', String(n)); // compatibilidad
   return 'RB-' + n;
+}
+
+// Ver folio actual sin incrementar
+function folioRBActual() {
+  return 'RB-' + (
+    localStorage.getItem('barrcan_folio_rb') ||
+    localStorage.getItem('barrcan_ultimo_folio_recibo') ||
+    '99'
+  );
+}
+
+// Editar folio manualmente (admin)
+function editarFolioRB() {
+  var actual = localStorage.getItem('barrcan_folio_rb') ||
+               localStorage.getItem('barrcan_ultimo_folio_recibo') || '99';
+  var nuevo = prompt('Folio RB actual: RB-' + actual + '
+
+Ingresa el número desde donde continuar (solo el número):', actual);
+  if (nuevo === null) return; // canceló
+  var num = parseInt(nuevo);
+  if (isNaN(num) || num < 1) { toast('Número inválido'); return; }
+  // Guardar el número ANTERIOR al que queremos — nextFolioRB sumará 1
+  localStorage.setItem('barrcan_folio_rb', String(num - 1));
+  localStorage.setItem('barrcan_ultimo_folio_recibo', String(num - 1));
+  toast('Próximo recibo será RB-' + num);
 }
 
 // ── Dropdown presupuestos aprobados ───────────────────────────────
@@ -1529,6 +1569,8 @@ async function pagoGuardar() {
     formaLabel: fLabels[FORMA_SEL] || FORMA_SEL,
     notas: notas, factura: factura, foto: _PAGO_FOTO
   });
+  // Persistir en sessionStorage para poder reimprimir aunque se recargue la página
+  try { sessionStorage.setItem('barrcan_recibo_actual', _RECIBO); } catch(e) {}
 
   try {
     if (!SYNC.online || !sb()) {
@@ -1700,11 +1742,28 @@ function mostrarPost(folioRB, monto, tel) {
   ov.style.display = 'flex';
 }
 
+function pagoPostCerrar() {
+  document.getElementById('pago-post-ov').style.display = 'none';
+  // NO limpiar _RECIBO ni sessionStorage — el usuario puede querer reimprimir
+}
+
 function verRecibo() {
-  if (!_RECIBO) { toast('El recibo no esta disponible'); return; }
+  // Intentar desde memoria primero, luego sessionStorage
+  var html = _RECIBO;
+  if (!html) {
+    try { html = sessionStorage.getItem('barrcan_recibo_actual') || ''; } catch(e) {}
+  }
+  if (!html) { toast('El recibo no esta disponible en esta sesion'); return; }
   var win = window.open('', '_blank');
-  if (win) { win.document.write(_RECIBO); win.document.close(); }
-  else toast('Permite ventanas emergentes');
+  if (win) { win.document.write(html); win.document.close(); }
+  else {
+    // Si popup bloqueado, abrir como blob URL
+    try {
+      var blob = new Blob([html], { type: 'text/html' });
+      var url  = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+    } catch(e) { toast('Permite ventanas emergentes para ver el recibo'); }
+  }
 }
 
 function enviarWA() {
