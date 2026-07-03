@@ -5,18 +5,23 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan &middot; Pagos</title>
 <!--
-  BARRCAN - MODULO: PAGOS
-  VERSION : v3.0
-  FECHA   : 2026-07-01
-  v3.0 - Reconstruccion completa
-    - FIX: offline bug igual que historial v2.0
-      detectarConexion() mismo patron que barrcan_app.html
-      DOMContentLoaded como unico punto de arranque
-      var/function sin arrow functions globales
+  BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v3.1
+  FECHA   : 2026-07-03
+  v3.1 — 2026-07-03
+    - FIX: cargarPresDropdown no bloquea por SYNC.online
+      (causaba dropdown vacío al cargar en móvil)
+    - FIX: si Supabase retorna vacío conserva cache local
+    - ADD: aviso "Cargando..." cuando cache local está vacío
+  v3.0 — 2026-07-01 — Reconstrucción completa
+    - FIX: bug offline igual que historial v2.0
+      DOMContentLoaded como único punto de arranque
+      var/function sin const/let globales ni arrow functions
     - FIX: recibo en formato media carta (140x216mm)
     - ADD: foto del comprobante en recibo
-    - ADD: num factura en recibo
-    - ADD: filtro aprobado en dropdown
+    - ADD: núm. factura en recibo
+    - ADD: dropdown filtra todos los estados con saldo pendiente
+      (activo, aprobado, en_producción, pendiente_entrega)
 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
