@@ -6,8 +6,11 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
-  VERSIÓN : v3.6
+  VERSIÓN : v3.7
   FECHA   : 2026-07-03
+  v3.7 — 2026-07-03
+    - ADD: presupuesto activo cambia a aprobado al registrar primer pago
+      (activa flujo de ordenes de material y taller)
   v3.6 — 2026-07-03
     - FIX: dropdown muestra todos los presupuestos aprobados
       sin importar si tienen saldo > 0 (Opcion B)
@@ -1634,8 +1637,13 @@ async function pagoGuardar() {
         PAGOS_CACHE.unshift(Object.assign({}, db, { created_at: new Date().toISOString() }));
         localStorage.setItem('barrcan_pagos_cache', JSON.stringify(PAGOS_CACHE));
         if (PRES_SEL && PRES_SEL.id && sb()) {
+          // Si estaba activo y recibe un pago → pasa a aprobado automáticamente
+          // Si saldo llega a 0 → entregado
+          var nuevoEstado = saldo <= 0 ? 'entregado'
+            : PRES_SEL.estado === 'activo' ? 'aprobado'
+            : PRES_SEL.estado;
           sb().from('presupuestos_atrasados')
-            .update({ saldo: saldo, estado: saldo <= 0 ? 'entregado' : PRES_SEL.estado })
+            .update({ saldo: saldo, estado: nuevoEstado })
             .eq('id', PRES_SEL.id).then(function() {});
         }
         toast('Pago $' + fmt(monto) + ' registrado \u00b7 Recibo ' + folioRB);
