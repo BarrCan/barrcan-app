@@ -6,7 +6,7 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
-  VERSION : v3.2
+  VERSION : v3.3
   FECHA   : 2026-07-03
   v3.0 - Reconstruccion completa desde cero
     - FIX: sin const/let globales, sin arrow functions globales
@@ -1275,12 +1275,17 @@ function sb() {
     });
   return _sb;
 }
-var SYNC = { online: navigator.onLine };
+// SYNC.online inicia en true (optimista)
+// Se corrige a false SOLO cuando Supabase falla con error de red
+// Se confirma true cuando Supabase responde exitosamente
+var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); entReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 function detectarConexion() {
+  // NO leer navigator.onLine aqui — puede ser falso en Android al cargar
+  // SYNC.online se actualiza solo cuando Supabase confirma conexion real
   var b = document.getElementById('conn-status');
-  if (b) b.textContent = navigator.onLine ? 'Online' : 'Offline-First';
+  if (b) b.textContent = SYNC.online ? 'Online' : 'Offline-First';
 }
 function fmt(n) { return Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 0, maximumFractionDigits: 2 }); }
 function esc(str) {
