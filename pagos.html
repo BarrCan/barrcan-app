@@ -6,8 +6,11 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
-  VERSIÓN : v3.5
+  VERSIÓN : v3.6
   FECHA   : 2026-07-03
+  v3.6 — 2026-07-03
+    - FIX: dropdown muestra todos los presupuestos aprobados
+      sin importar si tienen saldo > 0 (Opcion B)
   v3.5 — 2026-07-03
     - FIX: foto del comprobante aparece al reimprimir
       SELECT ahora incluye comprobante_img de Supabase
@@ -1366,7 +1369,7 @@ function cargarPresDropdown() {
   // Cargar desde cache del historial primero (inmediato)
   var local = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]')
     .filter(function(p) {
-      return ESTADOS_CON_SALDO.indexOf(p.estado) >= 0 && (p.saldo || 0) > 0;
+      return ESTADOS_CON_SALDO.indexOf(p.estado) >= 0;
     });
   PRES_LIST = local;
   llenarDrop(local);
@@ -1375,7 +1378,6 @@ function cargarPresDropdown() {
   sb().from('presupuestos_atrasados')
     .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,estado')
     .in('estado', ESTADOS_CON_SALDO)
-    .gt('saldo', 0)
     .order('created_at', { ascending: false }).limit(200)
     .then(function(result) {
       if (result.error || !result.data || !result.data.length) return;
@@ -2040,7 +2042,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // Mostrar presupuestos desde cache local inmediatamente (compartido con historial.html)
   var localPres = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]')
     .filter(function(p) {
-      return ESTADOS_CON_SALDO.indexOf(p.estado) >= 0 && (p.saldo || 0) > 0;
+      return ESTADOS_CON_SALDO.indexOf(p.estado) >= 0;
     });
   if (localPres.length) {
     PRES_LIST = localPres;
