@@ -6,7 +6,7 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
-  VERSION : v3.3
+  VERSION : v3.4
   FECHA   : 2026-07-03
   v3.0 - Reconstruccion completa desde cero
     - FIX: sin const/let globales, sin arrow functions globales
@@ -1745,7 +1745,7 @@ async function entGenerarReporte() {
           return new Promise(function(resolve) { setTimeout(function() { intentar(i + 1).then(resolve); }, 1000 * i); });
         }
         entGuardarOffline(dbPayload);
-        if (esRed) { SYNC.online = false; detectarConexion(); }
+        // NO forzar offline en catch
         entMostrarPost(folioFull, tel);
         entReset();
       }
@@ -1837,7 +1837,7 @@ async function entCargarHistorial() {
     entRenderHistorial();
   } catch(e) {
     var esRed = /failed to fetch|network/i.test(e.message || '');
-    if (esRed) { SYNC.online = false; detectarConexion(); }
+    // NO forzar offline — puede ser fallo puntual de Supabase, no de la red
     if (!local.length)
       div.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">'
         + (esRed ? 'Sin conexion' : 'Error al cargar')
