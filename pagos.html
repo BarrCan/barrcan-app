@@ -6,8 +6,16 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
-  VERSIÓN : v3.3
+  VERSIÓN : v3.4
   FECHA   : 2026-07-03
+  v3.4 — 2026-07-03
+    - FIX SEGURIDAD: esc() para prevenir XSS en recibo y lista
+    - FIX: folioRB guardado en notas (columna folio_rb no existe en BD)
+    - FIX: pagoEditarGuardar con try/catch + cola offline para ediciones
+    - FIX: validacion estricta N° recibo (solo entero positivo)
+    - FIX: pagoEditarReimprimir extrae factura/notas + actualiza _RECIBO
+    - FIX: cargarPresDropdown con .catch
+    - FIX: reintento ediciones pendientes al reconectar
   v3.3 — 2026-07-03
     - ADD: campo N° de recibo editable en modal editar pago
     - ADD: botón "Reimprimir recibo" en modal editar
@@ -1330,12 +1338,14 @@ function folioRBActual() {
 function editarFolioRB() {
   var actual = localStorage.getItem('barrcan_folio_rb') ||
                localStorage.getItem('barrcan_ultimo_folio_recibo') || '99';
-  var nuevo = prompt('Folio RB actual: RB-' + actual + '
-
-Ingresa el número desde donde continuar (solo el número):', actual);
+  var msg = 'Folio RB actual: RB-' + actual + '\n\nIngresa el numero desde donde continuar (solo el numero):';
+  var nuevo = prompt(msg, actual);
   if (nuevo === null) return; // canceló
-  var num = parseInt(nuevo);
-  if (isNaN(num) || num < 1) { toast('Número inválido'); return; }
+  var num = parseInt(nuevo, 10);
+  if (isNaN(num) || num < 1 || String(num) !== nuevo.trim()) {
+    toast('Debe ser un número entero positivo (ej: 100)');
+    return;
+  }
   // Guardar el número ANTERIOR al que queremos — nextFolioRB sumará 1
   localStorage.setItem('barrcan_folio_rb', String(num - 1));
   localStorage.setItem('barrcan_ultimo_folio_recibo', String(num - 1));
@@ -1364,15 +1374,16 @@ function cargarPresDropdown() {
     .gt('saldo', 0)
     .order('created_at', { ascending: false }).limit(200)
     .then(function(result) {
-      if (result.error || !result.data || !result.data.length) return; // si falla, conservar cache local
+      if (result.error || !result.data || !result.data.length) return;
       PRES_LIST = result.data;
       llenarDrop(PRES_LIST);
-      // Actualizar cache compartido con historial
       var cache = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]');
-      // Fusionar: reemplazar los que vienen de Supabase, conservar los _pendiente locales
       var pendientes = cache.filter(function(p) { return p._pendiente; });
       var merged = pendientes.concat(result.data);
       localStorage.setItem('barrcan_presupuestos_cache', JSON.stringify(merged));
+    }).catch(function(e) {
+      console.warn('cargarPresDropdown error:', e.message);
+      // Conservar lo que ya está en el dropdown (cache local)
     });
 }
 
@@ -1458,6 +1469,17 @@ function pagoQuitarFoto() {
   if (prev) prev.style.display = 'none';
 }
 
+// ── Escape HTML — prevenir XSS ───────────────────────────────────
+function esc(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ── Historial de pagos ────────────────────────────────────────────
 async function pagosCargar() {
   var div   = document.getElementById('pagos-lista');
@@ -1518,7 +1540,7 @@ function pagosRender() {
     html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--gray-200);' + bgPend + '">'
       + '<div>' + pendTag
       + '<div style="font-size:12px;font-weight:700;color:var(--navy)">' + (FORMA_E[p.forma_pago] || '') + ' ' + (CONCEPTO_L[p.concepto] || p.concepto || 'Pago') + '</div>'
-      + '<div style="font-size:10px;color:var(--gray-400)">' + (p.fecha_pago || '') + (p.notas ? ' \u00b7 ' + p.notas.slice(0, 35) : '') + '</div>'
+      + '<div style="font-size:10px;color:var(--gray-400)">' + esc(p.fecha_pago || '') + (p.notas ? ' \u00b7 ' + esc(p.notas.slice(0, 35)) : '') + '</div>'
       + '</div>'
       + '<div style="display:flex;align-items:center;gap:8px">'
       + '<div style="font-family:monospace;font-size:15px;font-weight:800;color:var(--green)">$' + fmt(p.monto) + '</div>'
@@ -1567,12 +1589,14 @@ async function pagoGuardar() {
   if (factura) notaPartes.push('FAC:' + factura);
   var nota = notaPartes.filter(Boolean).join(' | ');
 
+  // Guardar folioRB en las notas para poder recuperarlo (no existe columna en BD)
+  var notaConFolio = nota + (nota ? ' | ' : '') + 'RECIBO:' + folioRB;
   var db = {
     monto:         monto,
     fecha_pago:    fecha,
     forma_pago:    FORMA_SEL,
     concepto:      concepto,
-    notas:         nota.slice(0, 500) || null,
+    notas:         notaConFolio.slice(0, 500) || null,
     registrado_por:'campo',
     comprobante_img: _PAGO_FOTO || null
   };
@@ -1668,6 +1692,22 @@ async function pagoReintentarPendientes() {
     pagosRender();
   }
   if (rest.length) toast(rest.length + ' aun pendiente(s)');
+
+  // Reintentar ediciones pendientes
+  var colaEdit = JSON.parse(localStorage.getItem('barrcan_pagos_edit_pend') || '[]');
+  if (colaEdit.length && sb()) {
+    var okEdit = [];
+    for (var j = 0; j < colaEdit.length; j++) {
+      try {
+        var re2 = await sb().from('pagos').update(colaEdit[j].datos).eq('id', colaEdit[j].id);
+        if (re2.error) throw re2.error;
+        okEdit.push(colaEdit[j]);
+      } catch(e2) { console.warn('reintento edicion:', e2.message); }
+    }
+    var restEdit = colaEdit.filter(function(x) { return okEdit.indexOf(x) < 0; });
+    localStorage.setItem('barrcan_pagos_edit_pend', JSON.stringify(restEdit));
+    if (okEdit.length) toast(okEdit.length + ' edicion(es) sincronizada(s)');
+  }
 }
 
 // ── Recibo media carta / ticket ───────────────────────────────────
@@ -1725,14 +1765,14 @@ function generarRecibo(d) {
     + '<div style="font-size:10pt;font-weight:900;color:#C8923A;font-family:monospace">' + d.folioRB + '</div>'
     + '</div></div>'
     + '<table>'
-    + '<tr><td class=lbl>Cliente</td><td><strong>' + (d.cliente || '\u2014') + '</strong></td></tr>'
-    + (d.tel ? '<tr><td class=lbl>Tel\u00e9fono</td><td>' + d.tel + '</td></tr>' : '')
-    + (d.folio ? '<tr><td class=lbl>Presupuesto</td><td style="font-family:monospace;color:#2E6DA4;font-size:7.5pt">' + d.folio + '</td></tr>' : '')
-    + (d.desc ? '<tr><td class=lbl>Descripci\u00f3n</td><td>' + d.desc + '</td></tr>' : '')
+    + '<tr><td class=lbl>Cliente</td><td><strong>' + esc(d.cliente || '\u2014') + '</strong></td></tr>'
+    + (d.tel ? '<tr><td class=lbl>Tel\u00e9fono</td><td>' + esc(d.tel) + '</td></tr>' : '')
+    + (d.folio ? '<tr><td class=lbl>Presupuesto</td><td style="font-family:monospace;color:#2E6DA4;font-size:7.5pt">' + esc(d.folio) + '</td></tr>' : '')
+    + (d.desc ? '<tr><td class=lbl>Descripci\u00f3n</td><td>' + esc(d.desc) + '</td></tr>' : '')
     + '<tr><td class=lbl>Fecha</td><td>' + fd(d.fecha) + '</td></tr>'
-    + '<tr><td class=lbl>Forma</td><td>' + (d.formaLabel || d.forma) + '</td></tr>'
-    + '<tr><td class=lbl>Concepto</td><td>' + (d.concepto || '').replace('_', ' ') + '</td></tr>'
-    + (d.factura ? '<tr><td class=lbl>Factura</td><td style="font-weight:700">' + d.factura + '</td></tr>' : '')
+    + '<tr><td class=lbl>Forma</td><td>' + esc(d.formaLabel || d.forma) + '</td></tr>'
+    + '<tr><td class=lbl>Concepto</td><td>' + esc((d.concepto || '').replace('_', ' ')) + '</td></tr>'
+    + (d.factura ? '<tr><td class=lbl>Factura</td><td style="font-weight:700">' + esc(d.factura) + '</td></tr>' : '')
     + '</table>'
     + '<div class=mbox>'
     + '<div><div style="font-size:7.5pt;opacity:.7">Monto recibido</div>'
@@ -1820,22 +1860,63 @@ async function pagoEditarGuardar() {
   var forma = document.getElementById('edit-forma').value;
   var notas = document.getElementById('edit-notas').value.trim();
   if (!monto) { toast('El monto es obligatorio'); return; }
+
+  // Validar folio — solo entero positivo
   var numFolioEl = document.getElementById('edit-folio-num');
-  var numFolio   = numFolioEl ? numFolioEl.value.trim() : '';
-  var folioRB    = numFolio ? 'RB-' + numFolio : null;
+  var numFolioStr = numFolioEl ? numFolioEl.value.trim() : '';
+  var numFolio = parseInt(numFolioStr, 10);
+  var folioRB = null;
+  if (numFolioStr !== '') {
+    if (isNaN(numFolio) || numFolio <= 0 || String(numFolio) !== numFolioStr) {
+      toast('El N° de recibo debe ser un número entero positivo');
+      return;
+    }
+    folioRB = 'RB-' + numFolio;
+    // Actualizar localStorage del folio para que el siguiente sea correlativo
+    var actual = parseInt(localStorage.getItem('barrcan_folio_rb') || '0');
+    if (numFolio > actual) {
+      localStorage.setItem('barrcan_folio_rb', String(numFolio));
+      localStorage.setItem('barrcan_ultimo_folio_recibo', String(numFolio));
+    }
+  }
+
+  // Solo columnas que SÍ existen en la tabla pagos
   var upd = { monto: monto, fecha_pago: fecha, forma_pago: forma, notas: notas || null };
-  if (folioRB) upd.folio_rb = folioRB;
+
+  // Guardar folioRB en el objeto local (no va a Supabase — columna no existe)
+  var updLocal = Object.assign({}, upd);
+  if (folioRB) updLocal.folio_rb = folioRB;
+
+  // Actualizar cache local
   for (var i = 0; i < PAGOS_CACHE.length; i++) {
-    if (PAGOS_CACHE[i].id === EDIT_ID) { PAGOS_CACHE[i] = Object.assign({}, PAGOS_CACHE[i], upd); break; }
+    if (PAGOS_CACHE[i].id === EDIT_ID) {
+      PAGOS_CACHE[i] = Object.assign({}, PAGOS_CACHE[i], updLocal);
+      break;
+    }
   }
   localStorage.setItem('barrcan_pagos_cache', JSON.stringify(PAGOS_CACHE));
   pagosRender();
   document.getElementById('pago-edit-ov').style.display = 'none';
+
   if (SYNC.online && sb()) {
-    sb().from('pagos').update(upd).eq('id', EDIT_ID).then(function(r) {
-      toast(r.error ? 'Actualizado localmente' : 'Pago actualizado');
-    });
-  } else { toast('Actualizado localmente'); }
+    try {
+      var res = await sb().from('pagos').update(upd).eq('id', EDIT_ID);
+      if (res.error) throw res.error;
+      toast('Pago actualizado');
+    } catch(e) {
+      // Guardar en cola para reintentar
+      var colaEdit = JSON.parse(localStorage.getItem('barrcan_pagos_edit_pend') || '[]');
+      colaEdit.push({ id: EDIT_ID, datos: upd, ts: new Date().toISOString() });
+      localStorage.setItem('barrcan_pagos_edit_pend', JSON.stringify(colaEdit));
+      toast('Error al actualizar — se reintentara al reconectar');
+    }
+  } else {
+    // Offline: agregar a cola de pendientes
+    var colaEdit = JSON.parse(localStorage.getItem('barrcan_pagos_edit_pend') || '[]');
+    colaEdit.push({ id: EDIT_ID, datos: upd, ts: new Date().toISOString() });
+    localStorage.setItem('barrcan_pagos_edit_pend', JSON.stringify(colaEdit));
+    toast('Actualizado localmente — se sincronizará al reconectar');
+  }
   EDIT_ID = null;
 }
 
@@ -1854,12 +1935,19 @@ function pagoEditarReimprimir() {
   var numFolio   = numFolioEl ? numFolioEl.value.trim() : '';
   var folioRB    = numFolio ? 'RB-' + numFolio : (p.folio_rb || 'RB-?');
 
-  // Extraer folio y cliente de las notas (guardadas como "folio | cliente | ref")
-  var partes   = (p.notas || '').split('|');
-  var folio    = partes[0] ? partes[0].trim() : '';
-  var cliente  = partes[1] ? partes[1].trim() : '';
+  // Extraer datos de las notas (formato: "folio | cliente | ref | FAC:xxx | RECIBO:RB-yyy")
+  var partes  = (p.notas || '').split('|').map(function(s) { return s.trim(); });
+  var folio   = partes[0] || '';
+  var cliente = partes[1] || '';
+  var factura = '';
+  var notaLimpia = '';
+  partes.forEach(function(parte) {
+    if (parte.indexOf('FAC:') === 0)    { factura = parte.replace('FAC:', '').trim(); }
+    else if (parte.indexOf('RECIBO:') === 0) { /* saltar — es el folio RB */ }
+    else if (parte !== folio && parte !== cliente) { notaLimpia += (notaLimpia ? ' | ' : '') + parte; }
+  });
 
-  var fLabels  = { transferencia: 'Transferencia bancaria', efectivo: 'Efectivo', tarjeta: 'Tarjeta crédito/débito' };
+  var fLabels = { transferencia: 'Transferencia bancaria', efectivo: 'Efectivo', tarjeta: 'Tarjeta crédito/débito' };
   var html = generarRecibo({
     folioRB:    folioRB,
     folio:      folio,
@@ -1874,10 +1962,14 @@ function pagoEditarReimprimir() {
     concepto:   p.concepto || '',
     forma:      p.forma_pago || '',
     formaLabel: fLabels[p.forma_pago] || p.forma_pago || '',
-    notas:      p.notas || '',
-    factura:    '',
+    notas:      notaLimpia,
+    factura:    factura,
     foto:       null
   });
+
+  // Actualizar _RECIBO y sessionStorage para que "Ver recibo" muestre este
+  _RECIBO = html;
+  try { sessionStorage.setItem('barrcan_recibo_actual', html); } catch(e) {}
 
   var win = window.open('', '_blank');
   if (win) { win.document.write(html); win.document.close(); }
