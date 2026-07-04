@@ -6,8 +6,12 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
-  VERSIÓN : v3.4
+  VERSIÓN : v3.5
   FECHA   : 2026-07-03
+  v3.5 — 2026-07-03
+    - FIX: foto del comprobante aparece al reimprimir
+      SELECT ahora incluye comprobante_img de Supabase
+      pagoEditarReimprimir usa p.comprobante_img del cache
   v3.4 — 2026-07-03
     - FIX SEGURIDAD: esc() para prevenir XSS en recibo y lista
     - FIX: folioRB guardado en notas (columna folio_rb no existe en BD)
@@ -1491,7 +1495,7 @@ async function pagosCargar() {
   if (!sb()) return;
   try {
     var result = await sb().from('pagos')
-      .select('id,monto,fecha_pago,forma_pago,concepto,notas,created_at')
+      .select('id,monto,fecha_pago,forma_pago,concepto,notas,comprobante_img,created_at')
       .order('created_at', { ascending: false }).limit(50);
     if (result.error) throw result.error;
     SYNC.online = true; detectarConexion();
@@ -1964,7 +1968,7 @@ function pagoEditarReimprimir() {
     formaLabel: fLabels[p.forma_pago] || p.forma_pago || '',
     notas:      notaLimpia,
     factura:    factura,
-    foto:       null
+    foto:       p.comprobante_img || null
   });
 
   // Actualizar _RECIBO y sessionStorage para que "Ver recibo" muestre este
