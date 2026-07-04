@@ -6,7 +6,7 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
-  VERSION : v3.0
+  VERSION : v3.2
   FECHA   : 2026-07-03
   v3.0 - Reconstruccion completa desde cero
     - FIX: sin const/let globales, sin arrow functions globales
@@ -1096,7 +1096,17 @@ body{min-height:100vh}
     <!-- CLIENTE -->
     <div class="wizard-card" style="margin-bottom:12px">
       <div class="wizard-title">&#128100; Cliente</div>
-      <label class="form-label">Seleccionar cliente</label>
+      <label class="form-label">B&uacute;squeda r&aacute;pida por n&uacute;mero de cliente</label>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <input type="text" id="ent-busca-num" class="form-input"
+          placeholder="Ej: 094" inputmode="numeric"
+          style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;max-width:100px"
+          oninput="entBuscarPorNumero(this.value)">
+        <div style="flex:1;font-size:11px;color:var(--gray-400);padding-top:12px">
+          o selecciona de la lista
+        </div>
+      </div>
+      <div id="ent-busca-feedback" style="font-size:11px;margin-bottom:8px;min-height:16px;font-weight:600"></div>
       <select id="ent-cli-select" class="form-select" onchange="entSelCliente()" style="margin-bottom:8px">
         <option value="">&mdash; Selecciona cliente &mdash;</option>
       </select>
@@ -1333,6 +1343,54 @@ function entCargarClientes() {
     }).catch(function(e) { console.warn('clientes:', e.message); });
 }
 
+// Busqueda rapida por numero de cliente (094, 098, etc.)
+function entBuscarPorNumero(num) {
+  if (!num || num.length < 2) return;
+  var sel = document.getElementById('ent-cli-select');
+  if (!sel) return;
+  // Buscar en el cache por num_cliente
+  var encontrado = null;
+  for (var i = 0; i < _cliCache.length; i++) {
+    var c = _cliCache[i];
+    var numCli = String(c.num_cliente || '').replace(/\D/g, '');
+    if (numCli === num.trim() || numCli.endsWith(num.trim())) {
+      encontrado = c;
+      break;
+    }
+  }
+  if (encontrado) {
+    // Seleccionar en el dropdown de cliente
+    for (var j = 0; j < sel.options.length; j++) {
+      if (sel.options[j].value === encontrado.id) {
+        sel.selectedIndex = j;
+        break;
+      }
+    }
+    // Llenar campos basicos
+    document.getElementById('ent-cliente').value = encontrado.nombre || '';
+    document.getElementById('ent-tel').value = encontrado.telefono || '';
+    // Cargar presupuestos — el dropdown de folio mostrara TODAS las revisiones
+    // (094A, 094B, etc.) para que el tecnico elija la correcta con su monto
+    entCargarPresupuestos(encontrado.nombre || '');
+    // Feedback visual — verde + mostrar nombre encontrado
+    var busca = document.getElementById('ent-busca-num');
+    if (busca) busca.style.borderColor = 'var(--green)';
+    var feedback = document.getElementById('ent-busca-feedback');
+    if (feedback) {
+      feedback.textContent = encontrado.nombre + (encontrado.num_cliente ? ' (' + encontrado.num_cliente + ')' : '') + ' — Selecciona la revision del presupuesto';
+      feedback.style.color = 'var(--green)';
+    }
+  } else {
+    var busca = document.getElementById('ent-busca-num');
+    if (busca && num.length >= 3) busca.style.borderColor = 'var(--red)';
+    var feedback = document.getElementById('ent-busca-feedback');
+    if (feedback && num.length >= 3) {
+      feedback.textContent = 'No. de cliente no encontrado';
+      feedback.style.color = 'var(--red)';
+    }
+  }
+}
+
 function entSelCliente() {
   var sel = document.getElementById('ent-cli-select');
   if (!sel || !sel.value) return;
@@ -1523,6 +1581,10 @@ function entReset() {
   var campos = ['ent-cliente','ent-tel','ent-folio','ent-desc','ent-notas','ent-monto'];
   campos.forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
   var cliSel   = document.getElementById('ent-cli-select'); if (cliSel) cliSel.value = '';
+  var buscaEl  = document.getElementById('ent-busca-num');
+  if (buscaEl) { buscaEl.value = ''; buscaEl.style.borderColor = 'var(--gray-200)'; }
+  var feedbackEl = document.getElementById('ent-busca-feedback');
+  if (feedbackEl) { feedbackEl.textContent = ''; }
   var folioSel = document.getElementById('ent-folio-select');
   if (folioSel) folioSel.innerHTML = '<option value="">&mdash; Selecciona presupuesto &mdash;</option>';
   document.getElementById('ent-saldo-info').style.display = 'none';
@@ -1806,9 +1868,9 @@ function entRenderHistorial() {
       + '</div>'
       + (r.whatsapp_enviado ? '<span style="font-size:10px;color:#25D366;font-weight:700">WA ok</span>' : '')
       + '</div>'
-      + '<div style="display:grid;grid-template-columns:1fr' + (admin ? ' 1fr' : '') + ';gap:5px">'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">'
       + '<button onclick="entVerReporte(\'' + idStr + '\')" style="padding:7px 4px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:11px;font-weight:700;cursor:pointer">Ver reporte</button>'
-      + (admin ? '<button onclick="entAbrirEdicion(\'' + idStr + '\')" style="padding:7px 4px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer">Editar</button>' : '')
+      + '<button onclick="entAbrirEdicion(\'' + idStr + '\')" style="padding:7px 4px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer">Editar</button>'
       + '</div></div>';
   }
   div.innerHTML = html;
@@ -1856,7 +1918,7 @@ function entVerReporte(id) {
 }
 
 function entAbrirEdicion(id) {
-  if (!esAdmin()) { toast('Solo administradores pueden editar reportes'); return; }
+  // Edicion disponible para todos los usuarios del modulo
   var local = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
   var r = null;
   for (var i = 0; i < local.length; i++) { if (local[i].id === id) { r = local[i]; break; } }
