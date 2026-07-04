@@ -4,11 +4,15 @@
 // Supabase y APIs externas: Network Only
 // ══════════════════════════════════════════════
 
-const CACHE_VERSION = 'barrcan-v6';
+const CACHE_VERSION = 'barrcan-v7'; // incrementar version fuerza re-cache en todos los dispositivos
 
 const RECURSOS_CORE = [
   './barrcan_app.html',
   './garantia_publica.html',
+  './historial.html',
+  './pagos.html',
+  './entregas.html',
+  './ordenes.html',
 ];
 
 const DOMINIOS_CACHEABLE = [
@@ -71,9 +75,24 @@ self.addEventListener('fetch', event => {
 
 async function cachePrimero(request) {
   const cache  = await caches.open(CACHE_VERSION);
-  const cached = await cache.match(request);
 
-  // Actualizar en background
+  // Network First para archivos HTML — siempre intenta traer la version mas nueva
+  // Si falla la red, cae al cache (offline-first real)
+  if (request.url.endsWith('.html')) {
+    try {
+      const response = await fetch(request);
+      if (response && response.status === 200) {
+        cache.put(request, response.clone());
+      }
+      return response;
+    } catch(e) {
+      const cached = await cache.match(request);
+      return cached || new Response('Sin conexion', { status: 503 });
+    }
+  }
+
+  // Cache First para fuentes, CSS, JS de terceros (no cambian)
+  const cached = await cache.match(request);
   const fetchPromise = fetch(request)
     .then(response => {
       if (response && response.status === 200) {
