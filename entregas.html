@@ -1546,4 +1546,485 @@ function entCargarFotos(input, tipo) {
 }
 
 function entIniciarFirma() {
-  var canvas = document.getElementById
+ var canvas = document.getElementById('ent-canvas-firma');
+  if (!canvas) return;
+  var rc = canvas.getBoundingClientRect();
+  canvas.width  = rc.width  || 340;
+  canvas.height = rc.height || 130;
+  ENT_FIRMA_CTX = canvas.getContext('2d');
+  ENT_FIRMA_CTX.strokeStyle = '#1B3A5C';
+  ENT_FIRMA_CTX.lineWidth   = 2;
+  ENT_FIRMA_CTX.lineCap     = 'round';
+  function getPos(e) {
+    var rc2 = canvas.getBoundingClientRect();
+    var src  = e.touches ? e.touches[0] : e;
+    return { x: src.clientX - rc2.left, y: src.clientY - rc2.top };
+  }
+  canvas.onmousedown = canvas.ontouchstart = function(e) {
+    e.preventDefault(); ENT_FIRMA_DRAW = true;
+    var p = getPos(e); ENT_FIRMA_CTX.beginPath(); ENT_FIRMA_CTX.moveTo(p.x, p.y);
+  };
+  canvas.onmousemove = canvas.ontouchmove = function(e) {
+    e.preventDefault();
+    if (!ENT_FIRMA_DRAW) return;
+    var p = getPos(e); ENT_FIRMA_CTX.lineTo(p.x, p.y); ENT_FIRMA_CTX.stroke();
+  };
+  canvas.onmouseup = canvas.ontouchend = function() { ENT_FIRMA_DRAW = false; };
+}
+
+function entLimpiarFirma() {
+  var c = document.getElementById('ent-canvas-firma');
+  if (c && ENT_FIRMA_CTX) ENT_FIRMA_CTX.clearRect(0, 0, c.width, c.height);
+}
+
+function entToggleCobro() {
+  var si = document.getElementById('ent-aplica-cobro').value === 'si';
+  document.getElementById('ent-monto-group').style.display = si ? 'block' : 'none';
+}
+
+function entReset() {
+  ENT_FOTOS_EMP = []; ENT_FOTOS_COMP = []; ENT_TIPO = 'puerta'; ENT_FORMA = 'efectivo';
+  var campos = ['ent-cliente','ent-tel','ent-folio','ent-desc','ent-notas','ent-monto'];
+  campos.forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
+  var cliSel   = document.getElementById('ent-cli-select'); if (cliSel) cliSel.value = '';
+  var buscaEl  = document.getElementById('ent-busca-num');
+  if (buscaEl) { buscaEl.value = ''; buscaEl.style.borderColor = 'var(--gray-200)'; }
+  var feedbackEl = document.getElementById('ent-busca-feedback');
+  if (feedbackEl) { feedbackEl.textContent = ''; }
+  var folioSel = document.getElementById('ent-folio-select');
+  if (folioSel) folioSel.innerHTML = '<option value="">&mdash; Selecciona presupuesto &mdash;</option>';
+  document.getElementById('ent-saldo-info').style.display = 'none';
+  var fechaEl = document.getElementById('ent-fecha'); if (fechaEl) fechaEl.value = new Date().toISOString().split('T')[0];
+  var piezasEl = document.getElementById('ent-piezas'); if (piezasEl) piezasEl.value = '1';
+  document.getElementById('ent-aplica-cobro').value = 'no';
+  document.getElementById('ent-monto-group').style.display = 'none';
+  document.getElementById('ent-grid-empaque').innerHTML = '';
+  document.getElementById('ent-grid-comp').innerHTML = '';
+  document.getElementById('ent-error').style.display = 'none';
+  document.querySelectorAll('.tipo-btn').forEach(function(b) {
+    var a = b.dataset.tipo === 'puerta';
+    b.style.borderColor = a ? 'var(--blue)' : 'var(--gray-200)';
+    b.style.background  = a ? 'rgba(46,109,164,0.08)' : 'none';
+    b.style.color       = a ? 'var(--blue)' : 'var(--gray-400)';
+  });
+  var envioDiv  = document.getElementById('ent-envio-datos');  if (envioDiv)  envioDiv.style.display  = 'none';
+  var firmaCard = document.getElementById('ent-firma-card');   if (firmaCard) firmaCard.style.display = 'block';
+  var guiaEl    = document.getElementById('ent-guia');         if (guiaEl)    guiaEl.value = '';
+  var paqEl     = document.getElementById('ent-paqueteria');   if (paqEl)     paqEl.value  = '';
+  entLimpiarFirma();
+}
+
+async function entGenerarReporte() {
+  var cliente = document.getElementById('ent-cliente').value.trim();
+  var desc    = document.getElementById('ent-desc').value.trim();
+  var errEl   = document.getElementById('ent-error');
+  errEl.style.display = 'none';
+  if (!cliente) { errEl.textContent = 'Ingresa el nombre del cliente'; errEl.style.display = 'block'; return; }
+  if (!desc)    { errEl.textContent = 'Describe el producto entregado'; errEl.style.display = 'block'; return; }
+  var btn = document.getElementById('ent-btn-guardar');
+  if (btn && btn.disabled) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Generando...'; }
+  try {
+    var tel        = document.getElementById('ent-tel').value.trim();
+    var folio      = document.getElementById('ent-folio').value.trim();
+    var fecha      = document.getElementById('ent-fecha').value;
+    var piezas     = document.getElementById('ent-piezas').value || '1';
+    var aplica     = document.getElementById('ent-aplica-cobro').value === 'si';
+    var monto      = aplica ? (parseFloat(document.getElementById('ent-monto').value) || 0) : 0;
+    var paqueteria = document.getElementById('ent-paqueteria') ? document.getElementById('ent-paqueteria').value : '';
+    var numGuia    = document.getElementById('ent-guia') ? document.getElementById('ent-guia').value.trim() : '';
+    var folioFull  = folio || ('ENT-' + Date.now().toString().slice(-6));
+    var tipoStr    = ENT_TIPO === 'envio' ? ('Envio por ' + (paqueteria || 'paqueteria')) : 'Entrega en puerta';
+    var canvas     = document.getElementById('ent-canvas-firma');
+    var firmaB64   = canvas ? canvas.toDataURL('image/png') : '';
+    var firmaVacia = true;
+    if (canvas && ENT_FIRMA_CTX) {
+      var dataF = ENT_FIRMA_CTX.getImageData(0, 0, canvas.width, canvas.height).data;
+      for (var fi = 0; fi < dataF.length; fi++) { if (dataF[fi] > 10) { firmaVacia = false; break; } }
+    }
+    var meses = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    function fd(iso) { if (!iso) return '--'; var p = iso.split('-'); return parseInt(p[2]) + ' de ' + meses[parseInt(p[1])] + ' de ' + p[0]; }
+    var fotosEmpHtml  = ENT_FOTOS_EMP.map(function(f) { return '<img src="' + f.dataUrl + '" style="width:100%;max-height:200px;object-fit:contain;border-radius:4px;border:1px solid #ddd;margin-bottom:6px">'; }).join('');
+    var fotosCompHtml = ENT_FOTOS_COMP.map(function(f) { return '<img src="' + f.dataUrl + '" style="width:100%;max-height:200px;object-fit:contain;border-radius:4px;border:1px solid #ddd;margin-bottom:6px">'; }).join('');
+
+    _ENT_HTML = '<!DOCTYPE html><html lang=es><head><meta charset=UTF-8><meta name=viewport content=width=device-width>'
+      + '<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:9.5pt;color:#1B3A5C;background:white}'
+      + '.pg{max-width:620px;margin:0 auto;padding:18px 22px 80px}'
+      + '.hdr{display:flex;align-items:center;gap:12px;margin-bottom:12px;padding-bottom:10px;border-bottom:2.5px solid #1B3A5C}'
+      + 'h2{font-size:9pt;font-weight:700;color:#2E6DA4;border-bottom:1px solid #eee;padding-bottom:2px;margin:12px 0 7px;text-transform:uppercase;letter-spacing:.5px}'
+      + 'table{width:100%;border-collapse:collapse;margin-bottom:8px}td{padding:5px 8px;border:1px solid #ddd;font-size:8.5pt}'
+      + '.lbl{font-weight:700;background:#f5f7fa;width:38%}'
+      + '.barra{position:fixed;bottom:0;left:0;right:0;background:#1B3A5C;padding:8px 14px;display:flex;gap:8px;justify-content:center;z-index:999}'
+      + '.bp{padding:9px 20px;background:#C8923A;color:white;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer}'
+      + '.bc{padding:9px 12px;background:rgba(255,255,255,.15);color:white;border:none;border-radius:7px;font-size:12px;cursor:pointer}'
+      + '@media print{.barra{display:none!important}}</style></head><body>'
+      + '<div class=barra><button class=bp onclick="window.print()">Imprimir / PDF</button><button class=bc onclick="window.close()">Cerrar</button></div>'
+      + '<div class=pg><div class=hdr>'
+      + '<img src="' + _LOGO_SRC + '" style="width:52px;height:52px;object-fit:contain;flex-shrink:0">'
+      + '<div style=flex:1><div style=font-size:16pt;font-weight:900;color:#1B3A5C;letter-spacing:1px>BarrCan</div>'
+      + '<div style=font-size:7pt;color:#C8923A;letter-spacing:3px;text-transform:uppercase>Canceleria - Aluminio - Vidrio - TEL: 56-15-15-84-15</div></div>'
+      + '<div style=text-align:right;border:2px solid #1B3A5C;padding:3px 8px;border-radius:4px>'
+      + '<div style=font-size:9pt;font-weight:700;color:#1B3A5C>COMPROBANTE DE ENTREGA</div>'
+      + '<div style=font-size:11pt;font-weight:900;color:#C8923A;font-family:monospace>' + esc(folioFull) + '</div>'
+      + '</div></div>'
+      + '<h2>Datos de la entrega</h2>'
+      + '<table>'
+      + '<tr><td class=lbl>Cliente</td><td><strong>' + esc(cliente) + '</strong></td></tr>'
+      + (tel ? '<tr><td class=lbl>Telefono</td><td>' + esc(tel) + '</td></tr>' : '')
+      + '<tr><td class=lbl>Fecha</td><td>' + fd(fecha) + '</td></tr>'
+      + '<tr><td class=lbl>Descripcion</td><td>' + esc(desc) + '</td></tr>'
+      + '<tr><td class=lbl>Piezas</td><td>' + esc(piezas) + '</td></tr>'
+      + '<tr><td class=lbl>Tipo</td><td>' + esc(tipoStr) + '</td></tr>'
+      + (numGuia ? '<tr><td class=lbl>Num. Guia</td><td style=font-family:monospace;font-weight:700>' + esc(numGuia) + '</td></tr>' : '')
+      + (aplica && monto > 0 ? '<tr><td class=lbl style=color:#E67E22>Saldo cobrado</td><td style=font-weight:700>$' + fmt(monto) + ' MXN</td></tr>' : '')
+      + '</table>'
+      + (ENT_FOTOS_EMP.length > 0 ? '<h2>Fotos del empaque (' + ENT_FOTOS_EMP.length + ')</h2><div style=display:grid;grid-template-columns:1fr 1fr;gap:8px>' + fotosEmpHtml + '</div>' : '')
+      + (ENT_FOTOS_COMP.length > 0 ? '<h2>' + (ENT_TIPO === 'envio' ? 'Guia de envio' : 'Comprobante de entrega') + ' (' + ENT_FOTOS_COMP.length + ')</h2><div style=display:grid;grid-template-columns:1fr 1fr;gap:8px>' + fotosCompHtml + '</div>' : '')
+      + '<h2>Firma de recibido</h2>'
+      + (ENT_TIPO === 'envio'
+        ? '<div style=border:1.5px dashed #ccc;border-radius:6px;height:50px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:9pt>Entrega por paqueteria - ' + esc(tipoStr) + '</div>'
+        : (!firmaVacia
+          ? '<div style=border:1.5px solid #ddd;border-radius:6px;overflow:hidden><img src="' + firmaB64 + '" style=width:100%;max-height:100px;object-fit:contain></div>'
+          : '<div style=border:1.5px dashed #ccc;border-radius:6px;height:60px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:9pt>Sin firma digital</div>'))
+      + '<div style=display:flex;gap:16px;margin-top:10px>'
+      + '<div style=flex:1;border-top:1px solid #ccc;padding-top:5px;font-size:8.5pt;color:#888;text-align:center>Nombre y firma del cliente<br>' + esc(cliente) + '</div>'
+      + '<div style=flex:1;border-top:1px solid #ccc;padding-top:5px;font-size:8.5pt;color:#888;text-align:center>Entregado por BarrCan<br>TEL: 56-15-15-84-15</div>'
+      + '</div>'
+      + '<div style=font-size:7.5pt;color:#aaa;text-align:center;margin-top:14px;border-top:1px solid #eee;padding-top:8px>'
+      + esc(folioFull) + ' - BarrCan - ' + fd(fecha)
+      + '</div></div></body></html>';
+
+    try { sessionStorage.setItem('barrcan_entrega_html', _ENT_HTML); } catch(e) {}
+    var win = window.open('', '_blank');
+    if (win) { win.document.write(_ENT_HTML); win.document.close(); }
+    else { toast('Activa ventanas emergentes para ver el comprobante'); }
+
+    var reporteUrl = null;
+    if (sb()) {
+      try {
+        var nombreArch = folioFull + '_' + (fecha || '').replace(/-/g, '') + '_' + Date.now() + '.html';
+        var blob = new Blob([_ENT_HTML], { type: 'text/html;charset=utf-8' });
+        var upRes = await sb().storage.from('reportes').upload(nombreArch, blob, { contentType: 'text/html', upsert: true });
+        if (!upRes.error) {
+          var urlRes = sb().storage.from('reportes').getPublicUrl(nombreArch);
+          reporteUrl = urlRes.data ? urlRes.data.publicUrl : null;
+        }
+      } catch(eStorage) { console.warn('Storage:', eStorage.message); }
+    }
+
+    var dbPayload = {
+      folio: folioFull, cliente_nombre: cliente, cliente_tel: tel || null,
+      fecha_entrega: fecha, tecnico: 'BarrCan', tel_destino: tel || null,
+      registrado_por: 'campo', whatsapp_enviado: false,
+      dir_obra: null, reporte_url: reporteUrl
+    };
+
+    if (!SYNC.online || !sb()) {
+      entGuardarOffline(dbPayload);
+      entMostrarPost(folioFull, tel);
+      entReset();
+      return;
+    }
+
+    async function intentar(i) {
+      i = i || 1;
+      try {
+        var res = await sb().from('reportes_entrega').insert([dbPayload]);
+        if (res.error) throw res.error;
+        SYNC.online = true; detectarConexion();
+        var hist = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
+        hist.unshift(Object.assign({}, dbPayload, { ts: new Date().toLocaleString('es-MX') }));
+        if (hist.length > 50) hist.pop();
+        localStorage.setItem('barrcan_reportes_historial', JSON.stringify(hist));
+        toast('Reporte guardado - ' + folioFull);
+        entRenderHistorial();
+        entMostrarPost(folioFull, tel);
+        entReset();
+      } catch(e) {
+        var esRed = /failed to fetch|network|timeout/i.test(e.message || '');
+        if (esRed && i < 3) {
+          return new Promise(function(resolve) { setTimeout(function() { intentar(i + 1).then(resolve); }, 1000 * i); });
+        }
+        entGuardarOffline(dbPayload);
+        // NO forzar offline en catch
+        entMostrarPost(folioFull, tel);
+        entReset();
+      }
+    }
+    await intentar(1);
+  } catch(eGlobal) {
+    document.getElementById('ent-error').textContent = 'Error: ' + eGlobal.message;
+    document.getElementById('ent-error').style.display = 'block';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Generar Comprobante de Entrega'; }
+  }
+}
+
+function entGuardarOffline(payload) {
+  try {
+    var cola = JSON.parse(localStorage.getItem('barrcan_entregas_pendientes') || '[]');
+    cola.push({ datos: payload, ts: new Date().toISOString() });
+    localStorage.setItem('barrcan_entregas_pendientes', JSON.stringify(cola));
+    var hist = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
+    hist.unshift(Object.assign({}, payload, { _pendiente: true, ts: new Date().toLocaleString('es-MX') }));
+    if (hist.length > 50) hist.pop();
+    localStorage.setItem('barrcan_reportes_historial', JSON.stringify(hist));
+    entRenderHistorial();
+    toast('Guardado sin conexion - se sincronizara al reconectar');
+  } catch(e) {}
+}
+
+var ENCUESTA_URL = 'https://barrcan.github.io/barrcan-app/garantia_publica.html';
+var WA_BARRCAN   = '525615158415';
+
+function entMostrarPost(folio, tel) {
+  var ov = document.getElementById('ent-post-ov');
+  if (!ov) return;
+  ov.dataset.folio = folio || '';
+  ov.dataset.tel   = tel   || '';
+  document.getElementById('ent-post-folio').textContent = 'Reporte guardado: ' + (folio || '');
+  ov.style.display = 'flex';
+}
+
+function entCerrarPost() {
+  var ov = document.getElementById('ent-post-ov');
+  if (ov) ov.style.display = 'none';
+}
+
+function entReverReporte() {
+  var html = _ENT_HTML;
+  if (!html) { try { html = sessionStorage.getItem('barrcan_entrega_html') || ''; } catch(e) {} }
+  if (!html) { toast('El comprobante ya no esta disponible en esta sesion'); return; }
+  var win = window.open('', '_blank');
+  if (win) { win.document.write(html); win.document.close(); }
+  else {
+    try { window.open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank'); }
+    catch(e) { toast('Activa ventanas emergentes'); }
+  }
+}
+
+function entEnviarWA() {
+  var ov    = document.getElementById('ent-post-ov');
+  var folio = ov ? (ov.dataset.folio || '') : '';
+  var tel   = ov ? (ov.dataset.tel   || '').replace(/[^0-9]/g, '') : '';
+  var texto = encodeURIComponent('Hola, le compartimos el comprobante de entrega del pedido ' + folio + '. Por favor confirme de recibido. BarrCan Canceleria - 56-15-15-84-15');
+  window.open('https://wa.me/' + (tel ? '52' + tel : WA_BARRCAN) + '?text=' + texto, '_blank');
+}
+
+function entEnviarEncuesta() {
+  var ov    = document.getElementById('ent-post-ov');
+  var folio = ov ? encodeURIComponent(ov.dataset.folio || '') : '';
+  var tel   = ov ? (ov.dataset.tel || '').replace(/[^0-9]/g, '') : '';
+  var link  = ENCUESTA_URL + '?folio=' + folio;
+  var texto = encodeURIComponent('Hola, gracias por preferirnos. Le agradeceriamos 1 minuto para calificar su experiencia: ' + link + ' Muchas gracias! BarrCan - 56-15-15-84-15');
+  window.open('https://wa.me/' + (tel ? '52' + tel : WA_BARRCAN) + '?text=' + texto, '_blank');
+}
+
+async function entCargarHistorial() {
+  var div   = document.getElementById('ent-hist-lista');
+  var local = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
+  if (local.length) entRenderHistorial();
+  else div.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">Sin reportes registrados</div>';
+  if (!sb()) return;
+  try {
+    var res = await sb().from('reportes_entrega')
+      .select('id,folio,cliente_nombre,cliente_tel,fecha_entrega,tecnico,reporte_url,whatsapp_enviado,created_at')
+      .order('created_at', { ascending: false }).limit(30);
+    if (res.error) throw res.error;
+    SYNC.online = true; detectarConexion();
+    var pend   = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]').filter(function(r) { return r._pendiente; });
+    var nuevos = res.data.map(function(r) { return Object.assign({}, r, { ts: new Date(r.created_at).toLocaleString('es-MX') }); });
+    localStorage.setItem('barrcan_reportes_historial', JSON.stringify(pend.concat(nuevos)));
+    entRenderHistorial();
+  } catch(e) {
+    var esRed = /failed to fetch|network/i.test(e.message || '');
+    // NO forzar offline — puede ser fallo puntual de Supabase, no de la red
+    if (!local.length)
+      div.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">'
+        + (esRed ? 'Sin conexion' : 'Error al cargar')
+        + '<br><button onclick="entCargarHistorial()" style="margin-top:6px;padding:5px 12px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer">Reintentar</button></div>';
+  }
+}
+
+function entRenderHistorial() {
+  var div   = document.getElementById('ent-hist-lista');
+  var local = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
+  var pend  = JSON.parse(localStorage.getItem('barrcan_entregas_pendientes') || '[]');
+  var cntEl = document.getElementById('ent-contador');
+  if (cntEl) {
+    var txt = local.length ? local.length + ' reporte' + (local.length > 1 ? 's' : '') : '';
+    if (pend.length) txt += ' &middot; <span onclick="entReintentarPendientes()" style="color:var(--gold);font-weight:700;cursor:pointer;text-decoration:underline">' + pend.length + ' sin sincronizar</span>';
+    cntEl.innerHTML = txt;
+  }
+  if (!local.length) { div.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">Sin reportes registrados</div>'; return; }
+  var admin = esAdmin();
+  var html  = '';
+  for (var i = 0; i < Math.min(local.length, 30); i++) {
+    var r      = local[i];
+    var idStr  = (r.id || '').replace(/'/g, '');
+    var bgPend = r._pendiente ? 'background:rgba(192,57,43,0.04);border-left:3px solid var(--red);padding-left:8px' : '';
+    var pendTag = r._pendiente ? '<div style="font-size:9px;font-weight:700;color:var(--red);margin-bottom:2px">SIN SINCRONIZAR</div>' : '';
+    html += '<div style="padding:9px 0;border-bottom:1px solid var(--gray-200);' + bgPend + '">'
+      + pendTag
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'
+      + '<div>'
+      + '<div style="font-size:13px;font-weight:700;color:var(--navy)">' + esc(r.folio || '--') + '</div>'
+      + '<div style="font-size:11px;color:var(--gray-400)">' + esc(r.cliente_nombre || '') + ' - ' + esc(r.fecha_entrega || '') + '</div>'
+      + (r.reporte_url ? '<div style="font-size:10px;color:var(--green);font-weight:700">Reporte completo disponible</div>' : '')
+      + '</div>'
+      + (r.whatsapp_enviado ? '<span style="font-size:10px;color:#25D366;font-weight:700">WA ok</span>' : '')
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">'
+      + '<button onclick="entVerReporte(\'' + idStr + '\')" style="padding:7px 4px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:11px;font-weight:700;cursor:pointer">Ver reporte</button>'
+      + '<button onclick="entAbrirEdicion(\'' + idStr + '\')" style="padding:7px 4px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer">Editar</button>'
+      + '</div></div>';
+  }
+  div.innerHTML = html;
+}
+
+function entVerReporte(id) {
+  var local = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
+  var r = null;
+  for (var i = 0; i < local.length; i++) { if (local[i].id === id) { r = local[i]; break; } }
+  if (!r) { toast('Reporte no encontrado'); return; }
+  if (r.reporte_url) { window.open(r.reporte_url, '_blank'); return; }
+  var meses = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  function fd(iso) { if (!iso) return '--'; var p = iso.split('-'); return parseInt(p[2]) + ' de ' + meses[parseInt(p[1])] + ' de ' + p[0]; }
+  var html = '<!DOCTYPE html><html lang=es><head><meta charset=UTF-8><meta name=viewport content=width=device-width>'
+    + '<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:9.5pt;color:#1B3A5C;background:white}'
+    + '.pg{max-width:580px;margin:0 auto;padding:16px 20px 80px}'
+    + '.hdr{display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-bottom:12px;border-bottom:3px solid #1B3A5C}'
+    + 'table{width:100%;border-collapse:collapse}td{padding:5px 8px;border:1px solid #ddd;font-size:8.5pt}'
+    + '.lbl{font-weight:700;background:#f5f7fa;width:38%}'
+    + '.barra{position:fixed;bottom:0;left:0;right:0;background:#1B3A5C;padding:8px 14px;display:flex;gap:8px;justify-content:center;z-index:999}'
+    + '.bp{padding:9px 20px;background:#C8923A;color:white;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer}'
+    + '.bc{padding:9px 12px;background:rgba(255,255,255,.15);color:white;border:none;border-radius:7px;font-size:12px;cursor:pointer}'
+    + '@media print{.barra{display:none!important}}</style></head><body>'
+    + '<div class=barra><button class=bp onclick="window.print()">Imprimir / PDF</button><button class=bc onclick="window.close()">Cerrar</button></div>'
+    + '<div class=pg><div class=hdr><div style=flex:1><div style=font-size:16pt;font-weight:900;color:#1B3A5C>BarrCan</div>'
+    + '<div style=font-size:7pt;color:#C8923A;letter-spacing:3px;text-transform:uppercase>Canceleria - Aluminio - Vidrio</div></div>'
+    + '<div style=text-align:right;border:2px solid #1B3A5C;padding:3px 8px;border-radius:4px>'
+    + '<div style=font-size:9pt;font-weight:700>COMPROBANTE DE ENTREGA</div>'
+    + '<div style=font-size:11pt;font-weight:900;color:#C8923A;font-family:monospace>' + esc(r.folio || '--') + '</div>'
+    + '</div></div>'
+    + '<div style=background:#FEF9E7;border:1.5px solid #E67E22;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:8.5pt;color:#E67E22>'
+    + 'Nota: Reporte basico. El reporte completo con fotos y firma no esta disponible en este dispositivo.</div>'
+    + '<table>'
+    + '<tr><td class=lbl>Cliente</td><td><strong>' + esc(r.cliente_nombre || '--') + '</strong></td></tr>'
+    + (r.cliente_tel ? '<tr><td class=lbl>Telefono</td><td>' + esc(r.cliente_tel) + '</td></tr>' : '')
+    + '<tr><td class=lbl>Fecha</td><td>' + fd(r.fecha_entrega) + '</td></tr>'
+    + '<tr><td class=lbl>Tecnico</td><td>' + esc(r.tecnico || 'BarrCan') + '</td></tr>'
+    + '</table>'
+    + '<div style=font-size:7.5pt;color:#aaa;text-align:center;margin-top:12px;border-top:1px solid #eee;padding-top:8px>'
+    + esc(r.folio || '') + ' - BarrCan - ' + new Date().toLocaleDateString('es-MX') + '</div>'
+    + '</div></body></html>';
+  var win = window.open('', '_blank');
+  if (win) { win.document.write(html); win.document.close(); }
+  else toast('Activa ventanas emergentes');
+}
+
+function entAbrirEdicion(id) {
+  // Edicion disponible para todos los usuarios del modulo
+  var local = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
+  var r = null;
+  for (var i = 0; i < local.length; i++) { if (local[i].id === id) { r = local[i]; break; } }
+  if (!r) { toast('Reporte no encontrado'); return; }
+  var modal = document.getElementById('ent-edit-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'ent-edit-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:800;backdrop-filter:blur(3px)';
+    modal.innerHTML = '<div style="position:absolute;bottom:0;left:0;right:0;background:var(--white);border-radius:20px 20px 0 0;padding:20px;max-height:80vh;overflow-y:auto">'
+      + '<div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 14px"></div>'
+      + '<div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:14px">Editar Reporte</div>'
+      + '<label class="form-label">Folio</label><input type="text" id="ee-folio" class="form-input" style="font-family:monospace">'
+      + '<label class="form-label">Cliente</label><input type="text" id="ee-cliente" class="form-input">'
+      + '<label class="form-label">Telefono</label><input type="tel" id="ee-tel" class="form-input" inputmode="tel">'
+      + '<label class="form-label">Fecha de entrega</label><input type="date" id="ee-fecha" class="form-input">'
+      + '<label class="form-label">Tecnico</label><input type="text" id="ee-tecnico" class="form-input">'
+      + '<div id="ee-err" style="display:none;color:var(--red);font-size:12px;padding:8px 12px;background:rgba(192,57,43,0.08);border-radius:var(--radius-sm);margin-top:8px"></div>'
+      + '<div style="display:flex;gap:8px;margin-top:14px">'
+      + '<button onclick="entGuardarEdicion()" style="flex:1;padding:12px;background:var(--navy);color:white;border:none;border-radius:var(--radius-sm);font-family:\'DM Sans\',sans-serif;font-size:14px;font-weight:700;cursor:pointer">Guardar</button>'
+      + '<button onclick="document.getElementById(\'ent-edit-modal\').style.display=\'none\'" style="padding:12px 14px;background:none;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);color:var(--gray-600);font-family:\'DM Sans\',sans-serif;font-size:13px;cursor:pointer">Cancelar</button>'
+      + '</div></div>';
+    document.body.appendChild(modal);
+  }
+  modal.dataset.id = id;
+  document.getElementById('ee-folio').value   = r.folio || '';
+  document.getElementById('ee-cliente').value  = r.cliente_nombre || '';
+  document.getElementById('ee-tel').value      = r.cliente_tel || '';
+  document.getElementById('ee-fecha').value    = r.fecha_entrega || '';
+  document.getElementById('ee-tecnico').value  = r.tecnico || '';
+  document.getElementById('ee-err').style.display = 'none';
+  modal.style.display = 'block';
+}
+
+async function entGuardarEdicion() {
+  var modal   = document.getElementById('ent-edit-modal');
+  var id      = modal ? modal.dataset.id : '';
+  if (!id) return;
+  var errEl   = document.getElementById('ee-err');
+  var folio   = document.getElementById('ee-folio').value.trim();
+  var cliente = document.getElementById('ee-cliente').value.trim();
+  var tel     = document.getElementById('ee-tel').value.trim();
+  var fecha   = document.getElementById('ee-fecha').value;
+  var tecnico = document.getElementById('ee-tecnico').value.trim();
+  if (!cliente) { errEl.textContent = 'El nombre es obligatorio'; errEl.style.display = 'block'; return; }
+  var campos = { folio: folio, cliente_nombre: cliente, cliente_tel: tel || null, fecha_entrega: fecha, tecnico: tecnico || 'BarrCan' };
+  var local = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
+  for (var i = 0; i < local.length; i++) {
+    if (local[i].id === id) { local[i] = Object.assign({}, local[i], campos); break; }
+  }
+  localStorage.setItem('barrcan_reportes_historial', JSON.stringify(local));
+  entRenderHistorial();
+  if (SYNC.online && sb()) {
+    try {
+      var res = await sb().from('reportes_entrega').update(campos).eq('id', id);
+      if (res.error) throw res.error;
+      toast('Reporte actualizado');
+    } catch(e) { toast('Actualizado localmente'); }
+  } else { toast('Actualizado localmente - sync al reconectar'); }
+  modal.style.display = 'none';
+}
+
+async function entReintentarPendientes() {
+  var cola = JSON.parse(localStorage.getItem('barrcan_entregas_pendientes') || '[]');
+  if (!cola.length || !sb()) { toast('Sin pendientes'); return; }
+  toast('Reintentando ' + cola.length + ' reporte(s)...');
+  var ok = [];
+  for (var i = 0; i < cola.length; i++) {
+    try {
+      var res = await sb().from('reportes_entrega').insert([cola[i].datos]);
+      if (res.error) throw res.error;
+      ok.push(cola[i]);
+    } catch(e) { console.warn('reintento:', e.message); }
+  }
+  var rest = cola.filter(function(x) { return ok.indexOf(x) < 0; });
+  localStorage.setItem('barrcan_entregas_pendientes', JSON.stringify(rest));
+  if (ok.length) {
+    var hist = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
+    hist.forEach(function(r) { if (r._pendiente) delete r._pendiente; });
+    localStorage.setItem('barrcan_reportes_historial', JSON.stringify(hist));
+    toast(ok.length + ' sincronizado(s)');
+    entRenderHistorial();
+  }
+  if (rest.length) toast(rest.length + ' aun pendiente(s)');
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  detectarConexion();
+  _LOGO_SRC = document.querySelector('.logo-mark img') ? document.querySelector('.logo-mark img').src : '';
+  entReset();
+  entIniciarFirma();
+  entCargarClientes();
+  entCargarHistorial();
+  var cola = JSON.parse(localStorage.getItem('barrcan_entregas_pendientes') || '[]');
+  if (cola.length) setTimeout(entReintentarPendientes, 1500);
+  try {
+    var saved = sessionStorage.getItem('barrcan_entrega_html');
+    if (saved) _ENT_HTML = saved;
+  } catch(e) {}
+});
+</script>
+</body>
+</html>
