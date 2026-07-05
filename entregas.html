@@ -1882,14 +1882,44 @@ function entRenderHistorial() {
   div.innerHTML = html;
 }
 
+// ── NUEVO: Función principal que descarga y escribe el HTML ──
 function entVerReporte(id) {
   var local = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
   var r = null;
-  for (var i = 0; i < local.length; i++) { if (local[i].id === id) { r = local[i]; break; } }
+  for (var i = 0; i < local.length; i++) { 
+    if (local[i].id === id) { r = local[i]; break; } 
+  }
   if (!r) { toast('Reporte no encontrado'); return; }
-  if (r.reporte_url) { window.open(r.reporte_url, '_blank'); return; }
+
+  // 1. SI TIENE URL DE SUPABASE -> LA DESCARGAMOS Y LA ESCRIBIMOS DIRECTAMENTE
+  if (r.reporte_url) {
+    fetch(r.reporte_url)
+      .then(function(response) { return response.text(); })
+      .then(function(html) {
+        var win = window.open('', '_blank');
+        if (win) {
+          win.document.write(html);
+          win.document.close();
+        } else {
+          toast('⚠️ Permite ventanas emergentes para ver el reporte');
+        }
+      })
+      .catch(function(err) {
+        // Si falla la descarga (sin internet o URL caída), usamos el reporte básico de respaldo
+        entVerReporteFallback(r);
+      });
+    return;
+  }
+
+  // 2. SI NO TIENE URL -> Usamos el reporte básico de respaldo
+  entVerReporteFallback(r);
+}
+
+// ── Función de respaldo (el código viejo que ya tenías) ──
+function entVerReporteFallback(r) {
   var meses = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   function fd(iso) { if (!iso) return '--'; var p = iso.split('-'); return parseInt(p[2]) + ' de ' + meses[parseInt(p[1])] + ' de ' + p[0]; }
+  
   var html = '<!DOCTYPE html><html lang=es><head><meta charset=UTF-8><meta name=viewport content=width=device-width>'
     + '<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:9.5pt;color:#1B3A5C;background:white}'
     + '.pg{max-width:580px;margin:0 auto;padding:16px 20px 80px}'
@@ -1918,9 +1948,10 @@ function entVerReporte(id) {
     + '<div style=font-size:7.5pt;color:#aaa;text-align:center;margin-top:12px;border-top:1px solid #eee;padding-top:8px>'
     + esc(r.folio || '') + ' - BarrCan - ' + new Date().toLocaleDateString('es-MX') + '</div>'
     + '</div></body></html>';
+    
   var win = window.open('', '_blank');
   if (win) { win.document.write(html); win.document.close(); }
-  else toast('Activa ventanas emergentes');
+  else toast('⚠️ Activa ventanas emergentes para ver el reporte');
 }
 
 function entAbrirEdicion(id) {
