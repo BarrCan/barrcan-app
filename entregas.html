@@ -6,11 +6,12 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
-  VERSION : v3.8.2
+  VERSION : v3.8.3
   FECHA   : 2026-07-07
-  v3.8.2 - Corrección definitiva de carga de dirección:
-    - Refresco automático al recibir datos de Supabase.
-    - Fallback de dirección desde el cliente si el presupuesto no tiene.
+  v3.8.3 - Mejora en carga de dirección:
+    - Si el presupuesto no tiene dir_obra, intenta tomarla del cliente.
+    - Si ambos están vacíos, muestra "Sin dirección registrada" y permite edición manual.
+    - Agregado console.log para depuración.
 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
@@ -1101,7 +1102,7 @@ body{min-height:100vh}
       <div class="wizard-title">📍 Datos de la obra</div>
       <div class="form-group">
         <label class="form-label">Direcci&oacute;n de la obra</label>
-        <input type="text" id="inst-direccion" class="form-input" placeholder="Calle, n&uacute;mero, colonia, municipio">
+        <input type="text" id="inst-direccion" class="form-input" placeholder="Calle, número, colonia, municipio">
       </div>
       <div class="form-group" style="margin-bottom:0">
         <label class="form-label">Monto del trabajo</label>
@@ -1347,7 +1348,7 @@ body{min-height:100vh}
 <input type="file" id="inst-file-input" accept="image/*,video/*" capture="environment" style="display:none" onchange="instArchivoCapturado(this)">
 
 <script>
-// BARRCAN ENTREGAS v3.8.2 — Corrección definitiva de carga de dirección
+// BARRCAN ENTREGAS v3.8.3 — Mejora en carga de dirección y logs
 var SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb = null;
@@ -1489,7 +1490,7 @@ function entCargarPresupuestos(nombreCliente) {
       o.dataset.p = JSON.stringify(p);
       sel.appendChild(o);
     });
-    // 🔹 NUEVO: Si ya hay un valor seleccionado, refrescar los campos con los datos completos
+    // Si ya hay un valor seleccionado, refrescar los campos con los datos completos
     if (sel.value) {
       entSelPresupuesto();
     }
@@ -1511,22 +1512,33 @@ function entSelPresupuesto() {
   document.getElementById('ent-folio').value = p.folio || sel.value;
   if (p.descripcion) document.getElementById('ent-desc').value = p.descripcion;
   
-  // Precargar dirección y monto en el bloque común
-  if (p.dir_obra) {
+  // Precargar dirección y monto
+  var dirAsignada = false;
+  if (p.dir_obra && p.dir_obra.trim() !== '') {
     document.getElementById('inst-direccion').value = p.dir_obra;
+    dirAsignada = true;
   } else {
-    // Fallback: si el presupuesto no tiene dirección, intentar tomarla del cliente seleccionado
+    // Fallback: intentar tomar del cliente
     var cliSel = document.getElementById('ent-cli-select');
     if (cliSel && cliSel.value) {
       var optCli = cliSel.options[cliSel.selectedIndex];
       try {
         var c = JSON.parse(optCli.dataset.c || '{}');
-        if (c.dir_obra) {
+        if (c.dir_obra && c.dir_obra.trim() !== '') {
           document.getElementById('inst-direccion').value = c.dir_obra;
+          dirAsignada = true;
         }
       } catch(e) {}
     }
   }
+  if (!dirAsignada) {
+    // Si no hay dirección, mostrar placeholder indicativo
+    document.getElementById('inst-direccion').placeholder = 'Sin dirección registrada (edita manualmente)';
+    document.getElementById('inst-direccion').value = '';
+  } else {
+    document.getElementById('inst-direccion').placeholder = 'Calle, número, colonia, municipio';
+  }
+
   if (p.monto) {
     document.getElementById('inst-monto').value = p.monto;
   }
@@ -1536,6 +1548,10 @@ function entSelPresupuesto() {
   }
   INST_DATOS_FOLIO = p;
   entCalcularSaldo(p);
+
+  // Depuración en consola
+  console.log('Presupuesto seleccionado:', p);
+  console.log('Dirección asignada:', document.getElementById('inst-direccion').value || '(vacía)');
 }
 
 function entCalcularSaldo(p) {
@@ -1716,6 +1732,9 @@ function entReset() {
   // Limpiar campos comunes de obra
   var obraCampos = ['inst-direccion','inst-monto','inst-tecnico-nombre','inst-fecha'];
   obraCampos.forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+  // Restaurar placeholder
+  var dirInp = document.getElementById('inst-direccion');
+  if (dirInp) dirInp.placeholder = 'Calle, número, colonia, municipio';
   var instAsig = document.getElementById('inst-asignado'); if(instAsig) instAsig.value='';
   entLimpiarFirma();
 }
