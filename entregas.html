@@ -1071,7 +1071,7 @@ body{min-height:100vh}
 
   <div class="content">
     <p class="section-title">Entregas de Producto</p>
-    <p class="section-sub">En puerta &middot; Env&iacute;o por paqueter&iacute;a</p>
+    <p class="section-sub">En puerta &middot; Env&iacute;o &middot; Instalaci&oacute;n</p>
 
 
     <!-- HISTORIAL -->
@@ -1128,9 +1128,10 @@ body{min-height:100vh}
       <div class="wizard-title">&#128230; Producto entregado</div>
 
       <label class="form-label">Tipo de entrega *</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
         <button class="tipo-btn active" data-tipo="puerta" onclick="entSelTipo(this)">&#127968; En puerta</button>
         <button class="tipo-btn" data-tipo="envio" onclick="entSelTipo(this)">&#128666; Env&iacute;o</button>
+        <button class="tipo-btn" data-tipo="instalacion" onclick="entSelTipo(this)">&#128295; Instalaci&oacute;n<br><small style="font-size:9px;font-weight:400;opacity:.7">Firma + fotos + checklist</small></button>
       </div>
 
       <!-- Datos envio (oculto por default) -->
@@ -1149,6 +1150,115 @@ body{min-height:100vh}
         <label class="form-label">N&uacute;m. de gu&iacute;a / rastreo</label>
         <input type="text" id="ent-guia" class="form-input" placeholder="Ej: 1234567890" style="font-family:'DM Mono',monospace">
       </div>
+
+      <!-- ─── PANEL INSTALACIÓN ─────────────────────────── -->
+      <div id="ent-inst-datos" style="display:none">
+
+        <!-- Barra de progreso -->
+        <div style="background:rgba(46,109,164,.06);border-radius:8px;padding:10px 12px;margin-bottom:12px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:var(--navy);margin-bottom:6px">
+            <span>Progreso del reporte</span>
+            <span id="inst-prog-txt" style="color:var(--blue)">0 / 4 secciones</span>
+          </div>
+          <div style="height:6px;background:var(--gray-200);border-radius:3px;overflow:hidden">
+            <div id="inst-prog-bar" style="height:100%;width:0%;background:var(--blue);border-radius:3px;transition:.3s"></div>
+          </div>
+        </div>
+
+        <!-- Datos de la obra -->
+        <div style="background:rgba(27,58,92,.04);border:1px solid rgba(27,58,92,.1);border-radius:8px;padding:10px 12px;margin-bottom:12px">
+          <div style="font-size:11px;font-weight:700;color:var(--navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">&#128203; Datos de la obra</div>
+          <div style="font-size:11px;color:var(--gray-400);margin-bottom:8px;background:rgba(46,109,164,.06);padding:8px;border-radius:6px;border-left:3px solid var(--blue)">
+            &#8505; Ingresa el folio CACN para jalar los datos del presupuesto aprobado.
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:8px">
+            <input type="text" id="inst-folio-busca" class="form-input"
+              placeholder="Folio CACN-..." style="flex:1;font-family:monospace;font-size:13px"
+              oninput="this.value=this.value.toUpperCase()">
+            <button onclick="instJalarFolio()" style="padding:8px 14px;background:var(--navy);color:#fff;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap">Jalar</button>
+          </div>
+          <div id="inst-folio-feedback" style="font-size:11px;margin-bottom:8px;min-height:14px"></div>
+          <label class="form-label">Direcci&oacute;n de la obra</label>
+          <input type="text" id="inst-direccion" class="form-input" placeholder="Calle, n&uacute;mero, colonia, municipio" style="margin-bottom:8px">
+          <div class="form-row">
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Monto del trabajo</label>
+              <div class="input-unit">
+                <input type="number" id="inst-monto" class="form-input" placeholder="0.00" inputmode="decimal">
+                <span class="unit-label">$</span>
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+              <label class="form-label">Fecha de entrega</label>
+              <input type="date" id="inst-fecha" class="form-input">
+            </div>
+          </div>
+          <div style="margin-top:8px">
+            <label class="form-label">T&eacute;cnico instalador</label>
+            <input type="text" id="inst-tecnico-nombre" class="form-input" placeholder="Nombre del t&eacute;cnico" style="margin-bottom:4px">
+            <div style="font-size:10px;color:var(--gray-400)">Pre-llenado con el usuario activo &mdash; edita si es un t&eacute;cnico diferente</div>
+          </div>
+          <div style="margin-top:8px">
+            <label class="form-label">Asignado por</label>
+            <select id="inst-asignado" class="form-select">
+              <option value="">-- Selecciona --</option>
+              <option value="ESAU">Esa&uacute;</option>
+              <option value="MIGUEL">Miguel</option>
+              <option value="CARLOS">Carlos</option>
+              <option value="OMAR">Omar</option>
+              <option value="RODRIGO">Rodrigo</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- CHECKLIST TÉCNICO -->
+        <div style="background:var(--white);border:1.5px solid rgba(39,174,96,.25);border-radius:10px;padding:12px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.05)">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--gray-100)">
+            <span style="font-size:16px">&#9989;</span>
+            <span style="font-size:13px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px">Checklist T&eacute;cnico de Calidad</span>
+          </div>
+          <div id="ent-checklist-lista"></div>
+        </div>
+
+        <!-- EVIDENCIA FOTOGRÁFICA -->
+        <div style="background:var(--white);border-radius:10px;padding:12px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.05)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--gray-100)">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:16px">&#128247;</span>
+              <span style="font-size:13px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px">Evidencia &mdash; 4 fotos + 1 video</span>
+            </div>
+            <span style="font-size:10px;color:var(--red);font-weight:700">* Obligatorio</span>
+          </div>
+          <div id="ent-evidencia-slots"></div>
+        </div>
+
+        <!-- DOS FIRMAS -->
+        <div style="background:var(--white);border-radius:10px;padding:12px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.05)">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--gray-100)">
+            <span style="font-size:16px">&#9997;</span>
+            <span style="font-size:13px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px">Firmas de Conformidad</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div>
+              <div style="font-size:11px;font-weight:600;color:var(--navy);margin-bottom:4px;text-align:center">T&eacute;cnico Instalador</div>
+              <canvas id="ent-canvas-tecnico" width="160" height="100"
+                style="width:100%;border:1.5px solid var(--gray-200);border-radius:6px;touch-action:none;background:#fafafa"></canvas>
+              <button onclick="entLimpiarCanvas('ent-canvas-tecnico')"
+                style="width:100%;margin-top:4px;padding:4px;background:none;border:1px solid var(--gray-200);border-radius:6px;font-size:11px;color:var(--gray-400);cursor:pointer">Borrar</button>
+            </div>
+            <div>
+              <div style="font-size:11px;font-weight:600;color:var(--navy);margin-bottom:4px;text-align:center">Recibido por Cliente</div>
+              <canvas id="ent-canvas-cliente" width="160" height="100"
+                style="width:100%;border:1.5px solid var(--gray-200);border-radius:6px;touch-action:none;background:#fafafa"></canvas>
+              <button onclick="entLimpiarCanvas('ent-canvas-cliente')"
+                style="width:100%;margin-top:4px;padding:4px;background:none;border:1px solid var(--gray-200);border-radius:6px;font-size:11px;color:var(--gray-400);cursor:pointer">Borrar</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <!-- ─── FIN PANEL INSTALACIÓN ─────────────────────── -->
+
 
       <div class="form-group" style="margin-bottom:8px">
         <label class="form-label">Descripci&oacute;n *</label>
@@ -1255,6 +1365,8 @@ body{min-height:100vh}
     <button onclick="entCerrarPost()" style="width:100%;padding:12px;background:none;border:1.5px solid var(--gray-200);border-radius:var(--radius);color:var(--gray-600);font-family:'DM Sans',sans-serif;font-size:14px;cursor:pointer">Listo &mdash; cerrar</button>
   </div>
 </div>
+
+<input type="file" id="inst-file-input" accept="image/*,video/*" capture="environment" style="display:none" onchange="instArchivoCapturado(this)">
 
 <script>
 // BARRCAN ENTREGAS v3.6 — Corrección definitiva del modo offline
@@ -1584,7 +1696,7 @@ function entToggleCobro() {
 }
 
 function entReset() {
-  ENT_FOTOS_EMP = []; ENT_FOTOS_COMP = []; ENT_TIPO = 'puerta'; ENT_FORMA = 'efectivo';
+  ENT_FOTOS_EMP = []; ENT_FOTOS_COMP = []; ENT_TIPO = 'puerta'; ENT_FORMA = 'efectivo'; ENT_CHECKS = {}; ENT_EVIDENCIA = {}; INST_DATOS_FOLIO = null;
   var campos = ['ent-cliente','ent-tel','ent-folio','ent-desc','ent-notas','ent-monto'];
   campos.forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
   var cliSel   = document.getElementById('ent-cli-select'); if (cliSel) cliSel.value = '';
@@ -1616,6 +1728,7 @@ function entReset() {
 }
 
 async function entGenerarReporte() {
+  if (ENT_TIPO === 'instalacion') { entGenerarReporteInstalacion(); return; }
   var cliente = document.getElementById('ent-cliente').value.trim();
   var desc    = document.getElementById('ent-desc').value.trim();
   var errEl   = document.getElementById('ent-error');
@@ -2057,6 +2170,440 @@ document.addEventListener('DOMContentLoaded', function() {
     if (saved) _ENT_HTML = saved;
   } catch(e) {}
 });
+
+
+// ══ MÓDULO INSTALACIÓN ══
+// ══════════════════════════════════════════════════════════════
+// MÓDULO INSTALACIÓN — variables y lógica
+// ══════════════════════════════════════════════════════════════
+var ENT_CHECKS       = {};
+var ENT_EVIDENCIA    = {};   // {slot_id: {b64, tipo, nombre}}
+var INST_DATOS_FOLIO = null; // datos jalados del presupuesto
+var _ctx_tec         = null;
+var _ctx_cli         = null;
+var _tec_draw        = false;
+var _cli_draw        = false;
+var _inst_slot_activo = null; // slot al que se está asignando archivo
+
+var ENT_CHECKLIST_ITEMS = [
+  {id:'ck1', titulo:'Marco Perimetral',        desc:'Plomeado, nivelado y fijación firme sin descuadres ni holguras.'},
+  {id:'ck2', titulo:'Sellado Perimetral',      desc:'Silicón uniforme interior y exterior, sin grietas ni huecos de filtración.'},
+  {id:'ck3', titulo:'Deslizamiento (Corredizas)', desc:'Carrera suave en toda la guía, hojas corren sin ruidos ni atascamientos.'},
+  {id:'ck4', titulo:'Broches y Cierres',       desc:'El broche acopla perfecto en la contrapieza, sin holgura ni fuerza.'},
+  {id:'ck5', titulo:'Alineación de Hojas',     desc:'Las hojas quedan paralelas al marco, sin espacios irregulares entre ellas.'},
+  {id:'ck6', titulo:'Juntas y Empaques',       desc:'Empaques bien sentados en todo el perímetro, sin arrugas ni levantamientos.'},
+  {id:'ck7', titulo:'Cristales / Vidrios',     desc:'Sin rayaduras, manchas de silicón, burbujas ni daños visibles.'},
+  {id:'ck8', titulo:'Limpieza de la zona',     desc:'Retiro de residuos propios de la instalación, perfiles sobrantes y empaques.'},
+  {id:'ck9', titulo:'Instrucciones al cliente',desc:'Se explicó el uso, mantenimiento básico y vigencia de garantía al cliente.'}
+];
+
+var ENT_EVIDENCIA_SLOTS = [
+  {id:'ev1', emoji:'⬛', titulo:'Instalación Final',  desc:'Vista panorámica del trabajo terminado', tipo:'foto'},
+  {id:'ev2', emoji:'🔍', titulo:'Sellos — Detalle 1', desc:'Silicón perimetral exterior',            tipo:'foto'},
+  {id:'ev3', emoji:'🔍', titulo:'Sellos — Detalle 2', desc:'Silicón perimetral interior',            tipo:'foto'},
+  {id:'ev4', emoji:'🔒', titulo:'Broche / Chapa',     desc:'Funcionamiento del cierre',              tipo:'foto'},
+  {id:'ev5', emoji:'🎬', titulo:'Video Funcional',    desc:'Corrida de carretillas o apertura/cierre', tipo:'video', badge:'VIDEO'}
+];
+
+// ── Render checklist ──────────────────────────────────────────
+function entRenderChecklist() {
+  var div = document.getElementById('ent-checklist-lista');
+  if (!div) return;
+  var ok_count = 0;
+  var html = '';
+  ENT_CHECKLIST_ITEMS.forEach(function(item) {
+    var val = ENT_CHECKS[item.id]; // true=ok, false=no, undefined=sin marcar
+    var nota = ENT_CHECKS[item.id + '_nota'] || '';
+    ok_count += (val === true) ? 1 : 0;
+    html += '<div style="background:var(--off-white);border-radius:8px;padding:10px 12px;margin-bottom:8px">'
+      + '<div style="display:flex;align-items:flex-start;gap:10px">'
+      // Botones ✓ ✗
+      + '<div style="display:flex;gap:6px;flex-shrink:0;margin-top:2px">'
+      + '<div onclick="entSetCheck(\'' + item.id + '\',true)" style="width:28px;height:28px;border-radius:50%;border:2px solid '
+      + (val===true ? 'var(--green)' : 'var(--gray-200)') + ';background:' + (val===true ? 'var(--green)' : '#fff')
+      + ';display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;color:'
+      + (val===true ? '#fff' : 'var(--gray-400)') + ';font-weight:700">✓</div>'
+      + '<div onclick="entSetCheck(\'' + item.id + '\',false)" style="width:28px;height:28px;border-radius:50%;border:2px solid '
+      + (val===false ? 'var(--red)' : 'var(--gray-200)') + ';background:' + (val===false ? 'var(--red)' : '#fff')
+      + ';display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;color:'
+      + (val===false ? '#fff' : 'var(--gray-400)') + ';font-weight:700">✕</div>'
+      + '</div>'
+      // Texto
+      + '<div style="flex:1">'
+      + '<div style="font-size:13px;font-weight:600;color:var(--navy)">' + esc(item.titulo) + '</div>'
+      + '<div style="font-size:11px;color:var(--gray-400);margin-bottom:6px">' + esc(item.desc) + '</div>'
+      + '<input type="text" placeholder="Nota" value="' + esc(nota) + '"'
+      + ' oninput="ENT_CHECKS[\'' + item.id + '_nota\']=this.value"'
+      + ' style="width:100%;padding:6px 10px;border:1px solid var(--gray-200);border-radius:6px;font-size:12px;font-family:\'DM Sans\',sans-serif;color:var(--navy);background:#fff">'
+      + '</div></div></div>';
+  });
+  // Progreso texto debajo
+  html += '<div style="text-align:right;font-size:11px;font-weight:600;padding-top:4px;color:'
+    + (ok_count===ENT_CHECKLIST_ITEMS.length ? 'var(--green)' : 'var(--gray-400)') + '">'
+    + ok_count + ' / ' + ENT_CHECKLIST_ITEMS.length + ' verificados</div>';
+  div.innerHTML = html;
+  instActualizarProgreso();
+}
+
+function entSetCheck(id, valor) {
+  ENT_CHECKS[id] = valor;
+  entRenderChecklist();
+}
+
+function entChecklistCompleto() {
+  return ENT_CHECKLIST_ITEMS.every(function(it) {
+    return ENT_CHECKS[it.id] === true || ENT_CHECKS[it.id] === false;
+  });
+}
+
+// ── Render slots de evidencia ─────────────────────────────────
+function entRenderEvidencia() {
+  var div = document.getElementById('ent-evidencia-slots');
+  if (!div) return;
+  var html = '';
+  ENT_EVIDENCIA_SLOTS.forEach(function(slot) {
+    var capturado = ENT_EVIDENCIA[slot.id];
+    html += '<div onclick="instAbrirSlot(\'' + slot.id + '\')" style="display:flex;align-items:center;gap:12px;padding:10px;border:1.5px dashed '
+      + (capturado ? 'var(--green)' : 'var(--gray-200)') + ';border-radius:8px;background:'
+      + (capturado ? 'rgba(39,174,96,.04)' : '#fafafa') + ';margin-bottom:8px;cursor:pointer;transition:.15s">'
+      // Preview o ícono
+      + (capturado && capturado.tipo === 'foto'
+        ? '<img src="' + capturado.b64 + '" style="width:44px;height:44px;object-fit:cover;border-radius:6px;flex-shrink:0">'
+        : '<div style="width:44px;height:44px;border-radius:8px;background:' + (capturado ? 'rgba(39,174,96,.15)' : 'var(--gray-100)')
+          + ';display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">'
+          + (capturado ? '✅' : slot.emoji) + '</div>')
+      + '<div style="flex:1">'
+      + '<div style="font-size:13px;font-weight:600;color:var(--navy)">' + esc(slot.titulo)
+      + (slot.badge ? ' <span style="font-size:9px;background:rgba(200,146,58,.15);color:var(--gold);padding:1px 5px;border-radius:8px;font-weight:700">' + slot.badge + '</span>' : '')
+      + '</div>'
+      + '<div style="font-size:11px;color:var(--gray-400)">' + esc(slot.desc) + '</div>'
+      + '</div>'
+      + '<div style="color:' + (capturado ? 'var(--green)' : 'var(--gray-300)') + ';font-size:18px">📎</div>'
+      + '</div>';
+  });
+  div.innerHTML = html;
+  instActualizarProgreso();
+}
+
+function instAbrirSlot(slotId) {
+  _inst_slot_activo = slotId;
+  var slot = ENT_EVIDENCIA_SLOTS.filter(function(s){return s.id===slotId;})[0];
+  var accept = slot && slot.tipo==='video' ? 'video/*,image/*' : 'image/*';
+  var inp = document.getElementById('inst-file-input');
+  if (inp) { inp.accept = accept; inp.click(); }
+}
+
+function instArchivoCapturado(input) {
+  var file = input.files[0];
+  if (!file || !_inst_slot_activo) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    ENT_EVIDENCIA[_inst_slot_activo] = {
+      b64: e.target.result, tipo: file.type.startsWith('video') ? 'video' : 'foto', nombre: file.name
+    };
+    entRenderEvidencia();
+    input.value = '';
+    _inst_slot_activo = null;
+  };
+  reader.readAsDataURL(file);
+}
+
+function instEvidenciaCompleta() {
+  // Al menos las 4 fotos obligatorias (ev1-ev4)
+  return ['ev1','ev2','ev3','ev4'].every(function(id){ return !!ENT_EVIDENCIA[id]; });
+}
+
+// ── Progreso total ────────────────────────────────────────────
+function instActualizarProgreso() {
+  var secciones = 0;
+  // 1. Datos básicos
+  var cli = document.getElementById('ent-cliente'); if (cli && cli.value.trim()) secciones++;
+  // 2. Checklist completo (todos marcados)
+  if (entChecklistCompleto()) secciones++;
+  // 3. Evidencia (4 fotos mín)
+  if (instEvidenciaCompleta()) secciones++;
+  // 4. Al menos 1 firma
+  if (_ctx_cli) { var d=_ctx_cli.getImageData(0,0,160,100).data; for(var i=0;i<d.length;i++){if(d[i]>10){secciones++;break;}}}
+  var txt = document.getElementById('inst-prog-txt');
+  var bar = document.getElementById('inst-prog-bar');
+  if (txt) txt.textContent = secciones + ' / 4 secciones';
+  if (bar) bar.style.width = (secciones/4*100) + '%';
+}
+
+// ── Firmas instalación ────────────────────────────────────────
+function instIniciarFirmas() {
+  ['ent-canvas-tecnico','ent-canvas-cliente'].forEach(function(cid) {
+    var canvas = document.getElementById(cid);
+    if (!canvas) return;
+    var rc = canvas.getBoundingClientRect();
+    canvas.width  = rc.width  || 160;
+    canvas.height = rc.height || 100;
+    var ctx = canvas.getContext('2d');
+    ctx.strokeStyle = '#1B3A5C';
+    ctx.lineWidth   = 2;
+    ctx.lineCap     = 'round';
+    if (cid === 'ent-canvas-tecnico') _ctx_tec = ctx;
+    else                              _ctx_cli = ctx;
+    var draw = false;
+    function pos(e) {
+      var r = canvas.getBoundingClientRect();
+      var src = e.touches ? e.touches[0] : e;
+      return { x: (src.clientX-r.left)*(canvas.width/r.width), y: (src.clientY-r.top)*(canvas.height/r.height) };
+    }
+    canvas.addEventListener('mousedown',  function(e){draw=true; ctx.beginPath(); var p=pos(e); ctx.moveTo(p.x,p.y);});
+    canvas.addEventListener('mousemove',  function(e){if(!draw)return; var p=pos(e); ctx.lineTo(p.x,p.y); ctx.stroke();});
+    canvas.addEventListener('mouseup',    function(){draw=false; instActualizarProgreso();});
+    canvas.addEventListener('touchstart', function(e){e.preventDefault();draw=true;ctx.beginPath();var p=pos(e);ctx.moveTo(p.x,p.y);},{passive:false});
+    canvas.addEventListener('touchmove',  function(e){e.preventDefault();if(!draw)return;var p=pos(e);ctx.lineTo(p.x,p.y);ctx.stroke();},{passive:false});
+    canvas.addEventListener('touchend',   function(){draw=false; instActualizarProgreso();});
+  });
+}
+
+function entLimpiarCanvas(canvasId, ctxVar) {
+  var canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  var ctx = canvasId==='ent-canvas-tecnico' ? _ctx_tec : _ctx_cli;
+  if (ctx) ctx.clearRect(0,0,canvas.width,canvas.height);
+}
+
+// ── Jalar datos desde folio ───────────────────────────────────
+async function instJalarFolio() {
+  var folio = (document.getElementById('inst-folio-busca')||{}).value;
+  if (!folio) return;
+  folio = folio.trim().toUpperCase();
+  var fb = document.getElementById('inst-folio-feedback');
+  if (fb) fb.textContent = 'Buscando...';
+  try {
+    var res = await sb().from('presupuestos_atrasados')
+      .select('folio,cliente,tel,descripcion,monto,saldo,notas_internas')
+      .ilike('folio', '%' + folio + '%')
+      .limit(1);
+    if (res.error || !res.data || !res.data.length) {
+      if (fb) { fb.textContent = 'No encontrado'; fb.style.color = 'var(--red)'; }
+      return;
+    }
+    var d = res.data[0];
+    INST_DATOS_FOLIO = d;
+    // Pre-llenar campos comunes
+    var cli = document.getElementById('ent-cliente'); if (cli) cli.value = d.cliente || '';
+    var tel = document.getElementById('ent-tel');     if (tel) tel.value = d.tel     || '';
+    var fol = document.getElementById('ent-folio');   if (fol) fol.value = d.folio   || '';
+    var des = document.getElementById('ent-desc');    if (des) des.value = d.descripcion || '';
+    // Pre-llenar monto instalación
+    var mon = document.getElementById('inst-monto');  if (mon) mon.value = d.monto   || '';
+    if (fb) { fb.textContent = '✅ Datos cargados: ' + (d.cliente||''); fb.style.color = 'var(--green)'; }
+    entCalcularSaldo();
+  } catch(e) {
+    if (fb) { fb.textContent = 'Error: ' + e.message; fb.style.color='var(--red)'; }
+  }
+}
+
+// ── entSelTipo — reemplaza la función original ────────────────
+// (se sobreescribe con una nueva versión que maneja instalación)
+function entSelTipo(btn) {
+  ENT_TIPO = btn.dataset.tipo;
+  document.querySelectorAll('.tipo-btn').forEach(function(b) {
+    var a = b === btn;
+    b.style.borderColor = a ? 'var(--blue)' : 'var(--gray-200)';
+    b.style.background  = a ? 'rgba(46,109,164,0.08)' : 'none';
+    b.style.color       = a ? 'var(--blue)' : 'var(--gray-400)';
+  });
+  var envioDiv  = document.getElementById('ent-envio-datos');
+  var instDiv   = document.getElementById('ent-inst-datos');
+  var firmaCard = document.getElementById('ent-firma-card');
+  var lblComp   = document.getElementById('ent-label-comp');
+  var dscComp   = document.getElementById('ent-desc-comp');
+  var esEnvio   = ENT_TIPO === 'envio';
+  var esInst    = ENT_TIPO === 'instalacion';
+  if (envioDiv)  envioDiv.style.display  = esEnvio ? 'block' : 'none';
+  if (instDiv)   instDiv.style.display   = esInst  ? 'block' : 'none';
+  if (firmaCard) firmaCard.style.display = esEnvio ? 'none'  : (esInst ? 'none' : 'block');
+  if (lblComp)   lblComp.textContent     = esInst  ? 'Fotos de la instalaci\u00f3n terminada'
+                                          : esEnvio ? 'Foto de la gu\u00eda / comprobante de env\u00edo'
+                                          : 'Foto del comprobante de entrega';
+  if (dscComp)   dscComp.textContent     = esInst  ? 'M\u00ednimo 2 fotos: detalle y vista general'
+                                          : esEnvio ? 'Foto de la gu\u00eda de rastreo'
+                                          : 'Acuse de recibido o evidencia de entrega';
+  if (esInst) {
+    // Inicializar checks
+    ENT_CHECKLIST_ITEMS.forEach(function(it) {
+      if (!(it.id in ENT_CHECKS)) ENT_CHECKS[it.id] = undefined;
+    });
+    entRenderChecklist();
+    entRenderEvidencia();
+    setTimeout(instIniciarFirmas, 150);
+    // Pre-llenar técnico con el nombre de usuario si está disponible
+    var nomTec = document.getElementById('inst-tecnico-nombre');
+    if (nomTec && !nomTec.value) {
+      var us = typeof usuarioNombre === 'function' ? usuarioNombre() : '';
+      if (us) nomTec.value = us;
+    }
+    // Fecha de hoy
+    var fInst = document.getElementById('inst-fecha');
+    if (fInst && !fInst.value) fInst.value = new Date().toISOString().split('T')[0];
+  }
+}
+
+// ── Validación + reporte instalación ─────────────────────────
+function entGenerarReporteInstalacion() {
+  var cliente   = (document.getElementById('ent-cliente') || {}).value || '';
+  var desc      = (document.getElementById('ent-desc')    || {}).value || '';
+  var tecnico   = (document.getElementById('inst-tecnico-nombre') || {}).value || '';
+  var asignado  = (document.getElementById('inst-asignado') || {}).value || '';
+  var direccion = (document.getElementById('inst-direccion') || {}).value || '';
+  var fecha     = (document.getElementById('inst-fecha') || {}).value || '';
+  var monto     = parseFloat((document.getElementById('inst-monto') || {}).value) || 0;
+  var folio     = (document.getElementById('ent-folio') || {}).value || ('INST-' + Date.now().toString().slice(-6));
+  var errEl     = document.getElementById('ent-error');
+  if (errEl) errEl.style.display = 'none';
+
+  if (!cliente.trim()) {
+    if (errEl) { errEl.textContent='Ingresa el nombre del cliente'; errEl.style.display='block'; }
+    return;
+  }
+  if (!entChecklistCompleto()) {
+    if (errEl) { errEl.textContent='Marca todos los puntos del checklist (\u2713 o \u2715 en cada punto)'; errEl.style.display='block'; }
+    return;
+  }
+  if (!instEvidenciaCompleta()) {
+    if (errEl) { errEl.textContent='Adjunta las 4 fotos obligatorias de evidencia'; errEl.style.display='block'; }
+    return;
+  }
+
+  var btn = document.getElementById('ent-btn-guardar');
+  if (btn && btn.disabled) return;
+  if (btn) { btn.disabled=true; btn.textContent='Generando...'; }
+
+  try {
+    // Firmas
+    var canvTec = document.getElementById('ent-canvas-tecnico');
+    var canvCli = document.getElementById('ent-canvas-cliente');
+    var firmaTec = canvTec ? canvTec.toDataURL('image/png') : '';
+    var firmaCli = canvCli ? canvCli.toDataURL('image/png') : '';
+
+    // Checklist HTML
+    var ckRows = ENT_CHECKLIST_ITEMS.map(function(it) {
+      var ok   = ENT_CHECKS[it.id] === true;
+      var nota = ENT_CHECKS[it.id+'_nota'] || '';
+      return '<tr style="border-bottom:1px solid #f0f0f0">'
+        + '<td style="padding:6px 8px;width:30px;text-align:center;font-size:14px">' + (ok?'&#9989;':'&#10060;') + '</td>'
+        + '<td style="padding:6px 8px;font-weight:600;color:#1B3A5C;font-size:12px">' + it.titulo + '</td>'
+        + '<td style="padding:6px 8px;color:#6B7280;font-size:11px">' + it.desc + '</td>'
+        + '<td style="padding:6px 8px;font-size:11px;color:#9CA3AF;font-style:italic">' + nota + '</td>'
+        + '</tr>';
+    }).join('');
+
+    // Fotos de evidencia
+    var fotosHtml = ENT_EVIDENCIA_SLOTS.map(function(slot) {
+      var ev = ENT_EVIDENCIA[slot.id];
+      if (!ev) return '';
+      if (ev.tipo === 'video') {
+        return '<div style="margin-bottom:8px"><div style="font-size:11px;font-weight:600;color:#1B3A5C;margin-bottom:3px">'
+          + slot.titulo + '</div><div style="font-size:11px;color:#6B7280;background:#f9f9f9;padding:6px 8px;border-radius:6px">'
+          + '&#127916; ' + ev.nombre + '</div></div>';
+      }
+      return '<div style="display:inline-block;margin:4px;vertical-align:top;width:calc(50% - 8px)">'
+        + '<div style="font-size:10px;color:#6B7280;margin-bottom:3px">' + slot.titulo + '</div>'
+        + '<img src="' + ev.b64 + '" style="width:100%;border-radius:6px;border:1px solid #e8ecf0">'
+        + '</div>';
+    }).join('');
+
+    var meses = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+    var hoy   = fecha ? new Date(fecha+'T12:00:00') : new Date();
+    var fechaStr = hoy.getDate() + ' de ' + meses[hoy.getMonth()+1] + ' de ' + hoy.getFullYear();
+
+    var htmlReporte = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
+      + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+      + '<style>body{font-family:Arial,sans-serif;padding:16px;max-width:700px;margin:0 auto;color:#1B3A5C}'
+      + 'h1{color:#1B3A5C;font-size:18px;border-bottom:3px solid #C8923A;padding-bottom:8px}'
+      + 'h2{color:#1B3A5C;font-size:14px;border-bottom:1px solid #E8ECF0;padding-bottom:4px;margin-top:20px}'
+      + '.meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}'
+      + '.meta-item{background:#F8F9FA;padding:8px 10px;border-radius:6px}'
+      + '.meta-label{font-size:10px;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px}'
+      + '.meta-val{font-size:13px;font-weight:700;margin-top:2px}'
+      + 'table{width:100%;border-collapse:collapse;font-size:12px}'
+      + '.firma-box{width:47%;display:inline-block;margin:4px 1%;vertical-align:top;background:#F8F9FA;border-radius:8px;padding:10px;text-align:center}'
+      + '</style></head><body>'
+      + '<h1>&#128295; Reporte de Instalaci\u00f3n</h1>'
+      + '<div style="font-size:11px;color:#9CA3AF;margin-bottom:14px">Folio: <strong>' + folio + '</strong> &nbsp; Fecha: ' + fechaStr + '</div>'
+      + '<div class="meta">'
+      + '<div class="meta-item"><div class="meta-label">Cliente</div><div class="meta-val">' + cliente + '</div></div>'
+      + '<div class="meta-item"><div class="meta-label">T\u00e9cnico</div><div class="meta-val">' + (tecnico||'N/A') + '</div></div>'
+      + '<div class="meta-item"><div class="meta-label">Asignado por</div><div class="meta-val">' + (asignado||'N/A') + '</div></div>'
+      + '<div class="meta-item"><div class="meta-label">Monto</div><div class="meta-val">' + (monto?'$'+monto.toLocaleString('es-MX'):'N/A') + '</div></div>'
+      + '</div>'
+      + (direccion ? '<div style="background:#F8F9FA;padding:8px 10px;border-radius:6px;margin-bottom:14px;font-size:12px"><span style="color:#9CA3AF;font-size:10px">DIRECCIÓN: </span>' + direccion + '</div>' : '')
+      + '<h2>&#9989; Checklist T\u00e9cnico de Calidad</h2>'
+      + '<table>' + ckRows + '</table>'
+      + '<h2>&#128247; Evidencia Fotogr\u00e1fica</h2>'
+      + '<div>' + fotosHtml + '</div>'
+      + '<h2>&#9997; Firmas de Conformidad</h2>'
+      + '<div style="display:flex;gap:8px">'
+      + '<div class="firma-box"><div style="font-size:10px;color:#9CA3AF;margin-bottom:6px">T\u00c9CNICO INSTALADOR</div>'
+      + (firmaTec ? '<img src="' + firmaTec + '" style="max-width:100%;height:60px;object-fit:contain">' : '<div style="height:60px;border:1px dashed #ccc;border-radius:4px"></div>')
+      + '<div style="font-size:11px;font-weight:600;margin-top:4px;border-top:1px solid #ccc;padding-top:4px">' + (tecnico||'_______________') + '</div></div>'
+      + '<div class="firma-box"><div style="font-size:10px;color:#9CA3AF;margin-bottom:6px">RECIBIDO POR CLIENTE</div>'
+      + (firmaCli ? '<img src="' + firmaCli + '" style="max-width:100%;height:60px;object-fit:contain">' : '<div style="height:60px;border:1px dashed #ccc;border-radius:4px"></div>')
+      + '<div style="font-size:11px;font-weight:600;margin-top:4px;border-top:1px solid #ccc;padding-top:4px">' + cliente + '</div></div>'
+      + '</div>'
+      + '<div style="margin-top:20px;padding:10px;background:#F8F9FA;border-radius:6px;font-size:11px;color:#9CA3AF;text-align:center">Generado por BarrCan PWA &bull; ' + new Date().toLocaleString('es-MX') + '</div>'
+      + '</body></html>';
+
+    // Guardar en Supabase
+    var payload = {
+      folio: folio,
+      cliente: cliente.trim(),
+      tel: (document.getElementById('ent-tel')||{}).value || null,
+      tipo: 'instalacion',
+      descripcion: desc.trim() || ('Instalaci\u00f3n - ' + cliente.trim()),
+      fecha: fecha || new Date().toISOString().split('T')[0],
+      html_reporte: htmlReporte,
+      checklist_ok: ENT_CHECKLIST_ITEMS.filter(function(it){return ENT_CHECKS[it.id]===true;}).length,
+      checklist_total: ENT_CHECKLIST_ITEMS.length,
+      tecnico: tecnico,
+      asignado_por: asignado,
+      monto: monto || null,
+      synced: false
+    };
+
+    // Guardar offline-first
+    var pending = JSON.parse(localStorage.getItem('ent_pending') || '[]');
+    pending.push(payload);
+    localStorage.setItem('ent_pending', JSON.stringify(pending));
+
+    // Intentar sync
+    if (typeof sb === 'function' && sb()) {
+      sb().from('entregas').insert([payload]).then(function(res) {
+        if (!res.error) {
+          var p2 = JSON.parse(localStorage.getItem('ent_pending')||'[]');
+          p2 = p2.filter(function(x){return x.folio !== folio;});
+          localStorage.setItem('ent_pending', JSON.stringify(p2));
+        }
+      });
+    }
+
+    // Mostrar reporte
+    var win = window.open('','_blank');
+    if (win) win.document.write(htmlReporte);
+
+    // Post-acciones
+    var postOv   = document.getElementById('ent-post-ov');
+    var postFol  = document.getElementById('ent-post-folio');
+    var postCli  = document.getElementById('ent-post-cliente');
+    if (postOv)  postOv.style.display  = 'flex';
+    if (postFol) postFol.textContent   = folio;
+    if (postCli) postCli.textContent   = cliente;
+
+  } catch(e) {
+    var errEl2 = document.getElementById('ent-error');
+    if (errEl2) { errEl2.textContent='Error: '+e.message; errEl2.style.display='block'; }
+  } finally {
+    var btn2 = document.getElementById('ent-btn-guardar');
+    if (btn2) { btn2.disabled=false; btn2.textContent='Generar Comprobante de Entrega'; }
+  }
+}
+
+
 </script>
 </body>
 </html>
