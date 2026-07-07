@@ -3723,13 +3723,17 @@ const STATE = {
   historial: []
 };
 
-// ══════════════════════════════════════════════
-// INIT
-// ══════════════════════════════════════════════
-document.addEventListener('DOMContentLoaded', () => {
-  // La app se inicializa dentro de pinAcceso() después de validar el PIN
-  pinArranque();
-});
+// Modalidad de película/vinilo: 'completa' o 'franja'.
+// Se declara aquí (y no solo dentro de setPelModalidad) porque el botón
+// "Completa" ya aparece activo por defecto en el HTML (pel-mod-completa),
+// y calcular() puede invocar calcularPelicula() antes de que el usuario
+// haga clic en algún botón de modalidad.
+let pelModalidad = 'completa';
+
+// NOTA: este módulo es standalone (extraído de barrcan_app.html) y no usa
+// el sistema de PIN/usuarios del app completo. La inicialización real de
+// este cotizador ocurre más abajo, en el segundo DOMContentLoaded
+// (snDetectar / snBuildUI / snHistorial / actualizarPelicula).
 
 function detectarConexion() {
   const badge = document.getElementById('conn-status');
@@ -4859,7 +4863,16 @@ function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 function fmt(n) {
   return parseFloat(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
-function usuarioNombre() { return USUARIO_ACTIVO.nombre || 'BarrCan'; }
+function usuarioNombre() { return (typeof USUARIO_ACTIVO !== 'undefined' && USUARIO_ACTIVO.nombre) || 'BarrCan'; }
+
+// Tomada tal cual de barrcan_app.html para mantener el mismo look en ambas apps.
+function renderFilaCosto(label, monto, esGif=false, esUtilidad=false, esAlerta=false) {
+  let colorClass = '';
+  let pct = '';
+  if (esUtilidad) { colorClass = 'style=color:var(--green)'; pct = `<span class=costo-pct style=color:var(--green)>+${document.getElementById('cfg-utilidad').value}%</span>`; }
+  if (esGif) { pct = `<span class=costo-pct>+${document.getElementById('cfg-gif').value}%</span>`; }
+  return `<div class=costo-row><span>${label}${pct}</span><span class=costo-monto ${colorClass}>$${fmt(monto)}</span></div>`;
+}
 
 // ── Toast ─────────────────────────────────────────────────────
 function toast(msg){
@@ -5482,7 +5495,7 @@ async function snHistorial(){
   try{
     const res=await sb().from('presupuestos_atrasados')
       .select('id,folio,cliente,descripcion,monto,saldo,estado,fecha,archivo_url,archivo_nombre,notas_internas')
-      .or("folio.ilike.%B-%,descripcion.ilike.%C-LIGHT%,descripcion.ilike.%Panorama%,descripcion.ilike.%Cuprum%,descripcion.ilike.%Fijo%")
+      .ilike('folio', '%B-%')
       .in('estado',['activo','aprobado','en_produccion','pendiente_entrega'])
       .order('created_at',{ascending:false}).limit(10);
     if(res.error)throw res.error;
