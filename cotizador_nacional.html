@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Cotizador Nacional</title>
 <!--
-  BARRCAN COTIZADOR NACIONAL v2.4
-  Idéntico al app base: calcular(), renderResultado(), película, Vista Cliente/Taller
+  BARRCAN COTIZADOR NACIONAL v2.5
+  v2.5 - Fix PELICULA_PRECIOS + ROLLO_ANCHO_CM + export-bar + renderVista + cambiarVista
 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
@@ -4832,6 +4832,15 @@ const FAMILIAS_NACIONAL = [
 
   // ══════════════════════════════════════
 ];
+
+// ── Variables globales de película (del app base) ─────────────
+const PELICULA_PRECIOS = {
+  esmerilada: { venta: 350, costo: 150, nombre: 'Transparente / Esmerilada' },
+  filtrasol:  { venta: 390, costo: 180, nombre: 'Filtrasol / Reflecta Plata' },
+  vinilo:     { venta: 450, costo: 0,   nombre: 'Vinilo Decorativo' }
+};
+const ROLLO_ANCHO_CM = 152;
+
 
 // ── Supabase ─────────────────────────────────────────────────
 const SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
