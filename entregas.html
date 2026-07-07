@@ -6,11 +6,11 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
-  VERSION : v3.8.1
+  VERSION : v3.8.2
   FECHA   : 2026-07-07
-  v3.8.1 - Corrección en carga de dirección:
-    - Al recibir datos de Supabase, se refresca la selección para precargar dir_obra.
-    - Fallback: si el presupuesto no tiene dirección, se toma la del cliente seleccionado.
+  v3.8.2 - Corrección definitiva de carga de dirección:
+    - Refresco automático al recibir datos de Supabase.
+    - Fallback de dirección desde el cliente si el presupuesto no tiene.
 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
@@ -1347,7 +1347,7 @@ body{min-height:100vh}
 <input type="file" id="inst-file-input" accept="image/*,video/*" capture="environment" style="display:none" onchange="instArchivoCapturado(this)">
 
 <script>
-// BARRCAN ENTREGAS v3.8.1 — Corrección de carga de dirección
+// BARRCAN ENTREGAS v3.8.2 — Corrección definitiva de carga de dirección
 var SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb = null;
