@@ -1029,6 +1029,133 @@ select.form-select { padding-right: 36px; cursor: pointer; }
   margin-bottom: 12px;
   text-align: center;
 }
+.5; }
+
+/* ─── RESULTADO / PRESUPUESTO ─── */
+.resultado-header {
+  background: linear-gradient(135deg, var(--navy), #2A4F7A);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+  color: white;
+  position: relative;
+  overflow: hidden;
+}
+.resultado-header::after {
+  content: 'BC';
+  position: absolute;
+  right: -8px;
+  bottom: -20px;
+  font-family: 'Playfair Display', serif;
+  font-size: 80px;
+  font-weight: 900;
+  color: rgba(255,255,255,0.04);
+  pointer-events: none;
+}
+.04);
+  pointer-events: none;
+}
+.res-label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,0.5); margin-bottom: 4px; }
+.res-precio-final {
+  text-align: right;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.15);
+}
+.res-medidas {
+  font-family: 'DM Mono', monospace;
+  font-size: 14px;
+  color: var(--gold-light);
+  letter-spacing: 1px;
+}
+.7; }
+
+/* Vista toggle */
+.vista-toggle {
+  display: flex;
+  background: var(--gray-100);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  margin-bottom: 12px;
+}
+.vista-btn {
+  flex: 1;
+  padding: 8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-400);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.vista-btn.active {
+  background: var(--white);
+  color: var(--navy);
+  box-shadow: var(--shadow-sm);
+}
+.desglose-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-sm);
+}
+.desglose-header {
+  padding: 12px 16px;
+  background: var(--navy);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.costo-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--gray-100);
+  font-size: 13px;
+}
+.costo-row:last-child { border-bottom: none; }
+.costo-row.subtotal { background: var(--gray-100); font-weight: 600; }
+.costo-row.total {
+  background: var(--navy);
+  color: white;
+  font-weight: 700;
+  font-size: 15px;
+  padding: 14px 16px;
+}
+.costo-row.total .costo-monto { color: var(--gold-light); font-family: 'DM Mono', monospace; }
+.costo-monto { font-family: 'DM Mono', monospace; font-weight: 600; }
+.slide-up { animation: slideUp 0.35s cubic-bezier(.4,0,.2,1); }
+.export-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--white);
+  border-top: 1px solid var(--gray-200);
+  padding: 12px 16px;
+  display: none;
+  gap: 10px;
+  z-index: 200;
+}
+.export-bar.visible { display: flex; }
+.header, .tabs, .export-bar, .toast,
+  .barra-seleccion, #modal-overlay, #modal-edicion,
+  #modal-contrato-overlay, #modal-contrato { display: none !important; }
+.5px; text-transform: uppercase; color: rgba(255,255,255,0.5); margin-bottom: 4px; }
+.res-diseno { font-family: 'Playfair Display', serif; font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+
+/* ── export-bar ── */
+.export-bar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--gray-200);padding:12px 16px;display:flex;gap:10px;z-index:200;transform:translateY(100%);transition:.3s}.export-bar.visible{transform:none}.btn-export{flex:1;padding:11px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-family:"DM Sans",sans-serif;font-size:14px;font-weight:700;cursor:pointer}.btn-save{padding:11px 14px;background:var(--gold);color:#fff;border:none;border-radius:8px;font-size:18px;cursor:pointer}
 </style>
 <style>
 body{background:var(--off-white)}
@@ -1056,7 +1183,145 @@ body{background:var(--off-white)}
 .btn-guardar{width:100%;padding:13px;background:var(--gold);color:#fff;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;margin-top:8px}
 /* Fixes para standalone */
 #tab-cotizar{display:block !important}
-.btn-calcular{display:flex;align-items:center;justify-content:center;gap:10px}
+.btn-calc,.btn-calcular{
+  display:flex;align-items:center;justify-content:center;gap:10px;
+  width:100%;padding:18px;margin:16px 0;
+  background:linear-gradient(135deg,#FF6600,#FF8533);
+  color:#fff;border:none;border-radius:12px;
+  font-family:"DM Sans",sans-serif;font-size:16px;font-weight:800;
+  letter-spacing:.5px;cursor:pointer;
+  box-shadow:0 6px 20px rgba(255,102,0,.4);
+  transition:all .2s
+}
+.btn-calc:active,.btn-calcular:active{transform:scale(.97)}
+.btn-calc-icon{font-size:20px}
+.5; }
+
+/* ─── RESULTADO / PRESUPUESTO ─── */
+.resultado-header {
+  background: linear-gradient(135deg, var(--navy), #2A4F7A);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+  color: white;
+  position: relative;
+  overflow: hidden;
+}
+.resultado-header::after {
+  content: 'BC';
+  position: absolute;
+  right: -8px;
+  bottom: -20px;
+  font-family: 'Playfair Display', serif;
+  font-size: 80px;
+  font-weight: 900;
+  color: rgba(255,255,255,0.04);
+  pointer-events: none;
+}
+.04);
+  pointer-events: none;
+}
+.res-label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,0.5); margin-bottom: 4px; }
+.res-precio-final {
+  text-align: right;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.15);
+}
+.res-medidas {
+  font-family: 'DM Mono', monospace;
+  font-size: 14px;
+  color: var(--gold-light);
+  letter-spacing: 1px;
+}
+.7; }
+
+/* Vista toggle */
+.vista-toggle {
+  display: flex;
+  background: var(--gray-100);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  margin-bottom: 12px;
+}
+.vista-btn {
+  flex: 1;
+  padding: 8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-400);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.vista-btn.active {
+  background: var(--white);
+  color: var(--navy);
+  box-shadow: var(--shadow-sm);
+}
+.desglose-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-sm);
+}
+.desglose-header {
+  padding: 12px 16px;
+  background: var(--navy);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.costo-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--gray-100);
+  font-size: 13px;
+}
+.costo-row:last-child { border-bottom: none; }
+.costo-row.subtotal { background: var(--gray-100); font-weight: 600; }
+.costo-row.total {
+  background: var(--navy);
+  color: white;
+  font-weight: 700;
+  font-size: 15px;
+  padding: 14px 16px;
+}
+.costo-row.total .costo-monto { color: var(--gold-light); font-family: 'DM Mono', monospace; }
+.costo-monto { font-family: 'DM Mono', monospace; font-weight: 600; }
+.slide-up { animation: slideUp 0.35s cubic-bezier(.4,0,.2,1); }
+.export-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--white);
+  border-top: 1px solid var(--gray-200);
+  padding: 12px 16px;
+  display: none;
+  gap: 10px;
+  z-index: 200;
+}
+.export-bar.visible { display: flex; }
+.header, .tabs, .export-bar, .toast,
+  .barra-seleccion, #modal-overlay, #modal-edicion,
+  #modal-contrato-overlay, #modal-contrato { display: none !important; }
+.5px; text-transform: uppercase; color: rgba(255,255,255,0.5); margin-bottom: 4px; }
+.res-diseno { font-family: 'Playfair Display', serif; font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+
+/* ── export-bar ── */
+.export-bar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--gray-200);padding:12px 16px;display:flex;gap:10px;z-index:200;transform:translateY(100%);transition:.3s}.export-bar.visible{transform:none}.btn-export{flex:1;padding:11px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-family:"DM Sans",sans-serif;font-size:14px;font-weight:700;cursor:pointer}.btn-save{padding:11px 14px;background:var(--gold);color:#fff;border:none;border-radius:8px;font-size:18px;cursor:pointer}
 </style>
 </head>
 <body>
@@ -1390,6 +1655,12 @@ body{background:var(--off-white)}
   </div>
 
 </div><!-- /sn-body -->
+
+<!-- Export bar (mismo que app base) -->
+<div class="export-bar" id="export-bar">
+  <button class="btn-export" onclick="snGuardarDesdeResultado()">💾 Guardar presupuesto</button>
+  <button class="btn-save" onclick="window.print()" title="Imprimir">🖨️</button>
+</div>
 </body>
 
 <script>
@@ -5312,6 +5583,201 @@ function snActualizarResumenFijo() {
   div.style.color = Hcor < 100 ? 'var(--red)' : 'var(--gray-400)';
 }
 
+// ── Vista Cliente / Vista Taller (del app base) ───────────────
+let vistaActual = 'cliente';
+
+function cambiarVista(v) {
+  vistaActual = v;
+  document.querySelectorAll('.vista-btn').forEach(b => b.classList.toggle('active', b.textContent.includes(v === 'cliente' ? 'Cliente' : 'Taller')));
+  renderVista(STATE.ultimoResultado);
+}
+function renderVista(r) {
+  const el = document.getElementById('vista-contenido');
+  if (!el) return;
+
+  if (vistaActual === 'cliente') {
+    el.innerHTML = `
+      <!-- Vidrio -->
+      <div class=desglose-card fade-in>
+        <div class=desglose-header>🔲 Acristalamiento — Orden al Proveedor</div>
+        <div class=desglose-row>
+          <div class=desglose-clave>TIPO</div>
+          <div class=desglose-desc>${r.vidTipo}</div>
+          <div class=desglose-val>${r.vidCant}× pza</div>
+        </div>
+        <div class=desglose-row style=background:rgba(200,146,58,0.06);border-left:3px solid var(--gold)>
+          <div style=flex:1>
+            <div style=font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--gray-400);margin-bottom:4px>Medidas netas a fabricar</div>
+            <div style=font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:var(--navy);letter-spacing:1px>${r.anchoVid} <span style=color:var(--gray-400);font-size:16px>×</span> ${r.altoVid} <span style=font-size:13px;color:var(--gray-400);font-weight:400>mm</span></div>
+            <div style=font-size:11px;color:var(--gray-400);margin-top:3px>${(r.anchoVid/10).toFixed(1)} × ${(r.altoVid/10).toFixed(1)} cm &nbsp;·&nbsp; ${r.m2Vidrio} m²</div>
+          </div>
+        </div>
+        <div class=desglose-row>
+          <div class=desglose-clave>Peso</div>
+          <div class=desglose-desc>Peso total del vidrio instalado</div>
+          <div class=desglose-val>${r.pesoVidrio} kg</div>
+        </div>
+      </div>
+
+      <!-- Resumen costos cliente -->
+      <div class=desglose-card fade-in>
+        <div class=desglose-header>💰 Desglose de Precio</div>
+        ${renderFilaCosto('Materiales (aluminio + herrajes)', r.costoAluminio + r.costoHerrajes)}
+        ${renderFilaCosto('Vidrio ' + r.vidTipo, r.costoVidrio)}
+        ${renderFilaCosto('Mano de obra', r.mdoTotal)}
+        ${renderFilaCosto('Gastos indirectos (GIF)', r.gif, true)}
+        ${renderFilaCosto('Logística de campo', r.costoLogistica)}
+        ${r.costoVisita > 0 ? renderFilaCosto('Visita técnica previa', r.costoVisita) : ''}
+        ${renderFilaCosto('Utilidad', r.utilidad, false, true)}
+        ${r.descuentoMonto > 0 ? `
+        <div style="height:1px;background:var(--gray-100)"></div>
+        <div class="costo-row" style="background:rgba(192,57,43,0.04)">
+          <span style="color:var(--red)">🏷️ Descuento cliente (${Math.round((r.descuentoPct||0)*100)}%)</span>
+          <span class="costo-monto" style="color:var(--red)">−$${fmt(r.descuentoMonto)}</span>
+        </div>` : ''}
+        ${r.pelData ? `
+        <div style=height:1px;background:var(--gray-100)></div>
+        <div class=costo-row style=background:rgba(46,109,164,0.04)>
+          <span>
+            🎞️ ${r.pelData.nombre}
+            <span class=costo-pct>${r.pelData.modalidadLabel} · ${r.pelData.m2Total.toFixed(2)} m²</span>
+            ${r.pelData.anchoVidM*100 > 152 ? '<span style=color:var(--amber);font-size:10px;font-weight:700> ⚠️ unión requerida</span>' : ''}
+          </span>
+          <span class=costo-monto style=color:var(--blue)>$${fmt(r.pelData.totalVenta)}</span>
+        </div>` : ''}
+        <div class=costo-row total>
+          <span>PRECIO FINAL</span>
+          <span class=costo-monto>$${fmt(r.precioFinal)} MXN</span>
+        </div>
+      </div>
+
+      <!-- Notas de instalación -->
+      <div class=wizard-card fade-in style=margin-bottom:20px>
+        <div class=wizard-title>📝 Notas de Instalación</div>
+        <ul style=padding-left:18px;font-size:13px;color:var(--gray-600);line-height:2>
+          <li>Incluye sellado perimetral con silicón de alta resistencia</li>
+          <li>Holgura de taller de 3mm aplicada en ambas dimensiones</li>
+          <li>Vidrio: ${r.vidTipo} — <strong style=font-family:'DM Mono',monospace>${r.anchoVid} × ${r.altoVid} mm</strong></li>
+          <li>${STATE.modalidad === 'envio' ? 'Empaque blindado incluido para envío nacional' : 'Instalación en sitio incluida'}</li>
+          ${STATE.visitaTecnica ? '<li>Incluye visita técnica previa de medición</li>' : ''}
+        </ul>
+      </div>
+    `;
+  } else {
+    // VISTA TALLER
+    el.innerHTML = `
+      <!-- Lista de cortes -->
+      <div class=desglose-card fade-in>
+        <div class=desglose-header>✂️ Lista de Cortes — Taller</div>
+        ${r.cortesCalc.map(c => `
+          <div class=desglose-row>
+            <div>
+              <div class=desglose-clave>${c.clave}</div>
+              <div style=font-size:9px;color:var(--gray-400);margin-top:2px>${c.cant}× pzas</div>
+            </div>
+            <div class=desglose-desc>${c.nombre}</div>
+            <div class=desglose-val>
+              <div>${c.mm} mm</div>
+              <div style=font-size:10px;color:var(--gray-400)>${c.pesoKg.toFixed(2)} kg</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+
+      <!-- Vidrio para proveedor -->
+      <div class=desglose-card fade-in>
+        <div class=desglose-header>🔵 Orden de Vidrio — Proveedor</div>
+        <div class=desglose-row>
+          <div class=desglose-clave>VIDRIO</div>
+          <div class=desglose-desc>
+            ${r.vidTipo}<br>
+            <strong style=font-family:'DM Mono',monospace;color:var(--gold)>${r.anchoVid} × ${r.altoVid} mm</strong><br>
+            <small>Cantidad: ${r.vidCant} pieza(s)</small>
+          </div>
+          <div class=desglose-val gold>${r.m2Vidrio} m²</div>
+        </div>
+      </div>
+
+      <!-- Herrajes a extraer -->
+      <div class=desglose-card fade-in>
+        <div class=desglose-header>🔩 Herrajes a Extraer del Inventario</div>
+        ${r.herrajesCalc.map(h => `
+          <div class=desglose-row>
+            <div class=desglose-clave>${h.cod}</div>
+            <div class=desglose-desc>${h.desc}</div>
+            <div class=desglose-val>${h.cant} <span style=font-size:10px;color:var(--gray-400)>pz/ml</span></div>
+          </div>
+        `).join('')}
+      </div>
+
+      <!-- Costo real desglosado -->
+      <div class=desglose-card fade-in>
+        <div class=desglose-header>📊 Cálculo Interno de Costos</div>
+        ${renderFilaCosto('Aluminio (c/merma+acabado)', r.costoAluminio)}
+        ${renderFilaCosto('Vidrio', r.costoVidrio)}
+        ${renderFilaCosto('Herrajes', r.costoHerrajes)}
+        ${renderFilaCosto('Mano de obra (×' + r.alertaPeso.factorMO.toFixed(1) + ')', r.mdoTotal, false, false, true)}
+        <div class=costo-row subtotal><span>SUBTOTAL FABRICACIÓN</span><span class=costo-monto>$${fmt(r.subtotalFabricacion)}</span></div>
+        ${renderFilaCosto('GIF +' + document.getElementById('cfg-gif').value + '%', r.gif)}
+        ${renderFilaCosto('Logística', r.costoLogistica)}
+        ${r.costoVisita > 0 ? renderFilaCosto('Visita técnica', r.costoVisita) : ''}
+        <div class=costo-row subtotal><span>COSTO REAL ACUMULADO</span><span class=costo-monto>$${fmt(r.costoRealAcumulado)}</span></div>
+        ${renderFilaCosto('Utilidad +' + document.getElementById('cfg-utilidad').value + '%', r.utilidad, false, true)}
+        ${r.pelData ? `
+        <div style=height:1px;background:rgba(255,255,255,0.1)></div>
+        <div class=costo-row style=background:rgba(46,109,164,0.08)>
+          <span>🎞️ ${r.pelData.nombre} <span class=costo-pct>${r.pelData.m2Total.toFixed(2)} m² · $${fmt(r.pelData.costoM2)}/m² costo</span></span>
+          <span class=costo-monto>$${fmt(r.pelData.totalVenta)}</span>
+        </div>
+        <div class=costo-row style=font-size:11px;color:var(--gray-400)>
+          <span style=padding-left:8px>↳ Costo material: $${fmt(r.pelData.totalCosto)} · Utilidad película: $${fmt(r.pelData.totalVenta - r.pelData.totalCosto)}</span>
+          <span></span>
+        </div>
+        ${r.pelData.anchoVidM*100 > 152 ? `
+        <div class=costo-row style=background:rgba(230,126,34,0.08);font-size:11px>
+          <span style=color:var(--amber);font-weight:600>⚠️ Ancho ${(r.pelData.anchoVidM*100).toFixed(0)} cm supera rollo (152 cm) — requerirá unión de franjas en instalación</span>
+        </div>` : ''}` : ''}
+        <div class=costo-row total>
+          <span>PRECIO FINAL AL CLIENTE</span>
+          <span class=costo-monto>$${fmt(r.precioFinal)} MXN</span>
+        </div>
+      </div>
+      <div style=height:20px></div>
+    `;
+  }
+}
+
+// ── Guardar desde el export-bar ───────────────────────────────
+function snGuardarDesdeResultado() {
+  // Scroll al formulario de guardar
+  const gc = document.getElementById('sn-guardar-card');
+  if (gc) {
+    gc.scrollIntoView({behavior:'smooth', block:'start'});
+    // Highlight breve
+    gc.style.transition = 'box-shadow .3s';
+    gc.style.boxShadow  = '0 0 0 3px rgba(200,146,58,.5)';
+    setTimeout(() => gc.style.boxShadow = '', 1500);
+  }
+}
+
+// ── switchTab override con export-bar ────────────────────────
+function switchTab(tab) {
+  if (tab === 'resultado') {
+    const tr = document.getElementById('tab-resultado');
+    const hc = document.getElementById('sn-historial-card');
+    const eb = document.getElementById('export-bar');
+    if (tr) tr.style.display = 'block';
+    if (hc) hc.style.display = 'none';
+    if (eb) eb.classList.add('visible');
+    document.querySelector('.sn-body').style.paddingBottom = '80px';
+    setTimeout(() => tr?.scrollIntoView({behavior:'smooth', block:'start'}), 150);
+  }
+}
+
+// ── abrirModalContrato — stub para standalone ─────────────────
+function abrirModalContrato() { snGuardarDesdeResultado(); }
+function guardarCotizacion() { snGuardarDesdeResultado(); }
+
 // ── Exponer al scope global ──────────────────────────────
 window.calcular = calcular;
 window.setPiso = setPiso;
@@ -5327,9 +5793,19 @@ window.snTogDet = snTogDet;
 window.snVerArch = snVerArch;
 window.snArchivoAdj = snArchivoAdj;
 window.snBuildUI = snBuildUI;
+window.cambiarVista = cambiarVista;
+window.snGuardarDesdeResultado = snGuardarDesdeResultado;
+window.abrirModalContrato = abrirModalContrato;
+window.guardarCotizacion = guardarCotizacion;
 window.snActualizarResumenFijo = snActualizarResumenFijo;
 
 })();
 </script>
+
+<!-- Export bar (mismo que app base) -->
+<div class="export-bar" id="export-bar">
+  <button class="btn-export" onclick="snGuardarDesdeResultado()">💾 Guardar presupuesto</button>
+  <button class="btn-save" onclick="window.print()" title="Imprimir">🖨️</button>
+</div>
 </body>
 </html>
