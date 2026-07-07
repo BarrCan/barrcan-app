@@ -6,13 +6,10 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
-  VERSION : v3.7
+  VERSION : v3.8
   FECHA   : 2026-07-07
-  v3.7 - Mejoras en instalación:
-    - Historial movido al final de la página.
-    - Eliminado botón "Jalar" y campo duplicado.
-    - Al seleccionar folio CACN, los datos de obra (dirección, monto) se rellenan automáticamente.
-    - Sincronización automática al cambiar a pestaña instalación.
+  v3.8 - Unificación de datos de obra, eliminación de búsqueda rápida,
+         carga automática de dirección y monto al seleccionar folio.
 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
@@ -1076,17 +1073,6 @@ body{min-height:100vh}
     <!-- CLIENTE -->
     <div class="wizard-card" style="margin-bottom:12px">
       <div class="wizard-title">&#128100; Cliente</div>
-      <label class="form-label">B&uacute;squeda r&aacute;pida por n&uacute;mero de cliente</label>
-      <div style="display:flex;gap:8px;margin-bottom:8px">
-        <input type="text" id="ent-busca-num" class="form-input"
-          placeholder="Ej: 094" inputmode="numeric"
-          style="font-family:'DM Mono',monospace;font-size:15px;font-weight:700;max-width:100px"
-          oninput="entBuscarPorNumero(this.value)">
-        <div style="flex:1;font-size:11px;color:var(--gray-400);padding-top:12px">
-          o selecciona de la lista
-        </div>
-      </div>
-      <div id="ent-busca-feedback" style="font-size:11px;margin-bottom:8px;min-height:16px;font-weight:600"></div>
       <select id="ent-cli-select" class="form-select" onchange="entSelCliente()" style="margin-bottom:8px">
         <option value="">&mdash; Selecciona cliente &mdash;</option>
       </select>
@@ -1105,6 +1091,22 @@ body{min-height:100vh}
             <option value="">&mdash; Selecciona presupuesto &mdash;</option>
           </select>
           <input type="hidden" id="ent-folio">
+        </div>
+      </div>
+    </div>
+
+    <!-- DATOS DE LA OBRA (COMÚN) -->
+    <div class="wizard-card" style="margin-bottom:12px">
+      <div class="wizard-title">📍 Datos de la obra</div>
+      <div class="form-group">
+        <label class="form-label">Direcci&oacute;n de la obra</label>
+        <input type="text" id="inst-direccion" class="form-input" placeholder="Calle, n&uacute;mero, colonia, municipio">
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Monto del trabajo</label>
+        <div class="input-unit">
+          <input type="number" id="inst-monto" class="form-input" placeholder="0.00" inputmode="decimal">
+          <span class="unit-label">$</span>
         </div>
       </div>
     </div>
@@ -1151,27 +1153,9 @@ body{min-height:100vh}
           </div>
         </div>
 
-        <!-- Datos de la obra (se llenan automáticamente al seleccionar folio) -->
+        <!-- Campos específicos de instalación -->
         <div style="background:rgba(27,58,92,.04);border:1px solid rgba(27,58,92,.1);border-radius:8px;padding:10px 12px;margin-bottom:12px">
-          <div style="font-size:11px;font-weight:700;color:var(--navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">&#128203; Datos de la obra</div>
-          <div style="font-size:11px;color:var(--gray-400);margin-bottom:8px;background:rgba(46,109,164,.06);padding:8px;border-radius:6px;border-left:3px solid var(--blue)">
-            &#8505; Selecciona el folio CACN arriba para precargar los datos.
-          </div>
-          <label class="form-label">Direcci&oacute;n de la obra</label>
-          <input type="text" id="inst-direccion" class="form-input" placeholder="Calle, n&uacute;mero, colonia, municipio" style="margin-bottom:8px">
-          <div class="form-row">
-            <div class="form-group" style="margin-bottom:0">
-              <label class="form-label">Monto del trabajo</label>
-              <div class="input-unit">
-                <input type="number" id="inst-monto" class="form-input" placeholder="0.00" inputmode="decimal">
-                <span class="unit-label">$</span>
-              </div>
-            </div>
-            <div class="form-group" style="margin-bottom:0">
-              <label class="form-label">Fecha de entrega</label>
-              <input type="date" id="inst-fecha" class="form-input">
-            </div>
-          </div>
+          <div style="font-size:11px;font-weight:700;color:var(--navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">&#128295; Datos de instalaci&oacute;n</div>
           <div style="margin-top:8px">
             <label class="form-label">T&eacute;cnico instalador</label>
             <input type="text" id="inst-tecnico-nombre" class="form-input" placeholder="Nombre del t&eacute;cnico" style="margin-bottom:4px">
@@ -1362,7 +1346,7 @@ body{min-height:100vh}
 <input type="file" id="inst-file-input" accept="image/*,video/*" capture="environment" style="display:none" onchange="instArchivoCapturado(this)">
 
 <script>
-// BARRCAN ENTREGAS v3.7 — Mejoras en instalación con carga automática al seleccionar folio
+// BARRCAN ENTREGAS v3.8 — Unificación de datos de obra, eliminación de búsqueda rápida
 var SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb = null;
@@ -1455,54 +1439,6 @@ function entCargarClientes() {
     }).catch(function(e) { console.warn('clientes:', e.message); });
 }
 
-// Busqueda rapida por numero de cliente (094, 098, etc.)
-function entBuscarPorNumero(num) {
-  if (!num || num.length < 2) return;
-  var sel = document.getElementById('ent-cli-select');
-  if (!sel) return;
-  // Buscar en el cache por num_cliente
-  var encontrado = null;
-  for (var i = 0; i < _cliCache.length; i++) {
-    var c = _cliCache[i];
-    var numCli = String(c.num_cliente || '').replace(/\D/g, '');
-    if (numCli === num.trim() || numCli.endsWith(num.trim())) {
-      encontrado = c;
-      break;
-    }
-  }
-  if (encontrado) {
-    // Seleccionar en el dropdown de cliente
-    for (var j = 0; j < sel.options.length; j++) {
-      if (sel.options[j].value === encontrado.id) {
-        sel.selectedIndex = j;
-        break;
-      }
-    }
-    // Llenar campos basicos
-    document.getElementById('ent-cliente').value = encontrado.nombre || '';
-    document.getElementById('ent-tel').value = encontrado.telefono || '';
-    // Cargar presupuestos — el dropdown de folio mostrara TODAS las revisiones
-    // (094A, 094B, etc.) para que el tecnico elija la correcta con su monto
-    entCargarPresupuestos(encontrado.nombre || '');
-    // Feedback visual — verde + mostrar nombre encontrado
-    var busca = document.getElementById('ent-busca-num');
-    if (busca) busca.style.borderColor = 'var(--green)';
-    var feedback = document.getElementById('ent-busca-feedback');
-    if (feedback) {
-      feedback.textContent = encontrado.nombre + (encontrado.num_cliente ? ' (' + encontrado.num_cliente + ')' : '') + ' — Selecciona la revision del presupuesto';
-      feedback.style.color = 'var(--green)';
-    }
-  } else {
-    var busca = document.getElementById('ent-busca-num');
-    if (busca && num.length >= 3) busca.style.borderColor = 'var(--red)';
-    var feedback = document.getElementById('ent-busca-feedback');
-    if (feedback && num.length >= 3) {
-      feedback.textContent = 'No. de cliente no encontrado';
-      feedback.style.color = 'var(--red)';
-    }
-  }
-}
-
 function entSelCliente() {
   var sel = document.getElementById('ent-cli-select');
   if (!sel || !sel.value) return;
@@ -1511,6 +1447,8 @@ function entSelCliente() {
   try { c = JSON.parse(opt.dataset.c || '{}'); } catch(e) {}
   document.getElementById('ent-cliente').value = c.nombre || '';
   document.getElementById('ent-tel').value = c.telefono || '';
+  // Si el cliente tiene dirección, pre-llenar
+  if (c.dir_obra) document.getElementById('inst-direccion').value = c.dir_obra;
   entCargarPresupuestos(c.nombre || '');
 }
 
@@ -1537,7 +1475,7 @@ function entCargarPresupuestos(nombreCliente) {
   });
   if (!sb()) return;
   var query = sb().from('presupuestos_atrasados')
-    .select('id,folio,cliente,monto,saldo,descripcion,estado,dir_obra') // agregamos dir_obra
+    .select('id,folio,cliente,monto,saldo,descripcion,estado,dir_obra')
     .in('estado', estados).order('folio', { ascending: true }).limit(50);
   if (nombreCliente) query = query.ilike('cliente', '%' + nombreCliente + '%');
   query.then(function(res) {
@@ -1558,7 +1496,7 @@ function entSelPresupuesto() {
   if (!sel || !sel.value) {
     document.getElementById('ent-folio').value = '';
     document.getElementById('ent-saldo-info').style.display = 'none';
-    // Limpiar campos de instalación también
+    // Limpiar campos de obra
     document.getElementById('inst-direccion').value = '';
     document.getElementById('inst-monto').value = '';
     return;
@@ -1569,7 +1507,7 @@ function entSelPresupuesto() {
   document.getElementById('ent-folio').value = p.folio || sel.value;
   if (p.descripcion) document.getElementById('ent-desc').value = p.descripcion;
   
-  // ── Ahora precargamos los datos de instalación ──
+  // Precargar dirección y monto en el bloque común
   if (p.dir_obra) {
     document.getElementById('inst-direccion').value = p.dir_obra;
   }
@@ -1656,7 +1594,7 @@ function entSelTipo(btn) {
     var fInst = document.getElementById('inst-fecha');
     if (fInst && !fInst.value) fInst.value = new Date().toISOString().split('T')[0];
 
-    // ── Sincronización automática: si ya hay un folio seleccionado, rellenar los campos de obra ──
+    // Sincronización automática: si ya hay un folio seleccionado, rellenar los campos de obra
     var folioSel = document.getElementById('ent-folio-select');
     if (folioSel && folioSel.value) {
       var opt = folioSel.options[folioSel.selectedIndex];
@@ -1741,10 +1679,6 @@ function entReset() {
   var campos = ['ent-cliente','ent-tel','ent-folio','ent-desc','ent-notas','ent-monto'];
   campos.forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
   var cliSel   = document.getElementById('ent-cli-select'); if (cliSel) cliSel.value = '';
-  var buscaEl  = document.getElementById('ent-busca-num');
-  if (buscaEl) { buscaEl.value = ''; buscaEl.style.borderColor = 'var(--gray-200)'; }
-  var feedbackEl = document.getElementById('ent-busca-feedback');
-  if (feedbackEl) { feedbackEl.textContent = ''; }
   var folioSel = document.getElementById('ent-folio-select');
   if (folioSel) folioSel.innerHTML = '<option value="">&mdash; Selecciona presupuesto &mdash;</option>';
   document.getElementById('ent-saldo-info').style.display = 'none';
@@ -1765,9 +1699,9 @@ function entReset() {
   var firmaCard = document.getElementById('ent-firma-card');   if (firmaCard) firmaCard.style.display = 'block';
   var guiaEl    = document.getElementById('ent-guia');         if (guiaEl)    guiaEl.value = '';
   var paqEl     = document.getElementById('ent-paqueteria');   if (paqEl)     paqEl.value  = '';
-  // Limpiar campos de instalación
-  var instCampos = ['inst-direccion','inst-monto','inst-tecnico-nombre','inst-fecha'];
-  instCampos.forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
+  // Limpiar campos comunes de obra
+  var obraCampos = ['inst-direccion','inst-monto','inst-tecnico-nombre','inst-fecha'];
+  obraCampos.forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
   var instAsig = document.getElementById('inst-asignado'); if(instAsig) instAsig.value='';
   entLimpiarFirma();
 }
@@ -1805,6 +1739,8 @@ async function entGenerarReporte() {
     function fd(iso) { if (!iso) return '--'; var p = iso.split('-'); return parseInt(p[2]) + ' de ' + meses[parseInt(p[1])] + ' de ' + p[0]; }
     var fotosEmpHtml  = ENT_FOTOS_EMP.map(function(f) { return '<img src="' + f.dataUrl + '" style="width:100%;max-height:200px;object-fit:contain;border-radius:4px;border:1px solid #ddd;margin-bottom:6px">'; }).join('');
     var fotosCompHtml = ENT_FOTOS_COMP.map(function(f) { return '<img src="' + f.dataUrl + '" style="width:100%;max-height:200px;object-fit:contain;border-radius:4px;border:1px solid #ddd;margin-bottom:6px">'; }).join('');
+    // Obtener dirección del bloque común
+    var direccion = document.getElementById('inst-direccion').value.trim();
 
     _ENT_HTML = '<!DOCTYPE html><html lang=es><head><meta charset=UTF-8><meta name=viewport content=width=device-width>'
       + '<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:9.5pt;color:#1B3A5C;background:white}'
@@ -1830,6 +1766,7 @@ async function entGenerarReporte() {
       + '<table>'
       + '<tr><td class=lbl>Cliente</td><td><strong>' + esc(cliente) + '</strong></td></tr>'
       + (tel ? '<tr><td class=lbl>Telefono</td><td>' + esc(tel) + '</td></tr>' : '')
+      + (direccion ? '<tr><td class=lbl>Dirección</td><td>' + esc(direccion) + '</td></tr>' : '')
       + '<tr><td class=lbl>Fecha</td><td>' + fd(fecha) + '</td></tr>'
       + '<tr><td class=lbl>Descripcion</td><td>' + esc(desc) + '</td></tr>'
       + '<tr><td class=lbl>Piezas</td><td>' + esc(piezas) + '</td></tr>'
@@ -1875,7 +1812,7 @@ async function entGenerarReporte() {
       folio: folioFull, cliente_nombre: cliente, cliente_tel: tel || null,
       fecha_entrega: fecha, tecnico: 'BarrCan', tel_destino: tel || null,
       registrado_por: 'campo', whatsapp_enviado: false,
-      dir_obra: null, reporte_url: reporteUrl
+      dir_obra: direccion || null, reporte_url: reporteUrl
     };
 
     if (!SYNC.online || !sb()) {
@@ -1905,7 +1842,6 @@ async function entGenerarReporte() {
           return new Promise(function(resolve) { setTimeout(function() { intentar(i + 1).then(resolve); }, 1000 * i); });
         }
         entGuardarOffline(dbPayload);
-        // NO forzar offline en catch
         entMostrarPost(folioFull, tel);
         entReset();
       }
@@ -1997,7 +1933,6 @@ async function entCargarHistorial() {
     entRenderHistorial();
   } catch(e) {
     var esRed = /failed to fetch|network/i.test(e.message || '');
-    // NO forzar offline — puede ser fallo puntual de Supabase, no de la red
     if (!local.length)
       div.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">'
         + (esRed ? 'Sin conexion' : 'Error al cargar')
@@ -2041,7 +1976,6 @@ function entRenderHistorial() {
   div.innerHTML = html;
 }
 
-// ── NUEVO: Función principal que descarga y escribe el HTML ──
 function entVerReporte(id) {
   var local = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
   var r = null;
@@ -2050,7 +1984,6 @@ function entVerReporte(id) {
   }
   if (!r) { toast('Reporte no encontrado'); return; }
 
-  // 1. SI TIENE URL DE SUPABASE -> LA DESCARGAMOS Y LA ESCRIBIMOS DIRECTAMENTE
   if (r.reporte_url) {
     fetch(r.reporte_url)
       .then(function(response) { return response.text(); })
@@ -2064,17 +1997,13 @@ function entVerReporte(id) {
         }
       })
       .catch(function(err) {
-        // Si falla la descarga (sin internet o URL caída), usamos el reporte básico de respaldo
         entVerReporteFallback(r);
       });
     return;
   }
-
-  // 2. SI NO TIENE URL -> Usamos el reporte básico de respaldo
   entVerReporteFallback(r);
 }
 
-// ── Función de respaldo (el código viejo que ya tenías) ──
 function entVerReporteFallback(r) {
   var meses = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
   function fd(iso) { if (!iso) return '--'; var p = iso.split('-'); return parseInt(p[2]) + ' de ' + meses[parseInt(p[1])] + ' de ' + p[0]; }
@@ -2114,7 +2043,6 @@ function entVerReporteFallback(r) {
 }
 
 function entAbrirEdicion(id) {
-  // Edicion disponible para todos los usuarios del modulo
   var local = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
   var r = null;
   for (var i = 0; i < local.length; i++) { if (local[i].id === id) { r = local[i]; break; } }
@@ -2218,17 +2146,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
 
 // ══ MÓDULO INSTALACIÓN ══
-// ══════════════════════════════════════════════════════════════
-// MÓDULO INSTALACIÓN — variables y lógica
-// ══════════════════════════════════════════════════════════════
 var ENT_CHECKS       = {};
-var ENT_EVIDENCIA    = {};   // {slot_id: {b64, tipo, nombre}}
-var INST_DATOS_FOLIO = null; // datos jalados del presupuesto
+var ENT_EVIDENCIA    = {};
+var INST_DATOS_FOLIO = null;
 var _ctx_tec         = null;
 var _ctx_cli         = null;
 var _tec_draw        = false;
 var _cli_draw        = false;
-var _inst_slot_activo = null; // slot al que se está asignando archivo
+var _inst_slot_activo = null;
 
 var ENT_CHECKLIST_ITEMS = [
   {id:'ck1', titulo:'Marco Perimetral',        desc:'Plomeado, nivelado y fijación firme sin descuadres ni holguras.'},
@@ -2250,19 +2175,17 @@ var ENT_EVIDENCIA_SLOTS = [
   {id:'ev5', emoji:'🎬', titulo:'Video Funcional',    desc:'Corrida de carretillas o apertura/cierre', tipo:'video', badge:'VIDEO'}
 ];
 
-// ── Render checklist ──────────────────────────────────────────
 function entRenderChecklist() {
   var div = document.getElementById('ent-checklist-lista');
   if (!div) return;
   var ok_count = 0;
   var html = '';
   ENT_CHECKLIST_ITEMS.forEach(function(item) {
-    var val = ENT_CHECKS[item.id]; // true=ok, false=no, undefined=sin marcar
+    var val = ENT_CHECKS[item.id];
     var nota = ENT_CHECKS[item.id + '_nota'] || '';
     ok_count += (val === true) ? 1 : 0;
     html += '<div style="background:var(--off-white);border-radius:8px;padding:10px 12px;margin-bottom:8px">'
       + '<div style="display:flex;align-items:flex-start;gap:10px">'
-      // Botones ✓ ✗
       + '<div style="display:flex;gap:6px;flex-shrink:0;margin-top:2px">'
       + '<div onclick="entSetCheck(\'' + item.id + '\',true)" style="width:28px;height:28px;border-radius:50%;border:2px solid '
       + (val===true ? 'var(--green)' : 'var(--gray-200)') + ';background:' + (val===true ? 'var(--green)' : '#fff')
@@ -2273,7 +2196,6 @@ function entRenderChecklist() {
       + ';display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;color:'
       + (val===false ? '#fff' : 'var(--gray-400)') + ';font-weight:700">✕</div>'
       + '</div>'
-      // Texto
       + '<div style="flex:1">'
       + '<div style="font-size:13px;font-weight:600;color:var(--navy)">' + esc(item.titulo) + '</div>'
       + '<div style="font-size:11px;color:var(--gray-400);margin-bottom:6px">' + esc(item.desc) + '</div>'
@@ -2282,7 +2204,6 @@ function entRenderChecklist() {
       + ' style="width:100%;padding:6px 10px;border:1px solid var(--gray-200);border-radius:6px;font-size:12px;font-family:\'DM Sans\',sans-serif;color:var(--navy);background:#fff">'
       + '</div></div></div>';
   });
-  // Progreso texto debajo
   html += '<div style="text-align:right;font-size:11px;font-weight:600;padding-top:4px;color:'
     + (ok_count===ENT_CHECKLIST_ITEMS.length ? 'var(--green)' : 'var(--gray-400)') + '">'
     + ok_count + ' / ' + ENT_CHECKLIST_ITEMS.length + ' verificados</div>';
@@ -2301,7 +2222,6 @@ function entChecklistCompleto() {
   });
 }
 
-// ── Render slots de evidencia ─────────────────────────────────
 function entRenderEvidencia() {
   var div = document.getElementById('ent-evidencia-slots');
   if (!div) return;
@@ -2311,7 +2231,6 @@ function entRenderEvidencia() {
     html += '<div onclick="instAbrirSlot(\'' + slot.id + '\')" style="display:flex;align-items:center;gap:12px;padding:10px;border:1.5px dashed '
       + (capturado ? 'var(--green)' : 'var(--gray-200)') + ';border-radius:8px;background:'
       + (capturado ? 'rgba(39,174,96,.04)' : '#fafafa') + ';margin-bottom:8px;cursor:pointer;transition:.15s">'
-      // Preview o ícono
       + (capturado && capturado.tipo === 'foto'
         ? '<img src="' + capturado.b64 + '" style="width:44px;height:44px;object-fit:cover;border-radius:6px;flex-shrink:0">'
         : '<div style="width:44px;height:44px;border-radius:8px;background:' + (capturado ? 'rgba(39,174,96,.15)' : 'var(--gray-100)')
@@ -2354,20 +2273,14 @@ function instArchivoCapturado(input) {
 }
 
 function instEvidenciaCompleta() {
-  // Al menos las 4 fotos obligatorias (ev1-ev4)
   return ['ev1','ev2','ev3','ev4'].every(function(id){ return !!ENT_EVIDENCIA[id]; });
 }
 
-// ── Progreso total ────────────────────────────────────────────
 function instActualizarProgreso() {
   var secciones = 0;
-  // 1. Datos básicos
   var cli = document.getElementById('ent-cliente'); if (cli && cli.value.trim()) secciones++;
-  // 2. Checklist completo (todos marcados)
   if (entChecklistCompleto()) secciones++;
-  // 3. Evidencia (4 fotos mín)
   if (instEvidenciaCompleta()) secciones++;
-  // 4. Al menos 1 firma
   if (_ctx_cli) { var d=_ctx_cli.getImageData(0,0,160,100).data; for(var i=0;i<d.length;i++){if(d[i]>10){secciones++;break;}}}
   var txt = document.getElementById('inst-prog-txt');
   var bar = document.getElementById('inst-prog-bar');
@@ -2375,7 +2288,6 @@ function instActualizarProgreso() {
   if (bar) bar.style.width = (secciones/4*100) + '%';
 }
 
-// ── Firmas instalación ────────────────────────────────────────
 function instIniciarFirmas() {
   ['ent-canvas-tecnico','ent-canvas-cliente'].forEach(function(cid) {
     var canvas = document.getElementById(cid);
@@ -2411,7 +2323,6 @@ function entLimpiarCanvas(canvasId, ctxVar) {
   if (ctx) ctx.clearRect(0,0,canvas.width,canvas.height);
 }
 
-// ── Validación + reporte instalación ─────────────────────────
 function entGenerarReporteInstalacion() {
   var cliente   = (document.getElementById('ent-cliente') || {}).value || '';
   var desc      = (document.getElementById('ent-desc')    || {}).value || '';
@@ -2442,13 +2353,11 @@ function entGenerarReporteInstalacion() {
   if (btn) { btn.disabled=true; btn.textContent='Generando...'; }
 
   try {
-    // Firmas
     var canvTec = document.getElementById('ent-canvas-tecnico');
     var canvCli = document.getElementById('ent-canvas-cliente');
     var firmaTec = canvTec ? canvTec.toDataURL('image/png') : '';
     var firmaCli = canvCli ? canvCli.toDataURL('image/png') : '';
 
-    // Checklist HTML
     var ckRows = ENT_CHECKLIST_ITEMS.map(function(it) {
       var ok   = ENT_CHECKS[it.id] === true;
       var nota = ENT_CHECKS[it.id+'_nota'] || '';
@@ -2460,7 +2369,6 @@ function entGenerarReporteInstalacion() {
         + '</tr>';
     }).join('');
 
-    // Fotos de evidencia
     var fotosHtml = ENT_EVIDENCIA_SLOTS.map(function(slot) {
       var ev = ENT_EVIDENCIA[slot.id];
       if (!ev) return '';
@@ -2530,15 +2438,14 @@ function entGenerarReporteInstalacion() {
       tecnico: tecnico,
       asignado_por: asignado,
       monto: monto || null,
+      direccion: direccion,
       synced: false
     };
 
-    // Guardar offline-first
     var pending = JSON.parse(localStorage.getItem('ent_pending') || '[]');
     pending.push(payload);
     localStorage.setItem('ent_pending', JSON.stringify(pending));
 
-    // Intentar sync
     if (typeof sb === 'function' && sb()) {
       sb().from('entregas').insert([payload]).then(function(res) {
         if (!res.error) {
@@ -2549,17 +2456,13 @@ function entGenerarReporteInstalacion() {
       });
     }
 
-    // Mostrar reporte
     var win = window.open('','_blank');
     if (win) win.document.write(htmlReporte);
 
-    // Post-acciones
     var postOv   = document.getElementById('ent-post-ov');
     var postFol  = document.getElementById('ent-post-folio');
-    var postCli  = document.getElementById('ent-post-cliente');
     if (postOv)  postOv.style.display  = 'flex';
     if (postFol) postFol.textContent   = folio;
-    if (postCli) postCli.textContent   = cliente;
 
   } catch(e) {
     var errEl2 = document.getElementById('ent-error');
@@ -2569,7 +2472,6 @@ function entGenerarReporteInstalacion() {
     if (btn2) { btn2.disabled=false; btn2.textContent='Generar Comprobante de Entrega'; }
   }
 }
-
 
 </script>
 </body>
