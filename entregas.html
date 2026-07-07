@@ -6,10 +6,11 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
-  VERSION : v3.8
+  VERSION : v3.8.1
   FECHA   : 2026-07-07
-  v3.8 - Unificación de datos de obra, eliminación de búsqueda rápida,
-         carga automática de dirección y monto al seleccionar folio.
+  v3.8.1 - Corrección en carga de dirección:
+    - Al recibir datos de Supabase, se refresca la selección para precargar dir_obra.
+    - Fallback: si el presupuesto no tiene dirección, se toma la del cliente seleccionado.
 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
@@ -1346,7 +1347,7 @@ body{min-height:100vh}
 <input type="file" id="inst-file-input" accept="image/*,video/*" capture="environment" style="display:none" onchange="instArchivoCapturado(this)">
 
 <script>
-// BARRCAN ENTREGAS v3.8 — Unificación de datos de obra, eliminación de búsqueda rápida
+// BARRCAN ENTREGAS v3.8.1 — Corrección de carga de dirección
 var SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb = null;
@@ -1488,6 +1489,10 @@ function entCargarPresupuestos(nombreCliente) {
       o.dataset.p = JSON.stringify(p);
       sel.appendChild(o);
     });
+    // 🔹 NUEVO: Si ya hay un valor seleccionado, refrescar los campos con los datos completos
+    if (sel.value) {
+      entSelPresupuesto();
+    }
   }).catch(function(e) { console.warn('presupuestos:', e.message); });
 }
 
@@ -1496,7 +1501,6 @@ function entSelPresupuesto() {
   if (!sel || !sel.value) {
     document.getElementById('ent-folio').value = '';
     document.getElementById('ent-saldo-info').style.display = 'none';
-    // Limpiar campos de obra
     document.getElementById('inst-direccion').value = '';
     document.getElementById('inst-monto').value = '';
     return;
@@ -1510,6 +1514,18 @@ function entSelPresupuesto() {
   // Precargar dirección y monto en el bloque común
   if (p.dir_obra) {
     document.getElementById('inst-direccion').value = p.dir_obra;
+  } else {
+    // Fallback: si el presupuesto no tiene dirección, intentar tomarla del cliente seleccionado
+    var cliSel = document.getElementById('ent-cli-select');
+    if (cliSel && cliSel.value) {
+      var optCli = cliSel.options[cliSel.selectedIndex];
+      try {
+        var c = JSON.parse(optCli.dataset.c || '{}');
+        if (c.dir_obra) {
+          document.getElementById('inst-direccion').value = c.dir_obra;
+        }
+      } catch(e) {}
+    }
   }
   if (p.monto) {
     document.getElementById('inst-monto').value = p.monto;
@@ -1518,9 +1534,7 @@ function entSelPresupuesto() {
   if (p.cliente && !document.getElementById('ent-cliente').value) {
     document.getElementById('ent-cliente').value = p.cliente;
   }
-  // Guardar el objeto para referencias posteriores
   INST_DATOS_FOLIO = p;
-  
   entCalcularSaldo(p);
 }
 
