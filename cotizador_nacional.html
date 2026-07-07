@@ -1110,6 +1110,28 @@ body{background:var(--off-white)}
             <span class="input-unit-label">mm</span>
           </div>
         </div>
+
+
+      <!-- Alto del fijo (visible solo con variante fijo arriba/abajo) -->
+      <div id="panel-alto-fijo" class="wizard-card fade-in" style="display:none">
+        <div class="wizard-title">📐 Medidas del Fijo</div>
+        <div style="font-size:11px;color:var(--gray-400);margin-bottom:10px;background:rgba(46,109,164,.06);padding:8px;border-radius:6px;border-left:3px solid var(--blue)">
+          El fijo ocupa esta altura del vano total. El resto lo ocupa la parte corrediza.
+        </div>
+        <div class="form-group">
+          <label class="form-label">Alto del fijo (H fijo)</label>
+          <div class="input-unit">
+            <input type="number" class="form-input mm-input" id="inp-alto-fijo"
+              oninput="snActualizarResumenFijo()"
+              placeholder="400" inputmode="numeric" min="100" max="3000" value="400">
+            <span class="input-unit-label">mm</span>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--gray-400);margin-top:4px" id="sn-fijo-resumen">
+          <!-- JS actualiza este resumen -->
+        </div>
+      </div>
+
       </div>
     </div>
 
@@ -5089,6 +5111,10 @@ function snSelVar(btnEl){
   document.getElementById('sis-grid')?.querySelectorAll('.sis-card').forEach(c=>{
     if(c.dataset.sisId){ const img=c.querySelector('.sis-img'); if(img)img.src=snGetGif(c.dataset.sisId); }
   });
+  // Mostrar/ocultar campo de alto del fijo
+  const panelFijo=document.getElementById('panel-alto-fijo');
+  if(panelFijo) panelFijo.style.display = snFijoVar!=='base' ? 'block' : 'none';
+  snActualizarResumenFijo();
 }
 
 function snSelSistema(sis,cardEl){
@@ -5272,6 +5298,36 @@ document.addEventListener('DOMContentLoaded',()=>{
   // Inicializar película oculta
   actualizarPelicula();
 });
+
+
+function snActualizarResumenFijo() {
+  const div = document.getElementById('sn-fijo-resumen');
+  if (!div) return;
+  const H    = parseFloat(document.getElementById('inp-alto')?.value) || 0;
+  const Hfij = parseFloat(document.getElementById('inp-alto-fijo')?.value) || 0;
+  const Hcor = H - Hfij;
+  if (!H || !Hfij || snFijoVar==='base') { div.textContent=''; return; }
+  const pos  = snFijoVar==='ftop' ? 'arriba' : 'abajo';
+  div.innerHTML = `Fijo ${pos}: <strong>${Hfij} mm</strong> &nbsp;|&nbsp; Parte corrediza: <strong>${Math.max(0,Hcor)} mm</strong>`;
+  div.style.color = Hcor < 100 ? 'var(--red)' : 'var(--gray-400)';
+}
+
+// ── Exponer al scope global ──────────────────────────────
+window.calcular = calcular;
+window.setPiso = setPiso;
+window.setModalidad = setModalidad;
+window.toggleSwitch = toggleSwitch;
+window.togglePelicula = togglePelicula;
+window.setPelModalidad = setPelModalidad;
+window.actualizarPelicula = actualizarPelicula;
+window.snGuardar = snGuardar;
+window.snHistorial = snHistorial;
+window.snSelVar = snSelVar;
+window.snTogDet = snTogDet;
+window.snVerArch = snVerArch;
+window.snArchivoAdj = snArchivoAdj;
+window.snBuildUI = snBuildUI;
+window.snActualizarResumenFijo = snActualizarResumenFijo;
 
 })();
 </script>
