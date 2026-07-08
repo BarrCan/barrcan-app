@@ -6,20 +6,13 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
-  VERSION : v3.9.0
+  VERSION : v3.9.1
   FECHA   : 2026-07-07
-  v3.9.0 - Fix real de dirección y logo:
-    - select('*') en vez de columnas explícitas en clientes / presupuestos_atrasados,
-      para que la consulta no truene silenciosamente si el nombre de columna real
-      no es 'dir_obra' (antes esto rompía TODA la carga de dirección sin avisar).
-    - Nueva función buscarDireccion() que prueba varios nombres de columna posibles
-      (dir_obra, direccion, direccion_obra, domicilio, address, dir) y loguea las
-      llaves reales del registro en consola si no encuentra ninguna, para ubicar
-      el nombre correcto rápido.
-    - Logo del header reemplazado: el JPEG embebido estaba truncado (le faltaba
-      el marcador de fin de imagen, por eso se veía roto/incompleto). Se sustituyó
-      por un logo válido mientras se integra el logo oficial.
-  v3.8.3 - Mejora en carga de dirección (fallback presupuesto -> cliente).
+  v3.9.1 - Correcciones finales:
+    - Ocultar fotos genéricas en modo Instalación (evita confusión con envíos).
+    - Encabezado profesional en reportes (dirección, teléfono, web, correo).
+    - Logs de depuración para guardado en Supabase.
+    - Documentación de estructura de tablas en comentarios.
 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
@@ -1065,7 +1058,7 @@ body{min-height:100vh}
   <div class="header">
     <div class="header-logo">
       <div class="logo-mark" style="padding:0;overflow:hidden">
-        <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAYAAABccqhmAAAVYElEQVR42u3deYyc9X3H8c/vNzO7a++ubbCNd21jjA/AXm6MEWATSAS4dpoQO0QqhxNUtSWRQGkrRW3VU4KoEWorRSFVQGrTEAxNIRCOFIiARKFcMVc4vAZiBxsfGBvvYnuvmXl+/WO8x8zOzM7xzDzPzPP+Sit5Z2fnmd+z8/o839/j5zBqkHr5zrVOMpMeN/mebAr+JM9TTZEXmmJpptivmRJforT3WWhMRZdvyhj/1C9YePmmjPHn/Ljk8UuSKXP8Jb0NU8Zbn2L5E77p2fyoaQRXoXyTL39vrSu6dsEP/hDjL/QiPZsfMQRAMfBlrFDwg7+R8E8ektHKG39mIh0AeeGDH/wRwD+xggwCExr04Ad/BPHnVr3DoG4Le+l7a5wp8UMCfvBHEX8QQWDqAb+kPz74wQ/+SWNaecPDNTVqwQ9+8IcTvyS98+NrXMN1AKPwwQ9+8FeOP3cpK2rQDVjwgx/84ccvSdtq0A1Y8IMf/OHHPx4CX/I1BIzf8MEPfvDXBn/uT1bc8FDVfi34wQ/+xsMvI227t/puwIIf/OBvPPxjU4IqQ8CCH/zgb0z8foSABT/4wd+4+EfH33vvRleXAAA/+MEfLvyjVUkIWPCDH/yNj7/SEKh4HwD4wQ/+cOGv6RSAg3zAD/4GwG+k3i2ldwEW/OAHf/PgH5sKlBgCFvzgB39z4R99oHfLJld1AIAf/OBvPPy+TAE4nx/84G9s/FN1ARb84Ad/8275jaTtRULA0vaDH/zNi7+iKQAX8AQ/+JsL//b78ncBli0/+MHf5Ft+U0YHwHX7wQ/+ZsRvtP2+L7uy9gGAH/zgbw78Ze0DAD/4wd/8+CcFAPfqAz/4mxt/7jTAlucN/OAHfzNs+ScFALfoBj/4o4F/Yhdg2fKDH/zR2/IXDwDwgx/8TYt/4vIt+MEP/ojhNzkdwNj8H/zgB38k8L97/7UuuwMAP/jBH5ktf/YUAPzgB3/k8OfZBwB+8IM/KvhzAgD84Ad/lPBLknn5zrUO/OAHf/TwH+8AwA9+8EcRf559AOAHP/ijgl8y2QEAfvCDPzr4szoA8IMf/NHCPxYA4Ac/+KOHX0ay4Ac/+KOJP2sKAH7wgz9a+M2kAAA/+MEfGfzZHQD4wQ/+SOEfDwDwgx/8kcOfCQDwgx/8kcR/vAMAP/jBH0X82fsAwA9+8EcK/6RDgcEPfvBHB/+UHQD4wQ/+5sVfNADAD37wNzf+ggEAfvCDv/nx5w0A8IMf/NHAPykAwA9+8EcHv0zW9QDAD37wRwn/WAcAfvCDP3r4JcmCH/zgjyb+8X0A4Ac/+COH38iMngwEfvCDP2r4xzsA8IMf/JHDX0IAgB/84G9W/JIUB3923ftau7a81i4qu+JWilmnhJViVkrEnKa3SJ2tLvPV5jSj1Wluh6euTk/zOp3mdXrqaHXgDyn+IgEQ9S0/lVspT0p5RsMTV+CxqX9v5jSnZXPSWjbH09LZnk4/Ka35Mz3whwB/gQCg7af8q/5Bo1d2x/XK7vHHTurwdP7CtM5fmNYFJ6c0o82BPwD8eQIA/FTt68BRqyd6rZ7oTShupVUnp/TZ05K6ZHFarXHw1wt/TgCAnwpmavHiB3G9+EFc0xNO63tS2nTOiOa0O/DXwZ8FP/jDUgNJowdeT+jGe9r1L8+06uOjBvy19GfyXRQU/FQIuoInehP62pZ2bXmlRSkP/LXAP6EDAD9xEL4aTkn/8VKL/uT+6dpxKAZ+n/FnXxQU/OAPae3us7rlwWl6ojcOfh/xS5LZ+u9XOPD7c4Tf959v16PvtNUdyA0XDOnGC4ZKeuspT0p7VklPGkoaHRkyOjJs1DdotO+I1UdHrHb3Wb1/MKaBkfBF4lfOS+pPLxkBvw/4JSkO/jof3luvKvCW4tYobp1aJXW0OM1pz39Er5O0tz+m1/bEtXV3XK/ujmkoFfw4f/JaQmlP+vqaEfBXiV+S4uCPDv5yju03Mlow09OCmSP6/MoRDSaNfr0jrsfeblHvgVigw3vwjYTaEtJNF42Avwr8UsGTgcAfZfz5njst4XTV6Ul9d+MxfXvDgJbOSQc6zC1bE3phZxz8VeA3+QMA/OAvXqtOTunOTQO6afWwbECrwUn6ztMt2n/EgL9C/Hk6APCDv4RFGaOYla67YES3rR/U9IQLZMhHh42+/1wL+CvEnxMA4G9Y/Kov/ol14aKUbls/qERAuwX+b0dMr34YA38F+CcEAPjBXz7+0Tprflp/eflQYCO9+/kE+CvAfzwAwA/+yvGP1udOS2rtklQgo333Y6ttH1nwl4k/zz4A8IO/fPyj9fVLhxS3wYz6kTfj4C8Tv4zJEwDgB38F+CVpboe07oxkICP/1ftxpdLgLwf/5A4A/JXjNybS+Edfc31PMAEwnJLe3GfBXwb+7AAAP/irxC8jLZ/raeEsL5C1sHVXDPxl4B8PAPA3MH6FBv9onbcwmKME395vwV8G/kwAgB/8PuI3ks7sCiYAdh824C/zs2rBD34/8UvS4hODmQL0DWZObQZ/6Z9VC35/8Bvwj1X3DBfYetjXb8BfxobKgh/8ft+xZ3qLU1tA5wccGwF/OV2qBX9j41fI8I9WWzyYVTA4dtES8JdSFvzg9xu/ZIILgCT4S8VvZEoIAPCDv4LbdaW8oFYF+MtZTxb8fuIP3wFBQeCXMkfmBVHTStj3AH5TwhQA/OCvEL/nMnf5CaI6WsFfsj9T9GxA8JeNP+TnDdUDvyQdOGaUDmgKMH+mA3+J+PN3AOAHf5W36N7XH8w5wW0JaXa7A3+J+CcHAPjBXyV+SXpnfzABcMY8D/xl4M8OAPCD3wf8kvTm3mAuEHjeQg/8ZeAfDwDwg98n/EeGjF4PKAAuXuyBvwz8mQAAP/h9wi9Jv3w/plQAJwMum+tp2VwP/GXgP94BgB/8/uD3nPTAG4lAxvzFs9LgLxN/9j4A8IO/CvyS9OS2uPb01X8H4PyZTutWpMFfJn7lHgoM/urwmwjj/2TA6K7nWwIZ981rUopZ8JeLP6sDAH+1+E1k8afS0refas2+GEed6srT01qzJA3+CvCPBQD4Gxt/eb2Hv/idk+54plWv76n/nv/FJzrdenkS/BXil6Q4+BsdvwLDP5ySbn+qTc/vrD/+2e1O//yFEXW0gL9S/JIUBz/4K8H/7gGr7zzdqg8+qf9Ov64ZTndcM6J5nQJ/FfiNyRsA4Ad/4W8/GTC6d2tCj72dCOSEn9PnebptQ1Jz2sFfLf48HQD4K8Zvmhv/9gNWj7+d0NPvxgM5199I2nhuSn92aUoJS9vvB/6cAAA/+MdrIGXUu9/q5V0xvfT7mHb32cBGsWSO0zcvT+rMbo8dfj7inxAA4I8K/rSXuVxXMm00mJQ+HTLqH7I6eMxob7/V3n6j3x2y2nXYyrlgR9A9w+m6VSn9wcq0Mht98PuJ/3gAgL/R8d+ztUX3bG1Rs1RPt6cvnJXWZ5enFbMT1j/4fcWfCQDwN9mWvzFr0QlOa5amdeXpaZ1yopu8/sHvO37JKA5+P/GTCqXWrGlOZ833dM4CT6tP8bRwFlfyqTf+CfsAwA/+2lR7i1P3DKf5M51One20dI6npXOcumdy9d6g8RcNAPCDv9qa0+60bK6neZ1OJ3VmQuDkEzL/Bn/w+AsGAPjB70cdPGZ08Njkw4Tjscycf9kcT2fN93Rmt5c17wd/ffDnDQDwg7/WlUpLOw4a7TgY01O9mYCYOc3p/IWeLl3i6aLF3pTX9wd/9fgnBQD4wR9U9Q8aPfteTM++F1PcSucu9LRuZVqXLfWUiIG/FvizAgD81eEnDnzsEDxp6y6rrbusOtukq89Ia9O5aXXNcOD3Eb9GTwYCf2Pj33zhiDZfOFLKp3ysBR/xjJIpaTAl9Q9YHR40Ojxg9GGf0QeHM0cC7u0PPtaODEkPvB7TQ7+N6aoz0rp+lacFo/9lCP6q8EtSHPw+4g/vLYOzvo3HpHjMSQlploy6O/Of1tc3ZPTWPqs39sT03I6YDhwJboBpT/rfd2J6cltMG89J66aL05reAv5q8E/aBwD+5sdf8offZA7WWbMkc8mtb6w12rbf6snemH7RGw/s7r+ey3QEz75ndctn0rp8uQf+CvGbrIuCgh/8BX8n8+yVXZ7+/PKk7vvakL66OqW2RHCjPHTM6B9/HtcdT+eGEfhLxS9l3RkI/ODPjz+3ZrU5fXV1Uv91/ZCuWJ4OdMSPv2V18/2J4/srwF8O/kwAgN8n/CYS+Cc+MrfD6e/WjeivrhxRazy4ke88ZHTL/yS046ABfxn4xzsA8IO/TPwTH7jqDE93fmVYJ0wP7gICh45Jtz4Q17b9Bvwl4i8SAOBvHPwKFP/oP5bMdvq3jSOa3R5cCBwdlv76kXhmOgD+KfEXCADwg788/KO16ASn2z+fVEssuFXQNyh96+GYPh0Cfynjt+AHvx/4R+u0kzx984pkoKviwz6jf306Bv4Sxm/B3wT4FQ78o7VuRVqrT/ECHfsv37N6uteCf4qy4Ae/n/hH69bPpAqcxFO/+u6vYhoYAf8UAQB+8PuL38howSynq1cEe4xA/6D0369a8Bf5HQt+8PuNf/Sp156XDnyt/eRVqyPD4C+0lbfg9xO/Af+Epy46wenchcHuCxgYkX7Ra8FfALoFvz/4jQF/vqeuWRpsAEjS428Z8BeAbsHf+PjL+6zVD78krQ1BALz/sdGuwwb8eaBb8IO/VvilzPkC8zpd4Kvild0G/HkPBQY/+GuEf7RWdIUgAHaBP9/DFvzgryV+SVo2N/gA6N1vwJ/npSz4wV9L/JJRVwimAAePSkMp8Oc+YsEP/lril1TSnYBqXU7Snj4D/kn7AMAP/hril6TZHeFYRZ8cA78mBwD4wV87/DIK9GpBEyvveQERxp9nHwD4Gw6/wo1fktriLhRrZnAE/Lk/seAHfy3xG2XuQxCG8hz4s35iCnUA4K8AvwF/gT/vcDIcATC9BfwT8eefAoAf/D7il6ThVDi6qGkJ8Cvn72rB7xP+EM0UwoRfUvGLctSzA2gV+HN+aMEP/lril6QDR8OxgjrbwJ9bFvz+4Tfgz1v7Pw0+AKyRFs4C/+QAAD/4a4hfMtrTF3wAdM9U0WsURhH/WAcAfvDXCr8kvbM/+ABYdKIDf/7OCPyNjF8hx5/2pPcOBL+Wls8Ff8EOAPzgrwV+SXpjjxk7Cy/IWr3YgT/P+C34wV8r/JL069/ZwFdNe6vU0w3+fOO34G8C/Aon/mQ6c4eeoGvVIqeYBX++5Vvw+4XfgD+nnuq1OjwQfCyuWwn+Qsu34G8G/Aod/rRX5K48dayuGdLFSxz4Cyzfgh/8fuOXpAffsNr1SfDrZuO5TtaAv5A/C34f8RvwS9L+I0Y/fDH4c4BnTZP+8CwH/iL+LPjB7yf+4bT0t4/GQnEC0M2XOXW0gr/Yi1rwg98v/Ckn3f5ETO9/HPwK6emW1vcI/FO8aBz84PcDf9KT/v6xuF7YGfwKaUtI37rSlXFoRDTxZwIA/OCvEv+efqN/+nlM7x4Ixwr5m6udlswBfykvGgc/+CvF7znp0besfvBcLDQX/dh8kXTFaeAv1V8c/H7iN5HA7znphZ1Wdz9v9ftD4UnCL54t/fElDvxlfFbj4PcHv4kA/oPHjJ7ZbvTwb6329oerBbr+QunmteAv118c/I2PXzXCP5wy2v6R0Zt7jZ7fafXOPiOncJU1Gfh/tIq2vxJ/cfA3On6VjT/lZb6SaWkoadQ/JPUNGB0elPb2Ge06bLT7sNHOQ0YpT6GtrhnSP6x3OnM++Cv29+Z/rnfgH68f/aZFP/pNi6hw11UrnP7ic1J7C/ir8RcHf8WbUyqA6umWvvEZT2fP5wg/P/zFwQ/+RqjFs6WbLna64jSO7ffNn8kKAPBT4SprpEuXOm08V7pgEaf0+o1/QgcAfio8tXyudNlyp3U9TvM6C3z+wF81/uMBAH4q2ErEpBVd0tplTpctc+qeOcXnD/y+4B/vAMBPFtSx2lulni6nsxdKZy9wWtkltcRL/PyB3zf8mUOBwQ/+GtWMNmn+TKfFs6VTZzudOltaPNupa4a4S28I8E/YBwB+KrtiVoof/4rZ8e/bEk7tLVJH6+iXU0erNGOaNLfj+Fen09wOqS1e8A8L/hDglyTz5g83OPCXOP4SVujUTwnf1XvzrxZTxmLL+PCDPzT4pQIXBQU/+MHf/PjzBgD4wQ/+aOCfFADgBz/4o4M/KwDAD37wRwv/WACAH/zgjx5+SbLgBz/4o4m/wJ2BwA9+8EcBv5HJvTMQ+MEP/qjgH9sHAH7wgz96+McDAPzgB3/k8GcCAPzgB38k8WdPAcAPfvBHCn+BAAA/+MEfBfx5AgD84Ad/VPDnBAD4wQ/+KOGfEADgBz/4o4b/eACAH/zgjyL+PPsAwA9+8EcFv3IPBQY/+MEfHfxZJwOBH/zgjxb+sSkA+MEP/ujhlzK3XwM/+MEfQfxjHQD4wQ/+6OE3yns2IPjBD/4o4M90AOAHP/gjiT97CgB+8IM/UvgnBAD4wQ/+qOGXJNuz+VEDfvCDP3r4F2y421jwgx/80cOfZx8A+MEP/ujgN1MHAPjBD/7mxV80AMAPfvA3N/6xAOjZ/IgBP/jBHx38CzbcZfJ2AOAHP/ibfMtvlH8KAH7wgz86+LMCAPzgB3+08GcFwMobf2bAD37wNz/+BevvMnmnAOAHP/ijseXPGwDFuwDwgx/8jY5/4ta/jA4A/OAHfzNt+csIAPCDH/zNiD9vAGRPA8APfvA3C/7c9n+KDgD84Ad/s275iwbAWBcAfvCDvynw59v6F+8AwA9+8DcF/mLLLxgAK2942IAf/OBvfPzz1/+gkr9iprb9+BoHfvCDv/nwF58CsOUHP/ibsu0vKwBWHJ8KgB/84G8s/FNt/UvuADIhAH7wg7+Z8Jc1BVhxw0MG/OAHf/Pgr2wfAPjBD/6GnfNXMLrs2nbvlxz4wQ/+cOIvZ+tfUQew4vqHDPjBD/7Gx1/ZFGBCCIAf/OBvXPwVB0C+TgD84Ad/Y+GvKgAk6Yzrf2rAD37wNyb+qgNgUgiAH/zgbxj8pasrsXq3bHTgBz/4a4vfD/i+dQBZ3cB1PzXgBz/4GwO/7wGQHQLgBz/4w4zf9ynA5CnBJgd+8IO/Ovy1gF+XAJCk7Vs2OfCDH/zhw1+XABgLgvtGgwD84Af/VG+l0DX8GjYAxoPgyw784Ad/sPADC4CpwgD84I8a/nqjD00A5AYB+MEfJfxBwg9VAOTWu/df68AP/mbDv2DDXaHzFsoAKB4K4Ad/+PEv2HB3Q9j6fxuJS9G5uJaOAAAAAElFTkSuQmCC" style="width:100%;height:100%;object-fit:cover;display:block">
+        <img src="data:image/png;base64,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" style="width:100%;height:100%;object-fit:cover;display:block">
       </div>
       <div><span class="logo-text">BarrCan</span><span class="logo-sub">Canceleria &middot; Campo</span></div>
     </div>
@@ -1175,11 +1168,11 @@ body{min-height:100vh}
             <label class="form-label">Asignado por</label>
             <select id="inst-asignado" class="form-select">
               <option value="">-- Selecciona --</option>
-              <option value="ESAU">Esa&uacute;</option>
-              <option value="MIGUEL">Miguel</option>
-              <option value="CARLOS">Carlos</option>
-              <option value="OMAR">Omar</option>
-              <option value="RODRIGO">Rodrigo</option>
+              <option value="MAURICIO">Mauricio&uacute;</option>
+              <option value="LUIS">Luis</option>
+              <option value="SUPER01">Super01</option>
+              <option value="SUPER02">Super02</option>
+              <option value="SUPER03">Super03</option>
             </select>
           </div>
         </div>
@@ -1249,8 +1242,8 @@ body{min-height:100vh}
       </div>
     </div>
 
-    <!-- FOTOS -->
-    <div class="wizard-card" style="margin-bottom:12px">
+    <!-- FOTOS (se oculta en Instalación) -->
+    <div class="wizard-card" id="ent-fotos-card" style="margin-bottom:12px">
       <div class="wizard-title">&#128247; Fotos de evidencia</div>
 
       <label class="form-label">Foto del empaque</label>
@@ -1356,7 +1349,7 @@ body{min-height:100vh}
 <input type="file" id="inst-file-input" accept="image/*,video/*" capture="environment" style="display:none" onchange="instArchivoCapturado(this)">
 
 <script>
-// BARRCAN ENTREGAS v3.8.3 — Mejora en carga de dirección y logs
+// BARRCAN ENTREGAS v3.9.1 — Correcciones finales
 var SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb = null;
@@ -1619,6 +1612,7 @@ function entSelTipo(btn) {
   var envioDiv  = document.getElementById('ent-envio-datos');
   var instDiv   = document.getElementById('ent-inst-datos');
   var firmaCard = document.getElementById('ent-firma-card');
+  var fotosCard = document.getElementById('ent-fotos-card');
   var lblComp   = document.getElementById('ent-label-comp');
   var dscComp   = document.getElementById('ent-desc-comp');
   var esEnvio   = ENT_TIPO === 'envio';
@@ -1626,6 +1620,7 @@ function entSelTipo(btn) {
   if (envioDiv)  envioDiv.style.display  = esEnvio ? 'block' : 'none';
   if (instDiv)   instDiv.style.display   = esInst  ? 'block' : 'none';
   if (firmaCard) firmaCard.style.display = esEnvio ? 'none'  : (esInst ? 'none' : 'block');
+  if (fotosCard) fotosCard.style.display = esInst  ? 'none'  : 'block'; // Ocultar fotos genéricas en instalación
   if (lblComp)   lblComp.textContent     = esInst  ? 'Fotos de la instalaci\u00f3n terminada'
                                           : esEnvio ? 'Foto de la gu\u00eda / comprobante de env\u00edo'
                                           : 'Foto del comprobante de entrega';
@@ -1756,6 +1751,9 @@ function entReset() {
   var firmaCard = document.getElementById('ent-firma-card');   if (firmaCard) firmaCard.style.display = 'block';
   var guiaEl    = document.getElementById('ent-guia');         if (guiaEl)    guiaEl.value = '';
   var paqEl     = document.getElementById('ent-paqueteria');   if (paqEl)     paqEl.value  = '';
+  // Mostrar fotos nuevamente (por si se ocultaron en instalación)
+  var fotosCard = document.getElementById('ent-fotos-card');
+  if (fotosCard) fotosCard.style.display = 'block';
   // Limpiar campos comunes de obra
   var obraCampos = ['inst-direccion','inst-monto','inst-tecnico-nombre','inst-fecha'];
   obraCampos.forEach(function(id){ var el=document.getElementById(id); if(el) el.value=''; });
@@ -1806,6 +1804,9 @@ async function entGenerarReporte() {
       + '<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:9.5pt;color:#1B3A5C;background:white}'
       + '.pg{max-width:620px;margin:0 auto;padding:18px 22px 80px}'
       + '.hdr{display:flex;align-items:center;gap:12px;margin-bottom:12px;padding-bottom:10px;border-bottom:2.5px solid #1B3A5C}'
+      + '.logo-texto{font-size:18px;font-weight:900;color:#1B3A5C;letter-spacing:1px}'
+      + '.logo-sub-texto{font-size:8px;color:#C8923A;letter-spacing:2px;text-transform:uppercase}'
+      + '.dir-texto{font-size:7px;color:#555;margin-top:2px}'
       + 'h2{font-size:9pt;font-weight:700;color:#2E6DA4;border-bottom:1px solid #eee;padding-bottom:2px;margin:12px 0 7px;text-transform:uppercase;letter-spacing:.5px}'
       + 'table{width:100%;border-collapse:collapse;margin-bottom:8px}td{padding:5px 8px;border:1px solid #ddd;font-size:8.5pt}'
       + '.lbl{font-weight:700;background:#f5f7fa;width:38%}'
@@ -1814,14 +1815,20 @@ async function entGenerarReporte() {
       + '.bc{padding:9px 12px;background:rgba(255,255,255,.15);color:white;border:none;border-radius:7px;font-size:12px;cursor:pointer}'
       + '@media print{.barra{display:none!important}}</style></head><body>'
       + '<div class=barra><button class=bp onclick="window.print()">Imprimir / PDF</button><button class=bc onclick="window.close()">Cerrar</button></div>'
-      + '<div class=pg><div class=hdr>'
-      + '<img src="' + _LOGO_SRC + '" style="width:52px;height:52px;object-fit:contain;flex-shrink:0">'
-      + '<div style=flex:1><div style=font-size:16pt;font-weight:900;color:#1B3A5C;letter-spacing:1px>BarrCan</div>'
-      + '<div style=font-size:7pt;color:#C8923A;letter-spacing:3px;text-transform:uppercase>Canceleria - Aluminio - Vidrio - TEL: 56-15-15-84-15</div></div>'
+      + '<div class=pg>'
+      + '<div class=hdr>'
+      + '<img src="' + _LOGO_SRC + '" style="width:48px;height:48px;object-fit:contain;flex-shrink:0">'
+      + '<div style=flex:1>'
+      + '<div class=logo-texto>BarrCan</div>'
+      + '<div class=logo-sub-texto>Canceleria &middot; Aluminio &middot; Vidrio</div>'
+      + '<div class=dir-texto>PRIV. SANTA CRUZ No.23 COL. SAN SIMÓN TICUMAC CP. 03660, BENITO JUÁREZ, CDMX</div>'
+      + '<div class=dir-texto>TEL: 56-15-15-84-15 &middot; ventas@barrcan.com.mx &middot; www.BarrCan.com.mx</div>'
+      + '</div>'
       + '<div style=text-align:right;border:2px solid #1B3A5C;padding:3px 8px;border-radius:4px>'
       + '<div style=font-size:9pt;font-weight:700;color:#1B3A5C>COMPROBANTE DE ENTREGA</div>'
       + '<div style=font-size:11pt;font-weight:900;color:#C8923A;font-family:monospace>' + esc(folioFull) + '</div>'
-      + '</div></div>'
+      + '</div>'
+      + '</div>'
       + '<h2>Datos de la entrega</h2>'
       + '<table>'
       + '<tr><td class=lbl>Cliente</td><td><strong>' + esc(cliente) + '</strong></td></tr>'
@@ -1875,6 +1882,8 @@ async function entGenerarReporte() {
       dir_obra: direccion || null, reporte_url: reporteUrl
     };
 
+    console.log('[BarrCan] Intentando guardar en reportes_entrega:', dbPayload);
+
     if (!SYNC.online || !sb()) {
       entGuardarOffline(dbPayload);
       entMostrarPost(folioFull, tel);
@@ -1886,7 +1895,11 @@ async function entGenerarReporte() {
       i = i || 1;
       try {
         var res = await sb().from('reportes_entrega').insert([dbPayload]);
-        if (res.error) throw res.error;
+        if (res.error) {
+          console.error('[BarrCan] Error Supabase:', res.error);
+          throw res.error;
+        }
+        console.log('[BarrCan] Guardado exitoso en Supabase:', res);
         SYNC.online = true; detectarConexion();
         var hist = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
         hist.unshift(Object.assign({}, dbPayload, { ts: new Date().toLocaleString('es-MX') }));
@@ -1901,6 +1914,7 @@ async function entGenerarReporte() {
         if (esRed && i < 3) {
           return new Promise(function(resolve) { setTimeout(function() { intentar(i + 1).then(resolve); }, 1000 * i); });
         }
+        console.warn('[BarrCan] Falló guardado, pasando a offline:', e.message);
         entGuardarOffline(dbPayload);
         entMostrarPost(folioFull, tel);
         entReset();
@@ -2450,6 +2464,10 @@ function entGenerarReporteInstalacion() {
     var htmlReporte = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
       + '<meta name="viewport" content="width=device-width,initial-scale=1">'
       + '<style>body{font-family:Arial,sans-serif;padding:16px;max-width:700px;margin:0 auto;color:#1B3A5C}'
+      + '.hdr{display:flex;align-items:center;gap:12px;margin-bottom:12px;padding-bottom:10px;border-bottom:2.5px solid #1B3A5C}'
+      + '.logo-texto{font-size:18px;font-weight:900;color:#1B3A5C;letter-spacing:1px}'
+      + '.logo-sub-texto{font-size:8px;color:#C8923A;letter-spacing:2px;text-transform:uppercase}'
+      + '.dir-texto{font-size:7px;color:#555;margin-top:2px}'
       + 'h1{color:#1B3A5C;font-size:18px;border-bottom:3px solid #C8923A;padding-bottom:8px}'
       + 'h2{color:#1B3A5C;font-size:14px;border-bottom:1px solid #E8ECF0;padding-bottom:4px;margin-top:20px}'
       + '.meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}'
@@ -2459,6 +2477,19 @@ function entGenerarReporteInstalacion() {
       + 'table{width:100%;border-collapse:collapse;font-size:12px}'
       + '.firma-box{width:47%;display:inline-block;margin:4px 1%;vertical-align:top;background:#F8F9FA;border-radius:8px;padding:10px;text-align:center}'
       + '</style></head><body>'
+      + '<div class="hdr">'
+      + '<img src="' + _LOGO_SRC + '" style="width:48px;height:48px;object-fit:contain;flex-shrink:0">'
+      + '<div style="flex:1">'
+      + '<div class="logo-texto">BarrCan</div>'
+      + '<div class="logo-sub-texto">Canceleria &middot; Aluminio &middot; Vidrio</div>'
+      + '<div class="dir-texto">PRIV. SANTA CRUZ No.23 COL. SAN SIMÓN TICUMAC CP. 03660, BENITO JUÁREZ, CDMX</div>'
+      + '<div class="dir-texto">TEL: 56-15-15-84-15 &middot; ventas@barrcan.com.mx &middot; www.BarrCan.com.mx</div>'
+      + '</div>'
+      + '<div style="text-align:right;border:2px solid #1B3A5C;padding:3px 8px;border-radius:4px">'
+      + '<div style="font-size:9pt;font-weight:700;color:#1B3A5C">REPORTE DE INSTALACIÓN</div>'
+      + '<div style="font-size:11pt;font-weight:900;color:#C8923A;font-family:monospace">' + folio + '</div>'
+      + '</div>'
+      + '</div>'
       + '<h1>&#128295; Reporte de Instalaci\u00f3n</h1>'
       + '<div style="font-size:11px;color:#9CA3AF;margin-bottom:14px">Folio: <strong>' + folio + '</strong> &nbsp; Fecha: ' + fechaStr + '</div>'
       + '<div class="meta">'
@@ -2502,6 +2533,8 @@ function entGenerarReporteInstalacion() {
       synced: false
     };
 
+    console.log('[BarrCan] Intentando guardar en entregas (instalación):', payload);
+
     var pending = JSON.parse(localStorage.getItem('ent_pending') || '[]');
     pending.push(payload);
     localStorage.setItem('ent_pending', JSON.stringify(pending));
@@ -2509,9 +2542,12 @@ function entGenerarReporteInstalacion() {
     if (typeof sb === 'function' && sb()) {
       sb().from('entregas').insert([payload]).then(function(res) {
         if (!res.error) {
+          console.log('[BarrCan] Instalación guardada en Supabase:', res);
           var p2 = JSON.parse(localStorage.getItem('ent_pending')||'[]');
           p2 = p2.filter(function(x){return x.folio !== folio;});
           localStorage.setItem('ent_pending', JSON.stringify(p2));
+        } else {
+          console.error('[BarrCan] Error guardando instalación:', res.error);
         }
       });
     }
