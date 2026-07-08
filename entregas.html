@@ -6,8 +6,19 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
-  VERSION : v3.10.0
+  VERSION : v3.11.0
   FECHA   : 2026-07-08
+  v3.11.0 - Historial unificado + UI de instalación limpia:
+    - "Reportes recientes" ahora también trae entregas_instalacion (antes
+      solo consultaba reportes_entrega, por eso las instalaciones nunca
+      aparecían). Se etiquetan con "🔧 INSTALACIÓN · X/Y" en la lista.
+    - Editar desde el historial ahora enruta el update a la tabla correcta
+      (reportes_entrega vs entregas_instalacion) según de dónde vino el
+      registro, traduciendo los nombres de columna.
+    - La tarjeta "Fotos de evidencia" (empaque + comprobante) ya no se
+      muestra al seleccionar Instalación — esa tarjeta es solo para
+      entrega en puerta / envío; instalación ya tiene su propio bloque
+      de evidencia (checklist + 5 fotos + video).
   v3.10.0 - Entrega de instalación: tabla dedicada + guardado ligero:
     - Nueva tabla propia "entregas_instalacion" (antes usaba "entregas",
       genérica y sin confirmar que existiera con ese esquema).
@@ -1261,7 +1272,7 @@ body{min-height:100vh}
     </div>
 
     <!-- FOTOS -->
-    <div class="wizard-card" style="margin-bottom:12px">
+    <div class="wizard-card" id="ent-fotos-evidencia-card" style="margin-bottom:12px">
       <div class="wizard-title">&#128247; Fotos de evidencia</div>
 
       <label class="form-label">Foto del empaque</label>
@@ -1630,12 +1641,14 @@ function entSelTipo(btn) {
   var envioDiv  = document.getElementById('ent-envio-datos');
   var instDiv   = document.getElementById('ent-inst-datos');
   var firmaCard = document.getElementById('ent-firma-card');
+  var fotosCard = document.getElementById('ent-fotos-evidencia-card');
   var lblComp   = document.getElementById('ent-label-comp');
   var dscComp   = document.getElementById('ent-desc-comp');
   var esEnvio   = ENT_TIPO === 'envio';
   var esInst    = ENT_TIPO === 'instalacion';
   if (envioDiv)  envioDiv.style.display  = esEnvio ? 'block' : 'none';
   if (instDiv)   instDiv.style.display   = esInst  ? 'block' : 'none';
+  if (fotosCard) fotosCard.style.display = esInst  ? 'none'  : 'block';
   if (firmaCard) firmaCard.style.display = esEnvio ? 'none'  : (esInst ? 'none' : 'block');
   if (lblComp)   lblComp.textContent     = esInst  ? 'Fotos de la instalaci\u00f3n terminada'
                                           : esEnvio ? 'Foto de la gu\u00eda / comprobante de env\u00edo'
@@ -1764,6 +1777,8 @@ function entReset() {
     b.style.color       = a ? 'var(--blue)' : 'var(--gray-400)';
   });
   var envioDiv  = document.getElementById('ent-envio-datos');  if (envioDiv)  envioDiv.style.display  = 'none';
+  var instDiv   = document.getElementById('ent-inst-datos');   if (instDiv)   instDiv.style.display   = 'none';
+  var fotosCard = document.getElementById('ent-fotos-evidencia-card'); if (fotosCard) fotosCard.style.display = 'block';
   var firmaCard = document.getElementById('ent-firma-card');   if (firmaCard) firmaCard.style.display = 'block';
   var guiaEl    = document.getElementById('ent-guia');         if (guiaEl)    guiaEl.value = '';
   var paqEl     = document.getElementById('ent-paqueteria');   if (paqEl)     paqEl.value  = '';
@@ -1993,13 +2008,42 @@ async function entCargarHistorial() {
   else div.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">Sin reportes registrados</div>';
   if (!sb()) return;
   try {
-    var res = await sb().from('reportes_entrega')
+    var resPuerta = await sb().from('reportes_entrega')
       .select('id,folio,cliente_nombre,cliente_tel,fecha_entrega,tecnico,reporte_url,whatsapp_enviado,created_at')
       .order('created_at', { ascending: false }).limit(30);
-    if (res.error) throw res.error;
+    if (resPuerta.error) throw resPuerta.error;
+
+    var resInst = await sb().from('entregas_instalacion')
+      .select('id,folio,cliente,tel,fecha,tecnico,reporte_url,checklist_ok,checklist_total,created_at')
+      .order('created_at', { ascending: false }).limit(30);
+
     SYNC.online = true; detectarConexion();
+    var nuevosPuerta = resPuerta.data.map(function(r) {
+      return Object.assign({}, r, {
+        ts: new Date(r.created_at).toLocaleString('es-MX'),
+        _tabla: 'reportes_entrega', _tipo: 'puerta'
+      });
+    });
+    var nuevosInst = [];
+    if (!resInst.error && resInst.data) {
+      nuevosInst = resInst.data.map(function(r) {
+        return {
+          id: r.id, folio: r.folio,
+          cliente_nombre: r.cliente, cliente_tel: r.tel,
+          fecha_entrega: r.fecha, tecnico: r.tecnico,
+          reporte_url: r.reporte_url, whatsapp_enviado: false,
+          created_at: r.created_at,
+          checklist_ok: r.checklist_ok, checklist_total: r.checklist_total,
+          ts: new Date(r.created_at).toLocaleString('es-MX'),
+          _tabla: 'entregas_instalacion', _tipo: 'instalacion'
+        };
+      });
+    } else if (resInst.error) {
+      console.warn('[BarrCan] No se pudo cargar historial de instalaciones:', resInst.error);
+    }
+
     var pend   = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]').filter(function(r) { return r._pendiente; });
-    var nuevos = res.data.map(function(r) { return Object.assign({}, r, { ts: new Date(r.created_at).toLocaleString('es-MX') }); });
+    var nuevos = nuevosPuerta.concat(nuevosInst).sort(function(a, b) { return new Date(b.created_at) - new Date(a.created_at); });
     localStorage.setItem('barrcan_reportes_historial', JSON.stringify(pend.concat(nuevos)));
     entRenderHistorial();
   } catch(e) {
@@ -2029,11 +2073,14 @@ function entRenderHistorial() {
     var idStr  = (r.id || '').replace(/'/g, '');
     var bgPend = r._pendiente ? 'background:rgba(192,57,43,0.04);border-left:3px solid var(--red);padding-left:8px' : '';
     var pendTag = r._pendiente ? '<div style="font-size:9px;font-weight:700;color:var(--red);margin-bottom:2px">SIN SINCRONIZAR</div>' : '';
+    var tipoTag = r._tipo === 'instalacion'
+      ? '<span style="font-size:9px;font-weight:700;color:var(--gold);background:rgba(200,146,58,0.12);padding:2px 6px;border-radius:6px;margin-left:6px;vertical-align:middle">&#128295; INSTALACI\u00d3N' + (r.checklist_total ? ' &middot; ' + (r.checklist_ok||0) + '/' + r.checklist_total : '') + '</span>'
+      : '';
     html += '<div style="padding:9px 0;border-bottom:1px solid var(--gray-200);' + bgPend + '">'
       + pendTag
       + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'
       + '<div>'
-      + '<div style="font-size:13px;font-weight:700;color:var(--navy)">' + esc(r.folio || '--') + '</div>'
+      + '<div style="font-size:13px;font-weight:700;color:var(--navy)">' + esc(r.folio || '--') + tipoTag + '</div>'
       + '<div style="font-size:11px;color:var(--gray-400)">' + esc(r.cliente_nombre || '') + ' - ' + esc(r.fecha_entrega || '') + '</div>'
       + (r.reporte_url ? '<div style="font-size:10px;color:var(--green);font-weight:700">Reporte completo disponible</div>' : '')
       + '</div>'
@@ -2161,14 +2208,23 @@ async function entGuardarEdicion() {
   if (!cliente) { errEl.textContent = 'El nombre es obligatorio'; errEl.style.display = 'block'; return; }
   var campos = { folio: folio, cliente_nombre: cliente, cliente_tel: tel || null, fecha_entrega: fecha, tecnico: tecnico || 'BarrCan' };
   var local = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
+  var tabla = 'reportes_entrega';
   for (var i = 0; i < local.length; i++) {
-    if (local[i].id === id) { local[i] = Object.assign({}, local[i], campos); break; }
+    if (local[i].id === id) {
+      tabla = local[i]._tabla || 'reportes_entrega';
+      local[i] = Object.assign({}, local[i], campos);
+      break;
+    }
   }
   localStorage.setItem('barrcan_reportes_historial', JSON.stringify(local));
   entRenderHistorial();
   if (SYNC.online && sb()) {
     try {
-      var res = await sb().from('reportes_entrega').update(campos).eq('id', id);
+      // entregas_instalacion usa nombres de columna distintos a reportes_entrega
+      var camposDb = tabla === 'entregas_instalacion'
+        ? { folio: folio, cliente: cliente, tel: tel || null, fecha: fecha, tecnico: tecnico || 'BarrCan' }
+        : campos;
+      var res = await sb().from(tabla).update(camposDb).eq('id', id);
       if (res.error) throw res.error;
       toast('Reporte actualizado');
     } catch(e) { toast('Actualizado localmente'); }
