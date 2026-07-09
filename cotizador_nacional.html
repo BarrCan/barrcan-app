@@ -5,7 +5,28 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Cotizador Nacional</title>
 <!--
-  BARRCAN COTIZADOR NACIONAL v2.7
+  BARRCAN COTIZADOR NACIONAL v3.0
+  v3.0 - Presupuesto multi-pieza con cliente vinculado:
+    - Selector de cliente existente (jala de la tabla "clientes") con
+      opción "+ Cliente nuevo" que limpia los campos para captura manual.
+      Si fue cliente nuevo, se da de alta automáticamente al guardar.
+    - Nuevo carrito de piezas (STATE.carrito): cada cálculo se agrega
+      automáticamente al presupuesto en vez de guardarse suelto. Tras
+      calcular aparece "¿Agregas otra pieza?" -> regresa al catálogo sin
+      perder lo ya calculado, o "Ir a Presupuesto" -> nueva pantalla con
+      todas las piezas, cliente, y botón para generar el documento final.
+    - Piezas idénticas (mismo sistema/medida/vidrio) se agrupan
+      automáticamente con cantidad en vez de listarse por separado; la
+      cantidad también se puede ajustar a mano con +/- en la pantalla de
+      Presupuesto.
+    - El documento final usa el mismo formato que los presupuestos-
+      contrato reales (encabezado oficial + lista numerada de piezas con
+      cantidad y precio unitario cuando aplica + total), con el mismo
+      folio y guardado en presupuestos_atrasados.
+    - Badge flotante con el conteo y total del carrito, visible en
+      cualquier momento mientras haya piezas pendientes.
+    - Se retiró el guardado de una sola pieza (snGuardar) — ahora todo
+      pasa por el flujo de Presupuesto, incluso si es solo 1 pieza.
   v2.7 - Auditoría de exposición window (el script vive en un IIFE, así que
     toda función llamada desde un onclick="" del HTML necesita exponerse
     explícitamente vía window.fn = fn o truena "fn is not defined"):
@@ -1364,6 +1385,10 @@ body{background:var(--off-white)}
   <div class="badge-conn"><div class="badge-dot" id="conn-dot"></div><span id="conn-status">Online</span></div>
 </div>
 
+<div id="sn-carrito-badge" onclick="snRenderPresupuesto()" style="display:none;position:fixed;top:64px;right:12px;z-index:998;align-items:center;gap:6px;background:var(--gold);color:#fff;padding:8px 14px;border-radius:20px;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;box-shadow:0 4px 12px rgba(200,146,58,.4)">
+  🧾 <span id="sn-carrito-badge-txt">0 piezas</span>
+</div>
+
 <div class="sn-body">
   <div style="font-size:20px;font-weight:800;color:var(--navy);margin-bottom:2px">Cotizador Nacional</div>
   <div style="font-size:12px;color:var(--gray-400);margin-bottom:14px">C-LIGHT 1.5&quot; &middot; Panorama 2&quot; &middot; Panorama 3&quot; &middot; Fijos</div>
@@ -1653,10 +1678,23 @@ body{background:var(--off-white)}
   <!-- RESULTADO — el mismo div que usa renderResultado() -->
   <div id="tab-resultado" style="display:none">
     <div id="resultado-contenido"></div>
+  </div>
 
-    <!-- Guardar presupuesto -->
-    <div class="guardar-card" id="sn-guardar-card">
-      <div class="wizard-title">💾 Guardar presupuesto</div>
+  <!-- PANTALLA: PRESUPUESTO (carrito multi-pieza) -->
+  <div id="sn-presupuesto" style="display:none">
+    <div class="wizard-card" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
+        <div class="wizard-title" style="margin:0">🧾 Presupuesto</div>
+        <button onclick="snIrCatalogo()" style="padding:5px 12px;border:1.5px solid var(--gray-200);border-radius:16px;background:#fff;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;color:var(--gray-600);cursor:pointer">+ Agregar pieza</button>
+      </div>
+      <div style="font-size:12px;color:var(--gray-400)">Selecciona las piezas que van en este presupuesto</div>
+    </div>
+    <div id="sn-presupuesto-items"></div>
+    <div class="wizard-card" style="margin-top:12px">
+      <div class="wizard-title">Datos del cliente</div>
+      <select class="form-select" id="sn-cli-select" onchange="snSelCliente()" style="margin-bottom:8px">
+        <option value="">+ Cliente nuevo</option>
+      </select>
       <input type="text" class="form-input" id="sn-cliente" placeholder="Nombre del cliente *" style="margin-bottom:8px">
       <input type="text" class="form-input" id="sn-tel" placeholder="Teléfono" style="margin-bottom:8px">
       <input type="text" class="form-input" id="sn-dir" placeholder="Dirección de obra" style="margin-bottom:8px">
@@ -1666,9 +1704,11 @@ body{background:var(--off-white)}
         <div style="font-size:13px;color:var(--gray-400)" id="sn-adj-txt">📎 Adjuntar plano o croquis (PDF o imagen)</div>
       </div>
       <input type="file" id="sn-file-adj" accept=".pdf,.jpg,.jpeg,.png" style="display:none" onchange="snArchivoAdj(this)">
-      <button class="btn-guardar" onclick="snGuardar()">Guardar y generar folio CACN</button>
+      <button class="btn-guardar" onclick="snGuardarPresupuesto()">Guardar y generar presupuesto</button>
     </div>
   </div>
+
+
 
   <!-- HISTORIAL -->
   <div id="sn-historial-card" style="margin-top:8px">
@@ -3747,6 +3787,7 @@ const STATE = {
   visitaTecnica: false,
   ultimoResultado: null,
   presupuestoGlobal: null,
+  carrito: [],
   historial: []
 };
 
@@ -4891,6 +4932,30 @@ function fmt(n) {
   return parseFloat(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 function usuarioNombre() { return (typeof USUARIO_ACTIVO !== 'undefined' && USUARIO_ACTIVO.nombre) || 'BarrCan'; }
+function esc(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+// Encabezado con el mismo formato que los presupuestos/contratos oficiales de
+// BarrCan (logo + datos de contacto + linea punteada + titulo del documento).
+function snHeaderOficial(tituloDoc, folioDoc) {
+  var logoImg = document.querySelector('.sn-logo img');
+  var logoSrc = logoImg ? logoImg.src : '';
+  return '<div style="background:#1B3A5C;padding:14px 10px;text-align:center">'
+    + '<img src="' + logoSrc + '" style="max-width:180px;width:50%;height:auto;display:inline-block;border-radius:8px">'
+    + '</div>'
+    + '<div style="text-align:center;padding:10px 16px 8px;font-size:8pt;color:#1B3A5C;line-height:1.5">'
+    + 'PRIV. SANTA CRUZ No.23 COL. SAN SIM\u00d3N TICUMAC CP. 03660 &nbsp;BENITO JU\u00c1REZ, M\u00c9XICO, D.F.<br>'
+    + 'TEL: 56-15-15-84-15 &nbsp;&bull;&nbsp; WWW.BarrCan.com.mx &nbsp;&bull;&nbsp; ventas@barrcan.com.mx'
+    + '</div>'
+    + '<div style="text-align:center;color:#C8923A;font-size:10px;letter-spacing:2px;padding:2px 0 10px;overflow:hidden;white-space:nowrap">'
+    + Array(40).fill('&bull;').join(' ')
+    + '</div>'
+    + '<div style="text-align:center;padding-bottom:12px;border-bottom:2.5px solid #1B3A5C;margin-bottom:14px">'
+    + '<div style="font-size:13pt;font-weight:900;color:#1B3A5C;text-transform:uppercase;letter-spacing:.5px">' + esc(tituloDoc) + '</div>'
+    + '<div style="font-size:12pt;font-weight:900;color:#C8923A;font-family:monospace;margin-top:2px">' + esc(folioDoc || '') + '</div>'
+    + '</div>';
+}
 
 // Tomada tal cual de barrcan_app.html para mantener el mismo look en ambas apps.
 function renderFilaCosto(label, monto, esGif=false, esUtilidad=false, esAlerta=false) {
@@ -5043,6 +5108,7 @@ function calcularPelicula(L, H) {
 // ── Render resultado (del app base) ──────────────────────────
 function renderResultado(r) {
   const el = document.getElementById('resultado-contenido');
+  snAgregarAlCarrito(r);
 
   // ── Caso especial: SERVICIO / MANTENIMIENTO ──
   if (STATE.ultimoResultado && STATE.ultimoResultado.esServicio) {
@@ -5065,7 +5131,7 @@ function renderResultado(r) {
           <div class="desglose-row total-row"><span>PRECIO FINAL</span><span>$${fmt(s.precioFinal)}</span></div>
         </div>
         ${s.servNotas ? `<div class="wizard-card fade-in" style="margin-top:12px"><div style="font-size:12px;color:var(--navy)">${s.servNotas}</div></div>` : ''}
-      </div>`;
+      </div>` + snPromptCarrito();
     document.getElementById('export-bar').classList.add('visible');
     document.querySelector('.sn-body').style.paddingBottom = '80px';
     return;
@@ -5105,7 +5171,7 @@ function renderResultado(r) {
             ${g.id === 'GTIA_PREMIUM' ? '<div>🌍 Cubre daños por sismo, temblor e inundación (solo vidrio templado)</div>' : ''}
           </div>
         </div>
-      </div>`;
+      </div>` + snPromptCarrito();
     document.getElementById('export-bar').classList.add('visible');
     document.querySelector('.sn-body').style.paddingBottom = '80px';
     return;
@@ -5151,7 +5217,7 @@ function renderResultado(r) {
           </div>
         </div>
       </div>
-    `;
+    ` + snPromptCarrito();
     document.getElementById('export-bar').classList.add('visible');
     document.querySelector('.sn-body').style.paddingBottom = '80px';
     return;
@@ -5190,10 +5256,13 @@ function renderResultado(r) {
 
       <!-- Contenido por vista -->
       <div id=vista-contenido></div>
+
+      <div id=carrito-prompt></div>
     </div>
   `;
 
   renderVista(r);
+  document.getElementById('carrito-prompt').innerHTML = snPromptCarrito();
   document.getElementById('export-bar').classList.add('visible');
   document.querySelector('.sn-body').style.paddingBottom = '80px';
 }
@@ -5455,54 +5524,293 @@ function snArchivoAdj(input){
   if(txt) txt.textContent='✅ '+file.name.slice(0,40);
 }
 
-// ── Guardar ───────────────────────────────────────────────────
-async function snGuardar(){
-  const r=STATE.ultimoResultado;
-  if(!r){toast('Primero calcula un presupuesto');return;}
-  const cliente=document.getElementById('sn-cliente').value.trim();
-  const tel    =document.getElementById('sn-tel').value.trim();
-  const dir    =document.getElementById('sn-dir').value.trim();
-  const notas  =document.getElementById('sn-notas').value.trim();
-  if(!cliente){toast('Ingresa el nombre del cliente');return;}
-  const hoy=new Date();
-  const yy=String(hoy.getFullYear()).slice(-2);
-  const mm=String(hoy.getMonth()+1).padStart(2,'0');
-  const dd=String(hoy.getDate()).padStart(2,'0');
-  const ini=(cliente.replace(/ /g,'').toUpperCase()[0])||'X';
-  const folio=`CACN-${Math.floor(Math.random()*900)+100}B-${yy}${mm}${dd}-RC${Math.floor(Math.random()*900)+100}${ini}`;
-  const varTxt=snFijoVar==='ftop'?' Fijo↑':snFijoVar==='fbot'?' Fijo↓':'';
-  const desc=`${r.sistema||''}${varTxt} ${r.L&&r.H?r.L+'x'+r.H+'mm':''} ${r.vidTipo||''} ${dir?'· '+dir:''}`.trim().slice(0,200);
-  if(!sb()){toast('Sin conexión · Folio: '+folio);return;}
-  let archivo_url=null,archivo_nombre=null;
-  if(snArchivoAdjFile){
-    try{
-      const ext=snArchivoAdjFile.name.split('.').pop();
-      const path=`presupuestos/${folio}.${ext}`;
-      const up=await sb().storage.from('presupuestos').upload(path,snArchivoAdjFile,{contentType:snArchivoAdjFile.type,upsert:true});
-      if(!up.error){archivo_url=path;archivo_nombre=snArchivoAdjFile.name;}
-    }catch(e){}
+// ── Clientes: vincular con existentes o capturar uno nuevo ────
+async function snCargarClientes(){
+  var sel = document.getElementById('sn-cli-select');
+  if (!sel || !sb()) return;
+  try {
+    var res = await sb().from('clientes').select('*').order('nombre').range(0, 999);
+    if (res.error) throw res.error;
+    var opts = '<option value="">+ Cliente nuevo</option>';
+    (res.data || []).forEach(function(c){
+      if (!c.nombre) return;
+      opts += '<option value="' + esc(c.id != null ? c.id : c.nombre) + '" data-c="' + esc(JSON.stringify(c)) + '">' + esc(c.nombre) + '</option>';
+    });
+    sel.innerHTML = opts;
+  } catch(e) { console.warn('[BarrCan] No se pudieron cargar clientes:', e); }
+}
+function snSelCliente(){
+  var sel = document.getElementById('sn-cli-select');
+  if (!sel) return;
+  if (!sel.value) {
+    // "+ Cliente nuevo": limpiar para captura manual
+    ['sn-cliente','sn-tel','sn-dir'].forEach(function(id){ var el = document.getElementById(id); if (el) el.value = ''; });
+    return;
   }
-  const payload={folio,cliente,tel:tel||null,descripcion:desc,notas:notas||null,
-    monto:Math.round(r.precioFinal||0),saldo:Math.round(r.precioFinal||0),
-    estado:'activo',fecha:hoy.toISOString().split('T')[0],archivo_url,archivo_nombre,
-    notas_internas:JSON.stringify({
-      sistema:r.sistema,L:r.L,H:r.H,vidTipo:r.vidTipo,
-      costoAluminio:r.costoAluminio,costoVidrio:r.costoVidrio,
-      costoHerrajes:r.costoHerrajes,mdoTotal:r.mdoTotal
-    })
+  var opt = sel.options[sel.selectedIndex];
+  var c = {};
+  try { c = JSON.parse(opt.dataset.c || '{}'); } catch(e) {}
+  document.getElementById('sn-cliente').value = c.nombre || '';
+  document.getElementById('sn-tel').value = c.telefono || '';
+  var dirC = c.dir_obra || c.direccion || c.domicilio || '';
+  document.getElementById('sn-dir').value = dirC;
+}
+
+// ── Pantalla de Presupuesto (carrito) ──────────────────────────
+function snRenderPresupuesto() {
+  const tr = document.getElementById('tab-resultado');
+  const pres = document.getElementById('sn-presupuesto');
+  if (tr) tr.style.display = 'none';
+  if (pres) pres.style.display = 'block';
+  const cont = document.getElementById('sn-presupuesto-items');
+  if (cont) {
+    if (!STATE.carrito.length) {
+      cont.innerHTML = '<div class="wizard-card" style="text-align:center;color:var(--gray-400);font-size:13px;padding:20px">Sin piezas todav\u00eda. Ve al cat\u00e1logo y calcula al menos una.</div>';
+    } else {
+      var html = '<div class="wizard-card">';
+      STATE.carrito.forEach(function(it, idx) {
+        var checked = it.incluido !== false;
+        var cant = it.cantidad || 1;
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;' + (idx > 0 ? 'border-top:1px solid var(--gray-200)' : '') + '">'
+          + '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="snToggleItemCarrito(\'' + it.id + '\')" style="width:18px;height:18px;flex-shrink:0">'
+          + '<div style="flex:1;min-width:0">'
+          + '<div style="font-size:13px;font-weight:700;color:var(--navy)">' + esc(it.label) + '</div>'
+          + '<div style="font-size:11px;color:var(--gray-400)">$' + fmt(it.precioUnitario != null ? it.precioUnitario : it.precio) + ' c/u</div>'
+          + '</div>'
+          + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">'
+          + '<button onclick="snCambiarCantidad(\'' + it.id + '\',-1)" style="width:26px;height:26px;border:1.5px solid var(--gray-200);border-radius:6px;background:#fff;font-size:15px;font-weight:700;color:var(--navy);cursor:pointer;line-height:1">&minus;</button>'
+          + '<span style="min-width:18px;text-align:center;font-size:13px;font-weight:700;color:var(--navy)">' + cant + '</span>'
+          + '<button onclick="snCambiarCantidad(\'' + it.id + '\',1)" style="width:26px;height:26px;border:1.5px solid var(--gray-200);border-radius:6px;background:#fff;font-size:15px;font-weight:700;color:var(--navy);cursor:pointer;line-height:1">+</button>'
+          + '</div>'
+          + '<div style="width:80px;text-align:right;font-size:13px;font-weight:800;color:var(--navy)">$' + fmt(it.precio) + '</div>'
+          + '<button onclick="snQuitarDelCarrito(\'' + it.id + '\')" style="background:none;border:none;color:var(--red);font-size:20px;cursor:pointer;padding:4px 4px;line-height:1">&times;</button>'
+          + '</div>';
+      });
+      html += '<div style="display:flex;justify-content:space-between;padding-top:10px;margin-top:6px;border-top:2px solid var(--navy);font-size:15px;font-weight:800;color:var(--navy)">'
+        + '<span>TOTAL</span><span>$' + fmt(snTotalCarrito()) + ' MXN</span></div>'
+        + '</div>';
+      cont.innerHTML = html;
+    }
+  }
+  snRenderBadgeCarrito();
+  if (pres) pres.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// Documento final: mismo formato que los presupuestos-contrato oficiales
+// (encabezado + lista numerada de piezas + total), tal como en el PDF de referencia.
+function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha) {
+  var fechaStr = fecha.toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
+  var total = items.reduce(function(a, it){ return a + (it.precio || 0); }, 0);
+  var lista = items.map(function(it, idx) {
+    var cant = it.cantidad || 1;
+    var detalle = cant > 1 ? ' <span style="color:#888;font-size:9pt">(' + cant + ' pzas \u00d7 $' + fmt(it.precioUnitario != null ? it.precioUnitario : (it.precio / cant)) + ')</span>' : '';
+    return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee;font-size:11pt">'
+      + '<span>' + (idx + 1) + '. ' + esc(it.label) + detalle + '</span>'
+      + '<span style="font-weight:700;white-space:nowrap;padding-left:12px">$' + fmt(it.precio) + '</span></div>';
+  }).join('');
+  return '<!DOCTYPE html><html lang=es><head><meta charset=UTF-8><meta name=viewport content=width=device-width>'
+    + '<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10pt;color:#1B3A5C;background:#fff}'
+    + '.pg{max-width:620px;margin:0 auto;padding:0 0 80px}.pg-body{padding:16px 22px}'
+    + '.barra{position:fixed;bottom:0;left:0;right:0;background:#1B3A5C;padding:8px 14px;display:flex;gap:8px;justify-content:center;z-index:999}'
+    + '.bp{padding:9px 20px;background:#C8923A;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer}'
+    + '.bc{padding:9px 12px;background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:7px;font-size:12px;cursor:pointer}'
+    + '@media print{.barra{display:none!important}}</style></head><body>'
+    + '<div class=barra><button class=bp onclick="window.print()">Imprimir / PDF</button><button class=bc onclick="window.close()">Cerrar</button></div>'
+    + '<div class=pg>'
+    + snHeaderOficial('Presupuesto - Contrato', folio)
+    + '<div class=pg-body>'
+    + '<div style="text-align:right;font-size:10pt;color:#666;margin-bottom:10px">' + fechaStr + '</div>'
+    + '<div style="font-size:11pt;margin-bottom:2px"><strong>Cliente:</strong> ' + esc(cliente) + '</div>'
+    + (dir ? '<div style="font-size:10pt;color:#666;margin-bottom:14px">' + esc(dir) + '</div>' : '<div style="margin-bottom:14px"></div>')
+    + lista
+    + '<div style="display:flex;justify-content:flex-end;padding-top:12px;font-size:14pt;font-weight:900;color:#1B3A5C">$' + fmt(total) + '</div>'
+    + '<div style="margin-top:24px;font-size:9pt;text-align:center;color:#1B3A5C;background:#F7F5F0;padding:10px;border-radius:6px">'
+    + 'El presente presupuesto contempla los trabajos antes descritos, cualquier otro trabajo adicional se cotizar\u00e1. Estos precios est\u00e1n sujetos a cambios sin previo aviso.'
+    + '</div>'
+    + '</div></div></body></html>';
+}
+
+// ── Guardar presupuesto completo (todas las piezas incluidas) ──
+async function snGuardarPresupuesto(){
+  const incluidos = STATE.carrito.filter(function(it){ return it.incluido !== false; });
+  if (!incluidos.length) { toast('Selecciona al menos una pieza'); return; }
+  const cliente = document.getElementById('sn-cliente').value.trim();
+  const tel = document.getElementById('sn-tel').value.trim();
+  const dir = document.getElementById('sn-dir').value.trim();
+  const notas = document.getElementById('sn-notas').value.trim();
+  if (!cliente) { toast('Ingresa el nombre del cliente'); return; }
+  const total = incluidos.reduce(function(a, it){ return a + (it.precio || 0); }, 0);
+  const hoy = new Date();
+  const yy = String(hoy.getFullYear()).slice(-2);
+  const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+  const dd = String(hoy.getDate()).padStart(2, '0');
+  const ini = (cliente.replace(/ /g, '').toUpperCase()[0]) || 'X';
+  const folio = `CACN-${Math.floor(Math.random() * 900) + 100}B-${yy}${mm}${dd}-RC${Math.floor(Math.random() * 900) + 100}${ini}`;
+  const desc = incluidos.map(function(it){ return it.label + ((it.cantidad || 1) > 1 ? ' x' + it.cantidad : ''); }).join(' + ').slice(0, 200);
+
+  const htmlDoc = snGenerarDocumentoPresupuesto(incluidos, folio, cliente, dir, hoy);
+
+  if (sb()) {
+    let archivo_url = null, archivo_nombre = null;
+    if (snArchivoAdjFile) {
+      try {
+        const ext = snArchivoAdjFile.name.split('.').pop();
+        const path = `presupuestos/${folio}.${ext}`;
+        const up = await sb().storage.from('presupuestos').upload(path, snArchivoAdjFile, { contentType: snArchivoAdjFile.type, upsert: true });
+        if (!up.error) { archivo_url = path; archivo_nombre = snArchivoAdjFile.name; }
+      } catch(e) {}
+    }
+    const payload = {
+      folio, cliente, tel: tel || null, descripcion: desc, dir_obra: dir || null, notas: notas || null,
+      monto: Math.round(total), saldo: Math.round(total),
+      estado: 'activo', fecha: hoy.toISOString().split('T')[0], archivo_url, archivo_nombre,
+      notas_internas: JSON.stringify(incluidos.map(function(it){ return { label: it.label, cantidad: it.cantidad || 1, precioUnitario: it.precioUnitario != null ? it.precioUnitario : it.precio, precio: it.precio, resultado: it.resultado }; }))
+    };
+    try {
+      const res = await sb().from('presupuestos_atrasados').insert([payload]);
+      if (res.error) throw res.error;
+      toast('Guardado \u00b7 ' + folio);
+    } catch(e) { toast('Error al guardar: ' + e.message); }
+    // Si fue "+ Cliente nuevo" (no vino del selector), lo damos de alta para la próxima vez
+    const selCli = document.getElementById('sn-cli-select');
+    if (selCli && !selCli.value) {
+      try { await sb().from('clientes').insert([{ nombre: cliente, telefono: tel || null, dir_obra: dir || null }]); snCargarClientes(); } catch(e) {}
+    }
+  } else {
+    toast('Sin conexi\u00f3n \u00b7 Folio: ' + folio);
+  }
+
+  const w = window.open('', '_blank');
+  if (w) { w.document.write(htmlDoc); w.document.close(); }
+
+  STATE.carrito = [];
+  snGuardarCarritoLocal();
+  ['sn-cliente','sn-tel','sn-dir','sn-notas'].forEach(function(id){ const el = document.getElementById(id); if (el) el.value = ''; });
+  const selCliReset = document.getElementById('sn-cli-select'); if (selCliReset) selCliReset.value = '';
+  snArchivoAdjFile = null;
+  const zona = document.getElementById('sn-adjunto-zone');
+  const txt = document.getElementById('sn-adj-txt');
+  if (zona) zona.style.borderColor = 'var(--gray-200)';
+  if (txt) txt.textContent = '📎 Adjuntar plano o croquis (PDF o imagen)';
+  snHistorial();
+}
+
+// ── Carrito multi-pieza (presupuesto con varias piezas) ────────
+var CARRITO_KEY = 'barrcan_sn_carrito';
+
+function snCargarCarritoLocal() {
+  try {
+    var saved = JSON.parse(localStorage.getItem(CARRITO_KEY) || '[]');
+    STATE.carrito = Array.isArray(saved) ? saved : [];
+  } catch(e) { STATE.carrito = []; }
+  snRenderBadgeCarrito();
+}
+function snGuardarCarritoLocal() {
+  try { localStorage.setItem(CARRITO_KEY, JSON.stringify(STATE.carrito)); } catch(e) {}
+  snRenderBadgeCarrito();
+}
+function snEtiquetaPieza(r) {
+  if (!r) return 'Pieza';
+  var varTxt = snFijoVar === 'ftop' ? ' Fijo\u2191' : snFijoVar === 'fbot' ? ' Fijo\u2193' : '';
+  if (r.esGarantia) return 'Garant\u00eda \u00b7 ' + (r.sistemaNombre || '');
+  if (r.esEspejo) return 'Espejo \u00b7 ' + (r.espFormaLabel || '') + ' ' + (r.espForma === 'circ' ? ('\u00d8' + r.ancho + 'cm') : (r.ancho + '\u00d7' + r.alto + 'cm'));
+  if (r.esServicio) return (r.sistemaNombre || 'Servicio') + ' \u00b7 ' + (r.servCantidad || 1) + ' ' + (r.servUnidad || '');
+  return (r.sistema || 'Sistema') + varTxt + ' \u00b7 ' + (r.L || '') + '\u00d7' + (r.H || '') + 'mm';
+}
+// Firma de la pieza: dos c\u00e1lculos con la misma firma se consideran "la
+// misma pieza" y se agrupan con cantidad, en vez de listarse por separado.
+function snFirmaResultado(r) {
+  if (!r) return '';
+  if (r.esGarantia) return 'G|' + (r.id || r.sistemaNombre);
+  if (r.esEspejo) return 'E|' + (r.sistemaId || '') + '|' + r.espForma + '|' + r.ancho + '|' + (r.alto || '') + '|' + (r.espBastidor || '') + '|' + (r.espLuz || '');
+  if (r.esServicio) return 'S|' + (r.id || r.sistemaNombre) + '|' + (r.servCantidad || 1) + '|' + (r.servUnidad || '');
+  var pelTxt = (r.pelData && r.pelData.totalVenta) ? '|pel' + Math.round(r.pelData.totalVenta) : '';
+  return 'P|' + r.sistema + '|' + r.L + '|' + r.H + '|' + (snFijoVar || 'base') + '|' + (r.vidTipo || '') + pelTxt;
+}
+function snCantidadTotalCarrito() {
+  return STATE.carrito.reduce(function(a, it){ return a + (it.incluido !== false ? (it.cantidad || 1) : 0); }, 0);
+}
+function snAgregarAlCarrito(resultado) {
+  if (!resultado) return null;
+  var firma = snFirmaResultado(resultado);
+  var existente = STATE.carrito.find(function(it){ return it.firma === firma && it.incluido !== false; });
+  if (existente) {
+    existente.cantidad = (existente.cantidad || 1) + 1;
+    existente.precio = existente.precioUnitario * existente.cantidad;
+    snGuardarCarritoLocal();
+    return existente;
+  }
+  var item = {
+    id: 'p_' + Date.now() + '_' + Math.floor(Math.random() * 9999),
+    label: snEtiquetaPieza(resultado),
+    firma: firma,
+    cantidad: 1,
+    precioUnitario: resultado.precioFinal || 0,
+    precio: resultado.precioFinal || 0,
+    incluido: true,
+    resultado: resultado
   };
-  try{
-    const res=await sb().from('presupuestos_atrasados').insert([payload]);
-    if(res.error)throw res.error;
-    toast('Guardado · '+folio);
-    ['sn-cliente','sn-tel','sn-dir','sn-notas'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-    snArchivoAdjFile=null;
-    const zona=document.getElementById('sn-adjunto-zone');
-    const txt=document.getElementById('sn-adj-txt');
-    if(zona)zona.style.borderColor='var(--gray-200)';
-    if(txt) txt.textContent='📎 Adjuntar plano o croquis (PDF o imagen)';
-    snHistorial();
-  }catch(e){toast('Error: '+e.message);}
+  STATE.carrito.push(item);
+  snGuardarCarritoLocal();
+  return item;
+}
+function snCambiarCantidad(id, delta) {
+  var it = STATE.carrito.find(function(x){ return x.id === id; });
+  if (!it) return;
+  it.cantidad = (it.cantidad || 1) + delta;
+  if (it.cantidad <= 0) {
+    STATE.carrito = STATE.carrito.filter(function(x){ return x.id !== id; });
+  } else {
+    it.precio = it.precioUnitario * it.cantidad;
+  }
+  snGuardarCarritoLocal();
+  snRenderPresupuesto();
+}
+function snQuitarDelCarrito(id) {
+  STATE.carrito = STATE.carrito.filter(function(it){ return it.id !== id; });
+  snGuardarCarritoLocal();
+  snRenderPresupuesto();
+}
+function snToggleItemCarrito(id) {
+  var it = STATE.carrito.find(function(x){ return x.id === id; });
+  if (it) it.incluido = !it.incluido;
+  snGuardarCarritoLocal();
+  snRenderPresupuesto();
+}
+function snTotalCarrito() {
+  return STATE.carrito.reduce(function(a, it){ return a + (it.incluido !== false ? (it.precio || 0) : 0); }, 0);
+}
+function snRenderBadgeCarrito() {
+  var badge = document.getElementById('sn-carrito-badge');
+  if (!badge) return;
+  if (!STATE.carrito.length) { badge.style.display = 'none'; return; }
+  badge.style.display = 'flex';
+  var n = snCantidadTotalCarrito();
+  document.getElementById('sn-carrito-badge-txt').textContent =
+    n + (n === 1 ? ' pieza \u00b7 $' : ' piezas \u00b7 $') + fmt(snTotalCarrito());
+}
+
+// ── Prompt "\u00bfAgregas otra pieza?" tras calcular ────────────
+function snPromptCarrito() {
+  var n = snCantidadTotalCarrito();
+  return '<div class="wizard-card fade-in" style="margin-top:12px;background:rgba(39,174,96,0.06);border:1.5px solid var(--green)">'
+    + '<div style="font-size:13px;font-weight:800;color:var(--green);margin-bottom:2px">\u2705 Agregada al presupuesto</div>'
+    + '<div style="font-size:12px;color:var(--gray-400);margin-bottom:10px">' + n + (n === 1 ? ' pieza' : ' piezas') + ' acumuladas \u00b7 $' + fmt(snTotalCarrito()) + ' total</div>'
+    + '<div style="display:flex;gap:8px">'
+    + '<button onclick="snIrCatalogo()" style="flex:1;padding:11px;background:#fff;border:1.5px solid var(--navy);border-radius:8px;font-family:\'DM Sans\',sans-serif;font-size:13px;font-weight:700;color:var(--navy);cursor:pointer">+ Agregar otra pieza</button>'
+    + '<button onclick="snRenderPresupuesto()" style="flex:1;padding:11px;background:var(--navy);border:none;border-radius:8px;font-family:\'DM Sans\',sans-serif;font-size:13px;font-weight:700;color:#fff;cursor:pointer">Ir a Presupuesto \u2192</button>'
+    + '</div></div>';
+}
+function snIrCatalogo() {
+  var tr = document.getElementById('tab-resultado');
+  var pres = document.getElementById('sn-presupuesto');
+  if (tr) tr.style.display = 'none';
+  if (pres) pres.style.display = 'none';
+  // Reset de medidas para capturar la siguiente pieza (deja el sistema
+  // seleccionado, ya que muchas veces la siguiente pieza es del mismo tipo).
+  ['inp-ancho','inp-alto'].forEach(function(id){ var el = document.getElementById(id); if (el) el.value = ''; });
+  var grid = document.getElementById('sis-grid');
+  if (grid) grid.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ── Historial ─────────────────────────────────────────────────
@@ -5608,6 +5916,8 @@ document.addEventListener('DOMContentLoaded',()=>{
   snDetectar();
   snBuildUI();
   snHistorial();
+  snCargarClientes();
+  snCargarCarritoLocal();
   // Inicializar película oculta
   actualizarPelicula();
 });
@@ -5791,15 +6101,7 @@ function renderVista(r) {
 
 // ── Guardar desde el export-bar ───────────────────────────────
 function snGuardarDesdeResultado() {
-  // Scroll al formulario de guardar
-  const gc = document.getElementById('sn-guardar-card');
-  if (gc) {
-    gc.scrollIntoView({behavior:'smooth', block:'start'});
-    // Highlight breve
-    gc.style.transition = 'box-shadow .3s';
-    gc.style.boxShadow  = '0 0 0 3px rgba(200,146,58,.5)';
-    setTimeout(() => gc.style.boxShadow = '', 1500);
-  }
+  snRenderPresupuesto();
 }
 
 // ── switchTab override con export-bar ────────────────────────
@@ -5828,7 +6130,13 @@ window.toggleSwitch = toggleSwitch;
 window.togglePelicula = togglePelicula;
 window.setPelModalidad = setPelModalidad;
 window.actualizarPelicula = actualizarPelicula;
-window.snGuardar = snGuardar;
+window.snGuardarPresupuesto = snGuardarPresupuesto;
+window.snRenderPresupuesto = snRenderPresupuesto;
+window.snIrCatalogo = snIrCatalogo;
+window.snSelCliente = snSelCliente;
+window.snToggleItemCarrito = snToggleItemCarrito;
+window.snCambiarCantidad = snCambiarCantidad;
+window.snQuitarDelCarrito = snQuitarDelCarrito;
 window.snHistorial = snHistorial;
 window.snSelVar = snSelVar;
 window.snTogDet = snTogDet;
