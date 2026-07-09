@@ -5,7 +5,34 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Cotizador Nacional</title>
 <!--
-  BARRCAN COTIZADOR NACIONAL v2.5
+  BARRCAN COTIZADOR NACIONAL v2.7
+  v2.7 - Auditoría de exposición window (el script vive en un IIFE, así que
+    toda función llamada desde un onclick="" del HTML necesita exponerse
+    explícitamente vía window.fn = fn o truena "fn is not defined"):
+    - snAdjuntarArch (botón "Adjuntar plano" en el historial) nunca se
+      expuso a window. Corregido.
+    - Verificado con un barrido automático: cada función invocada por
+      algún onclick="" en todo el archivo (estático y generado
+      dinámicamente) ya tiene su window.fn = fn correspondiente.
+    - Simulé el flujo completo (clic en tarjeta de sistema -> llenar
+      medidas -> clic en Calcular) de forma automatizada contra este
+      archivo: el cálculo corre limpio y genera resultado con precio
+      final correcto. Si en tu navegador real sigue sin calcular después
+      de subir este archivo, probablemente sigues viendo una versión
+      cacheada (GitHub Pages/Service Worker) — prueba con recarga forzada
+      (Ctrl+Shift+R) o en una pestaña de incógnito.
+  v2.6 - Fix de errores tras probar en vivo:
+    - document.querySelector('.content') -> '.sn-body' (4 ocurrencias en
+      renderResultado). '.content' no existe en este módulo standalone,
+      solo en barrcan_app.html; el contenedor real aquí es '.sn-body'.
+      Esto tronaba justo al terminar de calcular, después de renderizar
+      todo el resultado (Cannot read properties of null / 'style').
+    - snHistorial(): order('created_at') -> order('fecha'). 'created_at'
+      probablemente no existe en la tabla presupuestos_atrasados y
+      causaba el 400 de Supabase. 'fecha' sí existe (se inserta en
+      snGuardar()).
+    - snHistorial(): el catch ahora muestra el mensaje real del error en
+      vez de un genérico "Error al cargar".
   v2.5 - Fix PELICULA_PRECIOS + ROLLO_ANCHO_CM + export-bar + renderVista + cambiarVista
 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -4885,15 +4912,7 @@ function toast(msg){
 }
 
 // ── switchTab override (standalone) ───────────────────────────
-function switchTab(tab){
-  if(tab==='resultado'){
-    const tr=document.getElementById('tab-resultado');
-    const hc=document.getElementById('sn-historial-card');
-    if(tr)tr.style.display='block';
-    if(hc)hc.style.display='none';
-    setTimeout(()=>tr?.scrollIntoView({behavior:'smooth',block:'start'}),150);
-  }
-}
+// (switchTab se define más abajo, con soporte de export-bar — ver "switchTab override con export-bar")
 
 // ── Logística (idénticas al app base) ─────────────────────────
 function setPiso(n) {
@@ -5048,7 +5067,7 @@ function renderResultado(r) {
         ${s.servNotas ? `<div class="wizard-card fade-in" style="margin-top:12px"><div style="font-size:12px;color:var(--navy)">${s.servNotas}</div></div>` : ''}
       </div>`;
     document.getElementById('export-bar').classList.add('visible');
-    document.querySelector('.content').style.paddingBottom = '80px';
+    document.querySelector('.sn-body').style.paddingBottom = '80px';
     return;
   }
 
@@ -5088,7 +5107,7 @@ function renderResultado(r) {
         </div>
       </div>`;
     document.getElementById('export-bar').classList.add('visible');
-    document.querySelector('.content').style.paddingBottom = '80px';
+    document.querySelector('.sn-body').style.paddingBottom = '80px';
     return;
   }
   if (STATE.ultimoResultado && STATE.ultimoResultado.esEspejo) {
@@ -5134,7 +5153,7 @@ function renderResultado(r) {
       </div>
     `;
     document.getElementById('export-bar').classList.add('visible');
-    document.querySelector('.content').style.paddingBottom = '80px';
+    document.querySelector('.sn-body').style.paddingBottom = '80px';
     return;
   }
 
@@ -5176,7 +5195,7 @@ function renderResultado(r) {
 
   renderVista(r);
   document.getElementById('export-bar').classList.add('visible');
-  document.querySelector('.content').style.paddingBottom = '80px';
+  document.querySelector('.sn-body').style.paddingBottom = '80px';
 }
 
 // ── Motor de cálculo (del app base) ──────────────────────────
@@ -5497,7 +5516,7 @@ async function snHistorial(){
       .select('id,folio,cliente,descripcion,monto,saldo,estado,fecha,archivo_url,archivo_nombre,notas_internas')
       .ilike('folio', '%B-%')
       .in('estado',['activo','aprobado','en_produccion','pendiente_entrega'])
-      .order('created_at',{ascending:false}).limit(10);
+      .order('fecha',{ascending:false}).limit(10);
     if(res.error)throw res.error;
     if(!res.data.length){
       div.innerHTML='<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:12px">Sin presupuestos recientes</div>';
@@ -5546,7 +5565,8 @@ async function snHistorial(){
       </div>`;
     }).join('');
   }catch(e){
-    div.innerHTML='<div style="text-align:center;padding:14px;color:var(--red)">Error al cargar</div>';
+    console.warn('[BarrCan] Error cargando historial:', e);
+    div.innerHTML='<div style="text-align:center;padding:14px;color:var(--red)">Error al cargar: '+(e.message||'desconocido')+'</div>';
   }
 }
 
@@ -5820,6 +5840,7 @@ window.snGuardarDesdeResultado = snGuardarDesdeResultado;
 window.abrirModalContrato = abrirModalContrato;
 window.guardarCotizacion = guardarCotizacion;
 window.snActualizarResumenFijo = snActualizarResumenFijo;
+window.snAdjuntarArch = snAdjuntarArch;
 
 })();
 </script>
