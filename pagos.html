@@ -8,21 +8,16 @@
   BARRCAN · MÓDULO: PAGOS (standalone)
   VERSIÓN : v4.1
   FECHA   : 2026-07-11
+  v4.1 — 2026-07-11
+    - ADD: Paginación — muestra solo 10 pagos inicialmente
+    - ADD: Botón "Cargar más" cuando hay más de 10
+    - ADD: Botón "Ver todos" cuando hay más de 50
+    - ADD: Contador "mostrando X de Y"
+    - ADD: Scroll suave al cargar más
   v4.0 — 2026-07-11
     - ADD: Cálculo de saldo en vivo desde SUM(pagos.monto)
     - ADD: presupuesto_id en pagos para enlace directo
     - FIX: saldo ya no se resta del caché desactualizado
-    - ADD: validación contra saldo real antes de registrar
-    - ADD: recalcular saldo al seleccionar presupuesto
-    - FIX: pagos offline incluyen presupuesto_id
-  v3.8 — 2026-07-03
-    - CHG: dropdown presupuestos ordenado por folio A-Z
-  v3.7 — 2026-07-03
-    - ADD: presupuesto activo cambia a aprobado al registrar primer pago
-  v3.6 — 2026-07-03
-    - FIX: dropdown muestra todos los presupuestos aprobados
-  v3.5 — 2026-07-03
-    - FIX: foto del comprobante aparece al reimprimir
 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
@@ -265,28 +260,39 @@ select.form-select { padding-right: 36px; cursor: pointer; }
 }
 .pf-btn:active { transform: scale(0.95); }
 
-.btn-calcular {
-  width: 100%;
-  padding: 18px;
-  background: linear-gradient(135deg, var(--orange), #FF8533);
-  color: white;
-  border: none;
-  border-radius: var(--radius);
+.btn-cargar-mas {
+  padding: 10px 20px;
+  background: var(--off-white);
+  border: 1.5px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  color: var(--gray-600);
   font-family: 'DM Sans', sans-serif;
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
-  box-shadow: 0 6px 20px rgba(255,102,0,0.35);
-  margin-bottom: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
+  transition: all 0.15s;
+  width: 100%;
 }
-.btn-calcular:active { transform: scale(0.97); box-shadow: 0 3px 10px rgba(255,102,0,0.25); }
-.btn-calcular:disabled { background: var(--gray-200); box-shadow: none; color: var(--gray-400); }
+.btn-cargar-mas:hover {
+  background: var(--gray-100);
+  border-color: var(--gray-400);
+}
+.btn-cargar-mas:active {
+  transform: scale(0.98);
+}
+.btn-ver-todos {
+  padding: 6px 12px;
+  background: none;
+  border: none;
+  color: var(--blue);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.btn-ver-todos:hover {
+  color: var(--navy);
+}
 
 .btn-registrar {
   width: 100%;
@@ -471,6 +477,12 @@ select.form-select { padding-right: 36px; cursor: pointer; }
   font-size: 15px;
   font-weight: 800;
   color: var(--green);
+}
+.pago-rb-label {
+  font-size: 9px;
+  color: var(--blue);
+  font-family: monospace;
+  margin-left: 4px;
 }
 
 /* Modal post-pago */
@@ -694,7 +706,7 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     </div>
     <div class="offline-badge"><div class="offline-dot"></div>
       <span id="conn-status">Offline-First</span>
-      <span style="font-size:9px;color:rgba(255,255,255,0.3);margin-left:4px">Pagos v4.0</span>
+      <span style="font-size:9px;color:rgba(255,255,255,0.3);margin-left:4px">Pagos v4.1</span>
     </div>
   </div>
 
@@ -921,6 +933,14 @@ var ESTADO_SHORT = {
 var CONCEPTO_L = { anticipo: 'Anticipo 50%', segundo_pago: '2\u00b0 Pago 35%', liquidacion: 'Liquidaci\u00f3n 15%', pago_total: 'Pago total', otro: 'Otro' };
 var FORMA_E    = { transferencia: 'Transf.', efectivo: 'Efectivo', tarjeta: 'Tarjeta' };
 
+// ── Paginación ────────────────────────────────────────────────────
+var PAGOS_VISIBLES = 10;
+var PAGOS_MOSTRADOS = 10;
+
+function resetPaginacion() {
+  PAGOS_MOSTRADOS = PAGOS_VISIBLES;
+}
+
 // ── Folio RB ──────────────────────────────────────────────────────
 function nextFolioRB() {
   var n = parseInt(localStorage.getItem('barrcan_folio_rb') || '99') + 1;
@@ -948,7 +968,6 @@ function editarFolioRB() {
 async function recalcularSaldoReal(presupuestoId) {
   if (!sb() || !presupuestoId) return null;
   try {
-    // Obtener monto total del presupuesto
     const { data: pres, error: e1 } = await sb()
       .from('presupuestos_atrasados')
       .select('monto,folio,cliente')
@@ -956,7 +975,6 @@ async function recalcularSaldoReal(presupuestoId) {
       .single();
     if (e1 || !pres) return null;
 
-    // Sumar todos los pagos de este presupuesto usando presupuesto_id
     const { data: pagos, error: e2 } = await sb()
       .from('pagos')
       .select('monto')
@@ -977,18 +995,30 @@ async function recalcularSaldoReal(presupuestoId) {
   }
 }
 
+async function recalcularPagadoAntes(presupuestoId) {
+  if (!sb() || !presupuestoId) return 0;
+  try {
+    const { data: pagos, error } = await sb()
+      .from('pagos')
+      .select('monto')
+      .eq('presupuesto_id', presupuestoId);
+    if (error) return 0;
+    return pagos.reduce((s, p) => s + (p.monto || 0), 0);
+  } catch(e) {
+    return 0;
+  }
+}
+
 // ── Dropdown presupuestos ─────────────────────────────────────────
 function cargarPresDropdown() {
   var sel = document.getElementById('pago-pres');
   if (!sel) return;
 
-  // Cargar desde cache local inmediato
   var local = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]')
     .filter(function(p) { return ESTADOS_CON_SALDO.indexOf(p.estado) >= 0; });
   PRES_LIST = local;
   llenarDrop(local);
 
-  // Intentar Supabase en background
   if (!sb()) return;
   sb().from('presupuestos_atrasados')
     .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,estado')
@@ -997,7 +1027,6 @@ function cargarPresDropdown() {
     .then(async function(result) {
       if (result.error || !result.data || !result.data.length) return;
 
-      // Recalcular saldo real para cada presupuesto
       var dataConSaldoReal = [];
       for (var i = 0; i < result.data.length; i++) {
         var p = result.data[i];
@@ -1012,7 +1041,6 @@ function cargarPresDropdown() {
       PRES_LIST = dataConSaldoReal;
       llenarDrop(dataConSaldoReal);
 
-      // Guardar en cache
       var cache = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]');
       var pendientes = cache.filter(function(p) { return p._pendiente; });
       var merged = pendientes.concat(dataConSaldoReal);
@@ -1044,17 +1072,21 @@ async function seleccionarPres() {
     var p = JSON.parse(sel.options[sel.selectedIndex].dataset.p || '{}');
     PRES_SEL = p;
 
-    // 🔥 Recalcular saldo real desde Supabase
     if (p.id && sb()) {
       const real = await recalcularSaldoReal(p.id);
+      const pagadoReal = await recalcularPagadoAntes(p.id);
+
       if (real) {
         p.saldo = real.saldo;
         p.monto = real.total;
-        // Actualizar el option con el saldo real
         const opt = sel.options[sel.selectedIndex];
         const est = ESTADO_SHORT[p.estado] ? ' [' + ESTADO_SHORT[p.estado] + ']' : '';
         opt.textContent = (p.folio || '') + est + ' · ' + p.cliente + ' · Saldo $' + fmt(p.saldo || 0);
         opt.dataset.p = JSON.stringify(p);
+      }
+
+      if (pagadoReal > 0) {
+        document.getElementById('pago-ant').value = pagadoReal;
       }
     }
 
@@ -1065,11 +1097,11 @@ async function seleccionarPres() {
     s('pago-desc',    p.descripcion);
     s('pago-total',   p.monto || 0);
 
-    // 🔥 Calcular pagado_antes = total - saldo_real
-    var pagadoAntes = Math.max(0, (p.monto || 0) - (p.saldo || 0));
-    s('pago-ant', pagadoAntes || 0);
+    if (!document.getElementById('pago-ant').value) {
+      var pagadoAntes = Math.max(0, (p.monto || 0) - (p.saldo || 0));
+      document.getElementById('pago-ant').value = pagadoAntes || 0;
+    }
 
-    // Sugerir monto: si saldo > 30% del total, sugerir 50%, si no, sugerir todo
     var montoSugerido = p.saldo || 0;
     if (p.saldo > 0 && p.monto > 0 && (p.saldo / p.monto) > 0.3) {
       montoSugerido = Math.round(p.saldo * 0.5);
@@ -1078,8 +1110,7 @@ async function seleccionarPres() {
 
     actualizarSaldo();
 
-    // Sugerir concepto según % pagado
-    var pct = p.monto > 0 ? pagadoAntes / p.monto : 0;
+    var pct = p.monto > 0 ? (parseFloat(document.getElementById('pago-ant').value) || 0) / p.monto : 0;
     var sc = document.getElementById('pago-concepto');
     if (sc) sc.value = pct < 0.1 ? 'anticipo' : pct < 0.55 ? 'segundo_pago' : pct < 0.90 ? 'liquidacion' : 'pago_total';
 
@@ -1152,7 +1183,8 @@ function esc(str) {
 
 // ── Historial de pagos ───────────────────────────────────────────
 async function pagosCargar() {
-  var div   = document.getElementById('pagos-lista');
+  resetPaginacion();
+  var div = document.getElementById('pagos-lista');
   var local = JSON.parse(localStorage.getItem('barrcan_pagos_cache') || '[]');
   if (local.length) { PAGOS_CACHE = local; pagosRender(); }
   else div.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">Sin pagos registrados</div>';
@@ -1161,7 +1193,7 @@ async function pagosCargar() {
   try {
     var result = await sb().from('pagos')
       .select('id,monto,fecha_pago,forma_pago,concepto,notas,comprobante_img,created_at,presupuesto_id')
-      .order('created_at', { ascending: false }).limit(50);
+      .order('created_at', { ascending: false }).limit(200);
     if (result.error) throw result.error;
     SYNC.online = true; detectarConexion();
     var pendientes = PAGOS_CACHE.filter(function(p) { return p._pendiente; });
@@ -1179,16 +1211,47 @@ async function pagosCargar() {
   }
 }
 
+function cargarMasPagos() {
+  PAGOS_MOSTRADOS = Math.min(PAGOS_MOSTRADOS + 10, PAGOS_CACHE.length);
+  pagosRender();
+  var el = document.getElementById('pagos-lista');
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function verTodosPagos() {
+  PAGOS_MOSTRADOS = PAGOS_CACHE.length;
+  pagosRender();
+  var el = document.getElementById('pagos-lista');
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  toast('Mostrando todos los ' + PAGOS_CACHE.length + ' pagos');
+}
+
 function pagosRender() {
   var pend = JSON.parse(localStorage.getItem('barrcan_pagos_pend') || '[]');
   var el   = document.getElementById('pagos-contador');
+
   if (el) {
-    var txt = PAGOS_CACHE.length ? PAGOS_CACHE.length + ' pago' + (PAGOS_CACHE.length > 1 ? 's' : '') : '';
-    if (pend.length) txt += ' &middot; <span onclick="pagoReintentarPendientes()" style="color:var(--gold);font-weight:700;cursor:pointer;text-decoration:underline">' + pend.length + ' sin sincronizar</span>';
+    var total = PAGOS_CACHE.length;
+    var txt = total + ' pago' + (total > 1 ? 's' : '');
+    var mostrando = Math.min(PAGOS_MOSTRADOS, total);
+    if (total > 0) {
+      txt += ' · mostrando ' + mostrando + ' de ' + total;
+    }
+    if (pend.length) {
+      txt += ' &middot; <span onclick="pagoReintentarPendientes()" style="color:var(--gold);font-weight:700;cursor:pointer;text-decoration:underline">' + pend.length + ' sin sincronizar</span>';
+    }
     el.innerHTML = txt;
   }
+
   var div = document.getElementById('pagos-lista');
-  if (!PAGOS_CACHE.length) { div.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">Sin pagos registrados</div>'; return; }
+  if (!PAGOS_CACHE.length) {
+    div.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">Sin pagos registrados</div>';
+    return;
+  }
 
   var hoy = new Date().toISOString().split('T')[0];
   var totalHoy = PAGOS_CACHE.filter(function(p) { return p.fecha_pago === hoy; })
@@ -1198,14 +1261,20 @@ function pagosRender() {
     ? '<div class="pago-hoy"><span class="pago-hoy-label">Cobrado hoy</span><span class="pago-hoy-monto">$' + fmt(totalHoy) + '</span></div>'
     : '';
 
-  for (var i = 0; i < Math.min(PAGOS_CACHE.length, 20); i++) {
+  var mostrar = Math.min(PAGOS_MOSTRADOS, PAGOS_CACHE.length);
+
+  for (var i = 0; i < mostrar; i++) {
     var p = PAGOS_CACHE[i];
     var cls = 'pago-item' + (p._pendiente ? ' pendiente' : '');
     var pendTag = p._pendiente ? '<div class="pago-pend-tag">SIN SINCRONIZAR</div>' : '';
     var idStr = (p.id || '').replace(/'/g, '');
+
+    var rbMatch = (p.notas || '').match(/RECIBO:(RB-\d+)/);
+    var rbLabel = rbMatch ? '<span class="pago-rb-label">' + rbMatch[1] + '</span>' : '';
+
     html += '<div class="' + cls + '">'
       + '<div class="pago-item-info">' + pendTag
-      + '<div class="pago-item-titulo">' + (FORMA_E[p.forma_pago] || '') + ' ' + (CONCEPTO_L[p.concepto] || p.concepto || 'Pago') + '</div>'
+      + '<div class="pago-item-titulo">' + (FORMA_E[p.forma_pago] || '') + ' ' + (CONCEPTO_L[p.concepto] || p.concepto || 'Pago') + rbLabel + '</div>'
       + '<div class="pago-item-detalle">' + esc(p.fecha_pago || '') + (p.notas ? ' \u00b7 ' + esc(p.notas.slice(0, 35)) : '') + '</div>'
       + '</div>'
       + '<div style="display:flex;align-items:center;gap:8px">'
@@ -1213,6 +1282,26 @@ function pagosRender() {
       + (p.id && !p._pendiente ? '<button onclick="pagoAbrirEdicion(\'' + idStr + '\')" class="pago-item-edit">&#9999;</button>' : '')
       + '</div></div>';
   }
+
+  // Botón "Cargar más" si hay más de 10
+  if (PAGOS_MOSTRADOS < PAGOS_CACHE.length) {
+    var restantes = PAGOS_CACHE.length - PAGOS_MOSTRADOS;
+    html += '<div style="text-align:center;padding:8px 0;margin-top:6px">'
+      + '<button onclick="cargarMasPagos()" class="btn-cargar-mas">'
+      + 'Cargar ' + Math.min(10, restantes) + ' más  · ' + restantes + ' restantes'
+      + '</button>'
+      + '</div>';
+  }
+
+  // Botón "Ver todos" si hay más de 50
+  if (PAGOS_CACHE.length > 50 && PAGOS_MOSTRADOS < PAGOS_CACHE.length) {
+    html += '<div style="text-align:center;padding:4px 0">'
+      + '<button onclick="verTodosPagos()" class="btn-ver-todos">'
+      + 'Ver todos (' + PAGOS_CACHE.length + ')'
+      + '</button>'
+      + '</div>';
+  }
+
   div.innerHTML = html;
 }
 
@@ -1237,7 +1326,6 @@ async function pagoGuardar() {
   if (!monto || monto <= 0) { errEl.textContent = 'Ingresa el monto'; errEl.classList.add('visible'); return; }
   if (!fecha)               { errEl.textContent = 'Ingresa la fecha';  errEl.classList.add('visible'); return; }
 
-  // 🔥 Validar que el monto no exceda el saldo real
   if (PRES_SEL && PRES_SEL.id) {
     const real = await recalcularSaldoReal(PRES_SEL.id);
     if (real) {
@@ -1264,7 +1352,6 @@ async function pagoGuardar() {
   var nota = notaPartes.filter(Boolean).join(' | ');
   var notaConFolio = nota + (nota ? ' | ' : '') + 'RECIBO:' + folioRB;
 
-  // 🔥 Guardar con presupuesto_id
   var db = {
     monto:         monto,
     fecha_pago:    fecha,
@@ -1295,17 +1382,15 @@ async function pagoGuardar() {
       return;
     }
 
-    // Insertar pago
     var result = await sb().from('pagos').insert([db]);
     if (result.error) throw result.error;
 
-    // Actualizar caché local
     var newPago = Object.assign({}, db, { created_at: new Date().toISOString() });
     if (result.data && result.data[0]) newPago.id = result.data[0].id;
     PAGOS_CACHE.unshift(newPago);
     localStorage.setItem('barrcan_pagos_cache', JSON.stringify(PAGOS_CACHE));
+    resetPaginacion();
 
-    // 🔥 Actualizar saldo en presupuesto usando el valor calculado
     if (PRES_SEL && PRES_SEL.id && sb()) {
       var nuevoEstado = saldo <= 0 ? 'entregado'
         : PRES_SEL.estado === 'activo' ? 'aprobado'
@@ -1342,6 +1427,7 @@ function guardarOffline(db) {
     localStorage.setItem('barrcan_pagos_pend', JSON.stringify(cola));
     PAGOS_CACHE.unshift(Object.assign({}, db, { _pendiente: true, created_at: new Date().toISOString() }));
     localStorage.setItem('barrcan_pagos_cache', JSON.stringify(PAGOS_CACHE));
+    resetPaginacion();
     pagosRender();
     toast('Pago guardado localmente');
   } catch(e) {}
@@ -1366,12 +1452,12 @@ async function pagoReintentarPendientes() {
   if (ok.length) {
     PAGOS_CACHE.forEach(function(p) { if (p._pendiente) delete p._pendiente; });
     localStorage.setItem('barrcan_pagos_cache', JSON.stringify(PAGOS_CACHE));
+    resetPaginacion();
     toast(ok.length + ' pago(s) sincronizado(s)');
     pagosRender();
   }
   if (rest.length) toast(rest.length + ' aun pendiente(s)');
 
-  // Reintentar ediciones
   var colaEdit = JSON.parse(localStorage.getItem('barrcan_pagos_edit_pend') || '[]');
   if (colaEdit.length && sb()) {
     var okEdit = [];
@@ -1564,6 +1650,7 @@ async function pagoEditarGuardar() {
     }
   }
   localStorage.setItem('barrcan_pagos_cache', JSON.stringify(PAGOS_CACHE));
+  resetPaginacion();
   pagosRender();
   document.getElementById('pago-edit-ov').classList.remove('visible');
 
@@ -1667,83 +1754,6 @@ function pagoReset() {
     b.classList.toggle('active', i === 0);
   });
 }
-// ── RECALCULAR PAGADO ANTES DESDE SUPABASE ─────────────────────
-async function recalcularPagadoAntes(presupuestoId) {
-    if (!sb() || !presupuestoId) return 0;
-    try {
-        const { data: pagos, error } = await sb()
-            .from('pagos')
-            .select('monto')
-            .eq('presupuesto_id', presupuestoId);
-        if (error) return 0;
-        return pagos.reduce((s, p) => s + (p.monto || 0), 0);
-    } catch(e) {
-        return 0;
-    }
-}
-
-// ── MODIFICAR seleccionarPres para usar el total pagado real ──
-async function seleccionarPres() {
-    var sel = document.getElementById('pago-pres');
-    if (!sel || !sel.value) { clearPres(); return; }
-    try {
-        var p = JSON.parse(sel.options[sel.selectedIndex].dataset.p || '{}');
-        PRES_SEL = p;
-
-        // Obtener saldo real y total pagado desde Supabase
-        if (p.id && sb()) {
-            const real = await recalcularSaldoReal(p.id);
-            const pagadoReal = await recalcularPagadoAntes(p.id);
-            
-            if (real) {
-                p.saldo = real.saldo;
-                p.monto = real.total;
-                // Actualizar el option
-                const opt = sel.options[sel.selectedIndex];
-                const est = ESTADO_SHORT[p.estado] ? ' [' + ESTADO_SHORT[p.estado] + ']' : '';
-                opt.textContent = (p.folio || '') + est + ' · ' + p.cliente + ' · Saldo $' + fmt(p.saldo || 0);
-                opt.dataset.p = JSON.stringify(p);
-            }
-            
-            // Si tenemos el total pagado real, actualizar el campo "pagado antes"
-            if (pagadoReal > 0) {
-                document.getElementById('pago-ant').value = pagadoReal;
-            }
-        }
-
-        var s = function(id, v) { var el = document.getElementById(id); if (el) el.value = v || ''; };
-        s('pago-folio',   p.folio);
-        s('pago-cliente', p.cliente);
-        s('pago-tel',     p.tel);
-        s('pago-desc',    p.descripcion);
-        s('pago-total',   p.monto || 0);
-
-        // Si no se obtuvo pagadoReal desde Supabase, usar el cálculo local
-        if (!document.getElementById('pago-ant').value) {
-            var pagadoAntes = Math.max(0, (p.monto || 0) - (p.saldo || 0));
-            document.getElementById('pago-ant').value = pagadoAntes || 0;
-        }
-
-        // Sugerir monto
-        var montoSugerido = p.saldo || 0;
-        if (p.saldo > 0 && p.monto > 0 && (p.saldo / p.monto) > 0.3) {
-            montoSugerido = Math.round(p.saldo * 0.5);
-        }
-        s('pago-monto', montoSugerido);
-
-        actualizarSaldo();
-
-        var pct = p.monto > 0 ? (parseFloat(document.getElementById('pago-ant').value) || 0) / p.monto : 0;
-        var sc = document.getElementById('pago-concepto');
-        if (sc) sc.value = pct < 0.1 ? 'anticipo' : pct < 0.55 ? 'segundo_pago' : pct < 0.90 ? 'liquidacion' : 'pago_total';
-
-        var card = document.getElementById('pago-pres-card');
-        card.classList.add('visible');
-        document.getElementById('pago-pres-info').textContent = p.folio + ' \u00b7 ' + p.cliente + ' \u00b7 Saldo real $' + fmt(p.saldo || 0);
-    } catch(e) {
-        console.warn('seleccionarPres error:', e.message);
-    }
-}
 
 // ── Init ──────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
@@ -1751,7 +1761,6 @@ document.addEventListener('DOMContentLoaded', function() {
   _LOGO_SRC = document.querySelector('.logo-mark img') ? document.querySelector('.logo-mark img').src : '';
   pagoReset();
 
-  // Cargar desde cache local inmediatamente
   var localPres = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]')
     .filter(function(p) { return ESTADOS_CON_SALDO.indexOf(p.estado) >= 0; });
   if (localPres.length) {
