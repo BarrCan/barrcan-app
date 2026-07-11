@@ -6,7 +6,7 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
-  VERSIÓN : v4.0
+  VERSIÓN : v4.1
   FECHA   : 2026-07-11
   v4.0 — 2026-07-11
     - ADD: Cálculo de saldo en vivo desde SUM(pagos.monto)
@@ -1666,6 +1666,83 @@ function pagoReset() {
   document.querySelectorAll('.pf-btn').forEach(function(b, i) {
     b.classList.toggle('active', i === 0);
   });
+}
+// ── RECALCULAR PAGADO ANTES DESDE SUPABASE ─────────────────────
+async function recalcularPagadoAntes(presupuestoId) {
+    if (!sb() || !presupuestoId) return 0;
+    try {
+        const { data: pagos, error } = await sb()
+            .from('pagos')
+            .select('monto')
+            .eq('presupuesto_id', presupuestoId);
+        if (error) return 0;
+        return pagos.reduce((s, p) => s + (p.monto || 0), 0);
+    } catch(e) {
+        return 0;
+    }
+}
+
+// ── MODIFICAR seleccionarPres para usar el total pagado real ──
+async function seleccionarPres() {
+    var sel = document.getElementById('pago-pres');
+    if (!sel || !sel.value) { clearPres(); return; }
+    try {
+        var p = JSON.parse(sel.options[sel.selectedIndex].dataset.p || '{}');
+        PRES_SEL = p;
+
+        // Obtener saldo real y total pagado desde Supabase
+        if (p.id && sb()) {
+            const real = await recalcularSaldoReal(p.id);
+            const pagadoReal = await recalcularPagadoAntes(p.id);
+            
+            if (real) {
+                p.saldo = real.saldo;
+                p.monto = real.total;
+                // Actualizar el option
+                const opt = sel.options[sel.selectedIndex];
+                const est = ESTADO_SHORT[p.estado] ? ' [' + ESTADO_SHORT[p.estado] + ']' : '';
+                opt.textContent = (p.folio || '') + est + ' · ' + p.cliente + ' · Saldo $' + fmt(p.saldo || 0);
+                opt.dataset.p = JSON.stringify(p);
+            }
+            
+            // Si tenemos el total pagado real, actualizar el campo "pagado antes"
+            if (pagadoReal > 0) {
+                document.getElementById('pago-ant').value = pagadoReal;
+            }
+        }
+
+        var s = function(id, v) { var el = document.getElementById(id); if (el) el.value = v || ''; };
+        s('pago-folio',   p.folio);
+        s('pago-cliente', p.cliente);
+        s('pago-tel',     p.tel);
+        s('pago-desc',    p.descripcion);
+        s('pago-total',   p.monto || 0);
+
+        // Si no se obtuvo pagadoReal desde Supabase, usar el cálculo local
+        if (!document.getElementById('pago-ant').value) {
+            var pagadoAntes = Math.max(0, (p.monto || 0) - (p.saldo || 0));
+            document.getElementById('pago-ant').value = pagadoAntes || 0;
+        }
+
+        // Sugerir monto
+        var montoSugerido = p.saldo || 0;
+        if (p.saldo > 0 && p.monto > 0 && (p.saldo / p.monto) > 0.3) {
+            montoSugerido = Math.round(p.saldo * 0.5);
+        }
+        s('pago-monto', montoSugerido);
+
+        actualizarSaldo();
+
+        var pct = p.monto > 0 ? (parseFloat(document.getElementById('pago-ant').value) || 0) / p.monto : 0;
+        var sc = document.getElementById('pago-concepto');
+        if (sc) sc.value = pct < 0.1 ? 'anticipo' : pct < 0.55 ? 'segundo_pago' : pct < 0.90 ? 'liquidacion' : 'pago_total';
+
+        var card = document.getElementById('pago-pres-card');
+        card.classList.add('visible');
+        document.getElementById('pago-pres-info').textContent = p.folio + ' \u00b7 ' + p.cliente + ' \u00b7 Saldo real $' + fmt(p.saldo || 0);
+    } catch(e) {
+        console.warn('seleccionarPres error:', e.message);
+    }
 }
 
 // ── Init ──────────────────────────────────────────────────────────
