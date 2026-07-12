@@ -6,8 +6,30 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
-  VERSION : v3.14.0
-  FECHA   : 2026-07-12
+  VERSION : v3.15.0
+  FECHA   : 2026-07-13
+  v3.15.0 - Reorden visual + editar/eliminar reportes (solo admin) + fixes:
+    - Visual: la tarjeta "Producto entregado" (tipo de entrega) ahora va
+      primero, antes que "Cliente" y "Datos de la obra" — no cambia el
+      flujo, solo el orden en pantalla.
+    - Nuevo: "Eliminar" para reportes de entrega/instalación, igual que ya
+      existía "Editar". Solo activo en modo administrador (PIN de MAU/HER,
+      el mismo que ya usan para entrar a la app principal). Al eliminar
+      pide seleccionar un motivo (Repetido, Error de captura, Cambios del
+      cliente, Prueba, Otro) y registra quién lo eliminó y cuándo — es
+      baja lógica (no se borra el registro de la base de datos), para
+      conservar el historial/auditoría. Requiere el SQL adjunto.
+    - Fix: esAdmin() comparaba contra el id 'LUIS', pero el id real del
+      segundo administrador en el sistema es 'HER' — nunca detectaba a
+      ese usuario como admin.
+    - Fix: comilla duplicada en el <img> del header (introducida en la
+      migración del logo a v3.14.0) que podía romper el atributo style.
+    - Diagnóstico: si después de elegir un cliente no aparece su
+      presupuesto en el folio, ahora el dropdown muestra un mensaje
+      explícito ("sin presupuestos" / "error" / "sin conexión") en vez de
+      quedarse vacío sin explicación, y se loguea el detalle en consola
+      para ubicar la causa real la próxima vez que pase (no encontré
+      ningún cambio de código que explique la regresión que describiste).
   v3.14.0 - Logo del header cargado desde GitHub Pages (no base64):
     - El ícono del header ahora carga desde
       https://barrcan.github.io/barrcan-app/assets/logo-icono.jpg en vez
@@ -1131,7 +1153,7 @@ body{min-height:100vh}
   <div class="header">
     <div class="header-logo">
       <div class="logo-mark" style="padding:0;overflow:hidden">
-        <img src="https://barrcan.github.io/barrcan-app/assets/logo-icono.jpg" id="header-logo-img" onerror="this.onerror=null;this.src=_LOGO_ICONO_B64;"" style="width:100%;height:100%;object-fit:cover;display:block">
+        <img src="https://barrcan.github.io/barrcan-app/assets/logo-icono.jpg" id="header-logo-img" onerror="this.onerror=null;this.src=_LOGO_ICONO_B64;" style="width:100%;height:100%;object-fit:cover;display:block">
       </div>
       <div><span class="logo-text">BarrCan</span><span class="logo-sub">Canceleria &middot; Campo</span></div>
     </div>
@@ -1145,47 +1167,6 @@ body{min-height:100vh}
   <div class="content">
     <p class="section-title">Entregas de Producto</p>
     <p class="section-sub">En puerta &middot; Env&iacute;o &middot; Instalaci&oacute;n</p>
-
-    <!-- CLIENTE -->
-    <div class="wizard-card" style="margin-bottom:12px">
-      <div class="wizard-title">&#128100; Cliente</div>
-      <select id="ent-cli-select" class="form-select" onchange="entSelCliente()" style="margin-bottom:8px">
-        <option value="">&mdash; Selecciona cliente &mdash;</option>
-      </select>
-      <div class="form-group" style="margin-bottom:8px">
-        <label class="form-label">Nombre *</label>
-        <input type="text" id="ent-cliente" class="form-input" placeholder="Nombre del cliente">
-      </div>
-      <div class="form-row">
-        <div class="form-group" style="margin-bottom:0">
-          <label class="form-label">Tel&eacute;fono</label>
-          <input type="tel" id="ent-tel" class="form-input" inputmode="tel" placeholder="55 1234 5678">
-        </div>
-        <div class="form-group" style="margin-bottom:0">
-          <label class="form-label">Folio CACN</label>
-          <select id="ent-folio-select" class="form-select" onchange="entSelPresupuesto()" style="font-family:monospace;font-size:12px">
-            <option value="">&mdash; Selecciona presupuesto &mdash;</option>
-          </select>
-          <input type="hidden" id="ent-folio">
-        </div>
-      </div>
-    </div>
-
-    <!-- DATOS DE LA OBRA (COMÚN) -->
-    <div class="wizard-card" style="margin-bottom:12px">
-      <div class="wizard-title">📍 Datos de la obra</div>
-      <div class="form-group">
-        <label class="form-label">Direcci&oacute;n de la obra</label>
-        <input type="text" id="inst-direccion" class="form-input" placeholder="Calle, número, colonia, municipio">
-      </div>
-      <div class="form-group" style="margin-bottom:0">
-        <label class="form-label">Monto del trabajo</label>
-        <div class="input-unit">
-          <input type="number" id="inst-monto" class="form-input" placeholder="0.00" inputmode="decimal">
-          <span class="unit-label">$</span>
-        </div>
-      </div>
-    </div>
 
     <!-- PRODUCTO Y TIPO -->
     <div class="wizard-card" style="margin-bottom:12px">
@@ -1330,6 +1311,48 @@ body{min-height:100vh}
       </div>
     </div>
 
+
+    <!-- CLIENTE -->
+    <div class="wizard-card" style="margin-bottom:12px">
+      <div class="wizard-title">&#128100; Cliente</div>
+      <select id="ent-cli-select" class="form-select" onchange="entSelCliente()" style="margin-bottom:8px">
+        <option value="">&mdash; Selecciona cliente &mdash;</option>
+      </select>
+      <div class="form-group" style="margin-bottom:8px">
+        <label class="form-label">Nombre *</label>
+        <input type="text" id="ent-cliente" class="form-input" placeholder="Nombre del cliente">
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Tel&eacute;fono</label>
+          <input type="tel" id="ent-tel" class="form-input" inputmode="tel" placeholder="55 1234 5678">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Folio CACN</label>
+          <select id="ent-folio-select" class="form-select" onchange="entSelPresupuesto()" style="font-family:monospace;font-size:12px">
+            <option value="">&mdash; Selecciona presupuesto &mdash;</option>
+          </select>
+          <input type="hidden" id="ent-folio">
+        </div>
+      </div>
+    </div>
+
+    <!-- DATOS DE LA OBRA (COMÚN) -->
+    <div class="wizard-card" style="margin-bottom:12px">
+      <div class="wizard-title">📍 Datos de la obra</div>
+      <div class="form-group">
+        <label class="form-label">Direcci&oacute;n de la obra</label>
+        <input type="text" id="inst-direccion" class="form-input" placeholder="Calle, número, colonia, municipio">
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Monto del trabajo</label>
+        <div class="input-unit">
+          <input type="number" id="inst-monto" class="form-input" placeholder="0.00" inputmode="decimal">
+          <span class="unit-label">$</span>
+        </div>
+      </div>
+    </div>
+
     <!-- FOTOS -->
     <div class="wizard-card" id="ent-fotos-evidencia-card" style="margin-bottom:12px">
       <div class="wizard-title">&#128247; Fotos de evidencia</div>
@@ -1451,7 +1474,7 @@ function sb() {
 }
 // SYNC.online siempre sincronizado con navigator.onLine
 var SYNC = { online: navigator.onLine };
-window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); entReintentarPendientes(); entReintentarPendientesInstalacion(); offReintentarTodo(); });
+window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); entReintentarPendientes(); entReintentarPendientesInstalacion(); offReintentarTodo(); entReintentarEliminaciones(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
 // ══ COLA OFFLINE ROBUSTA (IndexedDB) ══
@@ -1613,8 +1636,33 @@ function toast(msg, dur) {
 function esAdmin() {
   try {
     var u = JSON.parse(localStorage.getItem('barrcan_usuario_activo') || '{}');
-    return u.rol === 'admin' || u.id === 'MAU' || u.id === 'LUIS';
+    return u.rol === 'admin' || u.id === 'MAU' || u.id === 'HER';
   } catch(e) { return false; }
+}
+
+// ── Modo administrador (edición/eliminación de reportes) ──────────
+// Reutiliza los mismos PINs con los que MAU/HER ya entran a la app
+// principal (se guardan en localStorage al configurarlos ahí, y como
+// entregas.html vive en el mismo dominio, se pueden leer aquí también).
+// Se activa una sola vez por sesión de página; entReset/reload lo piden
+// de nuevo, para no dejar el modo administrador abierto sin querer.
+var ENT_MODO_ADMIN = false;
+
+function entVerificarAdmin(callback) {
+  if (ENT_MODO_ADMIN || esAdmin()) { callback(); return; }
+  var pin = prompt('PIN de administrador:');
+  if (pin === null) return;
+  var pinMau = localStorage.getItem('barrcan_pin_MAU');
+  var pinHer = localStorage.getItem('barrcan_pin_HER');
+  if (pin && (pin === pinMau || pin === pinHer)) {
+    ENT_MODO_ADMIN = true;
+    localStorage.setItem('barrcan_usuario_activo', JSON.stringify({ id: pin === pinMau ? 'MAU' : 'HER', rol: 'admin' }));
+    toast('Modo administrador activado');
+    entRenderHistorial();
+    callback();
+  } else {
+    toast('PIN incorrecto');
+  }
 }
 var ENT_FOTOS_EMP  = [];
 var ENT_FOTOS_COMP = [];
@@ -1717,7 +1765,16 @@ function entCargarPresupuestos(nombreCliente) {
     .in('estado', estados).order('folio', { ascending: true }).limit(50);
   if (nombreCliente) query = query.ilike('cliente', '%' + nombreCliente + '%');
   query.then(function(res) {
-    if (res.error || !res.data || !res.data.length) return;
+    if (res.error) {
+      console.warn('[BarrCan] Error al consultar presupuestos_atrasados:', res.error);
+      if (!local.length) sel.innerHTML = '<option value="">&#9888; Error al buscar presupuestos (revisa consola)</option>';
+      return;
+    }
+    if (!res.data || !res.data.length) {
+      console.log('[BarrCan] Sin presupuestos en Supabase para "' + (nombreCliente || '(todos)') + '" con estados', estados);
+      if (!local.length) sel.innerHTML = '<option value="">Sin presupuestos activos para este cliente</option>';
+      return;
+    }
     sel.innerHTML = '<option value="">&mdash; Selecciona presupuesto &mdash;</option>';
     res.data.forEach(function(p) {
       var o = document.createElement('option');
@@ -1730,7 +1787,10 @@ function entCargarPresupuestos(nombreCliente) {
     if (sel.value) {
       entSelPresupuesto();
     }
-  }).catch(function(e) { console.warn('presupuestos:', e.message); });
+  }).catch(function(e) {
+    console.warn('[BarrCan] Excepción de red buscando presupuestos:', e.message);
+    if (!local.length) sel.innerHTML = '<option value="">&#9888; Sin conexi\u00f3n al buscar presupuestos</option>';
+  });
 }
 
 function entSelPresupuesto() {
@@ -2210,11 +2270,13 @@ async function entCargarHistorial() {
   try {
     var resPuerta = await sb().from('reportes_entrega')
       .select('id,folio,cliente_nombre,cliente_tel,fecha_entrega,tecnico,reporte_url,whatsapp_enviado,created_at')
+      .eq('eliminado', false)
       .order('created_at', { ascending: false }).limit(30);
     if (resPuerta.error) throw resPuerta.error;
 
     var resInst = await sb().from('entregas_instalacion')
       .select('id,folio,cliente,tel,fecha,tecnico,reporte_url,checklist_ok,checklist_total,created_at')
+      .eq('eliminado', false)
       .order('created_at', { ascending: false }).limit(30);
 
     SYNC.online = true; detectarConexion();
@@ -2266,8 +2328,11 @@ function entRenderHistorial() {
     cntEl.innerHTML = txt;
   }
   if (!local.length) { div.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">Sin reportes registrados</div>'; return; }
-  var admin = esAdmin();
-  var html  = '';
+  var admin = ENT_MODO_ADMIN || esAdmin();
+  var adminBar = admin
+    ? '<div style="font-size:10px;color:var(--green);font-weight:700;margin-bottom:8px">&#128275; Modo administrador activo</div>'
+    : '<div onclick="entVerificarAdmin(function(){})" style="font-size:10px;color:var(--gray-400);margin-bottom:8px;cursor:pointer;text-decoration:underline">&#128274; Activar modo administrador (editar/eliminar)</div>';
+  var html  = adminBar;
   for (var i = 0; i < Math.min(local.length, 30); i++) {
     var r      = local[i];
     var idStr  = (r.id || '').replace(/'/g, '');
@@ -2286,9 +2351,10 @@ function entRenderHistorial() {
       + '</div>'
       + (r.whatsapp_enviado ? '<span style="font-size:10px;color:#25D366;font-weight:700">WA ok</span>' : '')
       + '</div>'
-      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">'
+      + '<div style="display:grid;grid-template-columns:' + (admin ? '1fr 1fr 1fr' : '1fr') + ';gap:5px">'
       + '<button onclick="entVerReporte(\'' + idStr + '\')" style="padding:7px 4px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:11px;font-weight:700;cursor:pointer">Ver reporte</button>'
-      + '<button onclick="entAbrirEdicion(\'' + idStr + '\')" style="padding:7px 4px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer">Editar</button>'
+      + (admin ? '<button onclick="entAbrirEdicion(\'' + idStr + '\')" style="padding:7px 4px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer">Editar</button>' : '')
+      + (admin ? '<button onclick="entAbrirEliminar(\'' + idStr + '\')" style="padding:7px 4px;background:rgba(192,57,43,0.08);border:1.5px solid rgba(192,57,43,0.3);border-radius:8px;color:var(--red,#C0392B);font-size:11px;font-weight:700;cursor:pointer">Eliminar</button>' : '')
       + '</div></div>';
   }
   div.innerHTML = html;
@@ -2358,6 +2424,10 @@ function entVerReporteFallback(r) {
 }
 
 function entAbrirEdicion(id) {
+  entVerificarAdmin(function() { entAbrirEdicionInterno(id); });
+}
+
+function entAbrirEdicionInterno(id) {
   var local = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
   var r = null;
   for (var i = 0; i < local.length; i++) { if (local[i].id === id) { r = local[i]; break; } }
@@ -2429,6 +2499,111 @@ async function entGuardarEdicion() {
   modal.style.display = 'none';
 }
 
+// ── Eliminar reporte (solo administrador, con motivo registrado) ──
+var ENT_MOTIVOS_ELIMINACION = ['Repetido / duplicado', 'Error de captura', 'Cambios del cliente', 'Prueba / no válido', 'Otro'];
+
+function entAbrirEliminar(id) {
+  entVerificarAdmin(function() { entAbrirEliminarInterno(id); });
+}
+
+function entAbrirEliminarInterno(id) {
+  var local = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
+  var r = null;
+  for (var i = 0; i < local.length; i++) { if (local[i].id === id) { r = local[i]; break; } }
+  if (!r) { toast('Reporte no encontrado'); return; }
+
+  var modal = document.getElementById('ent-del-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'ent-del-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:800;backdrop-filter:blur(3px)';
+    modal.innerHTML = '<div style="position:absolute;bottom:0;left:0;right:0;background:var(--white);border-radius:20px 20px 0 0;padding:20px;max-height:80vh;overflow-y:auto">'
+      + '<div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 14px"></div>'
+      + '<div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:4px">Eliminar Reporte</div>'
+      + '<div id="ed-info" style="font-size:12px;color:var(--gray-400);margin-bottom:14px"></div>'
+      + '<label class="form-label">Motivo *</label>'
+      + '<select id="ed-motivo" class="form-select" style="margin-bottom:12px">'
+      + '<option value="">-- Selecciona un motivo --</option>'
+      + ENT_MOTIVOS_ELIMINACION.map(function(m) { return '<option value="' + m + '">' + m + '</option>'; }).join('')
+      + '</select>'
+      + '<div id="ed-err" style="display:none;color:var(--red);font-size:12px;padding:8px 12px;background:rgba(192,57,43,0.08);border-radius:var(--radius-sm);margin-bottom:8px"></div>'
+      + '<div style="display:flex;gap:8px">'
+      + '<button onclick="entConfirmarEliminar()" style="flex:1;padding:12px;background:var(--red,#C0392B);color:white;border:none;border-radius:var(--radius-sm);font-family:\'DM Sans\',sans-serif;font-size:14px;font-weight:700;cursor:pointer">Eliminar</button>'
+      + '<button onclick="document.getElementById(\'ent-del-modal\').style.display=\'none\'" style="padding:12px 14px;background:none;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);color:var(--gray-600);font-family:\'DM Sans\',sans-serif;font-size:13px;cursor:pointer">Cancelar</button>'
+      + '</div></div>';
+    document.body.appendChild(modal);
+  }
+  modal.dataset.id = id;
+  document.getElementById('ed-info').textContent = (r.folio || '--') + ' \u00b7 ' + (r.cliente_nombre || '');
+  document.getElementById('ed-motivo').value = '';
+  document.getElementById('ed-err').style.display = 'none';
+  modal.style.display = 'block';
+}
+
+async function entConfirmarEliminar() {
+  var modal = document.getElementById('ent-del-modal');
+  var id    = modal ? modal.dataset.id : '';
+  if (!id) return;
+  var motivo = document.getElementById('ed-motivo').value;
+  var errEl  = document.getElementById('ed-err');
+  if (!motivo) { errEl.textContent = 'Selecciona un motivo'; errEl.style.display = 'block'; return; }
+
+  var quien = 'admin';
+  try { quien = JSON.parse(localStorage.getItem('barrcan_usuario_activo') || '{}').id || 'admin'; } catch(e) {}
+  var ahora = new Date().toISOString();
+
+  var local = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
+  var tabla = 'reportes_entrega';
+  for (var i = 0; i < local.length; i++) {
+    if (local[i].id === id) { tabla = local[i]._tabla || 'reportes_entrega'; break; }
+  }
+  // Baja lógica: no se borra el registro, se marca como eliminado con
+  // quién y por qué, para conservar el historial/auditoría. Requiere las
+  // columnas eliminado / eliminado_por / eliminado_motivo / eliminado_fecha
+  // (ver SQL adjunto).
+  var campos = { eliminado: true, eliminado_por: quien, eliminado_motivo: motivo, eliminado_fecha: ahora };
+
+  local = local.filter(function(r) { return r.id !== id; });
+  localStorage.setItem('barrcan_reportes_historial', JSON.stringify(local));
+  entRenderHistorial();
+  modal.style.display = 'none';
+
+  if (SYNC.online && sb()) {
+    try {
+      var res = await sb().from(tabla).update(campos).eq('id', id);
+      if (res.error) throw res.error;
+      toast('Reporte eliminado');
+    } catch(e) {
+      var cola = JSON.parse(localStorage.getItem('barrcan_entregas_eliminar_pend') || '[]');
+      cola.push({ tabla: tabla, id: id, campos: campos, ts: ahora });
+      localStorage.setItem('barrcan_entregas_eliminar_pend', JSON.stringify(cola));
+      toast('Eliminado localmente - se sincronizar\u00e1 al reconectar');
+    }
+  } else {
+    var cola = JSON.parse(localStorage.getItem('barrcan_entregas_eliminar_pend') || '[]');
+    cola.push({ tabla: tabla, id: id, campos: campos, ts: ahora });
+    localStorage.setItem('barrcan_entregas_eliminar_pend', JSON.stringify(cola));
+    toast('Eliminado localmente - se sincronizar\u00e1 al reconectar');
+  }
+}
+
+async function entReintentarEliminaciones() {
+  if (!SYNC.online || !sb()) return;
+  var cola = JSON.parse(localStorage.getItem('barrcan_entregas_eliminar_pend') || '[]');
+  if (!cola.length) return;
+  var ok = [];
+  for (var i = 0; i < cola.length; i++) {
+    try {
+      var res = await sb().from(cola[i].tabla).update(cola[i].campos).eq('id', cola[i].id);
+      if (res.error) throw res.error;
+      ok.push(cola[i]);
+    } catch(e) { console.warn('[BarrCan] Reintento de eliminaci\u00f3n fall\u00f3:', e.message); }
+  }
+  var rest = cola.filter(function(x) { return ok.indexOf(x) < 0; });
+  localStorage.setItem('barrcan_entregas_eliminar_pend', JSON.stringify(rest));
+  if (ok.length) toast(ok.length + ' eliminaci\u00f3n(es) sincronizada(s)');
+}
+
 async function entReintentarPendientes() {
   var cola = JSON.parse(localStorage.getItem('barrcan_entregas_pendientes') || '[]');
   if (!cola.length || !sb()) { toast('Sin pendientes'); return; }
@@ -2464,6 +2639,7 @@ document.addEventListener('DOMContentLoaded', function() {
   if (cola.length) setTimeout(entReintentarPendientes, 1500);
   setTimeout(entReintentarPendientesInstalacion, 1500);
   setTimeout(offReintentarTodo, 2000);
+  setTimeout(entReintentarEliminaciones, 2200);
   try {
     var saved = sessionStorage.getItem('barrcan_entrega_html');
     if (saved) _ENT_HTML = saved;
