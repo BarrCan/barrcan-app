@@ -6,8 +6,16 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
-  VERSIÓN : v4.1
-  FECHA   : 2026-07-11
+  VERSIÓN : v4.2
+  FECHA   : 2026-07-12
+  v4.2 — 2026-07-12
+    - ADD: El modal "Editar pago" ahora permite subir/cambiar/quitar la
+      foto del comprobante — antes solo se podía adjuntar al crear el
+      pago y no había forma de agregarla o corregirla después.
+    - El campo se precarga con el comprobante existente al abrir el
+      modal de edición; el update solo envía comprobante_img si el
+      usuario realmente lo tocó (no se borra el comprobante por error
+      al editar otros campos).
   v4.1 — 2026-07-11
     - ADD: Paginación — muestra solo 10 pagos inicialmente
     - ADD: Botón "Cargar más" cuando hay más de 10
@@ -866,6 +874,16 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     <label class="form-label">Notas</label>
     <input type="text" id="edit-notas" class="form-input" placeholder="Referencia, observaciones...">
 
+    <label class="form-label">Foto del comprobante</label>
+    <input type="file" id="edit-foto-input" accept="image/*" style="display:none" onchange="pagoCargarFotoEdit(this)">
+    <button onclick="document.getElementById('edit-foto-input').click()" style="width:100%;padding:12px;background:var(--off-white);border:2px dashed var(--gray-200);border-radius:var(--radius-sm);cursor:pointer;font-size:13px;color:var(--gray-400);font-family:'DM Sans',sans-serif;font-weight:600;margin-bottom:8px">
+      Subir / cambiar foto del comprobante
+    </button>
+    <div id="edit-foto-preview" class="pago-foto-preview">
+      <img id="edit-foto-img" class="pago-foto-img">
+      <button onclick="pagoQuitarFotoEdit()" class="pago-foto-remove">x</button>
+    </div>
+
     <div class="pago-edit-actions">
       <button onclick="pagoEditarGuardar()" class="pago-edit-btn pago-edit-btn-save">Guardar cambios</button>
       <button onclick="pagoEditarReimprimir()" class="pago-edit-btn pago-edit-btn-print">Reimprimir recibo</button>
@@ -1166,6 +1184,32 @@ function pagoQuitarFoto() {
   _PAGO_FOTO = null;
   var img  = document.getElementById('pago-foto-img');
   var prev = document.getElementById('pago-foto-preview');
+  if (img)  img.src = '';
+  if (prev) prev.classList.remove('visible');
+}
+
+// ── Foto (modal de edición) ─────────────────────────────────────
+var _PAGO_EDIT_FOTO = null;      // dataURL nueva (si el usuario subió/cambió una)
+var _PAGO_EDIT_FOTO_TOCADA = false; // true si el usuario tocó el campo (subió o quitó)
+function pagoCargarFotoEdit(input) {
+  if (!input || !input.files || !input.files[0]) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    _PAGO_EDIT_FOTO = e.target.result;
+    _PAGO_EDIT_FOTO_TOCADA = true;
+    var img  = document.getElementById('edit-foto-img');
+    var prev = document.getElementById('edit-foto-preview');
+    if (img)  img.src = _PAGO_EDIT_FOTO;
+    if (prev) prev.classList.add('visible');
+  };
+  reader.readAsDataURL(input.files[0]);
+  input.value = '';
+}
+function pagoQuitarFotoEdit() {
+  _PAGO_EDIT_FOTO = null;
+  _PAGO_EDIT_FOTO_TOCADA = true;
+  var img  = document.getElementById('edit-foto-img');
+  var prev = document.getElementById('edit-foto-preview');
   if (img)  img.src = '';
   if (prev) prev.classList.remove('visible');
 }
@@ -1611,6 +1655,20 @@ function pagoAbrirEdicion(id) {
     numFolioEl.value = folioRaw.replace('RB-', '') || '';
     numFolioEl.placeholder = folioRaw || 'Sin recibo asignado';
   }
+
+  // Precargar comprobante existente (si lo hay) y resetear el estado de edición
+  _PAGO_EDIT_FOTO = null;
+  _PAGO_EDIT_FOTO_TOCADA = false;
+  var editImg  = document.getElementById('edit-foto-img');
+  var editPrev = document.getElementById('edit-foto-preview');
+  if (p.comprobante_img) {
+    if (editImg)  editImg.src = p.comprobante_img;
+    if (editPrev) editPrev.classList.add('visible');
+  } else {
+    if (editImg)  editImg.src = '';
+    if (editPrev) editPrev.classList.remove('visible');
+  }
+
   document.getElementById('pago-edit-ov').classList.add('visible');
 }
 
@@ -1640,6 +1698,7 @@ async function pagoEditarGuardar() {
   }
 
   var upd = { monto: monto, fecha_pago: fecha, forma_pago: forma, notas: notas || null };
+  if (_PAGO_EDIT_FOTO_TOCADA) upd.comprobante_img = _PAGO_EDIT_FOTO || null;
   var updLocal = Object.assign({}, upd);
   if (folioRB) updLocal.folio_rb = folioRB;
 
@@ -1672,6 +1731,8 @@ async function pagoEditarGuardar() {
     toast('Actualizado localmente — se sincronizará al reconectar');
   }
   EDIT_ID = null;
+  _PAGO_EDIT_FOTO = null;
+  _PAGO_EDIT_FOTO_TOCADA = false;
 }
 
 function pagoEditarReimprimir() {
