@@ -6,8 +6,24 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
-  VERSION : v3.12.1
-  FECHA   : 2026-07-08
+  VERSION : v3.13.0
+  FECHA   : 2026-07-12
+  v3.13.0 - Piezas múltiples + guardado offline robusto (sin perder fotos):
+    - Instalación: nueva tarjeta "Piezas Instaladas" con campo de número
+      de piezas y captura individual (tipo/descripción, medidas, notas)
+      por cada una. El reporte generado incluye una tabla "Piezas
+      Instaladas (N)" cuando hay más de una pieza distinta en el trabajo.
+      Antes solo se podía describir 1 pieza por reporte.
+    - Bug real de guardado offline corregido: cuando la subida del HTML
+      del comprobante (con fotos y firmas) a Storage fallaba —por señal
+      débil o por lo pesadas que son las fotos—, el código seguía
+      adelante con reporte_url=null y solo encolaba el registro ligero
+      para reintento; el reporte completo con las fotos se perdía para
+      siempre. Ahora se detecta la falla de subida (esté online u
+      offline) y se encola el reporte COMPLETO (payload + HTML con fotos)
+      en IndexedDB —tiene mucho más espacio que localStorage—, y se
+      reintenta la subida pesada entera al reconectar, no solo el
+      registro. Aplica tanto a "Entrega en puerta" como a "Instalación".
   v3.12.1 - Ícono real del header:
     - Reemplazado el ícono "B" genérico del header de la app por el
       logo oficial cuadrado (hexágono + BarrCan), que sí encaja bien
@@ -1222,6 +1238,21 @@ body{min-height:100vh}
           </div>
         </div>
 
+        <!-- PIEZAS INSTALADAS (soporta varias piezas distintas en un mismo reporte) -->
+        <div style="background:var(--white);border:1.5px solid rgba(46,109,164,.25);border-radius:10px;padding:12px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.05)">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--gray-100)">
+            <span style="font-size:16px">&#128295;</span>
+            <span style="font-size:13px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px">Piezas Instaladas</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label">N&uacute;mero de piezas</label>
+            <input type="number" id="inst-num-piezas" class="form-input" value="1" min="1" inputmode="numeric" oninput="instSincronizarNumPiezas()">
+            <div style="font-size:10px;color:var(--gray-400);margin-top:2px">Si son varias piezas distintas (ej. 3 ventanas diferentes), captura cada una por separado para que el reporte las incluya todas.</div>
+          </div>
+          <div id="inst-piezas-lista"></div>
+          <button type="button" onclick="instPiezaAgregar()" style="width:100%;padding:8px;border-radius:8px;border:1.5px dashed var(--blue);background:rgba(46,109,164,.06);color:var(--blue);font-size:12px;font-weight:700;cursor:pointer;margin-top:6px">+ Agregar otra pieza</button>
+        </div>
+
         <!-- CHECKLIST TÉCNICO -->
         <div style="background:var(--white);border:1.5px solid rgba(39,174,96,.25);border-radius:10px;padding:12px;margin-bottom:12px;box-shadow:0 2px 8px rgba(0,0,0,.05)">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--gray-100)">
@@ -1408,8 +1439,114 @@ function sb() {
 }
 // SYNC.online siempre sincronizado con navigator.onLine
 var SYNC = { online: navigator.onLine };
-window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); entReintentarPendientes(); });
+window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); entReintentarPendientes(); entReintentarPendientesInstalacion(); offReintentarTodo(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
+
+// ══ COLA OFFLINE ROBUSTA (IndexedDB) ══
+// localStorage tiene un límite de unos 5MB y no aguanta reportes con varias
+// fotos en base64. Antes, si la subida del HTML pesado a Storage fallaba
+// (sin señal, o simplemente por lo pesadas que son las fotos), el reporte
+// completo se perdía para siempre: solo quedaba en cola el registro ligero
+// (folio, cliente, checklist) pero nunca se reintentaba subir el archivo
+// con las fotos y firmas. Aquí se guarda el reporte COMPLETO (payload +
+// HTML con fotos) en IndexedDB, que soporta mucho más espacio, y se
+// reintenta la subida completa —no solo el registro— cada vez que hay
+// conexión, hasta que quede subida de verdad.
+var OFFDB_NOMBRE = 'barrcan_offline_db';
+var OFFDB_TABLA  = 'reportes_pendientes';
+var _offdb = null;
+
+function offDbAbrir() {
+  return new Promise(function(resolve, reject) {
+    if (_offdb) { resolve(_offdb); return; }
+    if (!window.indexedDB) { reject(new Error('IndexedDB no disponible')); return; }
+    var req = indexedDB.open(OFFDB_NOMBRE, 1);
+    req.onupgradeneeded = function(ev) {
+      var db = ev.target.result;
+      if (!db.objectStoreNames.contains(OFFDB_TABLA)) db.createObjectStore(OFFDB_TABLA, { keyPath: 'id' });
+    };
+    req.onsuccess = function(ev) { _offdb = ev.target.result; resolve(_offdb); };
+    req.onerror   = function(ev) { reject(ev.target.error); };
+  });
+}
+
+function offDbGuardar(registro) {
+  return offDbAbrir().then(function(db) {
+    return new Promise(function(resolve, reject) {
+      var tx = db.transaction(OFFDB_TABLA, 'readwrite');
+      tx.objectStore(OFFDB_TABLA).put(registro);
+      tx.oncomplete = function() { resolve(); };
+      tx.onerror    = function() { reject(tx.error); };
+    });
+  });
+}
+
+function offDbBorrar(id) {
+  return offDbAbrir().then(function(db) {
+    return new Promise(function(resolve, reject) {
+      var tx = db.transaction(OFFDB_TABLA, 'readwrite');
+      tx.objectStore(OFFDB_TABLA).delete(id);
+      tx.oncomplete = function() { resolve(); };
+      tx.onerror    = function() { reject(tx.error); };
+    });
+  });
+}
+
+function offDbListar() {
+  return offDbAbrir().then(function(db) {
+    return new Promise(function(resolve, reject) {
+      var tx  = db.transaction(OFFDB_TABLA, 'readonly');
+      var req = tx.objectStore(OFFDB_TABLA).getAll();
+      req.onsuccess = function() { resolve(req.result || []); };
+      req.onerror   = function() { reject(req.error); };
+    });
+  });
+}
+
+// Encola un reporte completo (con su HTML de fotos/firmas) para subirlo
+// apenas haya conexión. tabla: 'reportes_entrega' | 'entregas_instalacion'.
+function offEncolarReporte(tabla, payload, htmlReporte, nombreArchivo) {
+  var registro = {
+    id: (payload.folio || 'SIN-FOLIO') + '_' + Date.now(),
+    tabla: tabla, payload: payload, html: htmlReporte,
+    nombreArchivo: nombreArchivo, ts: new Date().toISOString()
+  };
+  offDbGuardar(registro).catch(function(e) { console.warn('[BarrCan] No se pudo encolar en IndexedDB:', e); });
+  return registro;
+}
+
+// Reintenta TODOS los reportes pendientes: primero sube el HTML pesado a
+// Storage y solo si eso funciona inserta el registro en la base de datos.
+// Si la subida vuelve a fallar, el reporte se queda intacto en la cola
+// (con fotos y todo) para el siguiente intento — nunca se pierde.
+function offReintentarTodo() {
+  if (!SYNC.online || typeof sb !== 'function' || !sb()) return;
+  offDbListar().then(function(registros) {
+    registros.forEach(function(reg) { offReintentarUno(reg); });
+  }).catch(function(e) { console.warn('[BarrCan] No se pudo leer la cola offline:', e); });
+}
+
+function offReintentarUno(reg) {
+  var cliente = sb();
+  var blob = new Blob([reg.html], { type: 'text/html;charset=utf-8' });
+  cliente.storage.from('reportes').upload(reg.nombreArchivo, blob, { contentType: 'text/html', upsert: true })
+    .then(function(upRes) {
+      if (upRes.error) throw upRes.error;
+      var urlRes = cliente.storage.from('reportes').getPublicUrl(reg.nombreArchivo);
+      reg.payload.reporte_url = urlRes.data ? urlRes.data.publicUrl : null;
+      return cliente.from(reg.tabla).insert([reg.payload]);
+    })
+    .then(function(res) {
+      if (res && res.error) throw res.error;
+      offDbBorrar(reg.id);
+      var hist = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
+      hist.forEach(function(r) { if (r.folio === reg.payload.folio) delete r._pendiente; });
+      localStorage.setItem('barrcan_reportes_historial', JSON.stringify(hist));
+      toast('Reporte completo sincronizado (con fotos) - ' + (reg.payload.folio || ''));
+      entRenderHistorial();
+    })
+    .catch(function(e) { console.warn('[BarrCan] Reintento de reporte completo falló, se reintentará después:', e); });
+}
 
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
@@ -1826,6 +1963,10 @@ function entReset() {
   var dirInp = document.getElementById('inst-direccion');
   if (dirInp) dirInp.placeholder = 'Calle, número, colonia, municipio';
   var instAsig = document.getElementById('inst-asignado'); if(instAsig) instAsig.value='';
+  var numPzEl = document.getElementById('inst-num-piezas'); if (numPzEl) numPzEl.value = '1';
+  _inst_pieza_seq = 0;
+  INST_PIEZAS = [{ id: 'pz0', tipo: '', medidas: '', notas: '' }];
+  instRenderPiezas();
   entLimpiarFirma();
 }
 
@@ -1913,16 +2054,18 @@ async function entGenerarReporte() {
     if (win) { win.document.write(_ENT_HTML); win.document.close(); }
     else { toast('Activa ventanas emergentes para ver el comprobante'); }
 
+    var nombreArch = folioFull + '_' + (fecha || '').replace(/-/g, '') + '_' + Date.now() + '.html';
     var reporteUrl = null;
-    if (sb()) {
+    var subidaOk = false;
+    if (SYNC.online && sb()) {
       try {
-        var nombreArch = folioFull + '_' + (fecha || '').replace(/-/g, '') + '_' + Date.now() + '.html';
         var blob = new Blob([_ENT_HTML], { type: 'text/html;charset=utf-8' });
         var upRes = await sb().storage.from('reportes').upload(nombreArch, blob, { contentType: 'text/html', upsert: true });
         if (!upRes.error) {
           var urlRes = sb().storage.from('reportes').getPublicUrl(nombreArch);
           reporteUrl = urlRes.data ? urlRes.data.publicUrl : null;
-        }
+          subidaOk = true;
+        } else { console.warn('Storage:', upRes.error); }
       } catch(eStorage) { console.warn('Storage:', eStorage.message); }
     }
 
@@ -1933,8 +2076,17 @@ async function entGenerarReporte() {
       dir_obra: direccion || null, reporte_url: reporteUrl
     };
 
-    if (!SYNC.online || !sb()) {
-      entGuardarOffline(dbPayload);
+    // Si no hay conexión, o si el reporte con fotos no logró subirse a
+    // Storage (fotos muy pesadas, timeout, etc.), se encola COMPLETO en
+    // IndexedDB — no solo el registro ligero — para no perder las fotos.
+    if (!SYNC.online || !sb() || !subidaOk) {
+      offEncolarReporte('reportes_entrega', dbPayload, _ENT_HTML, nombreArch);
+      var hist2 = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
+      hist2.unshift(Object.assign({}, dbPayload, { _pendiente: true, ts: new Date().toLocaleString('es-MX') }));
+      if (hist2.length > 50) hist2.pop();
+      localStorage.setItem('barrcan_reportes_historial', JSON.stringify(hist2));
+      entRenderHistorial();
+      toast(subidaOk === false && SYNC.online ? 'Fotos pesadas, se reintentará automáticamente' : 'Guardado sin conexion - se sincronizara al reconectar');
       entMostrarPost(folioFull, tel);
       entReset();
       return;
@@ -2295,6 +2447,7 @@ document.addEventListener('DOMContentLoaded', function() {
   var cola = JSON.parse(localStorage.getItem('barrcan_entregas_pendientes') || '[]');
   if (cola.length) setTimeout(entReintentarPendientes, 1500);
   setTimeout(entReintentarPendientesInstalacion, 1500);
+  setTimeout(offReintentarTodo, 2000);
   try {
     var saved = sessionStorage.getItem('barrcan_entrega_html');
     if (saved) _ENT_HTML = saved;
@@ -2306,6 +2459,8 @@ document.addEventListener('DOMContentLoaded', function() {
 var ENT_CHECKS       = {};
 var ENT_EVIDENCIA    = {};
 var INST_DATOS_FOLIO = null;
+var INST_PIEZAS      = [];
+var _inst_pieza_seq  = 0;
 var _ctx_tec         = null;
 var _ctx_cli         = null;
 var _tec_draw        = false;
@@ -2323,6 +2478,52 @@ var ENT_CHECKLIST_ITEMS = [
   {id:'ck8', titulo:'Limpieza de la zona',     desc:'Retiro de residuos propios de la instalación, perfiles sobrantes y empaques.'},
   {id:'ck9', titulo:'Instrucciones al cliente',desc:'Se explicó el uso, mantenimiento básico y vigencia de garantía al cliente.'}
 ];
+
+// ── Piezas instaladas (varias piezas distintas en un mismo reporte) ──
+function instPiezaAgregar() {
+  _inst_pieza_seq++;
+  INST_PIEZAS.push({ id: 'pz' + _inst_pieza_seq, tipo: '', medidas: '', notas: '' });
+  instRenderPiezas();
+}
+
+function instPiezaQuitar(id) {
+  INST_PIEZAS = INST_PIEZAS.filter(function(p) { return p.id !== id; });
+  if (!INST_PIEZAS.length) instPiezaAgregar();
+  else instRenderPiezas();
+}
+
+function instPiezaActualizar(id, campo, valor) {
+  var p = INST_PIEZAS.filter(function(x) { return x.id === id; })[0];
+  if (p) p[campo] = valor;
+  var numEl = document.getElementById('inst-num-piezas');
+  if (numEl) numEl.value = INST_PIEZAS.length;
+}
+
+// Cuando cambia el número de piezas, agrega o quita filas para que
+// coincida (sin borrar lo ya capturado en las que se conservan).
+function instSincronizarNumPiezas() {
+  var numEl = document.getElementById('inst-num-piezas');
+  var n = Math.max(1, parseInt((numEl || {}).value, 10) || 1);
+  while (INST_PIEZAS.length < n) { _inst_pieza_seq++; INST_PIEZAS.push({ id: 'pz' + _inst_pieza_seq, tipo: '', medidas: '', notas: '' }); }
+  while (INST_PIEZAS.length > n) INST_PIEZAS.pop();
+  instRenderPiezas();
+}
+
+function instRenderPiezas() {
+  var cont = document.getElementById('inst-piezas-lista');
+  if (!cont) return;
+  cont.innerHTML = INST_PIEZAS.map(function(p, i) {
+    return '<div style="border:1px solid var(--gray-200);border-radius:8px;padding:10px;margin-top:8px;background:rgba(46,109,164,.03)">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+      + '<span style="font-size:11px;font-weight:700;color:var(--blue)">Pieza ' + (i + 1) + '</span>'
+      + (INST_PIEZAS.length > 1 ? '<button type="button" onclick="instPiezaQuitar(\'' + p.id + '\')" style="border:none;background:none;color:var(--red,#C0392B);font-size:11px;font-weight:700;cursor:pointer">Quitar &times;</button>' : '')
+      + '</div>'
+      + '<input type="text" class="form-input" placeholder="Tipo / descripción (ej. Ventana OX 1.20x1.50)" value="' + esc(p.tipo) + '" style="margin-bottom:6px" oninput="instPiezaActualizar(\'' + p.id + '\',\'tipo\',this.value)">'
+      + '<input type="text" class="form-input" placeholder="Medidas (opcional)" value="' + esc(p.medidas) + '" style="margin-bottom:6px" oninput="instPiezaActualizar(\'' + p.id + '\',\'medidas\',this.value)">'
+      + '<input type="text" class="form-input" placeholder="Notas de esta pieza (opcional)" value="' + esc(p.notas) + '" oninput="instPiezaActualizar(\'' + p.id + '\',\'notas\',this.value)">'
+      + '</div>';
+  }).join('');
+}
 
 var ENT_EVIDENCIA_SLOTS = [
   {id:'ev1', emoji:'⬛', titulo:'Instalación Final',  desc:'Vista panorámica del trabajo terminado', tipo:'foto'},
@@ -2560,6 +2761,26 @@ async function entGenerarReporteInstalacion() {
     var hoy   = fecha ? new Date(fecha+'T12:00:00') : new Date();
     var fechaStr = hoy.getDate() + ' de ' + meses[hoy.getMonth()+1] + ' de ' + hoy.getFullYear();
 
+    var piezasValidas = INST_PIEZAS.filter(function(p) { return (p.tipo || '').trim() !== ''; });
+    var piezasHtml = '';
+    if (piezasValidas.length) {
+      var piezasRows = piezasValidas.map(function(p, i) {
+        return '<tr style="border-bottom:1px solid #f0f0f0">'
+          + '<td style="padding:6px 8px;width:26px;text-align:center;color:#9CA3AF;font-size:11px">' + (i + 1) + '</td>'
+          + '<td style="padding:6px 8px;font-weight:600;color:#1B3A5C;font-size:12px">' + esc(p.tipo) + '</td>'
+          + '<td style="padding:6px 8px;color:#6B7280;font-size:11px">' + esc(p.medidas || '') + '</td>'
+          + '<td style="padding:6px 8px;color:#9CA3AF;font-size:11px;font-style:italic">' + esc(p.notas || '') + '</td>'
+          + '</tr>';
+      }).join('');
+      piezasHtml = '<h2>&#128295; Piezas Instaladas (' + piezasValidas.length + ')</h2>'
+        + '<table><thead><tr>'
+        + '<th style="padding:6px 8px;font-size:10px;color:#9CA3AF;text-align:left">#</th>'
+        + '<th style="padding:6px 8px;font-size:10px;color:#9CA3AF;text-align:left">Tipo / Descripción</th>'
+        + '<th style="padding:6px 8px;font-size:10px;color:#9CA3AF;text-align:left">Medidas</th>'
+        + '<th style="padding:6px 8px;font-size:10px;color:#9CA3AF;text-align:left">Notas</th>'
+        + '</tr></thead><tbody>' + piezasRows + '</tbody></table>';
+    }
+
     var htmlReporte = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
       + '<meta name="viewport" content="width=device-width,initial-scale=1">'
       + '<style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;padding:0;max-width:700px;margin:0 auto;color:#1B3A5C}'
@@ -2582,6 +2803,7 @@ async function entGenerarReporteInstalacion() {
       + '<div class="meta-item"><div class="meta-label">Monto</div><div class="meta-val">' + (monto?'$'+monto.toLocaleString('es-MX'):'N/A') + '</div></div>'
       + '</div>'
       + (direccion ? '<div style="background:#F8F9FA;padding:8px 10px;border-radius:6px;margin-bottom:14px;font-size:12px"><span style="color:#9CA3AF;font-size:10px">DIRECCIÓN: </span>' + direccion + '</div>' : '')
+      + piezasHtml
       + '<h2>&#9989; Checklist T\u00e9cnico de Calidad</h2>'
       + '<table>' + ckRows + '</table>'
       + '<h2>&#128247; Evidencia Fotogr\u00e1fica</h2>'
@@ -2602,15 +2824,17 @@ async function entGenerarReporteInstalacion() {
     // base64) se sube a Storage, igual que ya hace la entrega en puerta,
     // en vez de meterlo entero en una columna de la tabla — eso era lo que
     // probablemente rompía el guardado por tamaño del registro.
+    var nombreArchInst = folio + '_' + (fecha || '').replace(/-/g, '') + '_' + Date.now() + '.html';
     var reporteUrl = null;
-    if (typeof sb === 'function' && sb()) {
+    var subidaOkInst = false;
+    if (SYNC.online && typeof sb === 'function' && sb()) {
       try {
-        var nombreArchInst = folio + '_' + (fecha || '').replace(/-/g, '') + '_' + Date.now() + '.html';
         var blobInst = new Blob([htmlReporte], { type: 'text/html;charset=utf-8' });
         var upResInst = await sb().storage.from('reportes').upload(nombreArchInst, blobInst, { contentType: 'text/html', upsert: true });
         if (!upResInst.error) {
           var urlResInst = sb().storage.from('reportes').getPublicUrl(nombreArchInst);
           reporteUrl = urlResInst.data ? urlResInst.data.publicUrl : null;
+          subidaOkInst = true;
         } else {
           console.warn('[BarrCan] No se pudo subir el HTML del reporte de instalación a Storage:', upResInst.error);
         }
@@ -2632,25 +2856,26 @@ async function entGenerarReporteInstalacion() {
       asignado_por: asignado,
       monto: monto || null,
       direccion: direccion,
+      piezas: piezasValidas,
       synced: false
     };
 
-    var pending = JSON.parse(localStorage.getItem('ent_pending') || '[]');
-    pending.push(payload);
-    localStorage.setItem('ent_pending', JSON.stringify(pending));
-
-    if (typeof sb === 'function' && sb()) {
+    // Si no hay conexión, o si el HTML con fotos y firmas no logró subirse
+    // a Storage, se encola COMPLETO en IndexedDB (no solo el registro
+    // ligero) para reintentar la subida pesada más adelante sin perder nada.
+    if (!SYNC.online || typeof sb !== 'function' || !sb() || !subidaOkInst) {
+      offEncolarReporte('entregas_instalacion', payload, htmlReporte, nombreArchInst);
+      toast(subidaOkInst === false && SYNC.online ? 'Fotos pesadas, se reintentará automáticamente · ' + folio : 'Guardado sin conexión, se sincronizará al reconectar · ' + folio);
+    } else {
       sb().from('entregas_instalacion').insert([payload]).then(function(res) {
-        if (!res.error) {
-          var p2 = JSON.parse(localStorage.getItem('ent_pending')||'[]');
-          p2 = p2.filter(function(x){return x.folio !== folio;});
-          localStorage.setItem('ent_pending', JSON.stringify(p2));
-        } else {
-          console.warn('[BarrCan] No se pudo guardar la instalación en Supabase (se quedó en cola local):', res.error);
-          toast('⚠️ No se pudo subir a Supabase, se reintentará · '+folio);
+        if (res.error) {
+          console.warn('[BarrCan] No se pudo guardar la instalación en Supabase, se reencola completa:', res.error);
+          offEncolarReporte('entregas_instalacion', payload, htmlReporte, nombreArchInst);
+          toast('⚠️ No se pudo guardar, se reintentará · ' + folio);
         }
       }).catch(function(e){
-        console.warn('[BarrCan] Error de red al guardar instalación (se quedó en cola local):', e);
+        console.warn('[BarrCan] Error de red al guardar instalación, se reencola completa:', e);
+        offEncolarReporte('entregas_instalacion', payload, htmlReporte, nombreArchInst);
       });
     }
 
