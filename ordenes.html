@@ -6,8 +6,14 @@
 <title>BarrCan &middot; Ordenes</title>
 <!--
   BARRCAN - MODULO: ORDENES DE TRABAJO
-  VERSION : v1.0
-  FECHA   : 2026-07-01
+  VERSION : v1.1
+  FECHA   : 2026-07-12
+  v1.1 - Ocultar instaladas por defecto + buscador:
+    - Nuevo campo de busqueda por folio o cliente.
+    - En la pestaña 'Todas', las ordenes ya instaladas se ocultan por
+      defecto; se pueden consultar buscando, o entrando directo a la
+      pestaña 'Instalado'.
+    - El contador indica cuantas ordenes instaladas quedaron ocultas.
   v1.0 - Creacion inicial
     - Columnas exactas de tabla ordenes_trabajo
     - Conectado a presupuestos via prefill localStorage
@@ -1076,12 +1082,15 @@ body{min-height:100vh}
     <p class="section-title">Ordenes de Trabajo</p>
     <p class="section-sub">Asigna instalaciones a tecnicos</p>
 
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px">
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px">
       <button class="ot-filtro active" onclick="otSetFiltro(this,'')">Todas</button>
       <button class="ot-filtro" onclick="otSetFiltro(this,'pendiente')">Pendiente</button>
       <button class="ot-filtro" onclick="otSetFiltro(this,'en_camino')">En camino</button>
       <button class="ot-filtro" onclick="otSetFiltro(this,'instalado')">Instalado</button>
     </div>
+
+    <input type="text" id="ot-buscar" placeholder="Buscar por folio o cliente..." oninput="otRender()"
+      style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;margin-bottom:10px;box-sizing:border-box">
 
     <div id="ot-contador" style="font-size:11px;color:var(--gray-400);margin-bottom:8px"></div>
     <div id="ot-lista">
@@ -1268,10 +1277,32 @@ function otSetFiltro(btn,estado){
 }
 
 function otRender(){
+  var q=(document.getElementById('ot-buscar')||{}).value||'';
+  q=q.toLowerCase().trim();
   var datos=OT_FILTRO_ESTADO?OT_CACHE.filter(function(o){return o.estado===OT_FILTRO_ESTADO;}):OT_CACHE;
+  var ocultos=0;
+  // En "Todas" y sin búsqueda activa, las órdenes ya instaladas se ocultan
+  // para no saturar la vista — igual se pueden consultar buscando por
+  // folio/cliente, o entrando directo a la pestaña "Instalado".
+  if(!OT_FILTRO_ESTADO && !q){
+    var antes=datos.length;
+    datos=datos.filter(function(o){return o.estado!=='instalado';});
+    ocultos=antes-datos.length;
+  }
+  if(q){
+    datos=datos.filter(function(o){
+      return (o.cliente_nombre||'').toLowerCase().indexOf(q)>=0
+        || (o.folio_cotizacion||'').toLowerCase().indexOf(q)>=0;
+    });
+  }
   var pend=JSON.parse(localStorage.getItem('barrcan_ordenes_pendientes')||'[]');
   var cntEl=document.getElementById('ot-contador');
-  if(cntEl)cntEl.textContent=datos.length+' orden'+(datos.length!==1?'es':'')+(pend.length?' ('+pend.length+' sin sync)':'');
+  if(cntEl){
+    var txt=datos.length+' orden'+(datos.length!==1?'es':'');
+    if(ocultos) txt+=' &middot; '+ocultos+' instalada'+(ocultos>1?'s':'')+' oculta'+(ocultos>1?'s':'');
+    if(pend.length) txt+=' ('+pend.length+' sin sync)';
+    cntEl.innerHTML=txt;
+  }
   var div=document.getElementById('ot-lista');
   if(!datos.length){div.innerHTML='<div style="text-align:center;padding:30px;color:var(--gray-400);font-size:13px">Sin ordenes'+(OT_FILTRO_ESTADO?' en este estado':'')+'</div>';return;}
   var html='';
