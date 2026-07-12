@@ -6,8 +6,19 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
-  VERSION : v3.16.0
+  VERSION : v3.17.0
   FECHA   : 2026-07-13
+  v3.17.0 - Reporte a tamaño carta + evidencia fotográfica según piezas:
+    - Los 3 reportes (entrega en puerta, instalación, y el respaldo básico
+      sin fotos) ahora incluyen @page{size:letter} y reglas de
+      page-break-inside:avoid en fotos, filas de tabla y firmas, para que
+      al imprimir/guardar como PDF no se corten a la mitad entre hojas.
+    - Evidencia fotográfica dinámica: si se capturan varias piezas
+      distintas, el reporte de instalación ahora pide una foto de
+      "Instalación Final" POR CADA PIEZA (identificada con su tipo/
+      descripción), además de las fotos generales de sellos y broche que
+      siguen aplicando una sola vez. Con 1 sola pieza se ve exactamente
+      igual que antes.
   v3.16.0 - Edición COMPLETA de reportes (checklist, fotos, firmas, todo):
     - "Editar" ya no abre un formulario chico con solo folio/cliente/fecha
       — ahora reabre el mismo formulario de captura con TODO precargado:
@@ -2119,16 +2130,17 @@ async function entGenerarReporte() {
     var direccion = document.getElementById('inst-direccion').value.trim();
 
     _ENT_HTML = '<!DOCTYPE html><html lang=es><head><meta charset=UTF-8><meta name=viewport content=width=device-width>'
-      + '<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:9.5pt;color:#1B3A5C;background:white}'
+      + '<style>*{box-sizing:border-box;margin:0;padding:0}@page{size:letter;margin:14mm 12mm}body{font-family:Arial,sans-serif;font-size:9.5pt;color:#1B3A5C;background:white}'
       + '.pg{max-width:620px;margin:0 auto 0;padding:0 0 80px}'
       + '.pg-body{padding:0 22px}'
-      + 'h2{font-size:9pt;font-weight:700;color:#2E6DA4;border-bottom:1px solid #eee;padding-bottom:2px;margin:12px 0 7px;text-transform:uppercase;letter-spacing:.5px}'
+      + 'h2{font-size:9pt;font-weight:700;color:#2E6DA4;border-bottom:1px solid #eee;padding-bottom:2px;margin:12px 0 7px;text-transform:uppercase;letter-spacing:.5px;page-break-after:avoid}'
       + 'table{width:100%;border-collapse:collapse;margin-bottom:8px}td{padding:5px 8px;border:1px solid #ddd;font-size:8.5pt}'
+      + 'tr{page-break-inside:avoid}'
       + '.lbl{font-weight:700;background:#f5f7fa;width:38%}'
       + '.barra{position:fixed;bottom:0;left:0;right:0;background:#1B3A5C;padding:8px 14px;display:flex;gap:8px;justify-content:center;z-index:999}'
       + '.bp{padding:9px 20px;background:#C8923A;color:white;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer}'
       + '.bc{padding:9px 12px;background:rgba(255,255,255,.15);color:white;border:none;border-radius:7px;font-size:12px;cursor:pointer}'
-      + '@media print{.barra{display:none!important}}</style></head><body>'
+      + '@media print{.barra{display:none!important}body{max-width:100%}img{page-break-inside:avoid}}</style></head><body>'
       + '<div class=barra><button class=bp onclick="window.print()">Imprimir / PDF</button><button class=bc onclick="window.close()">Cerrar</button></div>'
       + '<div class=pg>'
       + entHeaderOficial('Comprobante de Entrega', folioFull)
@@ -2457,7 +2469,7 @@ function entVerReporteFallback(r) {
   function fd(iso) { if (!iso) return '--'; var p = iso.split('-'); return parseInt(p[2]) + ' de ' + meses[parseInt(p[1])] + ' de ' + p[0]; }
   
   var html = '<!DOCTYPE html><html lang=es><head><meta charset=UTF-8><meta name=viewport content=width=device-width>'
-    + '<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:9.5pt;color:#1B3A5C;background:white}'
+    + '<style>*{box-sizing:border-box;margin:0;padding:0}@page{size:letter;margin:14mm 12mm}body{font-family:Arial,sans-serif;font-size:9.5pt;color:#1B3A5C;background:white}'
     + '.pg{max-width:580px;margin:0 auto;padding:0 0 80px}'
     + '.pg-body{padding:16px 20px}'
     + 'table{width:100%;border-collapse:collapse}td{padding:5px 8px;border:1px solid #ddd;font-size:8.5pt}'
@@ -2828,12 +2840,13 @@ function instPiezaAgregar() {
   _inst_pieza_seq++;
   INST_PIEZAS.push({ id: 'pz' + _inst_pieza_seq, tipo: '', medidas: '', notas: '' });
   instRenderPiezas();
+  entRenderEvidencia();
 }
 
 function instPiezaQuitar(id) {
   INST_PIEZAS = INST_PIEZAS.filter(function(p) { return p.id !== id; });
   if (!INST_PIEZAS.length) instPiezaAgregar();
-  else instRenderPiezas();
+  else { instRenderPiezas(); entRenderEvidencia(); }
 }
 
 function instPiezaActualizar(id, campo, valor) {
@@ -2841,6 +2854,9 @@ function instPiezaActualizar(id, campo, valor) {
   if (p) p[campo] = valor;
   var numEl = document.getElementById('inst-num-piezas');
   if (numEl) numEl.value = INST_PIEZAS.length;
+  // El campo "tipo" determina si la pieza cuenta para generar su propio
+  // slot de foto — al escribirlo/borrarlo, refrescamos la evidencia.
+  if (campo === 'tipo') entRenderEvidencia();
 }
 
 // Cuando cambia el número de piezas, agrega o quita filas para que
@@ -2851,6 +2867,7 @@ function instSincronizarNumPiezas() {
   while (INST_PIEZAS.length < n) { _inst_pieza_seq++; INST_PIEZAS.push({ id: 'pz' + _inst_pieza_seq, tipo: '', medidas: '', notas: '' }); }
   while (INST_PIEZAS.length > n) INST_PIEZAS.pop();
   instRenderPiezas();
+  entRenderEvidencia();
 }
 
 function instRenderPiezas() {
@@ -2869,13 +2886,31 @@ function instRenderPiezas() {
   }).join('');
 }
 
-var ENT_EVIDENCIA_SLOTS = [
-  {id:'ev1', emoji:'⬛', titulo:'Instalación Final',  desc:'Vista panorámica del trabajo terminado', tipo:'foto'},
-  {id:'ev2', emoji:'🔍', titulo:'Sellos — Detalle 1', desc:'Silicón perimetral exterior',            tipo:'foto'},
-  {id:'ev3', emoji:'🔍', titulo:'Sellos — Detalle 2', desc:'Silicón perimetral interior',            tipo:'foto'},
-  {id:'ev4', emoji:'🔒', titulo:'Broche / Chapa',     desc:'Funcionamiento del cierre',              tipo:'foto'},
-  {id:'ev5', emoji:'🎬', titulo:'Video Funcional',    desc:'Corrida de carretillas o apertura/cierre', tipo:'video', badge:'VIDEO'}
-];
+// Slots de evidencia fotográfica. Los 3 de detalle (sellos + broche) y el
+// video aplican a todo el trabajo en general, pero la foto de "Instalación
+// Final" se pide UNA POR CADA PIEZA capturada — así el reporte siempre
+// tiene evidencia de cada pieza distinta que se instaló, no solo de la
+// primera. Con 1 sola pieza se ve igual que antes.
+function entSlotsEvidencia() {
+  var piezas = INST_PIEZAS.filter(function(p) { return (p.tipo || '').trim() !== ''; });
+  var slots = [];
+  if (piezas.length > 1) {
+    piezas.forEach(function(p, i) {
+      slots.push({
+        id: 'ev1_' + p.id, emoji: '⬛',
+        titulo: 'Instalación Final \u2014 Pieza ' + (i + 1),
+        desc: p.tipo, tipo: 'foto'
+      });
+    });
+  } else {
+    slots.push({id:'ev1', emoji:'⬛', titulo:'Instalación Final',  desc:'Vista panorámica del trabajo terminado', tipo:'foto'});
+  }
+  slots.push({id:'ev2', emoji:'🔍', titulo:'Sellos — Detalle 1', desc:'Silicón perimetral exterior',            tipo:'foto'});
+  slots.push({id:'ev3', emoji:'🔍', titulo:'Sellos — Detalle 2', desc:'Silicón perimetral interior',            tipo:'foto'});
+  slots.push({id:'ev4', emoji:'🔒', titulo:'Broche / Chapa',     desc:'Funcionamiento del cierre',              tipo:'foto'});
+  slots.push({id:'ev5', emoji:'🎬', titulo:'Video Funcional',    desc:'Corrida de carretillas o apertura/cierre', tipo:'video', badge:'VIDEO'});
+  return slots;
+}
 
 function entRenderChecklist() {
   var div = document.getElementById('ent-checklist-lista');
@@ -2928,7 +2963,7 @@ function entRenderEvidencia() {
   var div = document.getElementById('ent-evidencia-slots');
   if (!div) return;
   var html = '';
-  ENT_EVIDENCIA_SLOTS.forEach(function(slot) {
+  entSlotsEvidencia().forEach(function(slot) {
     var capturado = ENT_EVIDENCIA[slot.id];
     html += '<div onclick="instAbrirSlot(\'' + slot.id + '\')" style="display:flex;align-items:center;gap:12px;padding:10px;border:1.5px dashed '
       + (capturado ? 'var(--green)' : 'var(--gray-200)') + ';border-radius:8px;background:'
@@ -2953,7 +2988,7 @@ function entRenderEvidencia() {
 
 function instAbrirSlot(slotId) {
   _inst_slot_activo = slotId;
-  var slot = ENT_EVIDENCIA_SLOTS.filter(function(s){return s.id===slotId;})[0];
+  var slot = entSlotsEvidencia().filter(function(s){return s.id===slotId;})[0];
   var accept = slot && slot.tipo==='video' ? 'video/*,image/*' : 'image/*';
   var inp = document.getElementById('inst-file-input');
   if (inp) { inp.accept = accept; inp.click(); }
@@ -2975,7 +3010,8 @@ function instArchivoCapturado(input) {
 }
 
 function instEvidenciaCompleta() {
-  return ['ev1','ev2','ev3','ev4'].every(function(id){ return !!ENT_EVIDENCIA[id]; });
+  return entSlotsEvidencia().filter(function(s){ return s.tipo === 'foto'; })
+    .every(function(s){ return !!ENT_EVIDENCIA[s.id]; });
 }
 
 function instActualizarProgreso() {
@@ -3087,7 +3123,7 @@ async function entGenerarReporteInstalacion() {
         + '</tr>';
     }).join('');
 
-    var fotosHtml = ENT_EVIDENCIA_SLOTS.map(function(slot) {
+    var fotosHtml = entSlotsEvidencia().map(function(slot) {
       var ev = ENT_EVIDENCIA[slot.id];
       if (!ev) return '';
       if (ev.tipo === 'video') {
@@ -3095,7 +3131,7 @@ async function entGenerarReporteInstalacion() {
           + slot.titulo + '</div><div style="font-size:11px;color:#6B7280;background:#f9f9f9;padding:6px 8px;border-radius:6px">'
           + '&#127916; ' + ev.nombre + '</div></div>';
       }
-      return '<div style="display:inline-block;margin:4px;vertical-align:top;width:calc(50% - 8px)">'
+      return '<div class="foto-item" style="display:inline-block;margin:4px;vertical-align:top;width:calc(50% - 8px);page-break-inside:avoid">'
         + '<div style="font-size:10px;color:#6B7280;margin-bottom:3px">' + slot.titulo + '</div>'
         + '<img src="' + ev.b64 + '" style="width:100%;border-radius:6px;border:1px solid #e8ecf0">'
         + '</div>';
@@ -3127,15 +3163,17 @@ async function entGenerarReporteInstalacion() {
 
     var htmlReporte = '<!DOCTYPE html><html><head><meta charset="UTF-8">'
       + '<meta name="viewport" content="width=device-width,initial-scale=1">'
-      + '<style>*{box-sizing:border-box}body{font-family:Arial,sans-serif;padding:0;max-width:700px;margin:0 auto;color:#1B3A5C}'
+      + '<style>*{box-sizing:border-box}@page{size:letter;margin:14mm 12mm}body{font-family:Arial,sans-serif;padding:0;max-width:700px;margin:0 auto;color:#1B3A5C}'
       + '.pg-body{padding:16px}'
-      + 'h2{color:#1B3A5C;font-size:14px;border-bottom:1px solid #E8ECF0;padding-bottom:4px;margin-top:20px}'
+      + 'h2{color:#1B3A5C;font-size:14px;border-bottom:1px solid #E8ECF0;padding-bottom:4px;margin-top:20px;page-break-after:avoid}'
       + '.meta{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px}'
-      + '.meta-item{background:#F8F9FA;padding:8px 10px;border-radius:6px}'
+      + '.meta-item{background:#F8F9FA;padding:8px 10px;border-radius:6px;page-break-inside:avoid}'
       + '.meta-label{font-size:10px;color:#9CA3AF;text-transform:uppercase;letter-spacing:.5px}'
       + '.meta-val{font-size:13px;font-weight:700;margin-top:2px}'
       + 'table{width:100%;border-collapse:collapse;font-size:12px}'
-      + '.firma-box{width:47%;display:inline-block;margin:4px 1%;vertical-align:top;background:#F8F9FA;border-radius:8px;padding:10px;text-align:center}'
+      + 'tr{page-break-inside:avoid}'
+      + '.firma-box{width:47%;display:inline-block;margin:4px 1%;vertical-align:top;background:#F8F9FA;border-radius:8px;padding:10px;text-align:center;page-break-inside:avoid}'
+      + '@media print{body{max-width:100%}.foto-item{page-break-inside:avoid}}'
       + '</style></head><body>'
       + entHeaderOficial('Reporte de Instalaci\u00f3n', folio)
       + '<div class="pg-body">'
