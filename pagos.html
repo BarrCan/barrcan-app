@@ -6,6 +6,19 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.4
+  FECHA   : 2026-07-13
+  v4.4 — Fix: liquidar saldo ya no lo marca como "entregado":
+    - Bug real encontrado: al llegar el saldo a $0, este archivo ponía
+      estado='entregado' en el presupuesto — pero esa palabra la usa
+      entregas.html para decir "ya se instaló/entregó físicamente", no
+      "ya se pagó". Resultado: en cuanto se liquidaba un presupuesto,
+      desaparecía del dropdown de folios en entregas.html aunque la
+      instalación todavía no se hubiera hecho.
+    - Ahora, liquidar el saldo mueve el presupuesto a 'pendiente_entrega'
+      (ya pagado, falta entregar) en vez de 'entregado'. El estado
+      'entregado' de verdad ahora lo pone entregas.html, únicamente
+      cuando se genera el reporte de entrega/instalación.
   VERSIÓN : v4.3
   FECHA   : 2026-07-12
   v4.3 - Logo corregido y cargado desde GitHub Pages:
@@ -719,7 +732,7 @@ select.form-select { padding-right: 36px; cursor: pointer; }
   <div class="header">
     <div class="header-logo">
       <div class="logo-mark">
-        <img src="https://barrcan.github.io/barrcan-app/assets/logo-icono.jpg" id="header-logo-img" onerror="this.onerror=null;this.src=_LOGO_ICONO_B64;"" style="width:100%;height:100%;object-fit:cover;display:block">
+        <img src="https://barrcan.github.io/barrcan-app/assets/logo-icono.jpg" id="header-logo-img" onerror="this.onerror=null;this.src=_LOGO_ICONO_B64;" style="width:100%;height:100%;object-fit:cover;display:block">
       </div>
       <div><span class="logo-text">BarrCan</span><span class="logo-sub">Canceleria &middot; Campo</span></div>
     </div>
@@ -1452,7 +1465,14 @@ async function pagoGuardar() {
     resetPaginacion();
 
     if (PRES_SEL && PRES_SEL.id && sb()) {
-      var nuevoEstado = saldo <= 0 ? 'entregado'
+      // 'entregado' significa que YA se hizo la entrega/instalación física
+      // (lo marca entregas.html al generar el reporte) — antes, liquidar
+      // el saldo aquí también ponía 'entregado', aunque la instalación no
+      // se hubiera hecho todavía, y eso lo quitaba del dropdown de folios
+      // en entregas.html sin haberse entregado de verdad. Ahora, liquidar
+      // solo mueve a 'pendiente_entrega' (ya pagado, falta entregar).
+      var nuevoEstado = PRES_SEL.estado === 'entregado' ? 'entregado'
+        : saldo <= 0 ? 'pendiente_entrega'
         : PRES_SEL.estado === 'activo' ? 'aprobado'
         : PRES_SEL.estado;
 
