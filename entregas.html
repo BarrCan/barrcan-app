@@ -6,8 +6,26 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
-  VERSION : v3.15.0
+  VERSION : v3.16.0
   FECHA   : 2026-07-13
+  v3.16.0 - Edición COMPLETA de reportes (checklist, fotos, firmas, todo):
+    - "Editar" ya no abre un formulario chico con solo folio/cliente/fecha
+      — ahora reabre el mismo formulario de captura con TODO precargado:
+      para instalación, el checklist técnico (con sus ✓/✕ y notas), las
+      piezas, las 4 fotos de evidencia y las 2 firmas; para entrega en
+      puerta/envío, las fotos de empaque/comprobante, la firma, monto,
+      paquetería y guía. Se puede modificar cualquier cosa —incluida la
+      evidencia fotográfica— y "Guardar cambios" actualiza ese mismo
+      registro (mismo folio/id), en vez de crear uno nuevo.
+    - Para lograrlo, al generar cualquier reporte ahora también se sube un
+      JSON aparte a Storage (junto al HTML) con todos los datos capturados
+      —igual patrón que ya se usaba para el HTML pesado—, y su URL se
+      guarda en la nueva columna datos_url. Requiere el SQL adjunto.
+    - Nuevas columnas en reportes_entrega para poder editarlas después:
+      descripcion, piezas, monto, paqueteria, num_guia (antes solo vivían
+      en el HTML generado, no en la base de datos).
+    - La cola offline (IndexedDB) también aprende a reintentar
+      actualizaciones (no solo altas nuevas) si se edita sin conexión.
   v3.15.0 - Reorden visual + editar/eliminar reportes (solo admin) + fixes:
     - Visual: la tarjeta "Producto entregado" (tipo de entrega) ahora va
       primero, antes que "Cliente" y "Datos de la obra" — no cambia el
@@ -1540,11 +1558,14 @@ function offDbListar() {
 
 // Encola un reporte completo (con su HTML de fotos/firmas) para subirlo
 // apenas haya conexión. tabla: 'reportes_entrega' | 'entregas_instalacion'.
-function offEncolarReporte(tabla, payload, htmlReporte, nombreArchivo) {
+function offEncolarReporte(tabla, payload, htmlReporte, nombreArchivo, datosJson, nombreArchivoDatos, editId) {
   var registro = {
     id: (payload.folio || 'SIN-FOLIO') + '_' + Date.now(),
     tabla: tabla, payload: payload, html: htmlReporte,
-    nombreArchivo: nombreArchivo, ts: new Date().toISOString()
+    nombreArchivo: nombreArchivo,
+    datosJson: datosJson || null, nombreArchivoDatos: nombreArchivoDatos || null,
+    editId: editId || null,
+    ts: new Date().toISOString()
   };
   offDbGuardar(registro).catch(function(e) { console.warn('[BarrCan] No se pudo encolar en IndexedDB:', e); });
   return registro;
@@ -1569,7 +1590,18 @@ function offReintentarUno(reg) {
       if (upRes.error) throw upRes.error;
       var urlRes = cliente.storage.from('reportes').getPublicUrl(reg.nombreArchivo);
       reg.payload.reporte_url = urlRes.data ? urlRes.data.publicUrl : null;
-      return cliente.from(reg.tabla).insert([reg.payload]);
+      if (!reg.datosJson) return null;
+      var blobD = new Blob([reg.datosJson], { type: 'application/json' });
+      return cliente.storage.from('reportes').upload(reg.nombreArchivoDatos, blobD, { contentType: 'application/json', upsert: true });
+    })
+    .then(function(upResD) {
+      if (upResD && !upResD.error) {
+        var urlResD = cliente.storage.from('reportes').getPublicUrl(reg.nombreArchivoDatos);
+        reg.payload.datos_url = urlResD.data ? urlResD.data.publicUrl : null;
+      }
+      return reg.editId
+        ? cliente.from(reg.tabla).update(reg.payload).eq('id', reg.editId)
+        : cliente.from(reg.tabla).insert([reg.payload]);
     })
     .then(function(res) {
       if (res && res.error) throw res.error;
@@ -1577,7 +1609,7 @@ function offReintentarUno(reg) {
       var hist = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
       hist.forEach(function(r) { if (r.folio === reg.payload.folio) delete r._pendiente; });
       localStorage.setItem('barrcan_reportes_historial', JSON.stringify(hist));
-      toast('Reporte completo sincronizado (con fotos) - ' + (reg.payload.folio || ''));
+      toast((reg.editId ? 'Edici\u00f3n sincronizada' : 'Reporte completo sincronizado (con fotos)') + ' - ' + (reg.payload.folio || ''));
       entRenderHistorial();
     })
     .catch(function(e) { console.warn('[BarrCan] Reintento de reporte completo falló, se reintentará después:', e); });
@@ -1673,6 +1705,10 @@ var _LOGO_ICONO_B64 = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA
 // Logo oficial BarrCan (wordmark completo) para encabezados de reportes impresos/PDF
 var _LOGO_OFICIAL = 'data:image/jpeg;base64,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';
 var ENT_TIPO       = 'puerta';
+// Edición completa: si ENT_EDIT_ID tiene valor, "Generar..." actualiza ese
+// registro en vez de crear uno nuevo (folio/tabla/id se conservan).
+var ENT_EDIT_ID    = null;
+var ENT_EDIT_TABLA = null;
 var ENT_FORMA      = 'efectivo';
 var ENT_FIRMA_CTX  = null;
 var ENT_FIRMA_DRAW = false;
@@ -2131,7 +2167,21 @@ async function entGenerarReporte() {
     else { toast('Activa ventanas emergentes para ver el comprobante'); }
 
     var nombreArch = folioFull + '_' + (fecha || '').replace(/-/g, '') + '_' + Date.now() + '.html';
+    var nombreDatos = folioFull + '_' + (fecha || '').replace(/-/g, '') + '_' + Date.now() + '_datos.json';
+    // Datos completos y editables (fotos de empaque/comprobante, firma,
+    // piezas, paquetería) — igual que en instalación, se suben aparte como
+    // JSON para poder recuperarlos completos al editar, sin engordar la
+    // fila de la tabla.
+    var datosCompletos = {
+      cliente: cliente, tel: tel, desc: desc, fecha: fecha, piezas: piezas,
+      aplicaCobro: aplica, monto: monto, paqueteria: paqueteria, numGuia: numGuia,
+      direccion: direccion, tipo: ENT_TIPO,
+      fotosEmp: ENT_FOTOS_EMP, fotosComp: ENT_FOTOS_COMP,
+      firma: (!firmaVacia ? firmaB64 : null)
+    };
+    var datosJsonStr = JSON.stringify(datosCompletos);
     var reporteUrl = null;
+    var datosUrl = null;
     var subidaOk = false;
     if (SYNC.online && sb()) {
       try {
@@ -2141,6 +2191,14 @@ async function entGenerarReporte() {
           var urlRes = sb().storage.from('reportes').getPublicUrl(nombreArch);
           reporteUrl = urlRes.data ? urlRes.data.publicUrl : null;
           subidaOk = true;
+          try {
+            var blobDatos = new Blob([datosJsonStr], { type: 'application/json' });
+            var upResDatos = await sb().storage.from('reportes').upload(nombreDatos, blobDatos, { contentType: 'application/json', upsert: true });
+            if (!upResDatos.error) {
+              var urlResDatos = sb().storage.from('reportes').getPublicUrl(nombreDatos);
+              datosUrl = urlResDatos.data ? urlResDatos.data.publicUrl : null;
+            }
+          } catch(eDatos) { console.warn('[BarrCan] No se pudo subir datos completos (no crítico):', eDatos); }
         } else { console.warn('Storage:', upRes.error); }
       } catch(eStorage) { console.warn('Storage:', eStorage.message); }
     }
@@ -2149,14 +2207,19 @@ async function entGenerarReporte() {
       folio: folioFull, cliente_nombre: cliente, cliente_tel: tel || null,
       fecha_entrega: fecha, tecnico: 'BarrCan', tel_destino: tel || null,
       registrado_por: 'campo', whatsapp_enviado: false,
-      dir_obra: direccion || null, reporte_url: reporteUrl
+      dir_obra: direccion || null, reporte_url: reporteUrl, datos_url: datosUrl,
+      descripcion: desc || null, piezas: piezas || null, monto: monto || null,
+      paqueteria: paqueteria || null, num_guia: numGuia || null
     };
+
+    var editandoId = ENT_EDIT_ID;
+    var esEdicion   = ENT_EDIT_TABLA === 'reportes_entrega' && !!editandoId;
 
     // Si no hay conexión, o si el reporte con fotos no logró subirse a
     // Storage (fotos muy pesadas, timeout, etc.), se encola COMPLETO en
     // IndexedDB — no solo el registro ligero — para no perder las fotos.
     if (!SYNC.online || !sb() || !subidaOk) {
-      offEncolarReporte('reportes_entrega', dbPayload, _ENT_HTML, nombreArch);
+      offEncolarReporte('reportes_entrega', dbPayload, _ENT_HTML, nombreArch, datosJsonStr, nombreDatos, esEdicion ? editandoId : null);
       var hist2 = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
       hist2.unshift(Object.assign({}, dbPayload, { _pendiente: true, ts: new Date().toLocaleString('es-MX') }));
       if (hist2.length > 50) hist2.pop();
@@ -2164,6 +2227,7 @@ async function entGenerarReporte() {
       entRenderHistorial();
       toast(subidaOk === false && SYNC.online ? 'Fotos pesadas, se reintentará automáticamente' : 'Guardado sin conexion - se sincronizara al reconectar');
       entMostrarPost(folioFull, tel);
+      entSalirModoEdicion();
       entReset();
       return;
     }
@@ -2171,15 +2235,14 @@ async function entGenerarReporte() {
     async function intentar(i) {
       i = i || 1;
       try {
-        var res = await sb().from('reportes_entrega').insert([dbPayload]);
+        var res = esEdicion
+          ? await sb().from('reportes_entrega').update(dbPayload).eq('id', editandoId)
+          : await sb().from('reportes_entrega').insert([dbPayload]);
         if (res.error) throw res.error;
         SYNC.online = true; detectarConexion();
-        var hist = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
-        hist.unshift(Object.assign({}, dbPayload, { ts: new Date().toLocaleString('es-MX') }));
-        if (hist.length > 50) hist.pop();
-        localStorage.setItem('barrcan_reportes_historial', JSON.stringify(hist));
-        toast('Reporte guardado - ' + folioFull);
-        entRenderHistorial();
+        toast(esEdicion ? 'Reporte actualizado - ' + folioFull : 'Reporte guardado - ' + folioFull);
+        entSalirModoEdicion();
+        entCargarHistorial();
         entMostrarPost(folioFull, tel);
         entReset();
       } catch(e) {
@@ -2187,7 +2250,8 @@ async function entGenerarReporte() {
         if (esRed && i < 3) {
           return new Promise(function(resolve) { setTimeout(function() { intentar(i + 1).then(resolve); }, 1000 * i); });
         }
-        entGuardarOffline(dbPayload);
+        offEncolarReporte('reportes_entrega', dbPayload, _ENT_HTML, nombreArch, datosJsonStr, nombreDatos, esEdicion ? editandoId : null);
+        entSalirModoEdicion();
         entMostrarPost(folioFull, tel);
         entReset();
       }
@@ -2197,7 +2261,7 @@ async function entGenerarReporte() {
     document.getElementById('ent-error').textContent = 'Error: ' + eGlobal.message;
     document.getElementById('ent-error').style.display = 'block';
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'Generar Comprobante de Entrega'; }
+    if (btn) { btn.disabled = false; btn.textContent = ENT_EDIT_ID ? 'Guardar cambios' : 'Generar Comprobante de Entrega'; }
   }
 }
 
@@ -2423,80 +2487,168 @@ function entVerReporteFallback(r) {
   else toast('⚠️ Activa ventanas emergentes para ver el reporte');
 }
 
+// ── Edición completa (checklist, fotos, firmas, piezas — todo) ──────
+// A diferencia del modal rápido anterior (solo folio/cliente/tel/fecha),
+// esto reutiliza el mismo formulario de captura: carga TODOS los datos
+// guardados (incluida la evidencia fotográfica y las firmas, leídas del
+// datos_url que se sube al generar el reporte) dentro del wizard normal,
+// y el botón de generar pasa a actualizar ese mismo registro en vez de
+// crear uno nuevo.
 function entAbrirEdicion(id) {
-  entVerificarAdmin(function() { entAbrirEdicionInterno(id); });
+  entVerificarAdmin(function() { entEditarCompleto(id); });
 }
 
-function entAbrirEdicionInterno(id) {
+async function entEditarCompleto(id) {
+  if (!SYNC.online || !sb()) { toast('Necesitas conexi\u00f3n para editar el reporte completo'); return; }
   var local = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
-  var r = null;
-  for (var i = 0; i < local.length; i++) { if (local[i].id === id) { r = local[i]; break; } }
-  if (!r) { toast('Reporte no encontrado'); return; }
-  var modal = document.getElementById('ent-edit-modal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'ent-edit-modal';
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:800;backdrop-filter:blur(3px)';
-    modal.innerHTML = '<div style="position:absolute;bottom:0;left:0;right:0;background:var(--white);border-radius:20px 20px 0 0;padding:20px;max-height:80vh;overflow-y:auto">'
-      + '<div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 14px"></div>'
-      + '<div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:14px">Editar Reporte</div>'
-      + '<label class="form-label">Folio</label><input type="text" id="ee-folio" class="form-input" style="font-family:monospace">'
-      + '<label class="form-label">Cliente</label><input type="text" id="ee-cliente" class="form-input">'
-      + '<label class="form-label">Telefono</label><input type="tel" id="ee-tel" class="form-input" inputmode="tel">'
-      + '<label class="form-label">Fecha de entrega</label><input type="date" id="ee-fecha" class="form-input">'
-      + '<label class="form-label">Tecnico</label><input type="text" id="ee-tecnico" class="form-input">'
-      + '<div id="ee-err" style="display:none;color:var(--red);font-size:12px;padding:8px 12px;background:rgba(192,57,43,0.08);border-radius:var(--radius-sm);margin-top:8px"></div>'
-      + '<div style="display:flex;gap:8px;margin-top:14px">'
-      + '<button onclick="entGuardarEdicion()" style="flex:1;padding:12px;background:var(--navy);color:white;border:none;border-radius:var(--radius-sm);font-family:\'DM Sans\',sans-serif;font-size:14px;font-weight:700;cursor:pointer">Guardar</button>'
-      + '<button onclick="document.getElementById(\'ent-edit-modal\').style.display=\'none\'" style="padding:12px 14px;background:none;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);color:var(--gray-600);font-family:\'DM Sans\',sans-serif;font-size:13px;cursor:pointer">Cancelar</button>'
-      + '</div></div>';
-    document.body.appendChild(modal);
-  }
-  modal.dataset.id = id;
-  document.getElementById('ee-folio').value   = r.folio || '';
-  document.getElementById('ee-cliente').value  = r.cliente_nombre || '';
-  document.getElementById('ee-tel').value      = r.cliente_tel || '';
-  document.getElementById('ee-fecha').value    = r.fecha_entrega || '';
-  document.getElementById('ee-tecnico').value  = r.tecnico || '';
-  document.getElementById('ee-err').style.display = 'none';
-  modal.style.display = 'block';
-}
+  var resumen = null;
+  for (var i = 0; i < local.length; i++) { if (local[i].id === id) { resumen = local[i]; break; } }
+  var tabla = (resumen && resumen._tabla) || 'reportes_entrega';
 
-async function entGuardarEdicion() {
-  var modal   = document.getElementById('ent-edit-modal');
-  var id      = modal ? modal.dataset.id : '';
-  if (!id) return;
-  var errEl   = document.getElementById('ee-err');
-  var folio   = document.getElementById('ee-folio').value.trim();
-  var cliente = document.getElementById('ee-cliente').value.trim();
-  var tel     = document.getElementById('ee-tel').value.trim();
-  var fecha   = document.getElementById('ee-fecha').value;
-  var tecnico = document.getElementById('ee-tecnico').value.trim();
-  if (!cliente) { errEl.textContent = 'El nombre es obligatorio'; errEl.style.display = 'block'; return; }
-  var campos = { folio: folio, cliente_nombre: cliente, cliente_tel: tel || null, fecha_entrega: fecha, tecnico: tecnico || 'BarrCan' };
-  var local = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
-  var tabla = 'reportes_entrega';
-  for (var i = 0; i < local.length; i++) {
-    if (local[i].id === id) {
-      tabla = local[i]._tabla || 'reportes_entrega';
-      local[i] = Object.assign({}, local[i], campos);
-      break;
-    }
-  }
-  localStorage.setItem('barrcan_reportes_historial', JSON.stringify(local));
-  entRenderHistorial();
-  if (SYNC.online && sb()) {
+  toast('Cargando reporte para editar...');
+  var res;
+  try { res = await sb().from(tabla).select('*').eq('id', id).single(); }
+  catch(e) { toast('No se pudo cargar el reporte: ' + e.message); return; }
+  if (res.error || !res.data) { toast('Reporte no encontrado en Supabase'); return; }
+  var r = res.data;
+
+  var datos = {};
+  var urlDatos = r.datos_url;
+  if (urlDatos) {
     try {
-      // entregas_instalacion usa nombres de columna distintos a reportes_entrega
-      var camposDb = tabla === 'entregas_instalacion'
-        ? { folio: folio, cliente: cliente, tel: tel || null, fecha: fecha, tecnico: tecnico || 'BarrCan' }
-        : campos;
-      var res = await sb().from(tabla).update(camposDb).eq('id', id);
-      if (res.error) throw res.error;
-      toast('Reporte actualizado');
-    } catch(e) { toast('Actualizado localmente'); }
-  } else { toast('Actualizado localmente - sync al reconectar'); }
-  modal.style.display = 'none';
+      var respD = await fetch(urlDatos);
+      datos = await respD.json();
+    } catch(e) { console.warn('[BarrCan] No se pudieron cargar los datos completos (fotos/checklist), se edita solo lo b\u00e1sico:', e); }
+  } else {
+    toast('Este reporte es de antes de la edici\u00f3n completa: solo se pueden editar los datos b\u00e1sicos');
+  }
+
+  ENT_EDIT_ID    = id;
+  ENT_EDIT_TABLA = tabla;
+
+  var tipo = tabla === 'entregas_instalacion' ? 'instalacion' : (datos.tipo || 'puerta');
+  var btnTipo = document.querySelector('.tipo-btn[data-tipo="' + tipo + '"]');
+  if (btnTipo) entSelTipo(btnTipo);
+
+  document.getElementById('ent-cliente').value = tabla === 'entregas_instalacion' ? (r.cliente || '') : (r.cliente_nombre || '');
+  document.getElementById('ent-tel').value     = tabla === 'entregas_instalacion' ? (r.tel || '') : (r.cliente_tel || '');
+  document.getElementById('ent-folio').value   = r.folio || '';
+
+  if (tabla === 'entregas_instalacion') {
+    document.getElementById('inst-direccion').value       = datos.direccion || r.direccion || '';
+    document.getElementById('inst-monto').value            = datos.monto || r.monto || '';
+    document.getElementById('inst-tecnico-nombre').value   = datos.tecnico || r.tecnico || '';
+    var selAsig = document.getElementById('inst-asignado'); if (selAsig) selAsig.value = datos.asignado || r.asignado_por || '';
+    document.getElementById('inst-fecha') && (document.getElementById('inst-fecha').value = datos.fecha || r.fecha || '');
+
+    ENT_CHECKS = datos.checklist || {};
+    entRenderChecklist();
+
+    var pzs = datos.piezas || r.piezas || [];
+    INST_PIEZAS = pzs.length ? pzs.map(function(p, i) { return Object.assign({ id: 'pz' + i }, p); }) : [{ id: 'pz0', tipo: '', medidas: '', notas: '' }];
+    var numPzEl = document.getElementById('inst-num-piezas'); if (numPzEl) numPzEl.value = INST_PIEZAS.length;
+    instRenderPiezas();
+
+    ENT_EVIDENCIA = datos.evidencia || {};
+    entRenderEvidencia();
+
+    if (datos.firmaTec) entDibujarFirmaEnCanvas('ent-canvas-tecnico', datos.firmaTec, function(ctx){ _tec_draw = true; });
+    if (datos.firmaCli) entDibujarFirmaEnCanvas('ent-canvas-cliente', datos.firmaCli, function(ctx){ _cli_draw = true; });
+  } else {
+    document.getElementById('ent-desc').value   = datos.desc || '';
+    document.getElementById('ent-fecha').value  = datos.fecha || r.fecha_entrega || '';
+    var piezasEl = document.getElementById('ent-piezas'); if (piezasEl) piezasEl.value = datos.piezas || '1';
+    var aplicaEl = document.getElementById('ent-aplica-cobro');
+    if (aplicaEl) { aplicaEl.value = datos.aplicaCobro ? 'si' : 'no'; aplicaEl.onchange && aplicaEl.onchange(); }
+    var montoGrp = document.getElementById('ent-monto-group'); if (montoGrp) montoGrp.style.display = datos.aplicaCobro ? 'block' : 'none';
+    var montoEl = document.getElementById('ent-monto'); if (montoEl) montoEl.value = datos.monto || '';
+    var paqEl = document.getElementById('ent-paqueteria'); if (paqEl) paqEl.value = datos.paqueteria || '';
+    var guiaEl = document.getElementById('ent-guia'); if (guiaEl) guiaEl.value = datos.numGuia || '';
+    document.getElementById('inst-direccion').value = datos.direccion || r.dir_obra || '';
+
+    ENT_FOTOS_EMP  = datos.fotosEmp  || [];
+    ENT_FOTOS_COMP = datos.fotosComp || [];
+    entRenderFotosGrid('empaque');
+    entRenderFotosGrid('comprobante');
+
+    if (datos.firma) entDibujarFirmaEnCanvas('ent-canvas-firma', datos.firma, function(ctx){ ENT_FIRMA_DRAW = true; });
+  }
+
+  var btn = document.getElementById('ent-btn-guardar');
+  if (btn) btn.textContent = tabla === 'entregas_instalacion' ? 'Guardar cambios' : 'Guardar cambios';
+  entMostrarBarraEdicion(true);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  toast('Editando ' + (r.folio || id) + ' \u2014 modifica lo que necesites y guarda');
+}
+
+// Dibuja una imagen (dataURL) dentro de un canvas ya inicializado, para
+// precargar firmas guardadas al editar.
+function entDibujarFirmaEnCanvas(canvasId, dataUrl, marcarDibujada) {
+  var canvas = document.getElementById(canvasId);
+  if (!canvas || !dataUrl) return;
+  var ctx = canvas.getContext('2d');
+  var img = new Image();
+  img.onload = function() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    if (marcarDibujada) marcarDibujada(ctx);
+    instActualizarProgreso();
+  };
+  img.src = dataUrl;
+}
+
+// Redibuja el grid de fotos (empaque/comprobante) completo a partir del
+// array ENT_FOTOS_EMP/ENT_FOTOS_COMP — se usa tanto al capturar como al
+// precargar fotos ya guardadas para editar.
+function entRenderFotosGrid(tipo) {
+  var arr    = tipo === 'empaque' ? ENT_FOTOS_EMP : ENT_FOTOS_COMP;
+  var gridId = tipo === 'empaque' ? 'ent-grid-empaque' : 'ent-grid-comp';
+  var grid   = document.getElementById(gridId);
+  if (!grid) return;
+  grid.innerHTML = '';
+  arr.forEach(function(f, idx) {
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'position:relative;aspect-ratio:1';
+    var img = document.createElement('img');
+    img.src = f.dataUrl;
+    img.style.cssText = 'width:100%;height:100%;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200)';
+    var btnDel = document.createElement('button');
+    btnDel.textContent = '\u00d7';
+    btnDel.style.cssText = 'position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.6);color:white;border:none;font-size:11px;cursor:pointer';
+    btnDel.onclick = function() { wrap.remove(); arr.splice(arr.indexOf(f), 1); };
+    wrap.appendChild(img); wrap.appendChild(btnDel);
+    grid.appendChild(wrap);
+  });
+}
+
+// Barra que avisa que se está editando un reporte existente, con botón
+// para cancelar y volver a un formulario en blanco.
+function entMostrarBarraEdicion(mostrar) {
+  var barra = document.getElementById('ent-edit-barra');
+  if (!barra) {
+    barra = document.createElement('div');
+    barra.id = 'ent-edit-barra';
+    barra.style.cssText = 'position:sticky;top:0;z-index:50;background:var(--gold,#C8923A);color:white;padding:8px 12px;border-radius:8px;font-size:12px;font-weight:700;display:flex;justify-content:space-between;align-items:center;margin-bottom:10px';
+    barra.innerHTML = '<span>&#9998; Editando reporte existente</span>'
+      + '<button onclick="entCancelarEdicion()" style="background:rgba(255,255,255,.2);border:none;color:white;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer">Cancelar</button>';
+    var contenedor = document.querySelector('.content');
+    if (contenedor) contenedor.insertBefore(barra, contenedor.firstChild.nextSibling);
+  }
+  barra.style.display = mostrar ? 'flex' : 'none';
+}
+
+function entCancelarEdicion() {
+  entSalirModoEdicion();
+  entReset();
+  toast('Edici\u00f3n cancelada');
+}
+
+function entSalirModoEdicion() {
+  ENT_EDIT_ID    = null;
+  ENT_EDIT_TABLA = null;
+  entMostrarBarraEdicion(false);
+  var btn = document.getElementById('ent-btn-guardar');
+  if (btn) btn.textContent = 'Generar Comprobante de Entrega';
 }
 
 // ── Eliminar reporte (solo administrador, con motivo registrado) ──
@@ -3017,7 +3169,22 @@ async function entGenerarReporteInstalacion() {
     // en vez de meterlo entero en una columna de la tabla — eso era lo que
     // probablemente rompía el guardado por tamaño del registro.
     var nombreArchInst = folio + '_' + (fecha || '').replace(/-/g, '') + '_' + Date.now() + '.html';
+    var nombreDatosInst = folio + '_' + (fecha || '').replace(/-/g, '') + '_' + Date.now() + '_datos.json';
+    // Datos completos y editables (checklist con notas, evidencia con las
+    // fotos, piezas, firmas): se suben aparte como JSON a Storage —igual
+    // que el HTML, para no engordar la fila de la tabla— y su URL se
+    // guarda en datos_url. Así "Editar" puede recuperar TODO tal cual
+    // quedó capturado, no solo folio/cliente/fecha.
+    var datosCompletos = {
+      cliente: cliente.trim(), tel: (document.getElementById('ent-tel')||{}).value || null,
+      desc: desc.trim(), fecha: fecha, tecnico: tecnico, asignado: asignado,
+      direccion: direccion, monto: monto,
+      checklist: ENT_CHECKS, piezas: piezasValidas, evidencia: ENT_EVIDENCIA,
+      firmaTec: firmaTec, firmaCli: firmaCli
+    };
+    var datosJsonStr = JSON.stringify(datosCompletos);
     var reporteUrl = null;
+    var datosUrl = null;
     var subidaOkInst = false;
     if (SYNC.online && typeof sb === 'function' && sb()) {
       try {
@@ -3027,6 +3194,14 @@ async function entGenerarReporteInstalacion() {
           var urlResInst = sb().storage.from('reportes').getPublicUrl(nombreArchInst);
           reporteUrl = urlResInst.data ? urlResInst.data.publicUrl : null;
           subidaOkInst = true;
+          try {
+            var blobDatosInst = new Blob([datosJsonStr], { type: 'application/json' });
+            var upResDatosInst = await sb().storage.from('reportes').upload(nombreDatosInst, blobDatosInst, { contentType: 'application/json', upsert: true });
+            if (!upResDatosInst.error) {
+              var urlResDatosInst = sb().storage.from('reportes').getPublicUrl(nombreDatosInst);
+              datosUrl = urlResDatosInst.data ? urlResDatosInst.data.publicUrl : null;
+            }
+          } catch(eDatosInst) { console.warn('[BarrCan] No se pudo subir datos completos (no crítico):', eDatosInst); }
         } else {
           console.warn('[BarrCan] No se pudo subir el HTML del reporte de instalación a Storage:', upResInst.error);
         }
@@ -3042,6 +3217,7 @@ async function entGenerarReporteInstalacion() {
       descripcion: desc.trim() || ('Instalaci\u00f3n - ' + cliente.trim()),
       fecha: fecha || new Date().toISOString().split('T')[0],
       reporte_url: reporteUrl,
+      datos_url: datosUrl,
       checklist_ok: ENT_CHECKLIST_ITEMS.filter(function(it){return ENT_CHECKS[it.id]===true;}).length,
       checklist_total: ENT_CHECKLIST_ITEMS.length,
       tecnico: tecnico,
@@ -3052,24 +3228,34 @@ async function entGenerarReporteInstalacion() {
       synced: false
     };
 
+    var editandoId = ENT_EDIT_ID;
+    var esEdicion   = ENT_EDIT_TABLA === 'entregas_instalacion' && !!editandoId;
+
     // Si no hay conexión, o si el HTML con fotos y firmas no logró subirse
     // a Storage, se encola COMPLETO en IndexedDB (no solo el registro
     // ligero) para reintentar la subida pesada más adelante sin perder nada.
     if (!SYNC.online || typeof sb !== 'function' || !sb() || !subidaOkInst) {
-      offEncolarReporte('entregas_instalacion', payload, htmlReporte, nombreArchInst);
+      offEncolarReporte('entregas_instalacion', payload, htmlReporte, nombreArchInst, datosJsonStr, nombreDatosInst, esEdicion ? editandoId : null);
       toast(subidaOkInst === false && SYNC.online ? 'Fotos pesadas, se reintentará automáticamente · ' + folio : 'Guardado sin conexión, se sincronizará al reconectar · ' + folio);
     } else {
-      sb().from('entregas_instalacion').insert([payload]).then(function(res) {
+      var opInst = esEdicion
+        ? sb().from('entregas_instalacion').update(payload).eq('id', editandoId)
+        : sb().from('entregas_instalacion').insert([payload]);
+      opInst.then(function(res) {
         if (res.error) {
           console.warn('[BarrCan] No se pudo guardar la instalación en Supabase, se reencola completa:', res.error);
-          offEncolarReporte('entregas_instalacion', payload, htmlReporte, nombreArchInst);
+          offEncolarReporte('entregas_instalacion', payload, htmlReporte, nombreArchInst, datosJsonStr, nombreDatosInst, esEdicion ? editandoId : null);
           toast('⚠️ No se pudo guardar, se reintentará · ' + folio);
+        } else {
+          entCargarHistorial();
         }
       }).catch(function(e){
         console.warn('[BarrCan] Error de red al guardar instalación, se reencola completa:', e);
-        offEncolarReporte('entregas_instalacion', payload, htmlReporte, nombreArchInst);
+        offEncolarReporte('entregas_instalacion', payload, htmlReporte, nombreArchInst, datosJsonStr, nombreDatosInst, esEdicion ? editandoId : null);
       });
     }
+
+    entSalirModoEdicion();
 
     var win = window.open('','_blank');
     if (win) win.document.write(htmlReporte);
