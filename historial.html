@@ -6,6 +6,16 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v2.4
+  FECHA   : 2026-07-13
+  v2.4 — Corregir estado manualmente (solo administrador):
+    - Nuevo botón "Estado" por presupuesto, visible solo en modo
+      administrador (mismo PIN de MAU/HER que ya se usa en entregas.html).
+    - Útil para corregir casos donde el estado quedó mal — por ejemplo,
+      un presupuesto marcado "entregado" solo porque se liquidó el saldo
+      (bug ya corregido en pagos.html v4.4), sin haberse instalado todavía.
+    - "Activar modo administrador" queda arriba de la lista, igual patrón
+      que en entregas.html.
   VERSIÓN : v2.3
   FECHA   : 2026-07-12
   v2.3 - Logo estandarizado y cargado desde GitHub Pages:
@@ -1062,7 +1072,7 @@ body{min-height:100vh}
   <div class="header">
     <div class="header-logo">
       <div class="logo-mark" style="padding:0;overflow:hidden">
-        <img src="https://barrcan.github.io/barrcan-app/assets/logo-icono.jpg" id="header-logo-img" onerror="this.onerror=null;this.src=_LOGO_ICONO_B64;"" style="width:100%;height:100%;object-fit:cover;display:block">
+        <img src="https://barrcan.github.io/barrcan-app/assets/logo-icono.jpg" id="header-logo-img" onerror="this.onerror=null;this.src=_LOGO_ICONO_B64;" style="width:100%;height:100%;object-fit:cover;display:block">
       </div>
       <div><span class="logo-text">BarrCan</span><span class="logo-sub">Canceleria &middot; Campo</span></div>
     </div>
@@ -1257,6 +1267,33 @@ function toast(msg, dur) {
   el._t = setTimeout(function() { el.style.opacity = '0'; }, dur);
 }
 
+// ── Modo administrador (corregir estado manualmente) ───────────────
+// Mismo patrón que entregas.html: reutiliza los PINs con los que MAU/HER
+// ya entran a la app principal (localStorage, mismo dominio).
+function esAdmin() {
+  try {
+    var u = JSON.parse(localStorage.getItem('barrcan_usuario_activo') || '{}');
+    return u.rol === 'admin' || u.id === 'MAU' || u.id === 'HER';
+  } catch(e) { return false; }
+}
+var PRES_MODO_ADMIN = false;
+function presVerificarAdmin(callback) {
+  if (PRES_MODO_ADMIN || esAdmin()) { callback(); return; }
+  var pin = prompt('PIN de administrador:');
+  if (pin === null) return;
+  var pinMau = localStorage.getItem('barrcan_pin_MAU');
+  var pinHer = localStorage.getItem('barrcan_pin_HER');
+  if (pin && (pin === pinMau || pin === pinHer)) {
+    PRES_MODO_ADMIN = true;
+    localStorage.setItem('barrcan_usuario_activo', JSON.stringify({ id: pin === pinMau ? 'MAU' : 'HER', rol: 'admin' }));
+    toast('Modo administrador activado');
+    presFiltrar();
+    callback();
+  } else {
+    toast('PIN incorrecto');
+  }
+}
+
 // ── Estado ────────────────────────────────────────────────────────
 var PRES_CACHE = [];
 var PRES_EDITANDO_ID = null;
@@ -1393,7 +1430,12 @@ function presRenderLista(datos) {
     return;
   }
 
-  var html = '';
+  var admin = PRES_MODO_ADMIN || esAdmin();
+  var adminBar = admin
+    ? '<div style="font-size:10px;color:var(--green);font-weight:700;margin-bottom:8px">&#128275; Modo administrador activo</div>'
+    : '<div onclick="presVerificarAdmin(function(){})" style="font-size:10px;color:var(--gray-400);margin-bottom:8px;cursor:pointer;text-decoration:underline">&#128274; Activar modo administrador (corregir estado)</div>';
+
+  var html = adminBar;
   for (var i = 0; i < Math.min(datos.length, 50); i++) {
     var p = datos[i];
     var color = ESTADO_COLORS[p.estado] || 'var(--gray-400)';
@@ -1425,10 +1467,11 @@ function presRenderLista(datos) {
       + saldoStr + montoStr
       + '</div>'
       + '</div>'
-      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px">'
+      + '<div style="display:grid;grid-template-columns:' + (admin ? '1fr 1fr 1fr 1fr' : '1fr 1fr 1fr') + ';gap:5px">'
       + '<button onclick="presAccionPago(\'' + idStr + '\')" style="padding:7px 4px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.3);border-radius:8px;color:var(--green);font-size:11px;font-weight:700;cursor:pointer">Pago</button>'
       + '<button onclick="presEditar(\'' + idStr + '\')" style="padding:7px 4px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:11px;font-weight:700;cursor:pointer">Editar</button>'
       + '<button onclick="presCrearOT(\'' + idStr + '\')" style="padding:7px 4px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer">OT</button>'
+      + (admin ? '<button onclick="presAbrirCorregirEstado(\'' + idStr + '\')" style="padding:7px 4px;background:rgba(142,68,173,0.08);border:1.5px solid rgba(142,68,173,0.3);border-radius:8px;color:#8E44AD;font-size:11px;font-weight:700;cursor:pointer">Estado</button>' : '')
       + '</div>'
       + '</div>';
   }
@@ -1790,6 +1833,66 @@ function presCrearOT(id) {
   toast('Datos de OT preparados para: ' + p.folio);
   if (confirm('Folio: ' + p.folio + '\nCliente: ' + p.cliente + '\nSaldo: $' + fmt(p.saldo) + '\n\nAbrir módulo de Órdenes?')) {
     window.location.href = 'ordenes.html';
+  }
+}
+
+// ── Corregir estado manualmente (solo administrador) ───────────────
+function presAbrirCorregirEstado(id) {
+  presVerificarAdmin(function() { presAbrirCorregirEstadoInterno(id); });
+}
+
+function presAbrirCorregirEstadoInterno(id) {
+  var p = null;
+  for (var i = 0; i < PRES_CACHE.length; i++) { if (PRES_CACHE[i].id === id) { p = PRES_CACHE[i]; break; } }
+  if (!p) { toast('Presupuesto no encontrado'); return; }
+
+  var modal = document.getElementById('pres-estado-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'pres-estado-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:800;backdrop-filter:blur(3px)';
+    modal.innerHTML = '<div style="position:absolute;bottom:0;left:0;right:0;background:var(--white);border-radius:20px 20px 0 0;padding:20px;max-height:80vh;overflow-y:auto">'
+      + '<div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 14px"></div>'
+      + '<div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:4px">Corregir Estado</div>'
+      + '<div id="pe-info" style="font-size:12px;color:var(--gray-400);margin-bottom:14px"></div>'
+      + '<label class="form-label">Nuevo estado</label>'
+      + '<select id="pe-estado" class="form-select" style="margin-bottom:12px">'
+      + Object.keys(ESTADO_LABELS).map(function(k) { return '<option value="' + k + '">' + ESTADO_LABELS[k] + '</option>'; }).join('')
+      + '</select>'
+      + '<div style="font-size:10px;color:var(--gray-400);margin-bottom:12px">Úsalo cuando un presupuesto quedó mal marcado — por ejemplo, "entregado" solo porque se liquidó el saldo, sin haberse instalado todavía.</div>'
+      + '<div style="display:flex;gap:8px">'
+      + '<button onclick="presGuardarCorreccionEstado()" style="flex:1;padding:12px;background:#8E44AD;color:white;border:none;border-radius:var(--radius-sm);font-family:\'DM Sans\',sans-serif;font-size:14px;font-weight:700;cursor:pointer">Guardar</button>'
+      + '<button onclick="document.getElementById(\'pres-estado-modal\').style.display=\'none\'" style="padding:12px 14px;background:none;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);color:var(--gray-600);font-family:\'DM Sans\',sans-serif;font-size:13px;cursor:pointer">Cancelar</button>'
+      + '</div></div>';
+    document.body.appendChild(modal);
+  }
+  modal.dataset.id = id;
+  document.getElementById('pe-info').textContent = (p.folio || '--') + ' \u00b7 ' + (p.cliente || '') + ' \u00b7 actualmente: ' + (ESTADO_LABELS[p.estado] || p.estado || '?');
+  document.getElementById('pe-estado').value = p.estado || 'activo';
+  modal.style.display = 'block';
+}
+
+async function presGuardarCorreccionEstado() {
+  var modal = document.getElementById('pres-estado-modal');
+  var id    = modal ? modal.dataset.id : '';
+  if (!id) return;
+  var nuevoEstado = document.getElementById('pe-estado').value;
+
+  for (var i = 0; i < PRES_CACHE.length; i++) {
+    if (PRES_CACHE[i].id === id) { PRES_CACHE[i].estado = nuevoEstado; break; }
+  }
+  presGuardarCache(PRES_CACHE);
+  presFiltrar();
+  modal.style.display = 'none';
+
+  if (SYNC.online && sb()) {
+    try {
+      var res = await sb().from('presupuestos_atrasados').update({ estado: nuevoEstado }).eq('id', id);
+      if (res.error) throw res.error;
+      toast('Estado corregido a: ' + (ESTADO_LABELS[nuevoEstado] || nuevoEstado));
+    } catch(e) { toast('Corregido localmente — se sincronizará al reconectar'); }
+  } else {
+    toast('Corregido localmente — se sincronizará al reconectar');
   }
 }
 
