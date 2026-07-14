@@ -6,6 +6,62 @@
 <title>BarrCan &middot; T&eacute;cnicos</title>
 <!--
   BARRCAN - MODULO: TECNICOS (standalone)
+  VERSION : v1.4
+  FECHA   : 2026-07-13
+  v1.4 - Puesto + técnicos sin vincular en Pago + historial completo:
+    - Nuevo campo "Puesto" por técnico (ej. Instalador, Taller, Comodín).
+    - Fix: un técnico SIN usuario de login vinculado (ej. Ramón, que
+      trabaja fijo en taller y no sale a instalar) ahora SÍ aparece en la
+      pestaña "Pago" si tiene sueldo semanal — antes se excluía por
+      completo porque el cálculo dependía de que estuviera vinculado.
+      Solo se queda sin bono por instalaciones (correcto, ya que no hay
+      forma de cruzarlo con órdenes si no está vinculado).
+    - Nuevo: "Historial completo" dentro de la pestaña Pago — un estado
+      de cuenta por técnico con TODOS los pagos ya registrados (de
+      cualquier semana), cada uno con su fecha, monto, la semana a la
+      que pertenece, y la nota si tiene. Útil para revisar cuánto se le
+      ha pagado a alguien en total, o encontrar un pago mal capturado.
+    - Requiere el SQL adjunto (agregar_rubro_puesto.sql).
+  VERSION : v1.3
+  FECHA   : 2026-07-13
+  v1.3 - Pagos parciales con fecha + acceso exclusivo a Mauricio:
+    - La pestaña "Pago" ahora pide PIN al entrar (candado 🔒) y SOLO
+      acepta el PIN de MAU — ni siquiera el de HER funciona aquí. Es la
+      única sección de todo el módulo con esta restricción; el resto del
+      modo administrador (editar/eliminar técnicos) sigue igual para
+      ambos.
+    - Se pueden registrar VARIOS pagos por técnico en la misma semana,
+      cada uno con su propio monto y fecha — para el caso de pagar una
+      parte el sábado y la diferencia el lunes/martes.
+    - Cada pago registrado se puede editar (monto/fecha/nota) o eliminar
+      si se capturó mal.
+    - Estado por técnico: "Cubierto" (verde) cuando la suma de sus pagos
+      ya alcanza el total de la semana, "Parcial" (dorado, muestra cuánto
+      falta) si pagó algo pero no todo, o "Pendiente" si no se ha
+      registrado nada.
+  VERSION : v1.2
+  FECHA   : 2026-07-13
+  v1.2 - Sueldo fijo semanal + bono (modelo real de pago confirmado):
+    - Nuevo campo "Sueldo semanal fijo" por técnico (ej. 3000, 2500).
+    - La pestaña "Pago" ahora suma sueldo fijo + bono prorateado de las
+      instalaciones de esa semana (si hubo) = total a pagar. Un técnico
+      con sueldo fijo aparece en la lista aunque esa semana no haya
+      tenido instalaciones (solo se le suma el bono si aplica).
+    - Requiere agregar la columna sueldo_semanal (ver el mismo .sql de
+      equipos/pagos, se le agregó una sección al final).
+  VERSION : v1.1
+  FECHA   : 2026-07-13
+  v1.1 - Pago semanal (prorrateo de mano de obra entre el equipo):
+    - Nueva pestaña "Pago" con selector de semana (lunes a domingo).
+    - Por cada orden instalada esa semana con costo_mano_obra capturado,
+      se reparte en PARTES IGUALES entre todos los técnicos que
+      participaron (encargado + apoyo, vía ordenes.html), y se suma por
+      técnico -- confirmado con Mau que así se reparte.
+    - "Marcar pagado" (solo admin) registra el pago de esa semana en
+      pagos_tecnicos, con opción de reabrir si fue un error.
+    - Requiere el SQL adjunto (modulo_tecnicos_equipos_pagos.sql):
+      tabla orden_tecnicos, columna costo_mano_obra en ordenes_trabajo,
+      y tabla pagos_tecnicos.
   VERSION : v1.0
   FECHA   : 2026-07-13
   v1.0 - Creacion inicial (a partir de la propuesta ya aprobada, nunca
@@ -1081,6 +1137,9 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     <div class="tab" id="tab-ranking" onclick="tecCambiarTab('ranking')">
       <span class="tab-icon">&#127942;</span>Ranking
     </div>
+    <div class="tab" id="tab-pago" onclick="tecAbrirPagoTab()">
+      <span class="tab-icon">&#128274;</span>Pago
+    </div>
   </div>
 
   <div class="content">
@@ -1114,6 +1173,30 @@ select.form-select { padding-right: 36px; cursor: pointer; }
       </div>
     </div>
 
+    <!-- ═══════ PANTALLA: PAGO SEMANAL ═══════ -->
+    <div class="screen" id="screen-pago">
+      <p class="section-title">Pago Semanal</p>
+      <p class="section-sub">Costo de mano de obra repartido entre el equipo de cada orden</p>
+
+      <div id="pago-nav-semana" style="display:flex;align-items:center;justify-content:space-between;background:var(--white);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:14px;box-shadow:var(--shadow-sm)">
+        <button onclick="pagoCambiarSemana(-1)" style="border:none;background:none;font-size:18px;color:var(--blue);cursor:pointer;padding:4px 10px">&#8592;</button>
+        <div style="text-align:center">
+          <div id="pago-semana-label" style="font-size:13px;font-weight:700;color:var(--navy)"></div>
+          <div style="font-size:10px;color:var(--gray-400)">lunes a domingo</div>
+        </div>
+        <button onclick="pagoCambiarSemana(1)" style="border:none;background:none;font-size:18px;color:var(--blue);cursor:pointer;padding:4px 10px">&#8594;</button>
+      </div>
+
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <button id="pago-btn-semana" onclick="pagoMostrarSemana()" class="tab-mini active" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid var(--gray-200);background:var(--navy);color:white;font-size:11px;font-weight:700;cursor:pointer">Semana actual</button>
+        <button id="pago-btn-historial" onclick="pagoMostrarHistorial()" class="tab-mini" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid var(--gray-200);background:none;color:var(--gray-600);font-size:11px;font-weight:700;cursor:pointer">Historial completo</button>
+      </div>
+
+      <div id="pago-lista">
+        <div style="text-align:center;padding:30px;color:var(--gray-400);font-size:13px">Cargando...</div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -1140,6 +1223,10 @@ select.form-select { padding-right: 36px; cursor: pointer; }
       <input type="date" id="tec-fecha-ingreso" class="form-input">
     </div>
     <div class="form-group">
+      <label class="form-label">Puesto</label>
+      <input type="text" id="tec-puesto" class="form-input" placeholder="Ej. Instalador, Taller, Comodín, Administración">
+    </div>
+    <div class="form-group">
       <label class="form-label">Vincular con usuario de login (opcional)</label>
       <select id="tec-login" class="form-select">
         <option value="">— Sin vincular —</option>
@@ -1151,7 +1238,12 @@ select.form-select { padding-right: 36px; cursor: pointer; }
         <option value="OMAR">OMAR</option>
         <option value="RODRIGO">RODRIGO</option>
       </select>
-      <div style="font-size:10px;color:var(--gray-400);margin-top:4px">Sirve para cruzar este técnico con su historial de órdenes ya asignadas. Si no vinculas, el técnico no tendrá estadísticas en Ranking hasta que sí lo esté.</div>
+      <div style="font-size:10px;color:var(--gray-400);margin-top:4px">Sirve para cruzar este técnico con su historial de órdenes ya asignadas (necesario para el Ranking). Si no vinculas, no tendrá estadísticas de instalaciones, pero SÍ aparece igual en "Pago" si le pones sueldo fijo — por ejemplo alguien de taller que no sale a instalar.</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Sueldo semanal fijo (opcional)</label>
+      <input type="number" id="tec-sueldo" class="form-input" placeholder="Ej. 3000" inputmode="decimal">
+      <div style="font-size:10px;color:var(--gray-400);margin-top:4px">Se suma cada semana en la pestaña "Pago", más el bono prorateado de las instalaciones (si aplica). Déjalo vacío si a este técnico no le corresponde sueldo fijo.</div>
     </div>
     <div class="switch-row">
       <span class="switch-label" style="font-size:13px;font-weight:600;color:var(--navy)">Activo</span>
@@ -1207,6 +1299,7 @@ window.addEventListener('offline',function(){SYNC.online=false;detectarConexion(
 function detectarConexion(){var b=document.getElementById('conn-status');if(b)b.textContent=navigator.onLine?'Online':'Offline-First';}
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 function esc(s){return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function fmt(n){n=parseFloat(n)||0;return n.toLocaleString('es-MX',{minimumFractionDigits:0,maximumFractionDigits:0});}
 
 // ── Modo administrador (mismo patrón que entregas.html/historial.html) ──
 function esAdmin() {
@@ -1240,13 +1333,43 @@ function tecActualizarUIAdmin() {
   if (btn) btn.style.display = admin ? 'block' : 'none';
 }
 
+// ── Súper administrador (solo MAU) — para el apartado de Pago ──────
+// A propósito NO acepta el PIN de HER: esta pestaña es exclusiva para
+// Mauricio, ni siquiera Luis debería verla.
+var TEC_SUPER_ADMIN = false;
+function esSuperAdmin() {
+  try {
+    var u = JSON.parse(localStorage.getItem('barrcan_usuario_activo') || '{}');
+    return u.id === 'MAU';
+  } catch(e) { return false; }
+}
+function tecVerificarSuperAdmin(callback) {
+  if (TEC_SUPER_ADMIN || esSuperAdmin()) { callback(); return; }
+  var pin = prompt('PIN:');
+  if (pin === null) return;
+  var pinMau = localStorage.getItem('barrcan_pin_MAU');
+  if (pin && pin === pinMau) {
+    TEC_SUPER_ADMIN = true;
+    localStorage.setItem('barrcan_usuario_activo', JSON.stringify({ id: 'MAU', rol: 'admin' }));
+    callback();
+  } else {
+    toast('PIN incorrecto');
+  }
+}
+function tecAbrirPagoTab() {
+  tecVerificarSuperAdmin(function() { tecCambiarTab('pago'); });
+}
+
 // ── Tabs ──
 function tecCambiarTab(nombre) {
   document.getElementById('tab-tecnicos').classList.toggle('active', nombre === 'tecnicos');
   document.getElementById('tab-ranking').classList.toggle('active', nombre === 'ranking');
+  document.getElementById('tab-pago').classList.toggle('active', nombre === 'pago');
   document.getElementById('screen-tecnicos').classList.toggle('active', nombre === 'tecnicos');
   document.getElementById('screen-ranking').classList.toggle('active', nombre === 'ranking');
+  document.getElementById('screen-pago').classList.toggle('active', nombre === 'pago');
   if (nombre === 'ranking') rankCargar();
+  if (nombre === 'pago') pagoCargarSemana();
 }
 
 // ── Cargar técnicos ──
@@ -1290,12 +1413,15 @@ function tecRender() {
     var loginTag = t.tecnico_id_login
       ? '<span style="font-size:9px;color:var(--blue);margin-left:6px">&#128100; ' + esc(t.tecnico_id_login) + '</span>'
       : '<span style="font-size:9px;color:var(--gray-400);margin-left:6px">sin vincular</span>';
+    var sueldoTag = t.sueldo_semanal
+      ? '<span style="font-size:9px;color:var(--green);margin-left:6px">&#128176; $' + fmt(t.sueldo_semanal) + '/sem</span>'
+      : '';
     html += '<div style="background:var(--white);border-radius:var(--radius-sm);padding:12px;margin-bottom:8px;box-shadow:var(--shadow-sm)">'
       + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'
       + '<div>'
       + '<div style="font-size:14px;font-weight:700;color:var(--navy)">' + esc(t.nombre_completo) + '</div>'
-      + '<div style="font-size:11px;color:var(--gray-400)">' + esc(t.telefono || 'Sin teléfono') + '</div>'
-      + '<div style="margin-top:4px">' + estadoTag + loginTag + '</div>'
+      + '<div style="font-size:11px;color:var(--gray-400)">' + esc(t.telefono || 'Sin teléfono') + (t.puesto ? ' &middot; ' + esc(t.puesto) : '') + '</div>'
+      + '<div style="margin-top:4px">' + estadoTag + loginTag + sueldoTag + '</div>'
       + '</div>'
       + '</div>'
       + (admin ? ('<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">'
@@ -1316,7 +1442,9 @@ function tecAbrirNuevo() {
     document.getElementById('tec-telefono').value = '';
     document.getElementById('tec-direccion').value = '';
     document.getElementById('tec-fecha-ingreso').value = new Date().toISOString().split('T')[0];
+    document.getElementById('tec-puesto').value = '';
     document.getElementById('tec-login').value = '';
+    document.getElementById('tec-sueldo').value = '';
     document.getElementById('tec-activo').checked = true;
     tecActualizarSwitch();
     document.getElementById('tec-err').style.display = 'none';
@@ -1335,7 +1463,9 @@ function tecAbrirEditar(id) {
     document.getElementById('tec-telefono').value = t.telefono || '';
     document.getElementById('tec-direccion').value = t.direccion || '';
     document.getElementById('tec-fecha-ingreso').value = t.fecha_ingreso || '';
+    document.getElementById('tec-puesto').value = t.puesto || '';
     document.getElementById('tec-login').value = t.tecnico_id_login || '';
+    document.getElementById('tec-sueldo').value = t.sueldo_semanal || '';
     document.getElementById('tec-activo').checked = t.activo !== false;
     tecActualizarSwitch();
     document.getElementById('tec-err').style.display = 'none';
@@ -1363,7 +1493,9 @@ async function tecGuardar() {
     telefono: document.getElementById('tec-telefono').value.trim() || null,
     direccion: document.getElementById('tec-direccion').value.trim() || null,
     fecha_ingreso: document.getElementById('tec-fecha-ingreso').value || null,
+    puesto: document.getElementById('tec-puesto').value.trim() || null,
     tecnico_id_login: document.getElementById('tec-login').value || null,
+    sueldo_semanal: parseFloat(document.getElementById('tec-sueldo').value) || null,
     activo: document.getElementById('tec-activo').checked,
     updated_at: new Date().toISOString()
   };
@@ -1465,6 +1597,348 @@ async function rankCargar() {
     console.warn('[BarrCan] No se pudo cargar ranking:', e);
     div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--red);font-size:12px">No se pudo cargar — revisa que las columnas de calificación ya existan en Supabase (ver SQL adjunto).</div>';
   }
+}
+
+// ── Pago Semanal ──────────────────────────────────────────────────
+// El costo_mano_obra de cada orden instalada se reparte en partes
+// iguales entre TODOS los que participaron (encargado + apoyo, tabla
+// orden_tecnicos) — así se confirmó explícitamente con Mau.
+var PAGO_OFFSET_SEMANA = 0; // 0 = semana actual, -1 = anterior, etc.
+
+function pagoObtenerRangoSemana(offset) {
+  var hoy = new Date();
+  var diaSemana = hoy.getDay(); // 0=domingo..6=sábado
+  var diffLunes = diaSemana === 0 ? -6 : 1 - diaSemana;
+  var lunes = new Date(hoy);
+  lunes.setDate(hoy.getDate() + diffLunes + (offset * 7));
+  lunes.setHours(0, 0, 0, 0);
+  var domingo = new Date(lunes);
+  domingo.setDate(lunes.getDate() + 6);
+  domingo.setHours(23, 59, 59, 999);
+  return { inicio: lunes, fin: domingo };
+}
+
+function pagoCambiarSemana(delta) {
+  PAGO_OFFSET_SEMANA += delta;
+  pagoCargarSemana();
+}
+
+function pagoFechaCorta(d) { return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }); }
+function pagoFechaISO(d) { return d.toISOString().split('T')[0]; }
+
+// ── Historial completo de pagos (desglose de todo lo ya registrado) ──
+// Vincula los pagos ya guardados en pagos_tecnicos (cada uno con su
+// monto y fecha) armando un estado de cuenta por técnico, sin importar
+// la semana — para revisar rápido "cuánto le he pagado a fulano este
+// mes" o encontrar un pago capturado en la semana equivocada.
+function pagoMostrarSemana() {
+  document.getElementById('pago-btn-semana').style.background = 'var(--navy)';
+  document.getElementById('pago-btn-semana').style.color = 'white';
+  document.getElementById('pago-btn-historial').style.background = 'none';
+  document.getElementById('pago-btn-historial').style.color = 'var(--gray-600)';
+  document.getElementById('pago-nav-semana').style.display = 'flex';
+  pagoCargarSemana();
+}
+
+function pagoMostrarHistorial() {
+  document.getElementById('pago-btn-historial').style.background = 'var(--navy)';
+  document.getElementById('pago-btn-historial').style.color = 'white';
+  document.getElementById('pago-btn-semana').style.background = 'none';
+  document.getElementById('pago-btn-semana').style.color = 'var(--gray-600)';
+  document.getElementById('pago-nav-semana').style.display = 'none';
+  pagoCargarHistorial();
+}
+
+async function pagoCargarHistorial() {
+  var div = document.getElementById('pago-lista');
+  div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">Cargando...</div>';
+  if (!sb()) { div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">Sin conexión</div>'; return; }
+  try {
+    var res = await sb().from('pagos_tecnicos').select('*').order('fecha_pago', { ascending: false }).limit(200);
+    if (res.error) throw res.error;
+    var pagos = res.data || [];
+    if (!pagos.length) { div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">Sin pagos registrados todavía</div>'; return; }
+
+    if (!TEC_CACHE.length) TEC_CACHE = tecCargarCache();
+    var nombrePorId = {};
+    TEC_CACHE.forEach(function(t) { nombrePorId[t.tecnico_id_login || t.id] = t.nombre_completo; });
+
+    // Agrupado por técnico, con su total acumulado y cada pago individual
+    var porTecnico = {};
+    pagos.forEach(function(p) {
+      if (!porTecnico[p.tecnico_id]) porTecnico[p.tecnico_id] = { total: 0, pagos: [] };
+      porTecnico[p.tecnico_id].total += parseFloat(p.monto || 0);
+      porTecnico[p.tecnico_id].pagos.push(p);
+    });
+
+    var claves = Object.keys(porTecnico).sort(function(a, b) { return porTecnico[b].total - porTecnico[a].total; });
+    var html = '';
+    claves.forEach(function(clave) {
+      var g = porTecnico[clave];
+      var nombre = nombrePorId[clave] || clave;
+      html += '<div style="background:var(--white);border-radius:var(--radius-sm);padding:14px;margin-bottom:8px;box-shadow:var(--shadow-sm)">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+        + '<div style="font-size:14px;font-weight:700;color:var(--navy)">' + esc(nombre) + '</div>'
+        + '<div style="font-size:16px;font-weight:700;color:var(--green)">$' + fmt(g.total) + '</div>'
+        + '</div>'
+        + g.pagos.map(function(p) {
+            var fechaStr = new Date(p.fecha_pago).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' });
+            var semanaStr = pagoFechaCorta(new Date(p.semana_inicio + 'T12:00:00')) + '–' + pagoFechaCorta(new Date(p.semana_fin + 'T12:00:00'));
+            return '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--gray-600);padding:5px 0;border-top:1px solid var(--gray-200)">'
+              + '<span>' + fechaStr + ' <span style="color:var(--gray-400)">(semana ' + semanaStr + ')</span>' + (p.notas ? ' — ' + esc(p.notas) : '') + '</span>'
+              + '<span style="font-weight:700">$' + fmt(p.monto) + '</span>'
+              + '</div>';
+          }).join('')
+        + '</div>';
+    });
+    div.innerHTML = html;
+  } catch(e) {
+    console.warn('[BarrCan] No se pudo cargar el historial de pagos:', e);
+    div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--red);font-size:12px">No se pudo cargar el historial</div>';
+  }
+}
+
+async function pagoCargarSemana() {
+  var rango = pagoObtenerRangoSemana(PAGO_OFFSET_SEMANA);
+  var label = document.getElementById('pago-semana-label');
+  if (label) label.textContent = pagoFechaCorta(rango.inicio) + ' — ' + pagoFechaCorta(rango.fin)
+    + (PAGO_OFFSET_SEMANA === 0 ? ' (actual)' : '');
+
+  var div = document.getElementById('pago-lista');
+  if (!sb()) { div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">Sin conexión</div>'; return; }
+
+  try {
+    if (!TEC_CACHE.length) TEC_CACHE = tecCargarCache();
+
+    // Cada técnico arranca con su sueldo fijo semanal (si tiene) — así
+    // aparece en la lista aunque esa semana no haya tenido instalaciones.
+    // Si no está vinculado a un usuario de login (ej. alguien de taller
+    // que no sale a instalar, como Ramón), se usa su propio id como
+    // llave — igual aparece aquí, solo que nunca tendrá bono porque no
+    // hay forma de cruzarlo con órdenes.
+    var totales = {}; // llave -> { base, bono, ordenes: [...] }
+    TEC_CACHE.forEach(function(t) {
+      if (t.activo === false) return;
+      var clave = t.tecnico_id_login || t.id;
+      if (t.sueldo_semanal) totales[clave] = { base: t.sueldo_semanal, bono: 0, ordenes: [] };
+    });
+
+    // 1) Órdenes instaladas esa semana con costo de mano de obra capturado
+    //    (esto es el BONO adicional al sueldo fijo, prorateado entre el
+    //    equipo que participó — encargado + apoyo).
+    var resOrdenes = await sb().from('ordenes_trabajo')
+      .select('id,tecnico_id,cliente_nombre,costo_mano_obra,fecha_completado')
+      .eq('estado', 'instalado')
+      .not('costo_mano_obra', 'is', null)
+      .gte('fecha_completado', rango.inicio.toISOString())
+      .lte('fecha_completado', rango.fin.toISOString());
+    if (resOrdenes.error) throw resOrdenes.error;
+    var ordenes = resOrdenes.data || [];
+
+    if (ordenes.length) {
+      var ids = ordenes.map(function(o) { return o.id; });
+      var resEquipo = await sb().from('orden_tecnicos').select('orden_id,tecnico_id,rol').in('orden_id', ids);
+      if (resEquipo.error) throw resEquipo.error;
+      var equipoPorOrden = {};
+      (resEquipo.data || []).forEach(function(r) {
+        if (!equipoPorOrden[r.orden_id]) equipoPorOrden[r.orden_id] = [];
+        equipoPorOrden[r.orden_id].push(r.tecnico_id);
+      });
+
+      ordenes.forEach(function(o) {
+        var apoyo = (equipoPorOrden[o.id] || []).filter(function(tid) { return tid !== o.tecnico_id; });
+        var participantes = [o.tecnico_id].concat(apoyo);
+        var parte = (o.costo_mano_obra || 0) / participantes.length;
+        participantes.forEach(function(tid) {
+          if (!totales[tid]) totales[tid] = { base: 0, bono: 0, ordenes: [] };
+          totales[tid].bono += parte;
+          totales[tid].ordenes.push({ cliente: o.cliente_nombre, parte: parte, participantes: participantes.length });
+        });
+      });
+    }
+
+    if (!Object.keys(totales).length) {
+      div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">Sin sueldos fijos configurados ni instalaciones con bono esta semana</div>';
+      return;
+    }
+
+    // 2) Pagos YA registrados esa semana (pueden ser varios por técnico —
+    //    ej. una parte el sábado y la diferencia el lunes/martes).
+    var resPagos = await sb().from('pagos_tecnicos').select('*')
+      .eq('semana_inicio', pagoFechaISO(rango.inicio))
+      .order('fecha_pago', { ascending: true });
+    if (resPagos.error) throw resPagos.error;
+    var pagosPorTecnico = {};
+    (resPagos.data || []).forEach(function(p) {
+      if (!pagosPorTecnico[p.tecnico_id]) pagosPorTecnico[p.tecnico_id] = [];
+      pagosPorTecnico[p.tecnico_id].push(p);
+    });
+
+    var nombrePorId = {};
+    TEC_CACHE.forEach(function(t) { nombrePorId[t.tecnico_id_login || t.id] = t.nombre_completo; });
+
+    var tecnicoIds = Object.keys(totales).sort(function(a, b) { return (totales[b].base+totales[b].bono) - (totales[a].base+totales[a].bono); });
+    var html = '';
+    tecnicoIds.forEach(function(tid) {
+      var t = totales[tid];
+      var total = t.base + t.bono;
+      var nombre = nombrePorId[tid] || tid;
+      var pagos = pagosPorTecnico[tid] || [];
+      var totalPagado = pagos.reduce(function(s, p) { return s + parseFloat(p.monto || 0); }, 0);
+      var restante = total - totalPagado;
+
+      var estadoBadge;
+      if (restante <= 0.5) estadoBadge = '<div style="font-size:10px;color:var(--green);font-weight:700">&#10003; Cubierto</div>';
+      else if (totalPagado > 0) estadoBadge = '<div style="font-size:10px;color:var(--gold);font-weight:700">Parcial — falta $' + fmt(restante) + '</div>';
+      else estadoBadge = '<div style="font-size:10px;color:var(--red,#C0392B);font-weight:700">Pendiente</div>';
+
+      var detalleOrdenes = t.ordenes.length
+        ? '<div style="font-size:10px;color:var(--gray-400);margin-top:8px;line-height:1.6">' + t.ordenes.map(function(o) {
+            return esc(o.cliente) + (o.participantes > 1 ? ' (entre ' + o.participantes + ')' : '') + ' — $' + fmt(o.parte);
+          }).join('<br>') + '</div>'
+        : '';
+
+      var detallePagos = pagos.length
+        ? '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--gray-200)">' + pagos.map(function(p) {
+            var fechaStr = new Date(p.fecha_pago).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
+            return '<div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--gray-600);margin-bottom:3px">'
+              + '<span>' + fechaStr + ' — $' + fmt(p.monto) + (p.notas ? ' <span style="color:var(--gray-400)">(' + esc(p.notas) + ')</span>' : '') + '</span>'
+              + '<span>'
+              + '<button onclick="pagoEditarPago(\'' + p.id + '\')" style="border:none;background:none;color:var(--blue);font-size:11px;cursor:pointer;padding:2px 6px">Editar</button>'
+              + '<button onclick="pagoEliminarPago(\'' + p.id + '\')" style="border:none;background:none;color:var(--red,#C0392B);font-size:11px;cursor:pointer;padding:2px 6px">&times;</button>'
+              + '</span></div>';
+          }).join('') + '</div>'
+        : '';
+
+      html += '<div style="background:var(--white);border-radius:var(--radius-sm);padding:14px;margin-bottom:8px;box-shadow:var(--shadow-sm)">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start">'
+        + '<div>'
+        + '<div style="font-size:14px;font-weight:700;color:var(--navy)">' + esc(nombre) + '</div>'
+        + '<div style="font-size:10px;color:var(--gray-400);margin-top:4px">'
+        + (t.base ? 'Sueldo fijo: $' + fmt(t.base) : 'Sin sueldo fijo') + (t.bono ? ' &nbsp;+&nbsp; Bono: $' + fmt(t.bono) : '')
+        + '</div>'
+        + '</div>'
+        + '<div style="text-align:right">'
+        + '<div style="font-size:20px;font-weight:700;color:var(--navy)">$' + fmt(total) + '</div>'
+        + estadoBadge
+        + '</div>'
+        + '</div>'
+        + detalleOrdenes
+        + detallePagos
+        + (restante > 0.5
+            ? '<button onclick="pagoAbrirRegistrar(\'' + tid + '\',' + restante + ')" style="width:100%;margin-top:10px;padding:9px;background:var(--green);border:none;border-radius:8px;color:white;font-size:12px;font-weight:700;cursor:pointer">+ Registrar pago (falta $' + fmt(restante) + ')</button>'
+            : '')
+        + '</div>';
+    });
+    div.innerHTML = html;
+  } catch(e) {
+    console.warn('[BarrCan] No se pudo cargar el pago semanal:', e);
+    div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--red);font-size:12px">No se pudo cargar — revisa que el SQL de equipos/pagos ya se haya ejecutado en Supabase.</div>';
+  }
+}
+
+// ── Registrar / editar / eliminar un pago parcial ───────────────────
+// Sábado se paga lo que se pueda, y si queda diferencia, se registra
+// otro pago aparte lunes/martes contra la MISMA semana (la que esté
+// seleccionada en el visor) — así queda claro si ya está cubierta.
+function pagoAbrirRegistrar(tecnicoId, sugerido) {
+  tecVerificarSuperAdmin(function() {
+    var modal = document.getElementById('pago-modal');
+    if (!modal) modal = pagoCrearModal();
+    modal.dataset.id = '';
+    modal.dataset.tecnicoId = tecnicoId;
+    document.getElementById('pg-titulo').textContent = 'Registrar pago';
+    document.getElementById('pg-monto').value = sugerido ? sugerido.toFixed(0) : '';
+    document.getElementById('pg-fecha').value = new Date().toISOString().split('T')[0];
+    document.getElementById('pg-notas').value = '';
+    modal.style.display = 'block';
+  });
+}
+
+function pagoEditarPago(id) {
+  tecVerificarSuperAdmin(async function() {
+    try {
+      var res = await sb().from('pagos_tecnicos').select('*').eq('id', id).single();
+      if (res.error || !res.data) { toast('No se encontró el pago'); return; }
+      var p = res.data;
+      var modal = document.getElementById('pago-modal');
+      if (!modal) modal = pagoCrearModal();
+      modal.dataset.id = id;
+      modal.dataset.tecnicoId = p.tecnico_id;
+      document.getElementById('pg-titulo').textContent = 'Editar pago';
+      document.getElementById('pg-monto').value = p.monto;
+      document.getElementById('pg-fecha').value = (p.fecha_pago || '').split('T')[0];
+      document.getElementById('pg-notas').value = p.notas || '';
+      modal.style.display = 'block';
+    } catch(e) { toast('Error: ' + e.message); }
+  });
+}
+
+function pagoCrearModal() {
+  var modal = document.createElement('div');
+  modal.id = 'pago-modal';
+  modal.style.cssText = 'display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:800;backdrop-filter:blur(3px)';
+  modal.innerHTML = '<div style="position:absolute;bottom:0;left:0;right:0;background:var(--white);border-radius:20px 20px 0 0;padding:20px">'
+    + '<div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 14px"></div>'
+    + '<div id="pg-titulo" style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:14px">Registrar pago</div>'
+    + '<label class="form-label">Monto</label>'
+    + '<input type="number" id="pg-monto" class="form-input" inputmode="decimal" style="margin-bottom:12px">'
+    + '<label class="form-label">Fecha</label>'
+    + '<input type="date" id="pg-fecha" class="form-input" style="margin-bottom:12px">'
+    + '<label class="form-label">Notas (opcional)</label>'
+    + '<input type="text" id="pg-notas" class="form-input" placeholder="Ej. diferencia del sábado" style="margin-bottom:14px">'
+    + '<div style="display:flex;gap:8px">'
+    + '<button onclick="pagoGuardarPago()" style="flex:1;padding:12px;background:var(--green);color:white;border:none;border-radius:var(--radius-sm);font-family:\'DM Sans\',sans-serif;font-size:14px;font-weight:700;cursor:pointer">Guardar</button>'
+    + '<button onclick="document.getElementById(\'pago-modal\').style.display=\'none\'" style="padding:12px 14px;background:none;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);color:var(--gray-600);font-family:\'DM Sans\',sans-serif;font-size:13px;cursor:pointer">Cancelar</button>'
+    + '</div></div>';
+  document.body.appendChild(modal);
+  return modal;
+}
+
+async function pagoGuardarPago() {
+  var modal = document.getElementById('pago-modal');
+  var id = modal.dataset.id;
+  var tecnicoId = modal.dataset.tecnicoId;
+  var monto = parseFloat(document.getElementById('pg-monto').value);
+  var fecha = document.getElementById('pg-fecha').value;
+  var notas = document.getElementById('pg-notas').value.trim() || null;
+  if (!monto || monto <= 0) { toast('Ingresa un monto válido'); return; }
+  if (!fecha) { toast('Ingresa una fecha'); return; }
+
+  var rango = pagoObtenerRangoSemana(PAGO_OFFSET_SEMANA);
+  modal.style.display = 'none';
+  try {
+    if (id) {
+      var res = await sb().from('pagos_tecnicos').update({ monto: monto, fecha_pago: fecha, notas: notas }).eq('id', id);
+      if (res.error) throw res.error;
+      toast('Pago actualizado');
+    } else {
+      var res2 = await sb().from('pagos_tecnicos').insert([{
+        tecnico_id: tecnicoId,
+        semana_inicio: pagoFechaISO(rango.inicio),
+        semana_fin: pagoFechaISO(rango.fin),
+        monto: monto,
+        pagado: true,
+        fecha_pago: fecha,
+        notas: notas
+      }]);
+      if (res2.error) throw res2.error;
+      toast('Pago registrado');
+    }
+    pagoCargarSemana();
+  } catch(e) { toast('No se pudo guardar: ' + e.message); }
+}
+
+function pagoEliminarPago(id) {
+  tecVerificarSuperAdmin(async function() {
+    if (!confirm('¿Eliminar este pago registrado?')) return;
+    try {
+      var res = await sb().from('pagos_tecnicos').delete().eq('id', id);
+      if (res.error) throw res.error;
+      toast('Pago eliminado');
+      pagoCargarSemana();
+    } catch(e) { toast('No se pudo eliminar: ' + e.message); }
+  });
 }
 
 document.addEventListener('DOMContentLoaded', function() {
