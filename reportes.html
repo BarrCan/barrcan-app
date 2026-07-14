@@ -6,8 +6,18 @@
 <title>BarrCan · Reportes</title>
 <!--
   BARRCAN · MODULO: REPORTES (standalone)
-  VERSION : v1.2
-  FECHA   : 2026-07-13
+  VERSION : v1.3
+  FECHA   : 2026-07-14
+  v1.3 - Nueva pestaña "Ganancia" (por obra):
+    - Junta lo que ya existía separado: Contratado (presupuestos_
+      atrasados.monto), Material (facturas_recibidas +
+      facturas_conceptos por folio_obra) y Mano de obra
+      (ordenes_trabajo.costo_mano_obra por folio_cotizacion).
+    - Ganancia = Contratado - Material - Mano de obra, con el margen
+      en %. Tambien muestra Cobrado (contratado - saldo pendiente)
+      para diferenciar ganancia del proyecto vs. flujo de caja real.
+    - Ordenado de mayor a menor ganancia.
+    - No requiere SQL nuevo -- usa columnas que ya existen.
   v1.2 - Consumo por obra incluye artículos desglosados:
     - El reporte "Consumo de material por obra" ahora también suma
       los artículos individuales de facturas desglosadas (una
@@ -129,6 +139,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
   <div class="tabs">
     <button class="tab-btn active" onclick="rpTab(this,'flujo')">💰 Flujo</button>
     <button class="tab-btn" onclick="rpTab(this,'obras')">🏗️ Obras</button>
+    <button class="tab-btn" onclick="rpTab(this,'ganancia')">📈 Ganancia</button>
     <button class="tab-btn" onclick="rpTab(this,'material')">📦 Material</button>
     <button class="tab-btn" onclick="rpTab(this,'clientes')">👥 Clientes</button>
   </div>
@@ -170,6 +181,18 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     <div class="card">
       <div class="card-title">Obras terminadas del periodo</div>
       <div id="rp-obras-term"><div style="text-align:center;padding:14px;color:var(--gray-400)">Cargando...</div></div>
+    </div>
+  </div>
+
+  <!-- TAB: GANANCIA -->
+  <div id="tab-ganancia" style="display:none">
+    <div class="card">
+      <div class="card-title">
+        Ganancia por obra
+        <button class="btn btn-sm btn-primary" onclick="rpCargarGanancia()">↻</button>
+      </div>
+      <div style="font-size:10px;color:var(--gray-400);margin-bottom:10px">Contratado − Material − Mano de obra = Ganancia. "Cobrado" es lo que ya pagó el cliente (puede ser menor a lo contratado si aún debe).</div>
+      <div id="rp-ganancia-lista"><div style="text-align:center;padding:20px;color:var(--gray-400)">Cargando...</div></div>
     </div>
   </div>
 
@@ -248,7 +271,7 @@ var RP_TAB_ACTUAL = 'flujo';
 function rpTab(btn,tab) {
   document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active');});
   btn.classList.add('active');
-  ['flujo','obras','material','clientes'].forEach(function(t){
+  ['flujo','obras','ganancia','material','clientes'].forEach(function(t){
     var el=document.getElementById('tab-'+t);
     if(el) el.style.display=t===tab?'block':'none';
   });
@@ -258,6 +281,7 @@ function rpTab(btn,tab) {
 
 function rpCargarTab(tab) {
   if(tab==='obras')    rpCargarObras();
+  if(tab==='ganancia') rpCargarGanancia();
   if(tab==='material') rpCargarMaterial();
   if(tab==='clientes') rpCargarClientes();
 }
@@ -392,6 +416,87 @@ async function rpCargarFlujo() {
 }
 
 // ── OBRAS ─────────────────────────────────────────────────────
+// ── Ganancia por obra ─────────────────────────────────────────
+// Contratado (monto del presupuesto) − Material (facturas_recibidas +
+// facturas_conceptos por folio_obra) − Mano de obra (ordenes_trabajo.
+// costo_mano_obra por folio_cotizacion) = Ganancia del proyecto.
+async function rpCargarGanancia() {
+  var div = document.getElementById('rp-ganancia-lista');
+  div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">Cargando...</div>';
+  if (!sb()) { div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--red)">Sin conexión</div>'; return; }
+  try {
+    // 1) Obras (presupuestos) — la base: cuánto se contrató y cuánto se ha cobrado
+    var resPres = await sb().from('presupuestos_atrasados')
+      .select('id,folio,cliente,monto,saldo,estado')
+      .neq('estado', 'declinado')
+      .not('folio', 'is', null)
+      .order('created_at', { ascending: false }).limit(200);
+    if (resPres.error) throw resPres.error;
+    var obras = {};
+    (resPres.data || []).forEach(function(p) {
+      if (!p.folio) return;
+      obras[p.folio] = { cliente: p.cliente, contratado: parseFloat(p.monto || 0), saldo: parseFloat(p.saldo || 0), material: 0, manoObra: 0 };
+    });
+
+    // 2) Material — facturas simples (una sola obra)
+    var resFact = await sb().from('facturas_recibidas')
+      .select('folio_obra,total').eq('desglosada', false).not('folio_obra', 'is', null);
+    if (!resFact.error) (resFact.data || []).forEach(function(f) {
+      if (!obras[f.folio_obra]) obras[f.folio_obra] = { cliente: '(sin presupuesto ligado)', contratado: 0, saldo: 0, material: 0, manoObra: 0 };
+      obras[f.folio_obra].material += parseFloat(f.total || 0);
+    });
+
+    // 3) Material — artículos de facturas desglosadas (varias obras)
+    var resConc = await sb().from('facturas_conceptos').select('folio_obra,importe').not('folio_obra', 'is', null);
+    if (!resConc.error) (resConc.data || []).forEach(function(it) {
+      if (!obras[it.folio_obra]) obras[it.folio_obra] = { cliente: '(sin presupuesto ligado)', contratado: 0, saldo: 0, material: 0, manoObra: 0 };
+      obras[it.folio_obra].material += parseFloat(it.importe || 0);
+    });
+
+    // 4) Mano de obra — costo_mano_obra de las órdenes de esa obra
+    var resOrd = await sb().from('ordenes_trabajo').select('folio_cotizacion,costo_mano_obra').not('costo_mano_obra', 'is', null);
+    if (!resOrd.error) (resOrd.data || []).forEach(function(o) {
+      if (!o.folio_cotizacion || !obras[o.folio_cotizacion]) return;
+      obras[o.folio_cotizacion].manoObra += parseFloat(o.costo_mano_obra || 0);
+    });
+
+    var folios = Object.keys(obras).filter(function(f) { return obras[f].contratado > 0 || obras[f].material > 0 || obras[f].manoObra > 0; });
+    if (!folios.length) { div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">Sin datos suficientes todavía</div>'; return; }
+
+    folios.sort(function(a, b) {
+      var gA = obras[a].contratado - obras[a].material - obras[a].manoObra;
+      var gB = obras[b].contratado - obras[b].material - obras[b].manoObra;
+      return gB - gA;
+    });
+
+    var html = folios.map(function(folio) {
+      var o = obras[folio];
+      var ganancia = o.contratado - o.material - o.manoObra;
+      var margen = o.contratado > 0 ? Math.round(ganancia / o.contratado * 100) : null;
+      var colorGan = ganancia >= 0 ? 'var(--green)' : 'var(--red)';
+      var cobrado = o.contratado - o.saldo;
+      return '<div style="background:var(--white);border-radius:var(--radius,10px);padding:12px;margin-bottom:8px;box-shadow:0 1px 3px rgba(0,0,0,.06)">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+        + '<div><div style="font-size:12px;font-weight:700;color:var(--navy)">' + esc(folio) + '</div>'
+        + '<div style="font-size:10px;color:var(--gray-400)">' + esc(o.cliente || '') + '</div></div>'
+        + '<div style="text-align:right"><div style="font-size:16px;font-weight:700;color:' + colorGan + '">' + fmtK(ganancia) + '</div>'
+        + (margen !== null ? '<div style="font-size:9px;color:var(--gray-400)">margen ' + margen + '%</div>' : '') + '</div>'
+        + '</div>'
+        + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;font-size:9px;color:var(--gray-600);text-align:center;border-top:1px solid #F0F0F0;padding-top:6px">'
+        + '<div><div style="color:var(--gray-400)">Contratado</div><div style="font-weight:700">' + fmtK(o.contratado) + '</div></div>'
+        + '<div><div style="color:var(--gray-400)">Cobrado</div><div style="font-weight:700">' + fmtK(cobrado) + '</div></div>'
+        + '<div><div style="color:var(--gray-400)">Material</div><div style="font-weight:700">' + fmtK(o.material) + '</div></div>'
+        + '<div><div style="color:var(--gray-400)">Mano obra</div><div style="font-weight:700">' + fmtK(o.manoObra) + '</div></div>'
+        + '</div>'
+        + '</div>';
+    }).join('');
+    div.innerHTML = html;
+  } catch(e) {
+    console.warn('[BarrCan] No se pudo cargar ganancia por obra:', e);
+    div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--red)">Error al cargar</div>';
+  }
+}
+
 async function rpCargarObras() {
   var listaAct  = document.getElementById('rp-obras-lista');
   var listaTerm = document.getElementById('rp-obras-term');
