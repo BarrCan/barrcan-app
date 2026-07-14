@@ -6,6 +6,13 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v2.5
+  FECHA   : 2026-07-13
+  v2.5 — Nuevo estado "Declinado":
+    - Se agregó "Declinado — cliente no aceptó" a los estados posibles de
+      un presupuesto.
+    - Se oculta por defecto igual que "Entregado" (para no saturar la
+      vista); aparece al buscar o marcar "Mostrar entregados/declinados".
   VERSIÓN : v2.4
   FECHA   : 2026-07-13
   v2.4 — Corregir estado manualmente (solo administrador):
@@ -1095,7 +1102,7 @@ body{min-height:100vh}
       <input type="text" id="pres-buscar" placeholder="Buscar por folio o cliente..." oninput="presFiltrar()"
         style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;margin-bottom:8px;box-sizing:border-box">
       <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gray-400);margin-bottom:10px;cursor:pointer">
-        <input type="checkbox" id="pres-ver-entregados" onchange="presFiltrar()"> Mostrar entregados
+        <input type="checkbox" id="pres-ver-entregados" onchange="presFiltrar()"> Mostrar entregados/declinados
       </label>
       <div id="pres-contador" style="font-size:11px;color:var(--gray-400);margin-bottom:8px"></div>
       <div id="pres-lista">
@@ -1185,6 +1192,7 @@ body{min-height:100vh}
         <option value="en_produccion">En produccion</option>
         <option value="pendiente_entrega">Pendiente de entrega</option>
         <option value="entregado">Entregado &mdash; pendiente liquidar</option>
+        <option value="declinado">Declinado &mdash; cliente no acept&oacute;</option>
       </select>
     </div>
 
@@ -1303,14 +1311,16 @@ var ESTADO_LABELS = {
   aprobado: 'Aprobado',
   en_produccion: 'En producci\u00f3n',
   pendiente_entrega: 'Pend. entrega',
-  entregado: 'Entregado'
+  entregado: 'Entregado',
+  declinado: 'Declinado'
 };
 var ESTADO_COLORS = {
   activo: 'var(--blue)',
   aprobado: 'var(--green)',
   en_produccion: 'var(--gold)',
   pendiente_entrega: '#E67E22',
-  entregado: 'var(--gray-400)'
+  entregado: 'var(--gray-400)',
+  declinado: 'var(--red)'
 };
 
 // ── Cache local ───────────────────────────────────────────────────
@@ -1386,13 +1396,13 @@ function presFiltrar() {
   var verEntregados = document.getElementById('pres-ver-entregados').checked;
   var datos = PRES_CACHE;
   var ocultos = 0;
-  // Los "entregados" se ocultan por defecto para no saturar la vista, pero
-  // si hay una búsqueda activa (o se marca el checkbox) sí se incluyen —
-  // así siempre se pueden consultar por folio o cliente aunque ya se
-  // hayan entregado.
+  // Los "entregados" y "declinados" se ocultan por defecto para no
+  // saturar la vista, pero si hay una búsqueda activa (o se marca el
+  // checkbox) sí se incluyen — así siempre se pueden consultar por folio
+  // o cliente aunque ya se hayan cerrado (entregado o declinado).
   if (!q && !verEntregados) {
     var antes = datos.length;
-    datos = datos.filter(function(p) { return p.estado !== 'entregado'; });
+    datos = datos.filter(function(p) { return p.estado !== 'entregado' && p.estado !== 'declinado'; });
     ocultos = antes - datos.length;
   }
   if (q) {
