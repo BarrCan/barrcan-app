@@ -6,8 +6,23 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
-  VERSION : v1.2
-  FECHA   : 2026-07-13
+  VERSION : v1.3
+  FECHA   : 2026-07-14
+  v1.3 - Categorías personalizadas + lectura de XML + desglose visible:
+    - Nuevo: "+ Agregar categoría nueva..." en el selector de categoría —
+      ya no está limitado a la lista fija, y la nueva categoría se
+      guarda para que aparezca en cualquier dispositivo la próxima vez.
+    - Nuevo: botón "Subir XML de la factura" en el modal de clasificar.
+      Lee el CFDI real y autocompleta el RFC del emisor y CADA
+      artículo (descripción, cantidad, precio) directo de la factura —
+      ya no hay que teclearlos de memoria, solo asignar la obra de
+      cada uno viendo el contenido real.
+    - Nuevo campo "RFC del emisor" editable en el modal (antes solo
+      se usaba para buscar, no se podía corregir/completar).
+    - Fix: el desglose de una factura ya desglosada ahora se ve
+      directo en la lista (cada artículo con su obra y monto), no
+      solo una etiqueta que había que abrir para consultar.
+    - Requiere el SQL adjunto (categorias_compras.sql).
   v1.2 - Desglose por artículo (una factura, varias obras):
     - Nuevo interruptor "Desglosar por artículo" en el modal de
       clasificar. Al activarlo, en vez de un solo folio de obra para
@@ -237,8 +252,18 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     <div class="modal-handle"></div>
     <div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:4px" id="mc-titulo">Clasificar factura</div>
     <div style="font-size:12px;color:var(--gray-400);margin-bottom:14px" id="mc-sub"></div>
+
+    <input type="file" id="mc-xml-input" accept=".xml,text/xml" style="display:none" onchange="cmpProcesarXML(this)">
+    <button type="button" onclick="document.getElementById('mc-xml-input').click()" style="width:100%;padding:10px;border:1.5px dashed var(--blue);background:rgba(46,109,164,.06);color:var(--blue);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:14px">
+      &#128196; Subir XML de la factura (auto-llena RFC y artículos)
+    </button>
+    <div id="mc-xml-status" style="display:none;font-size:11px;color:var(--green);margin:-8px 0 12px"></div>
+
+    <label style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;display:block">RFC del emisor</label>
+    <input type="text" class="form-input" id="mc-rfc" placeholder="Se llena solo si subes el XML, o escríbelo" style="margin-bottom:12px;text-transform:uppercase">
+
     <label style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;display:block">Categoría</label>
-    <select class="form-select" id="mc-cat">
+    <select class="form-select" id="mc-cat" onchange="cmpCatSeleccionCambio()">
       <option value="ALUMINIO Y HERRAJES">Aluminio y Herrajes</option>
       <option value="HERRAJES DE ACERO">Herrajes de Acero</option>
       <option value="HERRAJES ALUMINIO">Herrajes Aluminio</option>
@@ -254,7 +279,9 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
       <option value="FARMACIA">Farmacia</option>
       <option value="TORNILLOS">Tornillos</option>
       <option value="HIDRATACION">Hidratación</option>
+      <option value="__nueva__">+ Agregar categoría nueva…</option>
     </select>
+    <input type="text" class="form-input" id="mc-cat-nueva" placeholder="Escribe el nombre de la categoría nueva" style="display:none;margin-top:6px;text-transform:uppercase">
     <label style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;margin-top:10px;display:block">Obra (opcional)</label>
     <input type="text" class="form-input" id="mc-obra" list="mc-obra-lista" placeholder="Folio de la obra, ej. CACN-043B-260616" style="margin-bottom:0">
     <datalist id="mc-obra-lista"></datalist>
@@ -366,6 +393,25 @@ async function cmpCargarFacturas() {
     if (res.error) throw res.error;
     SYNC.online = true; detectar();
     FACT_CACHE = res.data || [];
+
+    // Traer de una vez los artículos de TODAS las facturas desglosadas,
+    // para poder mostrarlos directo en la lista sin tener que abrir cada
+    // una en el modal.
+    var idsDesglosados = FACT_CACHE.filter(function(f){return f.desglosada;}).map(function(f){return f.id;});
+    if (idsDesglosados.length) {
+      try {
+        var resItems = await sb().from('facturas_conceptos').select('*').in('factura_id', idsDesglosados);
+        if (!resItems.error && resItems.data) {
+          var porFactura = {};
+          resItems.data.forEach(function(it) {
+            if (!porFactura[it.factura_id]) porFactura[it.factura_id] = [];
+            porFactura[it.factura_id].push(it);
+          });
+          FACT_CACHE.forEach(function(f) { if (porFactura[f.id]) f.items_cache = porFactura[f.id]; });
+        }
+      } catch(eItems) { console.warn('[BarrCan] No se pudo precargar el desglose de artículos:', eItems); }
+    }
+
     // Stats
     var pnd = FACT_CACHE.filter(function(f) { return f.categoria === 'POR CLASIFICAR'; }).length;
     document.getElementById('stat-facturas').textContent = FACT_CACHE.length;
@@ -408,13 +454,20 @@ function cmpFiltrarFacturas() {
       + '<div style="margin-top:3px">'
       + '<span class="badge-cat ' + catClass(f.categoria) + '">' + esc(f.categoria||'—') + '</span>'
       + (function() {
-          var args = "'" + f.id + "','" + esc(f.proveedor).replace(/'/g,"\\'") + "','" + esc(f.folio_factura).replace(/'/g,"\\'") + "','" + esc(f.categoria||'').replace(/'/g,"\\'") + "','" + esc(f.folio_obra||'').replace(/'/g,"\\'") + "'," + (f.desglosada?'true':'false') + "," + (parseFloat(f.total)||0);
+          var args = "'" + f.id + "','" + esc(f.proveedor).replace(/'/g,"\\'") + "','" + esc(f.folio_factura).replace(/'/g,"\\'") + "','" + esc(f.categoria||'').replace(/'/g,"\\'") + "','" + esc(f.folio_obra||'').replace(/'/g,"\\'") + "'," + (f.desglosada?'true':'false') + "," + (parseFloat(f.total)||0) + ",'" + esc(f.rfc_emisor||'').replace(/'/g,"\\'") + "'";
           if (esPnd) return ' <span class="chip-pnd" onclick="cmpAbrirClasificar(' + args + ')">Clasificar →</span>';
           if (f.desglosada) return ' <span class="chip-pnd" style="background:rgba(142,68,173,0.1);color:#8E44AD" onclick="cmpAbrirClasificar(' + args + ')">&#127959; Desglosada (varias obras)</span>';
           if (f.folio_obra) return ' <span class="chip-pnd" style="background:rgba(46,109,164,0.1);color:var(--blue)" onclick="cmpAbrirClasificar(' + args + ')">&#127959; ' + esc(f.folio_obra) + '</span>';
           return ' <span class="chip-pnd" style="background:rgba(0,0,0,0.04);color:var(--gray-400)" onclick="cmpAbrirClasificar(' + args + ')">+ Asignar obra</span>';
         })()
       + '</div>'
+      + (f.desglosada && f.items_cache && f.items_cache.length
+          ? '<div style="margin-top:6px;padding:6px 8px;background:#F8F9FA;border-radius:6px;font-size:10px;color:var(--gray-600);line-height:1.6">'
+            + f.items_cache.map(function(it){
+                return '<div>' + esc(it.descripcion) + (it.folio_obra ? ' <span style="color:var(--blue);font-weight:700">&#8594; ' + esc(it.folio_obra) + '</span>' : ' <span style="color:var(--gold)">(sin obra)</span>') + ' — ' + fmt(it.importe) + '</div>';
+              }).join('')
+            + '</div>'
+          : '')
       + '</div>'
       + '<div style="text-align:right">'
       + '<div class="row-monto">' + fmt(f.total) + '</div>'
@@ -431,12 +484,122 @@ var MC_ITEMS = [];       // artículos del desglose actual
 var MC_ITEM_SEQ = 0;
 var MC_TOTAL_FACTURA = 0; // total de la factura que se está clasificando (para comparar)
 
-function cmpAbrirClasificar(id, prov, folio, catActual, obraActual, desglosada, totalFactura) {
+// ── Categorías personalizadas ────────────────────────────────────
+// Además de las categorías fijas del <select>, se pueden agregar nuevas
+// desde el modal — se guardan en Supabase para que aparezcan la próxima
+// vez (y en cualquier dispositivo), no solo en este navegador.
+async function cmpCargarCategorias() {
+  if (!sb()) return;
+  try {
+    var res = await sb().from('categorias_compras').select('nombre').order('nombre');
+    if (res.error || !res.data) return;
+    var sel = document.getElementById('mc-cat');
+    var nueva = sel.querySelector('option[value="__nueva__"]');
+    res.data.forEach(function(c) {
+      if (sel.querySelector('option[value="' + c.nombre.replace(/"/g,'') + '"]')) return; // ya existe
+      var op = document.createElement('option');
+      op.value = c.nombre; op.textContent = c.nombre;
+      sel.insertBefore(op, nueva);
+    });
+  } catch(e) { console.warn('[BarrCan] No se pudieron cargar categorías personalizadas:', e); }
+}
+
+async function cmpGuardarCategoriaNueva(nombre) {
+  try {
+    await sb().from('categorias_compras').insert([{ nombre: nombre }]);
+  } catch(e) { console.warn('[BarrCan] No se pudo guardar la categoría nueva (no crítico):', e); }
+  cmpAsegurarOpcionCategoria(nombre);
+}
+
+// Si una factura ya trae una categoría que no está en la lista (porque
+// se agregó desde otro dispositivo, o antes de recargar), se agrega la
+// opción al vuelo para que el <select> la pueda mostrar seleccionada.
+function cmpAsegurarOpcionCategoria(nombre) {
+  if (!nombre || nombre === 'POR CLASIFICAR') return;
+  var sel = document.getElementById('mc-cat');
+  if (sel.querySelector('option[value="' + nombre.replace(/"/g,'') + '"]')) return;
+  var nueva = sel.querySelector('option[value="__nueva__"]');
+  var op = document.createElement('option');
+  op.value = nombre; op.textContent = nombre;
+  sel.insertBefore(op, nueva);
+}
+
+function cmpCatSeleccionCambio() {
+  var esNueva = document.getElementById('mc-cat').value === '__nueva__';
+  document.getElementById('mc-cat-nueva').style.display = esNueva ? 'block' : 'none';
+  if (esNueva) document.getElementById('mc-cat-nueva').focus();
+}
+
+// ── Leer el XML real de la factura (CFDI) ────────────────────────
+// Autocompleta el RFC del emisor y, sobre todo, llena el desglose por
+// artículo con los conceptos REALES de la factura (descripción, cantidad,
+// precio) en vez de tener que teclearlos de memoria — así, al asignar
+// obra a cada uno, Mau está viendo lo que la factura realmente dice.
+function cmpProcesarXML(input) {
+  if (!input.files || !input.files[0]) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var xml = new DOMParser().parseFromString(e.target.result, 'text/xml');
+      if (xml.querySelector('parsererror')) throw new Error('XML no válido');
+
+      // El CFDI usa namespaces (cfdi:Comprobante, cfdi:Emisor, etc.) —
+      // getElementsByTagNameNS con '*' evita tener que declarar el
+      // namespace exacto, que puede variar de versión a versión.
+      function tag(padre, nombre) {
+        var els = padre.getElementsByTagNameNS('*', nombre);
+        return els.length ? els[0] : null;
+      }
+      var comprobante = xml.documentElement;
+      var emisor = tag(comprobante, 'Emisor');
+      var conceptos = comprobante.getElementsByTagNameNS('*', 'Concepto');
+
+      var rfc = emisor ? emisor.getAttribute('Rfc') : '';
+      if (rfc) document.getElementById('mc-rfc').value = rfc;
+
+      var totalXml = parseFloat(comprobante.getAttribute('Total') || '0');
+      if (totalXml) MC_TOTAL_FACTURA = totalXml;
+
+      if (conceptos.length) {
+        MC_ITEMS = [];
+        for (var i = 0; i < conceptos.length; i++) {
+          var c = conceptos[i];
+          MC_ITEM_SEQ++;
+          MC_ITEMS.push({
+            id: 'it' + MC_ITEM_SEQ,
+            descripcion: c.getAttribute('Descripcion') || '',
+            cantidad: parseFloat(c.getAttribute('Cantidad') || '1'),
+            precio_unitario: parseFloat(c.getAttribute('ValorUnitario') || '0'),
+            folio_obra: ''
+          });
+        }
+        document.getElementById('mc-multi-obra').checked = conceptos.length > 1;
+        cmpToggleDesglose();
+        cmpRenderItems();
+      }
+
+      document.getElementById('mc-xml-status').style.display = 'block';
+      document.getElementById('mc-xml-status').textContent = '\u2713 XML leído: ' + conceptos.length + ' artículo(s) encontrados' + (rfc ? ', RFC ' + rfc : '');
+      toast('XML procesado — revisa y asigna la obra de cada artículo');
+    } catch(err) {
+      toast('No se pudo leer ese XML: ' + err.message);
+    }
+    input.value = '';
+  };
+  reader.readAsText(input.files[0]);
+}
+
+function cmpAbrirClasificar(id, prov, folio, catActual, obraActual, desglosada, totalFactura, rfcActual) {
   MC_ID = id;
   MC_TOTAL_FACTURA = parseFloat(totalFactura) || 0;
   document.getElementById('mc-titulo').textContent = 'Clasificar: ' + folio;
   document.getElementById('mc-sub').textContent = prov;
+  document.getElementById('mc-rfc').value = rfcActual || '';
+  document.getElementById('mc-xml-status').style.display = 'none';
+  cmpAsegurarOpcionCategoria(catActual);
   document.getElementById('mc-cat').value = catActual && catActual !== 'POR CLASIFICAR' ? catActual : 'ALUMINIO Y HERRAJES';
+  document.getElementById('mc-cat-nueva').style.display = 'none';
+  document.getElementById('mc-cat-nueva').value = '';
   document.getElementById('mc-obra').value = obraActual || '';
   document.getElementById('mc-multi-obra').checked = false;
   MC_ITEMS = [];
@@ -519,14 +682,19 @@ function cmpActualizarTotalDesglose() {
 async function cmpGuardarClasificacion() {
   if (!MC_ID) return;
   var cat = document.getElementById('mc-cat').value;
+  var catEsNueva = cat === '__nueva__';
+  if (catEsNueva) cat = document.getElementById('mc-cat-nueva').value.trim().toUpperCase();
+  var rfc = document.getElementById('mc-rfc').value.trim().toUpperCase() || null;
   var esDesglose = document.getElementById('mc-multi-obra').checked;
   var obra = esDesglose ? null : (document.getElementById('mc-obra').value.trim() || null);
-  if (!cat) { toast('Selecciona una categoría'); return; }
+  if (!cat) { toast('Selecciona o escribe una categoría'); return; }
   if (esDesglose && MC_ITEMS.some(function(it) { return !it.descripcion.trim(); })) {
     toast('Completa la descripción de cada artículo'); return;
   }
   try {
-    var res = await sb().from('facturas_recibidas').update({ categoria: cat, folio_obra: obra, desglosada: esDesglose }).eq('id', MC_ID);
+    if (catEsNueva) await cmpGuardarCategoriaNueva(cat);
+
+    var res = await sb().from('facturas_recibidas').update({ categoria: cat, folio_obra: obra, desglosada: esDesglose, rfc_emisor: rfc }).eq('id', MC_ID);
     if (res.error) throw res.error;
 
     // Siempre se borran los artículos anteriores primero -- si se
@@ -547,7 +715,11 @@ async function cmpGuardarClasificacion() {
 
     // Actualizar cache local
     for (var i = 0; i < FACT_CACHE.length; i++) {
-      if (FACT_CACHE[i].id === MC_ID) { FACT_CACHE[i].categoria = cat; FACT_CACHE[i].folio_obra = obra; FACT_CACHE[i].desglosada = esDesglose; break; }
+      if (FACT_CACHE[i].id === MC_ID) {
+        FACT_CACHE[i].categoria = cat; FACT_CACHE[i].folio_obra = obra; FACT_CACHE[i].desglosada = esDesglose; FACT_CACHE[i].rfc_emisor = rfc;
+        FACT_CACHE[i].items_cache = esDesglose ? MC_ITEMS.map(function(it){ return { descripcion: it.descripcion, folio_obra: it.folio_obra, importe: (it.cantidad||0)*(it.precio_unitario||0) }; }) : null;
+        break;
+      }
     }
     var pnd = FACT_CACHE.filter(function(f) { return f.categoria === 'POR CLASIFICAR'; }).length;
     document.getElementById('stat-pnd').textContent = pnd;
@@ -733,6 +905,7 @@ document.addEventListener('DOMContentLoaded', function() {
   detectar();
   cmpCargarFacturas();
   cmpCargarFoliosObra();
+  cmpCargarCategorias();
 });
 </script>
 </body>
