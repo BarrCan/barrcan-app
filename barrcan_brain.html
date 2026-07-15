@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>BarrCan &middot; Portal</title>
+<!--
+  BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v1.0
+  FECHA   : 2026-07-15
+  v1.0 - Creación inicial:
+    - Pantalla de acceso: cada persona elige su nombre y entra con su
+      propio PIN de 8 dígitos (no uno compartido). Si es su primera vez,
+      lo configura ahí mismo (se guarda en Supabase, no solo en el
+      celular — no se desincroniza entre dispositivos).
+    - Al entrar, guarda barrcan_usuario_activo en localStorage — la
+      MISMA llave que ya usan esAdmin()/tecVerificarAdmin() en
+      entregas.html, historial.html y tecnicos.html. Por primera vez,
+      todo el sistema de PIN queda unificado en un solo lugar.
+    - Portal con todos los módulos agrupados por categoría.
+    - Requiere el SQL adjunto (usuarios_pin_portal.sql).
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+:root{--navy:#1B3A5C;--blue:#2E6DA4;--gold:#C8923A;--green:#27AE60;--red:#C0392B;--gray-200:#E8ECF0;--gray-400:#9CA3AF;--gray-600:#6B7280;--white:#FFFFFF;--off-white:#F8F9FA;--radius:14px;--radius-sm:9px;--shadow-md:0 4px 20px rgba(0,0,0,.1);--shadow-sm:0 2px 8px rgba(0,0,0,.06)}
+*{box-sizing:border-box}
+body{margin:0;font-family:'DM Sans',Arial,sans-serif;background:var(--off-white);color:var(--navy);min-height:100vh}
+h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
+
+/* ── Pantalla de acceso ── */
+#pantalla-login{min-height:100vh;display:flex;flex-direction:column;background:linear-gradient(160deg,var(--navy),#0F2540);color:#fff;padding:32px 20px}
+.login-logo{width:76px;height:76px;border-radius:18px;overflow:hidden;margin:20px auto 6px;box-shadow:var(--shadow-md)}
+.login-logo img{width:100%;height:100%;object-fit:cover;display:block}
+.login-title{text-align:center;font-size:22px;font-weight:700;margin:6px 0 2px}
+.login-sub{text-align:center;font-size:12px;color:rgba(255,255,255,.55);margin-bottom:28px}
+
+.usuarios-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;max-width:420px;margin:0 auto;width:100%}
+.usuario-card{background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.12);border-radius:var(--radius);padding:16px 10px;text-align:center;cursor:pointer;transition:.15s}
+.usuario-card:active{transform:scale(.96);background:rgba(255,255,255,.14)}
+.usuario-avatar{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;margin:0 auto 8px}
+.usuario-nombre{font-size:13px;font-weight:700}
+.usuario-rol{font-size:9px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+
+#pantalla-pin{min-height:100vh;display:none;flex-direction:column;align-items:center;background:linear-gradient(160deg,var(--navy),#0F2540);color:#fff;padding:32px 20px}
+.pin-avatar{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;margin:20px 0 8px}
+.pin-nombre{font-size:18px;font-weight:700;margin-bottom:2px}
+.pin-hint{font-size:12px;color:rgba(255,255,255,.55);margin-bottom:26px;text-align:center;max-width:280px}
+.pin-dots{display:flex;gap:10px;margin-bottom:30px}
+.pin-dot{width:14px;height:14px;border-radius:50%;border:1.5px solid rgba(255,255,255,.4);transition:.15s}
+.pin-dot.filled{background:var(--gold);border-color:var(--gold)}
+.pin-teclado{display:grid;grid-template-columns:repeat(3,64px);gap:14px;justify-content:center}
+.pin-tecla{width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:22px;font-weight:600;cursor:pointer}
+.pin-tecla:active{background:rgba(255,255,255,.22)}
+.pin-tecla.vacia{background:none;border:none;cursor:default}
+.pin-error{color:#FF8A80;font-size:12px;margin-top:14px;min-height:16px}
+.pin-volver{margin-top:18px;font-size:12px;color:rgba(255,255,255,.5);cursor:pointer;text-decoration:underline}
+
+/* ── Portal ── */
+#pantalla-portal{display:none;min-height:100vh}
+.portal-header{background:var(--navy);color:#fff;padding:16px 18px;display:flex;justify-content:space-between;align-items:center}
+.portal-user{display:flex;align-items:center;gap:10px}
+.portal-avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:17px}
+.portal-nombre{font-size:14px;font-weight:700}
+.portal-rol{font-size:9px;color:rgba(255,255,255,.5);text-transform:uppercase}
+.portal-salir{background:rgba(255,255,255,.12);border:none;color:#fff;padding:7px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer}
+
+.portal-content{padding:18px}
+.grupo-titulo{font-size:11px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:.6px;margin:20px 0 10px}
+.grupo-titulo:first-child{margin-top:0}
+.modulos-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.modulo-card{background:var(--white);border-radius:var(--radius-sm);padding:14px 10px;text-align:center;text-decoration:none;color:var(--navy);box-shadow:var(--shadow-sm);border:1px solid var(--gray-200)}
+.modulo-card:active{transform:scale(.97)}
+.modulo-icono{font-size:26px;margin-bottom:6px}
+.modulo-nombre{font-size:12px;font-weight:700}
+.modulo-desc{font-size:9px;color:var(--gray-400);margin-top:2px;line-height:1.3}
+</style>
+</head>
+<body>
+
+<!-- ═══════ PANTALLA 1: SELECCIONAR USUARIO ═══════ -->
+<div id="pantalla-login">
+  <div class="login-logo">
+    <img src="https://barrcan.github.io/barrcan-app/assets/logo-icono.jpg" onerror="this.onerror=null;this.src=_LOGO_ICONO_B64;" alt="BarrCan">
+  </div>
+  <div class="login-title">BarrCan</div>
+  <div class="login-sub">¿Quién eres?</div>
+  <div class="usuarios-grid" id="usuarios-lista">
+    <div style="grid-column:1/-1;text-align:center;padding:20px;color:rgba(255,255,255,.5);font-size:12px">Cargando...</div>
+  </div>
+</div>
+
+<!-- ═══════ PANTALLA 2: PIN ═══════ -->
+<div id="pantalla-pin">
+  <div class="pin-avatar" id="pin-avatar"></div>
+  <div class="pin-nombre" id="pin-nombre"></div>
+  <div class="pin-hint" id="pin-hint">Ingresa tu PIN de 8 dígitos</div>
+  <div class="pin-dots" id="pin-dots"></div>
+  <div class="pin-teclado" id="pin-teclado"></div>
+  <div class="pin-error" id="pin-error"></div>
+  <div class="pin-volver" onclick="volverALogin()">&larr; No soy yo, regresar</div>
+</div>
+
+<!-- ═══════ PANTALLA 3: PORTAL ═══════ -->
+<div id="pantalla-portal">
+  <div class="portal-header">
+    <div class="portal-user">
+      <div class="portal-avatar" id="portal-avatar"></div>
+      <div>
+        <div class="portal-nombre" id="portal-nombre"></div>
+        <div class="portal-rol" id="portal-rol"></div>
+      </div>
+    </div>
+    <button class="portal-salir" onclick="cerrarSesion()">Salir</button>
+  </div>
+
+  <div class="portal-content">
+
+    <div class="grupo-titulo">📋 Ventas &amp; Cotizadores</div>
+    <div class="modulos-grid">
+      <a class="modulo-card" href="cotizador_nacional.html"><div class="modulo-icono">🪟</div><div class="modulo-nombre">Nacional</div><div class="modulo-desc">Ventanas y puertas</div></a>
+      <a class="modulo-card" href="cotizador_espanol.html"><div class="modulo-icono">🏛️</div><div class="modulo-nombre">Española</div><div class="modulo-desc">Línea aluminio</div></a>
+      <a class="modulo-card" href="cotizador_eurovent.html"><div class="modulo-icono">🌐</div><div class="modulo-nombre">Eurovent</div><div class="modulo-desc">Línea europea</div></a>
+      <a class="modulo-card" href="cotizador_banos.html"><div class="modulo-icono">🚿</div><div class="modulo-nombre">Baños</div><div class="modulo-desc">Canceles</div></a>
+      <a class="modulo-card" href="cotizador_servicios.html"><div class="modulo-icono">🪞</div><div class="modulo-nombre">Servicios</div><div class="modulo-desc">Espejos y garantía</div></a>
+      <a class="modulo-card" href="clientes.html"><div class="modulo-icono">👥</div><div class="modulo-nombre">Clientes</div><div class="modulo-desc">Directorio</div></a>
+    </div>
+
+    <div class="grupo-titulo">🏗️ Operación</div>
+    <div class="modulos-grid">
+      <a class="modulo-card" href="historial.html"><div class="modulo-icono">📁</div><div class="modulo-nombre">Presupuestos</div><div class="modulo-desc">Historial y estados</div></a>
+      <a class="modulo-card" href="ordenes.html"><div class="modulo-icono">🛠️</div><div class="modulo-nombre">Órdenes</div><div class="modulo-desc">Asignar instalación</div></a>
+      <a class="modulo-card" href="entregas.html"><div class="modulo-icono">📦</div><div class="modulo-nombre">Entregas</div><div class="modulo-desc">Comprobantes</div></a>
+      <a class="modulo-card" href="tecnicos.html"><div class="modulo-icono">👷</div><div class="modulo-nombre">Técnicos</div><div class="modulo-desc">Equipo y pagos</div></a>
+    </div>
+
+    <div class="grupo-titulo">💰 Finanzas</div>
+    <div class="modulos-grid">
+      <a class="modulo-card" href="pagos.html"><div class="modulo-icono">💵</div><div class="modulo-nombre">Pagos</div><div class="modulo-desc">Recibos de cliente</div></a>
+      <a class="modulo-card" href="costos.html"><div class="modulo-icono">🧮</div><div class="modulo-nombre">Costos</div><div class="modulo-desc">Márgenes</div></a>
+      <a class="modulo-card" href="reportes.html"><div class="modulo-icono">📈</div><div class="modulo-nombre">Reportes</div><div class="modulo-desc">Flujo y ganancia</div></a>
+    </div>
+
+    <div class="grupo-titulo">📦 Compras &amp; Inventario</div>
+    <div class="modulos-grid">
+      <a class="modulo-card" href="compras.html"><div class="modulo-icono">🧾</div><div class="modulo-nombre">Compras</div><div class="modulo-desc">Facturas recibidas</div></a>
+      <a class="modulo-card" href="inventario.html"><div class="modulo-icono">📊</div><div class="modulo-nombre">Inventario</div><div class="modulo-desc">Materiales</div></a>
+      <a class="modulo-card" href="bodega.html"><div class="modulo-icono">🏬</div><div class="modulo-nombre">Bodega</div><div class="modulo-desc">Despacho a obra</div></a>
+      <a class="modulo-card" href="mostrador.html"><div class="modulo-icono">🏪</div><div class="modulo-nombre">Mostrador</div><div class="modulo-desc">Venta directa</div></a>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// Logo oficial BarrCan (icono cuadrado) — respaldo si falla la carga
+// desde GitHub Pages (sin señal, o antes de subir el asset al repo).
+var _LOGO_ICONO_B64 = 'data:image/jpeg;base64,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';
+
+var SB_URL='https://rmngjtzupukhylxgcww.supabase.co';
+var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
+var _sbClient=null;
+function sb(){
+  if(!_sbClient&&window.supabase){
+    _sbClient=window.supabase.createClient(SB_URL,SB_KEY,{
+      db:{schema:'barrcan'},auth:{persistSession:true,storageKey:'barrcan_auth'}
+    });
+  }
+  return _sbClient;
+}
+function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
+
+var USUARIOS = [];
+var USUARIO_SEL = null;   // el que se está tratando de loguear
+var PIN_BUFFER = '';
+var MODO_CONFIGURAR = false; // true = está creando su PIN por primera vez
+var PIN_TEMP_PRIMERO = ''; // guarda el primer PIN mientras pide confirmación
+
+// ── Cargar usuarios ──
+async function cargarUsuarios() {
+  var cont = document.getElementById('usuarios-lista');
+  if (!sb()) { cont.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:rgba(255,255,255,.6);font-size:12px">Sin conexión</div>'; return; }
+  try {
+    var res = await sb().from('usuarios_pin').select('*').eq('activo', true).order('rol').order('nombre');
+    if (res.error) throw res.error;
+    USUARIOS = res.data || [];
+    if (!USUARIOS.length) { cont.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:rgba(255,255,255,.6);font-size:12px">Sin usuarios configurados — corre el SQL primero</div>'; return; }
+    cont.innerHTML = USUARIOS.map(function(u) {
+      return '<div class="usuario-card" onclick="seleccionarUsuario(\'' + u.id + '\')">'
+        + '<div class="usuario-avatar" style="background:' + (u.color || '#2E6DA4') + '33;color:' + (u.color || '#2E6DA4') + '">' + (u.emoji || '👤') + '</div>'
+        + '<div class="usuario-nombre">' + esc(u.apodo || u.nombre) + '</div>'
+        + '<div class="usuario-rol">' + (u.rol === 'admin' ? 'Administrador' : u.rol === 'taller' ? 'Taller' : 'Técnico') + '</div>'
+        + '</div>';
+    }).join('');
+  } catch(e) {
+    cont.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:rgba(255,255,255,.6);font-size:12px">Error al cargar — revisa el SQL</div>';
+    console.warn('[BarrCan] No se pudieron cargar usuarios:', e);
+  }
+}
+function esc(s){return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// ── Selección de usuario → pantalla de PIN ──
+function seleccionarUsuario(id) {
+  USUARIO_SEL = USUARIOS.filter(function(u){ return u.id === id; })[0];
+  if (!USUARIO_SEL) return;
+  PIN_BUFFER = '';
+  MODO_CONFIGURAR = !USUARIO_SEL.pin;
+  PIN_TEMP_PRIMERO = '';
+
+  document.getElementById('pin-avatar').style.background = (USUARIO_SEL.color || '#2E6DA4') + '33';
+  document.getElementById('pin-avatar').style.color = USUARIO_SEL.color || '#2E6DA4';
+  document.getElementById('pin-avatar').textContent = USUARIO_SEL.emoji || '👤';
+  document.getElementById('pin-nombre').textContent = USUARIO_SEL.apodo || USUARIO_SEL.nombre;
+  document.getElementById('pin-hint').textContent = MODO_CONFIGURAR
+    ? 'Es tu primera vez — crea tu PIN de 8 dígitos'
+    : 'Ingresa tu PIN de 8 dígitos';
+  document.getElementById('pin-error').textContent = '';
+
+  renderPinTeclado();
+  renderPinDots();
+  document.getElementById('pantalla-login').style.display = 'none';
+  document.getElementById('pantalla-pin').style.display = 'flex';
+}
+
+function volverALogin() {
+  document.getElementById('pantalla-pin').style.display = 'none';
+  document.getElementById('pantalla-login').style.display = 'flex';
+  USUARIO_SEL = null; PIN_BUFFER = ''; MODO_CONFIGURAR = false;
+}
+
+function renderPinTeclado() {
+  var teclas = ['1','2','3','4','5','6','7','8','9','','0','⌫'];
+  document.getElementById('pin-teclado').innerHTML = teclas.map(function(t) {
+    if (t === '') return '<div class="pin-tecla vacia"></div>';
+    if (t === '⌫') return '<div class="pin-tecla" onclick="pinBorrar()">⌫</div>';
+    return '<div class="pin-tecla" onclick="pinDigito(\'' + t + '\')">' + t + '</div>';
+  }).join('');
+}
+
+function renderPinDots() {
+  var html = '';
+  for (var i = 0; i < 8; i++) html += '<div class="pin-dot' + (i < PIN_BUFFER.length ? ' filled' : '') + '"></div>';
+  document.getElementById('pin-dots').innerHTML = html;
+}
+
+function pinDigito(d) {
+  if (PIN_BUFFER.length >= 8) return;
+  PIN_BUFFER += d;
+  renderPinDots();
+  document.getElementById('pin-error').textContent = '';
+  if (PIN_BUFFER.length === 8) setTimeout(procesarPinCompleto, 150);
+}
+function pinBorrar() {
+  PIN_BUFFER = PIN_BUFFER.slice(0, -1);
+  renderPinDots();
+}
+
+async function procesarPinCompleto() {
+  if (MODO_CONFIGURAR) {
+    if (!PIN_TEMP_PRIMERO) {
+      // Primer ingreso: lo guarda temporalmente y pide que lo repita
+      PIN_TEMP_PRIMERO = PIN_BUFFER;
+      PIN_BUFFER = '';
+      renderPinDots();
+      document.getElementById('pin-hint').textContent = 'Confirma tu PIN otra vez';
+      return;
+    }
+    if (PIN_BUFFER !== PIN_TEMP_PRIMERO) {
+      document.getElementById('pin-error').textContent = 'No coincide — intenta de nuevo';
+      PIN_BUFFER = ''; PIN_TEMP_PRIMERO = '';
+      renderPinDots();
+      document.getElementById('pin-hint').textContent = 'Es tu primera vez — crea tu PIN de 8 dígitos';
+      return;
+    }
+    // Coincide: lo guarda en Supabase
+    try {
+      var res = await sb().from('usuarios_pin').update({ pin: PIN_BUFFER, updated_at: new Date().toISOString() }).eq('id', USUARIO_SEL.id);
+      if (res.error) throw res.error;
+      USUARIO_SEL.pin = PIN_BUFFER;
+      toast('PIN configurado');
+      entrarAlPortal();
+    } catch(e) {
+      document.getElementById('pin-error').textContent = 'No se pudo guardar: ' + e.message;
+      PIN_BUFFER = ''; PIN_TEMP_PRIMERO = '';
+      renderPinDots();
+    }
+    return;
+  }
+
+  // Modo verificación normal
+  if (PIN_BUFFER === USUARIO_SEL.pin) {
+    entrarAlPortal();
+  } else {
+    document.getElementById('pin-error').textContent = 'PIN incorrecto';
+    PIN_BUFFER = '';
+    renderPinDots();
+  }
+}
+
+function entrarAlPortal() {
+  localStorage.setItem('barrcan_usuario_activo', JSON.stringify({ id: USUARIO_SEL.id, nombre: USUARIO_SEL.apodo || USUARIO_SEL.nombre, rol: USUARIO_SEL.rol }));
+  document.getElementById('pantalla-pin').style.display = 'none';
+  document.getElementById('portal-avatar').style.background = (USUARIO_SEL.color || '#2E6DA4') + '33';
+  document.getElementById('portal-avatar').style.color = USUARIO_SEL.color || '#2E6DA4';
+  document.getElementById('portal-avatar').textContent = USUARIO_SEL.emoji || '👤';
+  document.getElementById('portal-nombre').textContent = USUARIO_SEL.apodo || USUARIO_SEL.nombre;
+  document.getElementById('portal-rol').textContent = USUARIO_SEL.rol === 'admin' ? 'Administrador' : USUARIO_SEL.rol === 'taller' ? 'Taller' : 'Técnico';
+  document.getElementById('pantalla-portal').style.display = 'block';
+}
+
+function cerrarSesion() {
+  localStorage.removeItem('barrcan_usuario_activo');
+  document.getElementById('pantalla-portal').style.display = 'none';
+  volverALogin();
+}
+
+// ── Si ya había sesión guardada (de otro módulo, o de antes), entra directo ──
+document.addEventListener('DOMContentLoaded', function() {
+  cargarUsuarios();
+  try {
+    var guardado = JSON.parse(localStorage.getItem('barrcan_usuario_activo') || 'null');
+    if (guardado && guardado.id) {
+      // Necesitamos los datos completos (emoji/color) — se completan
+      // en cuanto cargue la lista de usuarios.
+      var esperar = setInterval(function() {
+        if (!USUARIOS.length) return;
+        clearInterval(esperar);
+        var u = USUARIOS.filter(function(x){ return x.id === guardado.id; })[0];
+        if (u) { USUARIO_SEL = u; entrarAlPortal(); }
+      }, 200);
+    }
+  } catch(e) {}
+});
+</script>
+</body>
+</html>
