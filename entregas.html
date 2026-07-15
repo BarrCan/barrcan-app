@@ -6,6 +6,23 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.18.0
+  FECHA   : 2026-07-15
+  v3.18.0 - Nuevo tipo "Mantenimiento":
+    - Cuarto botón de tipo (junto a En puerta / Envío / Instalación),
+      con la MISMA estructura que "En puerta" (cliente, folio, dirección,
+      monto, firma) — no duplica lógica, solo cambia el enfoque de las
+      fotos:
+      - "Fotos: antes del mantenimiento" (antes era "Foto del empaque")
+      - "Fotos: trabajo terminado" (antes era "Foto del comprobante")
+      - NUEVA sección "Fotos adicionales del trabajo" — sin límite
+        práctico, para documentar detalle, piezas cambiadas, etc. —
+        esto es lo que permite meter más fotos que un tipo puerta normal.
+    - El reporte generado usa los mismos encabezados adaptados
+      ("Antes del mantenimiento", "Trabajo terminado", "Fotos
+      adicionales") y el tipo de documento dice "Mantenimiento".
+    - Compatible con "Editar todo completo": las fotos extra también se
+      guardan y se recuperan al editar un reporte de mantenimiento.
   VERSION : v3.17.0
   FECHA   : 2026-07-13
   v3.17.0 - Reporte a tamaño carta + evidencia fotográfica según piezas:
@@ -1202,9 +1219,10 @@ body{min-height:100vh}
       <div class="wizard-title">&#128230; Producto entregado</div>
 
       <label class="form-label">Tipo de entrega *</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
         <button class="tipo-btn active" data-tipo="puerta" onclick="entSelTipo(this)">&#127968; En puerta</button>
         <button class="tipo-btn" data-tipo="envio" onclick="entSelTipo(this)">&#128666; Env&iacute;o</button>
+        <button class="tipo-btn" data-tipo="mantenimiento" onclick="entSelTipo(this)">&#128295; Mantenimiento<br><small style="font-size:9px;font-weight:400;opacity:.7">Antes / después</small></button>
         <button class="tipo-btn" data-tipo="instalacion" onclick="entSelTipo(this)">&#128295; Instalaci&oacute;n<br><small style="font-size:9px;font-weight:400;opacity:.7">Firma + fotos + checklist</small></button>
       </div>
 
@@ -1386,8 +1404,8 @@ body{min-height:100vh}
     <div class="wizard-card" id="ent-fotos-evidencia-card" style="margin-bottom:12px">
       <div class="wizard-title">&#128247; Fotos de evidencia</div>
 
-      <label class="form-label">Foto del empaque</label>
-      <div style="font-size:11px;color:var(--gray-400);margin-bottom:8px">Producto empacado y listo para entrega</div>
+      <label class="form-label" id="ent-label-empaque">Foto del empaque</label>
+      <div id="ent-desc-empaque" style="font-size:11px;color:var(--gray-400);margin-bottom:8px">Producto empacado y listo para entrega</div>
       <input type="file" id="ent-foto-empaque-input" accept="image/*" multiple style="display:none" onchange="entCargarFotos(this,'empaque')">
       <button onclick="document.getElementById('ent-foto-empaque-input').click()" style="width:100%;padding:12px;background:var(--off-white);border:2px dashed var(--gray-200);border-radius:var(--radius-sm);cursor:pointer;font-size:13px;color:var(--gray-400);font-family:'DM Sans',sans-serif;font-weight:600;margin-bottom:8px">
         &#128247; Foto del empaque / producto
@@ -1401,6 +1419,16 @@ body{min-height:100vh}
         &#128247; Foto del comprobante
       </button>
       <div id="ent-grid-comp" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px"></div>
+
+      <div id="ent-mant-extra" style="display:none;margin-top:14px;padding-top:12px;border-top:1px dashed var(--gray-200)">
+        <label class="form-label">Fotos adicionales del trabajo (opcional, todas las que hagan falta)</label>
+        <div style="font-size:11px;color:var(--gray-400);margin-bottom:8px">Detalles, piezas cambiadas, cualquier evidencia extra del mantenimiento</div>
+        <input type="file" id="ent-foto-mant-input" accept="image/*" multiple style="display:none" onchange="entCargarFotos(this,'mant')">
+        <button onclick="document.getElementById('ent-foto-mant-input').click()" style="width:100%;padding:12px;background:var(--off-white);border:2px dashed var(--gold,#C8923A);border-radius:var(--radius-sm);cursor:pointer;font-size:13px;color:var(--gold,#C8923A);font-family:'DM Sans',sans-serif;font-weight:600;margin-bottom:8px">
+          &#10133; Agregar más fotos del trabajo
+        </button>
+        <div id="ent-grid-mant" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px"></div>
+      </div>
     </div>
 
     <!-- FIRMA -->
@@ -1709,6 +1737,7 @@ function entVerificarAdmin(callback) {
 }
 var ENT_FOTOS_EMP  = [];
 var ENT_FOTOS_COMP = [];
+var ENT_FOTOS_MANT = []; // fotos adicionales, solo para tipo "mantenimiento"
 // Logo oficial BarrCan (icono cuadrado) — respaldo local si falla la carga
 // desde GitHub Pages (sin señal, o antes de subir el asset al repo).
 var _LOGO_ICONO_B64 = 'data:image/jpeg;base64,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';
@@ -1939,19 +1968,30 @@ function entSelTipo(btn) {
   var instDiv   = document.getElementById('ent-inst-datos');
   var firmaCard = document.getElementById('ent-firma-card');
   var fotosCard = document.getElementById('ent-fotos-evidencia-card');
+  var lblEmp    = document.getElementById('ent-label-empaque');
+  var dscEmp    = document.getElementById('ent-desc-empaque');
   var lblComp   = document.getElementById('ent-label-comp');
   var dscComp   = document.getElementById('ent-desc-comp');
+  var mantExtra = document.getElementById('ent-mant-extra');
   var esEnvio   = ENT_TIPO === 'envio';
   var esInst    = ENT_TIPO === 'instalacion';
+  var esMant    = ENT_TIPO === 'mantenimiento';
   if (envioDiv)  envioDiv.style.display  = esEnvio ? 'block' : 'none';
   if (instDiv)   instDiv.style.display   = esInst  ? 'block' : 'none';
   if (fotosCard) fotosCard.style.display = esInst  ? 'none'  : 'block';
   if (firmaCard) firmaCard.style.display = esEnvio ? 'none'  : (esInst ? 'none' : 'block');
+  if (mantExtra) mantExtra.style.display = esMant  ? 'block' : 'none';
+  if (lblEmp)    lblEmp.textContent      = esMant  ? 'Fotos: antes del mantenimiento'
+                                          : 'Foto del empaque';
+  if (dscEmp)    dscEmp.textContent      = esMant  ? 'Cómo se encontró el equipo/producto antes de intervenir'
+                                          : 'Producto empacado y listo para entrega';
   if (lblComp)   lblComp.textContent     = esInst  ? 'Fotos de la instalaci\u00f3n terminada'
                                           : esEnvio ? 'Foto de la gu\u00eda / comprobante de env\u00edo'
+                                          : esMant  ? 'Fotos: trabajo terminado'
                                           : 'Foto del comprobante de entrega';
   if (dscComp)   dscComp.textContent     = esInst  ? 'M\u00ednimo 2 fotos: detalle y vista general'
                                           : esEnvio ? 'Foto de la gu\u00eda de rastreo'
+                                          : esMant  ? 'Resultado final del mantenimiento realizado'
                                           : 'Acuse de recibido o evidencia de entrega';
   if (esInst) {
     // Inicializar checks
@@ -1987,8 +2027,8 @@ function entSelTipo(btn) {
 
 function entCargarFotos(input, tipo) {
   if (!input || !input.files) return;
-  var arr    = tipo === 'empaque' ? ENT_FOTOS_EMP : ENT_FOTOS_COMP;
-  var gridId = tipo === 'empaque' ? 'ent-grid-empaque' : 'ent-grid-comp';
+  var arr    = tipo === 'empaque' ? ENT_FOTOS_EMP : tipo === 'mant' ? ENT_FOTOS_MANT : ENT_FOTOS_COMP;
+  var gridId = tipo === 'empaque' ? 'ent-grid-empaque' : tipo === 'mant' ? 'ent-grid-mant' : 'ent-grid-comp';
   var grid   = document.getElementById(gridId);
   for (var i = 0; i < input.files.length; i++) {
     (function(file) {
@@ -2053,7 +2093,8 @@ function entToggleCobro() {
 }
 
 function entReset() {
-  ENT_FOTOS_EMP = []; ENT_FOTOS_COMP = []; ENT_TIPO = 'puerta'; ENT_FORMA = 'efectivo'; ENT_CHECKS = {}; ENT_EVIDENCIA = {}; INST_DATOS_FOLIO = null;
+  ENT_FOTOS_EMP = []; ENT_FOTOS_COMP = []; ENT_FOTOS_MANT = []; ENT_TIPO = 'puerta'; ENT_FORMA = 'efectivo'; ENT_CHECKS = {}; ENT_EVIDENCIA = {}; INST_DATOS_FOLIO = null;
+  var gridMant = document.getElementById('ent-grid-mant'); if (gridMant) gridMant.innerHTML = '';
   var campos = ['ent-cliente','ent-tel','ent-folio','ent-desc','ent-notas','ent-monto'];
   campos.forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
   var cliSel   = document.getElementById('ent-cli-select'); if (cliSel) cliSel.value = '';
@@ -2066,6 +2107,7 @@ function entReset() {
   document.getElementById('ent-monto-group').style.display = 'none';
   document.getElementById('ent-grid-empaque').innerHTML = '';
   document.getElementById('ent-grid-comp').innerHTML = '';
+  var gridMant2 = document.getElementById('ent-grid-mant'); if (gridMant2) gridMant2.innerHTML = '';
   document.getElementById('ent-error').style.display = 'none';
   document.querySelectorAll('.tipo-btn').forEach(function(b) {
     var a = b.dataset.tipo === 'puerta';
@@ -2114,7 +2156,7 @@ async function entGenerarReporte() {
     var paqueteria = document.getElementById('ent-paqueteria') ? document.getElementById('ent-paqueteria').value : '';
     var numGuia    = document.getElementById('ent-guia') ? document.getElementById('ent-guia').value.trim() : '';
     var folioFull  = folio || ('ENT-' + Date.now().toString().slice(-6));
-    var tipoStr    = ENT_TIPO === 'envio' ? ('Envio por ' + (paqueteria || 'paqueteria')) : 'Entrega en puerta';
+    var tipoStr    = ENT_TIPO === 'envio' ? ('Envio por ' + (paqueteria || 'paqueteria')) : ENT_TIPO === 'mantenimiento' ? 'Mantenimiento' : 'Entrega en puerta';
     var canvas     = document.getElementById('ent-canvas-firma');
     var firmaB64   = canvas ? canvas.toDataURL('image/png') : '';
     var firmaVacia = true;
@@ -2126,6 +2168,7 @@ async function entGenerarReporte() {
     function fd(iso) { if (!iso) return '--'; var p = iso.split('-'); return parseInt(p[2]) + ' de ' + meses[parseInt(p[1])] + ' de ' + p[0]; }
     var fotosEmpHtml  = ENT_FOTOS_EMP.map(function(f) { return '<img src="' + f.dataUrl + '" style="width:100%;max-height:200px;object-fit:contain;border-radius:4px;border:1px solid #ddd;margin-bottom:6px">'; }).join('');
     var fotosCompHtml = ENT_FOTOS_COMP.map(function(f) { return '<img src="' + f.dataUrl + '" style="width:100%;max-height:200px;object-fit:contain;border-radius:4px;border:1px solid #ddd;margin-bottom:6px">'; }).join('');
+    var fotosMantHtml = ENT_FOTOS_MANT.map(function(f) { return '<img src="' + f.dataUrl + '" style="width:100%;max-height:200px;object-fit:contain;border-radius:4px;border:1px solid #ddd;margin-bottom:6px">'; }).join('');
     // Obtener dirección del bloque común
     var direccion = document.getElementById('inst-direccion').value.trim();
 
@@ -2157,8 +2200,9 @@ async function entGenerarReporte() {
       + (numGuia ? '<tr><td class=lbl>Num. Guia</td><td style=font-family:monospace;font-weight:700>' + esc(numGuia) + '</td></tr>' : '')
       + (aplica && monto > 0 ? '<tr><td class=lbl style=color:#E67E22>Saldo cobrado</td><td style=font-weight:700>$' + fmt(monto) + ' MXN</td></tr>' : '')
       + '</table>'
-      + (ENT_FOTOS_EMP.length > 0 ? '<h2>Fotos del empaque (' + ENT_FOTOS_EMP.length + ')</h2><div style=display:grid;grid-template-columns:1fr 1fr;gap:8px>' + fotosEmpHtml + '</div>' : '')
-      + (ENT_FOTOS_COMP.length > 0 ? '<h2>' + (ENT_TIPO === 'envio' ? 'Guia de envio' : 'Comprobante de entrega') + ' (' + ENT_FOTOS_COMP.length + ')</h2><div style=display:grid;grid-template-columns:1fr 1fr;gap:8px>' + fotosCompHtml + '</div>' : '')
+      + (ENT_FOTOS_EMP.length > 0 ? '<h2>' + (ENT_TIPO === 'mantenimiento' ? 'Antes del mantenimiento' : 'Fotos del empaque') + ' (' + ENT_FOTOS_EMP.length + ')</h2><div style=display:grid;grid-template-columns:1fr 1fr;gap:8px>' + fotosEmpHtml + '</div>' : '')
+      + (ENT_FOTOS_COMP.length > 0 ? '<h2>' + (ENT_TIPO === 'envio' ? 'Guia de envio' : ENT_TIPO === 'mantenimiento' ? 'Trabajo terminado' : 'Comprobante de entrega') + ' (' + ENT_FOTOS_COMP.length + ')</h2><div style=display:grid;grid-template-columns:1fr 1fr;gap:8px>' + fotosCompHtml + '</div>' : '')
+      + (ENT_FOTOS_MANT.length > 0 ? '<h2>Fotos adicionales (' + ENT_FOTOS_MANT.length + ')</h2><div style=display:grid;grid-template-columns:1fr 1fr;gap:8px>' + fotosMantHtml + '</div>' : '')
       + '<h2>Firma de recibido</h2>'
       + (ENT_TIPO === 'envio'
         ? '<div style=border:1.5px dashed #ccc;border-radius:6px;height:50px;display:flex;align-items:center;justify-content:center;color:#aaa;font-size:9pt>Entrega por paqueteria - ' + esc(tipoStr) + '</div>'
@@ -2188,7 +2232,7 @@ async function entGenerarReporte() {
       cliente: cliente, tel: tel, desc: desc, fecha: fecha, piezas: piezas,
       aplicaCobro: aplica, monto: monto, paqueteria: paqueteria, numGuia: numGuia,
       direccion: direccion, tipo: ENT_TIPO,
-      fotosEmp: ENT_FOTOS_EMP, fotosComp: ENT_FOTOS_COMP,
+      fotosEmp: ENT_FOTOS_EMP, fotosComp: ENT_FOTOS_COMP, fotosMant: ENT_FOTOS_MANT,
       firma: (!firmaVacia ? firmaB64 : null)
     };
     var datosJsonStr = JSON.stringify(datosCompletos);
@@ -2580,8 +2624,10 @@ async function entEditarCompleto(id) {
 
     ENT_FOTOS_EMP  = datos.fotosEmp  || [];
     ENT_FOTOS_COMP = datos.fotosComp || [];
+    ENT_FOTOS_MANT = datos.fotosMant || [];
     entRenderFotosGrid('empaque');
     entRenderFotosGrid('comprobante');
+    entRenderFotosGrid('mant');
 
     if (datos.firma) entDibujarFirmaEnCanvas('ent-canvas-firma', datos.firma, function(ctx){ ENT_FIRMA_DRAW = true; });
   }
@@ -2613,8 +2659,8 @@ function entDibujarFirmaEnCanvas(canvasId, dataUrl, marcarDibujada) {
 // array ENT_FOTOS_EMP/ENT_FOTOS_COMP — se usa tanto al capturar como al
 // precargar fotos ya guardadas para editar.
 function entRenderFotosGrid(tipo) {
-  var arr    = tipo === 'empaque' ? ENT_FOTOS_EMP : ENT_FOTOS_COMP;
-  var gridId = tipo === 'empaque' ? 'ent-grid-empaque' : 'ent-grid-comp';
+  var arr    = tipo === 'empaque' ? ENT_FOTOS_EMP : tipo === 'mant' ? ENT_FOTOS_MANT : ENT_FOTOS_COMP;
+  var gridId = tipo === 'empaque' ? 'ent-grid-empaque' : tipo === 'mant' ? 'ent-grid-mant' : 'ent-grid-comp';
   var grid   = document.getElementById(gridId);
   if (!grid) return;
   grid.innerHTML = '';
