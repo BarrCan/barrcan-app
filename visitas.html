@@ -1,0 +1,1687 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>BarrCan &middot; Visitas</title>
+<!--
+  BARRCAN · MODULO: VISITAS DE MEDICIÓN (standalone)
+  VERSION : v1.1
+  FECHA   : 2026-07-17
+  v1.1 - Fix: fotos ya no fuerzan la cámara:
+    - Se quitó capture="environment" del input de fotos -- ahora en el
+      celular aparece la opción de elegir de galería, no solo tomar
+      foto nueva. (El orden de "Cliente" ya estaba arriba desde v1.0,
+      no necesitó cambio.)
+  VERSION : v1.0
+  FECHA   : 2026-07-16
+  v1.0 - Creación inicial (extraído del archivo base barrcan_app.html):
+    - Mismo formulario del archivo base: cliente, datos de la obra,
+      levantamiento (técnico + herramienta de medición), logística y
+      dificultad (nivel, escaleras, elevador, personas necesarias),
+      mediciones y fotos, notas técnicas, cobro de visita.
+    - NUEVO (a solicitud del usuario): sección "Materiales/herramientas
+      adicionales para instalación" -- checklist (escalera, cuerdas,
+      andamio, taladro industrial, grúa/montacargas, etc.) + texto libre
+      -- separado de la herramienta que se usó PARA MEDIR. Esto es lo
+      que el instalador va a ver reflejado en su orden.
+    - A diferencia del archivo base: el técnico que realizó el
+      levantamiento ahora es un selector dinámico conectado con
+      tecnicos.html (antes era texto libre) -- mismo patrón ya corregido
+      en ordenes.html y entregas.html.
+    - Las fotos ya no se quedan solo en IndexedDB del dispositivo (no se
+      veían desde otro celular/computadora) -- se incluyen en el reporte
+      HTML que se sube a Supabase Storage, igual que en entregas.html.
+    - Pestaña "Historial" para buscar/reabrir visitas ya registradas.
+    - Requiere el SQL adjunto (visitas_modulo.sql).
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+:root {
+  --navy: #1B3A5C;
+  --blue: #2E6DA4;
+  --gold: #C8923A;
+  --gold-light: #E8B96A;
+  --orange: #FF6600;
+  --white: #FFFFFF;
+  --off-white: #F7F5F0;
+  --gray-100: #F0EDE8;
+  --gray-200: #DDD9D2;
+  --gray-400: #9A9590;
+  --gray-600: #5A5652;
+  --green: #2D7D46;
+  --red: #C0392B;
+  --amber: #E67E22;
+  --shadow-sm: 0 2px 8px rgba(27,58,92,0.08);
+  --shadow-md: 0 8px 32px rgba(27,58,92,0.14);
+  --shadow-lg: 0 20px 60px rgba(27,58,92,0.20);
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  height: 100%;
+  font-family: 'DM Sans', sans-serif;
+  background: var(--off-white);
+  color: var(--navy);
+  overscroll-behavior: none;
+}
+
+/* ─── LAYOUT ─── */
+#app { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* ─── HEADER ─── */
+.header {
+  background: var(--navy);
+  padding: 0 20px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+  position: relative;
+  z-index: 100;
+}
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.logo-mark {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, var(--gold), var(--gold-light));
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Playfair Display', serif;
+  font-weight: 900;
+  font-size: 16px;
+  color: var(--navy);
+  letter-spacing: -0.5px;
+}
+.logo-text {
+  font-family: 'Playfair Display', serif;
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--white);
+  letter-spacing: 0.5px;
+}
+.logo-sub {
+  font-size: 9px;
+  color: var(--gold-light);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  display: block;
+  margin-top: -3px;
+}
+.offline-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(200,146,58,0.15);
+  border: 1px solid rgba(200,146,58,0.3);
+  border-radius: 20px;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--gold-light);
+  font-weight: 500;
+}
+.offline-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gold-light);
+  animation: pulse-dot 2s infinite;
+}
+@keyframes pulse-dot {
+  0%,100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ─── TABS ─── */
+.tabs {
+  background: var(--navy);
+  display: flex;
+  border-bottom: 2px solid rgba(200,146,58,0.3);
+  flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  flex: 0 0 auto;
+  min-width: 68px;
+  padding: 10px 10px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.45);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: all 0.2s;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+.tab-icon { font-size: 16px; }
+.tab.active { color: var(--gold-light); border-bottom-color: var(--gold); }
+.tab:active { background: rgba(255,255,255,0.05); }
+
+/* ─── CONTENT ─── */
+.content {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ─── SCREEN ─── */
+.screen { display: none; padding: 16px; }
+.screen.active { display: block; }
+
+/* ─── CATÁLOGO AGRUPADO ─── */
+.familia-grupo {
+  margin-bottom: 10px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.familia-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 16px;
+  background: var(--navy);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+  gap: 10px;
+}
+.familia-header:active { background: #0f2a45; }
+.familia-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+.familia-emoji { font-size: 20px; flex-shrink: 0; }
+.familia-nombre {
+  font-family: 'Playfair Display', serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--white);
+  line-height: 1.2;
+}
+.familia-desc {
+  font-size: 10px;
+  color: rgba(255,255,255,0.5);
+  margin-top: 1px;
+}
+.familia-badge {
+  background: rgba(200,146,58,0.25);
+  color: var(--gold-light);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.familia-chevron {
+  color: rgba(255,255,255,0.5);
+  font-size: 12px;
+  transition: transform 0.25s;
+  flex-shrink: 0;
+}
+.familia-grupo.open .familia-chevron { transform: rotate(180deg); }
+.familia-body {
+  display: none;
+  background: var(--white);
+  padding: 12px;
+}
+.familia-grupo.open .familia-body { display: block; }
+.catalogo-seccion-header {
+  font-family: 'Playfair Display', serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--gold);
+  padding: 18px 4px 6px;
+  margin-top: 4px;
+  border-bottom: 1px solid var(--gray-200);
+  margin-bottom: 8px;
+}
+.catalogo-seccion-header:first-child { padding-top: 4px; margin-top: 0; }
+.familia-vacia .familia-header { opacity: 0.55; cursor: default; }
+.familia-vacia .familia-badge { background: rgba(90,86,82,0.15); color: var(--gray-400); }
+.familia-vacia-label {
+  padding: 14px 16px;
+  font-size: 12px;
+  color: var(--gray-400);
+  background: var(--white);
+  text-align: center;
+  font-style: italic;
+}
+.orden-filtro-btn {
+  padding:6px 14px;border-radius:20px;border:1.5px solid var(--gray-200);
+  background:none;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;
+  color:var(--gray-400);cursor:pointer;white-space:nowrap;transition:all 0.15s;
+}
+.orden-filtro-btn.active {
+  background:var(--navy);color:#fff;border-color:var(--navy);
+}
+.orden-card {
+  background:var(--white);border-radius:var(--radius);padding:14px 16px;
+  margin-bottom:10px;box-shadow:var(--shadow-sm);cursor:pointer;
+  border-left:5px solid var(--gray-200);transition:all 0.15s;
+}
+.orden-card.pendiente  { border-left-color:#F39C12; }
+.orden-card.en_camino  { border-left-color:#2980B9; }
+.orden-card.completada { border-left-color:#27AE60; }
+.orden-card.cancelada  { border-left-color:#E74C3C; opacity:0.6; }
+.orden-estado-badge {
+  font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;
+  letter-spacing:0.5px;text-transform:uppercase;
+}
+.badge-pendiente  { background:rgba(243,156,18,0.12);  color:#E67E22; }
+.badge-en_camino  { background:rgba(41,128,185,0.12);  color:#2980B9; }
+.badge-completada { background:rgba(39,174,96,0.12);   color:#27AE60; }
+.badge-cancelada  { background:rgba(231,76,60,0.12);   color:#E74C3C; }
+  background: rgba(46,109,164,0.12);
+  color: var(--blue);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 8px;
+  margin-left: 6px;
+}
+
+/* ─── CATALOG GRID ─── */
+.section-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--navy);
+  margin-bottom: 4px;
+}
+.section-sub {
+  font-size: 12px;
+  color: var(--gray-400);
+  margin-bottom: 16px;
+  letter-spacing: 0.3px;
+}
+
+.catalog-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.catalog-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 2px solid transparent;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+}
+.catalog-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--blue);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.catalog-card.selected {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(200,146,58,0.15);
+}
+.catalog-card.selected::before { opacity: 1; background: var(--gold); }
+.catalog-card:active { transform: scale(0.97); }
+
+.card-svg {
+  width: 100%;
+  height: 80px;
+  margin-bottom: 10px;
+}
+.card-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--navy);
+  line-height: 1.3;
+  margin-bottom: 3px;
+}
+.card-series {
+  font-size: 10px;
+  color: var(--blue);
+  font-weight: 500;
+  background: rgba(46,109,164,0.08);
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+.card-badge {
+  font-size: 9px;
+  color: var(--gray-400);
+  font-family: 'DM Mono', monospace;
+}
+
+/* ─── FORM ─── */
+.wizard-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-sm);
+}
+.wizard-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--blue);
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wizard-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--gray-200);
+}
+
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-group { margin-bottom: 14px; }
+.form-group:last-child { margin-bottom: 0; }
+.form-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray-600);
+  margin-bottom: 5px;
+  letter-spacing: 0.3px;
+}
+.form-input, .form-select {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1.5px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--navy);
+  background: var(--off-white);
+  transition: border-color 0.2s, box-shadow 0.2s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.form-input:focus, .form-select:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(46,109,164,0.12);
+  background: var(--white);
+}
+.form-input.mm-input { font-family: 'DM Mono', monospace; font-size: 18px; letter-spacing: 1px; }
+.input-unit {
+  position: relative;
+}
+.input-unit .form-input { padding-right: 48px; }
+.input-unit-label {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray-400);
+  letter-spacing: 0.5px;
+  pointer-events: none;
+}
+
+.form-select-wrap { position: relative; }
+.form-select-wrap::after {
+  content: '▾';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--blue);
+  pointer-events: none;
+  font-size: 14px;
+}
+select.form-select { padding-right: 36px; cursor: pointer; }
+
+/* Switch */
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+}
+.switch-info {}
+.switch-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--navy);
+}
+.switch-desc {
+  font-size: 11px;
+  color: var(--gray-400);
+  margin-top: 2px;
+}
+.toggle {
+  width: 46px;
+  height: 26px;
+  background: var(--gray-200);
+  border-radius: 13px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.toggle.on { background: var(--blue); }
+.toggle-knob {
+  width: 20px;
+  height: 20px;
+  background: white;
+  border-radius: 50%;
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+.toggle.on .toggle-knob { transform: translateX(20px); }
+
+/* Piso selector */
+.piso-selector {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.piso-btn {
+  flex: 1;
+  min-width: 36px;
+  padding: 8px 4px;
+  border: 1.5px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  background: var(--off-white);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-600);
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+}
+.piso-btn.active {
+  background: var(--navy);
+  border-color: var(--navy);
+  color: var(--white);
+}
+.piso-btn:active { transform: scale(0.92); }
+
+/* Modalidad */
+.modalidad-selector { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.modalidad-btn {
+  padding: 12px 10px;
+  border: 1.5px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  background: var(--off-white);
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.modalidad-btn.active {
+  border-color: var(--gold);
+  background: rgba(200,146,58,0.06);
+}
+.modalidad-icon { font-size: 20px; margin-bottom: 4px; }
+.modalidad-label { font-size: 11px; font-weight: 600; color: var(--navy); }
+.modalidad-desc { font-size: 10px; color: var(--gray-400); }
+
+/* ─── CALCULAR BTN ─── */
+.btn-calcular {
+  width: 100%;
+  padding: 18px;
+  background: linear-gradient(135deg, var(--orange), #FF8533);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 6px 20px rgba(255,102,0,0.35);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.btn-calcular:active { transform: scale(0.97); box-shadow: 0 3px 10px rgba(255,102,0,0.25); }
+.btn-calcular:disabled { background: var(--gray-200); box-shadow: none; color: var(--gray-400); }
+
+/* ─── ALERTA DE PESO ─── */
+.peso-alert {
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.peso-alert.verde { background: rgba(45,125,70,0.08); border: 1.5px solid rgba(45,125,70,0.25); }
+.peso-alert.ambar { background: rgba(230,126,34,0.08); border: 1.5px solid rgba(230,126,34,0.30); }
+.peso-alert.rojo { background: rgba(192,57,43,0.08); border: 1.5px solid rgba(192,57,43,0.35); }
+.alert-icon { font-size: 24px; flex-shrink: 0; margin-top: 1px; }
+.alert-title { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+.peso-alert.verde .alert-title { color: var(--green); }
+.peso-alert.ambar .alert-title { color: var(--amber); }
+.peso-alert.rojo .alert-title { color: var(--red); }
+.alert-body { font-size: 11px; color: var(--gray-600); line-height: 1.5; }
+
+/* ─── RESULTADO / PRESUPUESTO ─── */
+.resultado-header {
+  background: linear-gradient(135deg, var(--navy), #2A4F7A);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+  color: white;
+  position: relative;
+  overflow: hidden;
+}
+.resultado-header::after {
+  content: 'BC';
+  position: absolute;
+  right: -8px;
+  bottom: -20px;
+  font-family: 'Playfair Display', serif;
+  font-size: 80px;
+  font-weight: 900;
+  color: rgba(255,255,255,0.04);
+  pointer-events: none;
+}
+.res-label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,0.5); margin-bottom: 4px; }
+.res-diseno { font-family: 'Playfair Display', serif; font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+.res-medidas {
+  font-family: 'DM Mono', monospace;
+  font-size: 14px;
+  color: var(--gold-light);
+  letter-spacing: 1px;
+}
+.res-precio-final {
+  text-align: right;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.15);
+}
+.res-precio-label { font-size: 10px; letter-spacing: 1px; color: rgba(255,255,255,0.5); text-transform: uppercase; }
+.res-precio-monto {
+  font-family: 'Playfair Display', serif;
+  font-size: 32px;
+  font-weight: 900;
+  color: var(--gold-light);
+}
+.res-precio-mxn { font-size: 14px; font-weight: 400; margin-left: 4px; opacity: 0.7; }
+
+/* Vista toggle */
+.vista-toggle {
+  display: flex;
+  background: var(--gray-100);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  margin-bottom: 12px;
+}
+.vista-btn {
+  flex: 1;
+  padding: 8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-400);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.vista-btn.active {
+  background: var(--white);
+  color: var(--navy);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Desglose */
+.desglose-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-sm);
+}
+.desglose-header {
+  padding: 12px 16px;
+  background: var(--navy);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.desglose-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--gray-100);
+  gap: 10px;
+}
+.desglose-row:last-child { border-bottom: none; }
+.desglose-clave {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  color: var(--blue);
+  background: rgba(46,109,164,0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.desglose-desc {
+  flex: 1;
+  font-size: 12px;
+  color: var(--navy);
+  line-height: 1.3;
+}
+.desglose-val {
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--navy);
+  text-align: right;
+  white-space: nowrap;
+}
+.desglose-val.gold { color: var(--gold); }
+
+/* Costos table */
+.costo-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--gray-100);
+  font-size: 13px;
+}
+.costo-row:last-child { border-bottom: none; }
+.costo-row.subtotal { background: var(--gray-100); font-weight: 600; }
+.costo-row.total {
+  background: var(--navy);
+  color: white;
+  font-weight: 700;
+  font-size: 15px;
+  padding: 14px 16px;
+}
+.costo-row.total .costo-monto { color: var(--gold-light); font-family: 'DM Mono', monospace; }
+.costo-monto { font-family: 'DM Mono', monospace; font-weight: 600; }
+.costo-pct { font-size: 10px; color: var(--gray-400); margin-left: 6px; }
+
+/* ─── HISTORIAL ─── */
+.historial-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--gray-400);
+}
+.historial-empty-icon { font-size: 48px; margin-bottom: 12px; }
+.historial-item {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.historial-item:active { transform: scale(0.98); }
+.hist-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+.hist-diseno { font-size: 14px; font-weight: 700; color: var(--navy); }
+.hist-precio { font-size: 16px; font-weight: 700; color: var(--gold); font-family: 'DM Mono', monospace; }
+.hist-bottom { display: flex; gap: 8px; flex-wrap: wrap; }
+.hist-tag {
+  font-size: 10px;
+  background: var(--gray-100);
+  color: var(--gray-600);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-family: 'DM Mono', monospace;
+}
+.hist-date { font-size: 10px; color: var(--gray-400); margin-top: 4px; }
+
+/* ─── CONFIG ─── */
+.config-section { margin-bottom: 20px; }
+.config-item {
+  background: var(--white);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: var(--shadow-sm);
+}
+.config-item-label { font-size: 13px; font-weight: 600; color: var(--navy); }
+.config-item-val {
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  color: var(--blue);
+  font-weight: 600;
+}
+.config-input-inline {
+  width: 80px;
+  padding: 6px 10px;
+  border: 1.5px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  font-family: 'DM Mono', monospace;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--navy);
+  text-align: right;
+  background: var(--off-white);
+}
+.config-input-inline:focus { outline: none; border-color: var(--blue); }
+
+.btn-limpiar {
+  width: 100%;
+  padding: 14px;
+  background: rgba(192,57,43,0.08);
+  border: 1.5px solid rgba(192,57,43,0.25);
+  border-radius: var(--radius);
+  color: var(--red);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-limpiar:active { background: rgba(192,57,43,0.15); }
+
+/* ─── NO RESULTS ─── */
+.no-selection {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--gray-400);
+}
+.no-sel-icon { font-size: 40px; margin-bottom: 12px; }
+.no-sel-text { font-size: 14px; }
+
+/* ─── FOOTER EXPORT BTN ─── */
+.export-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--white);
+  border-top: 1px solid var(--gray-200);
+  padding: 12px 16px;
+  display: none;
+  gap: 10px;
+  z-index: 200;
+}
+.export-bar.visible { display: flex; }
+.btn-export {
+  flex: 1;
+  padding: 14px;
+  background: var(--navy);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+.btn-export:active { transform: scale(0.97); }
+.btn-save {
+  width: 52px;
+  height: 52px;
+  background: var(--gold);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 22px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.btn-save:active { transform: scale(0.95); }
+
+/* ─── SELECCIÓN MÚLTIPLE ─── */
+.historial-item { transition: all 0.15s; }
+.hist-selected {
+  border: 2px solid var(--blue) !important;
+  background: rgba(46,109,164,0.04) !important;
+}
+.hist-check {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--gray-200);
+  background: var(--off-white);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: white;
+  transition: all 0.15s;
+  margin-top: 2px;
+}
+.hist-check.checked {
+  background: var(--blue);
+  border-color: var(--blue);
+}
+
+/* Barra flotante de selección */
+.barra-seleccion {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--navy);
+  padding: 12px 16px;
+  display: none;
+  align-items: center;
+  gap: 12px;
+  z-index: 300;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
+  border-top: 2px solid var(--gold);
+}
+.barra-seleccion.visible { display: flex; }
+.sel-info { flex: 1; }
+.sel-count { font-size: 11px; color: rgba(255,255,255,0.6); }
+.sel-total { font-family: 'DM Mono', monospace; font-size: 17px; font-weight: 700; color: var(--gold-light); }
+.btn-generar-global {
+  padding: 12px 18px;
+  background: linear-gradient(135deg, var(--orange), #FF8533);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(255,102,0,0.4);
+  transition: all 0.2s;
+}
+.btn-generar-global:active { transform: scale(0.96); }
+
+/* ─── PRINT / PDF ─── */
+@media print {
+  /* Ocultar toda la app */
+  #app, .header, .tabs, .export-bar, .toast,
+  .barra-seleccion, #modal-overlay, #modal-edicion,
+  #modal-contrato-overlay, #modal-contrato,
+  #entrega-overlay { display: none !important; }
+  /* Mostrar solo el área de impresión activa */
+  #print-area, #ent-print-area {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: white;
+  }
+  body { margin: 0; padding: 0; background: white; }
+  @page { margin: 12mm 14mm; size: letter; }
+}
+
+/* ─── MÓDULO ENTREGA ─── */
+.ent-check-item {
+  display:flex;align-items:flex-start;gap:10px;
+  background:var(--off-white);border-radius:var(--radius-sm);
+  padding:10px 12px;border:1.5px solid var(--gray-100);transition:border-color 0.15s;
+}
+.ent-check-item.ok { border-color:rgba(45,125,70,0.3);background:rgba(45,125,70,0.04); }
+.ent-check-item.fail { border-color:rgba(192,57,43,0.3);background:rgba(192,57,43,0.04); }
+.ent-check-toggle { display:flex;gap:5px;flex-shrink:0;margin-top:2px; }
+.ent-check-btn {
+  width:28px;height:28px;border-radius:50%;border:1.5px solid var(--gray-200);
+  background:white;font-size:13px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:all 0.15s;
+}
+.ent-check-btn.sel-ok { background:var(--green);border-color:var(--green); }
+.ent-check-btn.sel-fail { background:var(--red);border-color:var(--red); }
+.ent-check-desc { flex:1;font-size:12px;color:var(--navy);line-height:1.4; }
+.ent-check-nota { width:100%;margin-top:6px;padding:6px 8px;border:1px solid var(--gray-200);border-radius:4px;font-size:11px;font-family:'DM Sans',sans-serif; }
+.ent-evidencia-item {
+  border:2px dashed var(--gray-200);border-radius:var(--radius-sm);
+  padding:12px;cursor:pointer;transition:all 0.2s;
+  background:var(--off-white);position:relative;
+}
+.ent-evidencia-item.completo { border-color:rgba(45,125,70,0.4);background:rgba(45,125,70,0.04); }
+.ent-ev-row { display:flex;align-items:center;gap:10px; }
+.ent-ev-ico { font-size:22px;flex-shrink:0; }
+.ent-ev-titulo { font-size:12px;font-weight:700;color:var(--navy); }
+.ent-ev-sub { font-size:10px;color:var(--gray-400);margin-top:1px; }
+.ent-ev-preview { width:100%;max-height:140px;object-fit:cover;border-radius:6px;margin-top:8px;display:none; }
+.ent-ev-done { position:absolute;top:8px;right:8px;width:22px;height:22px;background:var(--green);border-radius:50%;display:none;align-items:center;justify-content:center;color:white;font-size:12px;font-weight:700; }
+.ent-evidencia-item.completo .ent-ev-done { display:flex; }
+
+/* Encuesta */
+.encuesta-overlay {
+  position:fixed;inset:0;
+  background:linear-gradient(160deg,#0F2A45,#1B3A5C);
+  z-index:9100;overflow-y:auto;padding:24px 20px 60px;display:none;
+}
+.encuesta-overlay.visible { display:block; }
+.enc-card { background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:var(--radius);padding:14px 16px;margin-bottom:12px; }
+.enc-pregunta { font-size:14px;font-weight:600;color:white;margin-bottom:10px;line-height:1.4; }
+.enc-opciones { display:flex;flex-direction:column;gap:7px; }
+.enc-opcion {
+  padding:10px 14px;border-radius:var(--radius-sm);
+  border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);
+  color:rgba(255,255,255,0.8);font-size:13px;cursor:pointer;text-align:left;
+  transition:all 0.15s;font-family:'DM Sans',sans-serif;width:100%;
+}
+.enc-opcion.sel { background:rgba(200,146,58,0.25);border-color:var(--gold);color:white;font-weight:600; }
+.enc-opcion:active { transform:scale(0.98); }
+.enc-textarea {
+  width:100%;padding:10px;border-radius:var(--radius-sm);
+  border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.07);
+  color:white;font-family:'DM Sans',sans-serif;font-size:13px;resize:none;box-sizing:border-box;
+}
+.enc-textarea::placeholder { color:rgba(255,255,255,0.3); }
+
+/* Animations */
+.fade-in { animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+.slide-up { animation: slideUp 0.35s cubic-bezier(.4,0,.2,1); }
+@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+.shake { animation: shake 0.4s ease; }
+@keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+
+/* ─── TOAST ─── */
+.toast {
+  position: fixed;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-20px);
+  background: var(--navy);
+  color: white;
+  padding: 10px 18px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0;
+  transition: all 0.3s;
+  z-index: 999;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* Vidrio SVG preview */
+.vidrio-preview {
+  background: var(--gray-100);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+</style>
+<style>
+body{min-height:100vh}
+#app{display:flex;flex-direction:column;min-height:100vh}
+.content{flex:1;padding:16px;max-width:640px;margin:0 auto;width:100%;box-sizing:border-box}
+.visita-opcion-btn{padding:10px 6px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);background:none;cursor:pointer;font-family:"DM Sans",sans-serif;font-size:12px;font-weight:600;color:var(--gray-400)}
+.visita-opcion-btn.sel{border-color:var(--blue);background:rgba(46,109,164,0.08);color:var(--blue)}
+.tab-v{flex:1;padding:10px;text-align:center;font-size:12px;font-weight:700;color:var(--gray-400);cursor:pointer;border-bottom:2px solid transparent}
+.tab-v.active{color:var(--navy);border-color:var(--gold)}
+.mat-check{display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;padding:8px 10px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm)}
+.mat-check input{width:15px;height:15px}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="header">
+    <div class="header-logo">
+      <div class="logo-mark" style="padding:0;overflow:hidden">
+        <img src="https://barrcan.github.io/barrcan-app/assets/logo-icono.jpg" onerror="this.onerror=null;this.src=_LOGO_ICONO_B64;" style="width:100%;height:100%;object-fit:cover;display:block">
+      </div>
+      <div><span class="logo-text">BarrCan</span><span class="logo-sub">Cancelería &middot; Campo</span></div>
+    </div>
+    <div class="offline-badge">
+      <div class="offline-dot"></div>
+      <span id="conn-status">Offline-First</span>
+      <span style="font-size:9px;color:rgba(255,255,255,0.3);margin-left:4px">Visitas</span>
+    </div>
+  </div>
+
+  <div style="display:flex;background:var(--white);border-bottom:1px solid var(--gray-200)">
+    <div class="tab-v active" id="tab-nueva" onclick="visCambiarTab('nueva')">📐 Nueva Visita</div>
+    <div class="tab-v" id="tab-hist" onclick="visCambiarTab('hist')">📁 Historial</div>
+  </div>
+
+  <div class="content">
+
+  <!-- ═══════ PANTALLA: NUEVA VISITA ═══════ -->
+  <div id="screen-nueva">
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div>
+        <p class="section-title" style="margin-bottom:2px">Visita de Medición</p>
+        <p class="section-sub" style="margin:0">Levantamiento en obra</p>
+      </div>
+      <span id="vis-folio-badge" contenteditable="true" title="Toca para editar el folio" style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:var(--blue);background:rgba(46,109,164,0.08);padding:4px 10px;border-radius:8px">—</span>
+    </div>
+
+    <!-- 1. CLIENTE -->
+    <div class="wizard-card" style="margin-bottom:12px">
+      <div class="wizard-title">👤 Cliente</div>
+      <label class="form-label">Seleccionar cliente registrado</label>
+      <div class="form-select-wrap">
+        <select id="vis-cliente-sel" class="form-select" onchange="visCargarCliente()">
+          <option value="">— Buscar cliente —</option>
+        </select>
+      </div>
+      <div id="vis-cliente-info" style="display:none;background:rgba(46,109,164,0.06);border-radius:var(--radius-sm);padding:10px 12px;margin-top:8px;font-size:12px;color:var(--navy)"></div>
+      <button onclick="visNuevoClienteRapido()" style="width:100%;margin-top:10px;padding:10px;background:none;border:1.5px dashed var(--blue);border-radius:var(--radius-sm);color:var(--blue);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;cursor:pointer">+ Nuevo cliente rápido</button>
+    </div>
+
+    <!-- 2. DATOS DE LA OBRA -->
+    <div class="wizard-card" style="margin-bottom:12px">
+      <div class="wizard-title">📍 Datos de la Obra</div>
+      <label class="form-label">Dirección de la obra</label>
+      <input type="text" id="vis-dir-obra" class="form-input" placeholder="Calle, número, colonia, municipio" style="margin-bottom:10px">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Fecha de visita</label>
+          <input type="date" id="vis-fecha" class="form-input">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Hora</label>
+          <input type="time" id="vis-hora" class="form-input">
+        </div>
+      </div>
+      <label class="form-label">Descripción general de la obra</label>
+      <textarea id="vis-desc-obra" class="form-input" rows="2" placeholder="Ej: Departamento piso 8, ventanas de sala y recámaras..." style="resize:none"></textarea>
+    </div>
+
+    <!-- 3. LEVANTAMIENTO -->
+    <div class="wizard-card" style="margin-bottom:12px">
+      <div class="wizard-title">📏 Levantamiento</div>
+      <label class="form-label">Técnico que realizó el levantamiento</label>
+      <select id="vis-tecnico" class="form-select" style="margin-bottom:10px">
+        <option value="">-- Selecciona técnico --</option>
+        <option value="ESAU">Esaú</option>
+        <option value="MIGUEL">Miguel</option>
+        <option value="CARLOS">Carlos</option>
+        <option value="OMAR">Omar</option>
+        <option value="RODRIGO">Rodrigo</option>
+      </select>
+      <label class="form-label">Herramienta de medición utilizada</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <label class="mat-check"><input type="checkbox" id="vis-tool-laser"> 🔴 Láser</label>
+        <label class="mat-check"><input type="checkbox" id="vis-tool-nivel"> 📐 Nivel</label>
+        <label class="mat-check"><input type="checkbox" id="vis-tool-metro"> 📏 Metro</label>
+        <label class="mat-check"><input type="checkbox" id="vis-tool-flexo"> 📐 Flexómetro</label>
+      </div>
+      <input type="text" id="vis-tool-otro" class="form-input" placeholder="Otra herramienta..." style="margin-top:8px">
+    </div>
+
+    <!-- 4. LOGÍSTICA / DIFICULTAD -->
+    <div class="wizard-card" style="margin-bottom:12px">
+      <div class="wizard-title">🏗️ Logística y Dificultad</div>
+      <label class="form-label">Nivel / Piso</label>
+      <div class="form-select-wrap" style="margin-bottom:10px">
+        <select id="vis-nivel" class="form-select">
+          <option value="PB">Planta Baja</option>
+          <option value="1">Piso 1</option><option value="2">Piso 2</option><option value="3">Piso 3</option>
+          <option value="4">Piso 4</option><option value="5">Piso 5</option><option value="6">Piso 6</option>
+          <option value="7">Piso 7</option><option value="8">Piso 8</option><option value="9">Piso 9</option>
+          <option value="10+">Piso 10 o más</option>
+        </select>
+      </div>
+
+      <label class="form-label">Escaleras</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">
+        <button class="visita-opcion-btn" data-grupo="escaleras" data-val="si" onclick="visSelOpcion(this)">✅ Sí — Amplias</button>
+        <button class="visita-opcion-btn" data-grupo="escaleras" data-val="no" onclick="visSelOpcion(this)">❌ No</button>
+        <button class="visita-opcion-btn" data-grupo="escaleras" data-val="chicas" onclick="visSelOpcion(this)">⚠️ Chicas</button>
+        <button class="visita-opcion-btn" data-grupo="escaleras" data-val="otro" onclick="visSelOpcion(this)">📝 Otro</button>
+      </div>
+      <input type="text" id="vis-escaleras-otro" class="form-input" placeholder="Especifica..." style="display:none;margin-bottom:10px">
+
+      <label class="form-label">Elevador</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <button class="visita-opcion-btn" data-grupo="elevador" data-val="si" onclick="visSelOpcion(this)">✅ Sí — Cabe material</button>
+        <button class="visita-opcion-btn" data-grupo="elevador" data-val="no" onclick="visSelOpcion(this)">❌ No hay</button>
+        <button class="visita-opcion-btn" data-grupo="elevador" data-val="chico" onclick="visSelOpcion(this)">⚠️ Chico</button>
+        <button class="visita-opcion-btn" data-grupo="elevador" data-val="na" onclick="visSelOpcion(this)">N/A</button>
+      </div>
+
+      <label class="form-label">Personas necesarias para subir material</label>
+      <div class="form-select-wrap" style="margin-bottom:10px">
+        <select id="vis-personas" class="form-select">
+          <option value="1">1 persona</option>
+          <option value="2" selected>2 personas</option>
+          <option value="3">3 personas</option>
+          <option value="4">4 personas</option>
+          <option value="5+">5 o más personas</option>
+        </select>
+      </div>
+
+      <label class="form-label">Observaciones adicionales de acceso</label>
+      <textarea id="vis-obs-logistica" class="form-input" rows="2" placeholder="Ej: Horario de acceso 8-6pm, zona de obras, estacionamiento limitado..." style="resize:none"></textarea>
+    </div>
+
+    <!-- 5. MATERIALES/HERRAMIENTAS PARA INSTALACIÓN (NUEVO) -->
+    <div class="wizard-card" style="margin-bottom:12px;border:1.5px solid rgba(200,146,58,0.35)">
+      <div class="wizard-title">🧰 Materiales / Herramientas para la Instalación</div>
+      <div style="font-size:11px;color:var(--gray-400);margin-bottom:10px;background:rgba(200,146,58,0.06);padding:8px 10px;border-radius:var(--radius-sm);border-left:3px solid var(--gold)">
+        ℹ️ Esto es lo que el instalador va a ver en su orden -- para que llegue preparado y no se le quede nada en el taller.
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <label class="mat-check"><input type="checkbox" id="vis-mat-escalera"> 🪜 Escalera de extensión</label>
+        <label class="mat-check"><input type="checkbox" id="vis-mat-cuerdas"> 🪢 Cuerdas / poleas</label>
+        <label class="mat-check"><input type="checkbox" id="vis-mat-andamio"> 🏗️ Andamio</label>
+        <label class="mat-check"><input type="checkbox" id="vis-mat-taladro"> 🔩 Taladro/rotomartillo industrial</label>
+        <label class="mat-check"><input type="checkbox" id="vis-mat-grua"> 🚜 Grúa / montacargas</label>
+        <label class="mat-check"><input type="checkbox" id="vis-mat-extension"> 🔌 Extensión eléctrica larga</label>
+        <label class="mat-check"><input type="checkbox" id="vis-mat-proteccion"> 🛡️ Protección de piso/muebles</label>
+        <label class="mat-check"><input type="checkbox" id="vis-mat-refuerzo"> 👷 Refuerzo (equipo extra)</label>
+      </div>
+      <textarea id="vis-mat-otro" class="form-input" rows="2" placeholder="Otro material o herramienta específica que se necesite..." style="resize:none;margin-top:8px"></textarea>
+    </div>
+
+    <!-- 6. MEDICIONES Y FOTOS -->
+    <div class="wizard-card" style="margin-bottom:12px">
+      <div class="wizard-title">📷 Mediciones y Fotos</div>
+      <div style="font-size:11px;color:var(--gray-400);margin-bottom:12px;background:rgba(46,109,164,0.05);padding:8px 10px;border-radius:var(--radius-sm);border-left:3px solid var(--blue)">
+        ℹ️ Agrega una descripción a cada pieza fotografiada (ej: "Cancel sala - OX 1.20m")
+      </div>
+      <input type="file" id="vis-file-input" accept="image/*" multiple style="display:none" onchange="visAgregarFotos(this)">
+      <button onclick="document.getElementById('vis-file-input').click()" style="width:100%;padding:14px;background:var(--navy);color:white;border:none;border-radius:var(--radius);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:12px">📷 Tomar / Agregar Foto</button>
+      <div id="vis-fotos-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>
+      <div id="vis-fotos-count" style="text-align:center;font-size:11px;color:var(--gray-400);margin-top:8px">Sin fotos aún</div>
+    </div>
+
+    <!-- 7. NOTAS TÉCNICAS -->
+    <div class="wizard-card" style="margin-bottom:12px">
+      <div class="wizard-title">📝 Notas Técnicas</div>
+      <label class="form-label">Observaciones del levantamiento</label>
+      <textarea id="vis-notas-tec" class="form-input" rows="3" placeholder="Material que prefiere el cliente, tipo de apertura recomendada, condiciones especiales..." style="resize:none;margin-bottom:10px"></textarea>
+      <label class="form-label">Número de piezas aproximado</label>
+      <input type="number" id="vis-num-piezas" class="form-input" placeholder="Ej: 8" inputmode="numeric" min="1">
+    </div>
+
+    <!-- 8. COBRO DE VISITA -->
+    <div class="wizard-card" style="margin-bottom:16px">
+      <div class="wizard-title">💰 Cobro de Visita</div>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;font-weight:600;color:var(--navy);margin-bottom:12px">
+        <input type="checkbox" id="vis-aplica-cobro" checked onchange="visToggleCobro()" style="width:18px;height:18px">
+        Aplica cobro de visita
+      </label>
+      <div id="vis-cobro-detalle" style="display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,var(--navy),#1e4a7a);border-radius:var(--radius);padding:14px 16px">
+        <div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.6);letter-spacing:1px;text-transform:uppercase">Monto de visita</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+            <span style="font-size:22px;color:rgba(255,255,255,0.5)">$</span>
+            <input type="number" id="vis-monto" value="1000" min="0" style="font-family:'Playfair Display',serif;font-size:24px;font-weight:700;color:var(--gold);background:none;border:none;border-bottom:1px solid rgba(200,146,58,0.4);width:100px;outline:none;padding:0">
+          </div>
+          <div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:6px">Se aplica como anticipo al aprobar el proyecto</div>
+        </div>
+        <span style="font-size:32px">🔑</span>
+      </div>
+      <div id="vis-sin-cobro" style="display:none;padding:12px;background:rgba(46,109,164,0.06);border-radius:var(--radius-sm);font-size:12px;color:var(--gray-400);text-align:center">Sin cobro por visita — acuerdo previo con el cliente</div>
+    </div>
+
+    <button onclick="visGuardar(true)" style="width:100%;padding:16px;background:linear-gradient(135deg,#E65C00,#F9D423);border:none;border-radius:var(--radius);font-family:'DM Sans',sans-serif;font-size:16px;font-weight:700;color:white;cursor:pointer;box-shadow:0 4px 20px rgba(230,92,0,0.4);margin-bottom:10px">📄 Generar Reporte y Guardar</button>
+    <button onclick="visGuardar(false)" style="width:100%;padding:13px;background:rgba(27,58,92,0.08);border:1.5px solid var(--navy);border-radius:var(--radius);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;color:var(--navy);cursor:pointer">💾 Guardar sin reporte</button>
+  </div>
+
+  <!-- ═══════ PANTALLA: HISTORIAL ═══════ -->
+  <div id="screen-hist" style="display:none">
+    <p class="section-title">Historial de Visitas</p>
+    <input type="text" id="vis-hist-buscar" class="form-input" placeholder="Buscar por folio, cliente o dirección..." oninput="visFiltrarHistorial()" style="margin-bottom:14px">
+    <div id="vis-hist-lista"><div style="text-align:center;padding:20px;color:var(--gray-400)">Cargando...</div></div>
+  </div>
+
+  </div>
+</div>
+
+<!-- Mini modal cliente rápido -->
+<div id="vis-cli-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:800;backdrop-filter:blur(3px)">
+  <div style="position:absolute;bottom:0;left:0;right:0;background:var(--white);border-radius:20px 20px 0 0;padding:20px">
+    <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 14px"></div>
+    <div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:14px">Nuevo cliente rápido</div>
+    <input type="text" id="vis-cli-nombre" class="form-input" placeholder="Nombre completo *" style="margin-bottom:10px">
+    <input type="tel" id="vis-cli-tel" class="form-input" placeholder="Teléfono" style="margin-bottom:14px">
+    <div style="display:flex;gap:8px">
+      <button onclick="visGuardarClienteRapido()" style="flex:1;padding:12px;background:var(--navy);color:white;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">Guardar</button>
+      <button onclick="document.getElementById('vis-cli-modal').style.display='none'" style="padding:12px 14px;background:none;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);color:var(--gray-600);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Logo oficial BarrCan (icono cuadrado) — respaldo si falla la carga
+var _LOGO_ICONO_B64 = 'data:image/jpeg;base64,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';
+
+var SB_URL='https://rmngjtzupukhylxgcww.supabase.co';
+var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
+var _sbClient=null;
+function sb(){
+  if(!_sbClient&&window.supabase){
+    _sbClient=window.supabase.createClient(SB_URL,SB_KEY,{db:{schema:'barrcan'},auth:{persistSession:true,storageKey:'barrcan_auth'}});
+  }
+  return _sbClient;
+}
+var SYNC={online:navigator.onLine};
+window.addEventListener('online', function(){SYNC.online=true;detectarConexion();});
+window.addEventListener('offline',function(){SYNC.online=false;detectarConexion();});
+function detectarConexion(){var b=document.getElementById('conn-status');if(b)b.textContent=navigator.onLine?'Online':'Offline-First';}
+function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
+function esc(s){return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function fmt(n){return Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:0,maximumFractionDigits:2});}
+
+// ── Tabs ──
+function visCambiarTab(tab){
+  document.getElementById('tab-nueva').classList.toggle('active',tab==='nueva');
+  document.getElementById('tab-hist').classList.toggle('active',tab==='hist');
+  document.getElementById('screen-nueva').style.display=tab==='nueva'?'block':'none';
+  document.getElementById('screen-hist').style.display=tab==='hist'?'block':'none';
+  if(tab==='hist') visCargarHistorial();
+}
+
+// ── Técnico dinámico (mismo patrón que ordenes.html/entregas.html) ──
+async function visCargarTecnicosDinamico() {
+  var sel = document.getElementById('vis-tecnico');
+  if (!sel || !sb()) return;
+  try {
+    var res = await sb().from('tecnicos').select('nombre_completo,tecnico_id_login')
+      .eq('activo', true).eq('eliminado', false).order('nombre_completo');
+    if (res.error) throw res.error;
+    var datos = (res.data || []).filter(function(t) { return t.tecnico_id_login; });
+    if (!datos.length) return;
+    var valorPrevio = sel.value;
+    sel.innerHTML = '<option value="">-- Selecciona técnico --</option>'
+      + datos.map(function(t){ return '<option value="'+t.tecnico_id_login+'">'+t.nombre_completo+'</option>'; }).join('');
+    if (valorPrevio) sel.value = valorPrevio;
+  } catch(e) { console.warn('[BarrCan] No se pudo cargar técnicos:', e); }
+}
+
+// ── Folio VIS-AAMMDD-NN ──
+function visGenerarFolio(fecha){
+  var d = fecha ? new Date(fecha+'T12:00:00') : new Date();
+  var aa=String(d.getFullYear()).slice(2), mm=String(d.getMonth()+1).padStart(2,'0'), dd=String(d.getDate()).padStart(2,'0');
+  var base='VIS-'+aa+mm+dd;
+  var visitas=JSON.parse(localStorage.getItem('barrcan_visitas_folios')||'{}');
+  var key=aa+mm+dd;
+  var consec=(visitas[key]||0)+1;
+  visitas[key]=consec;
+  localStorage.setItem('barrcan_visitas_folios',JSON.stringify(visitas));
+  return base+'-'+String(consec).padStart(2,'0');
+}
+
+// ── Cliente ──
+var VISITA_CLIENTE = null;
+async function visCargarDropdownClientes(){
+  var sel=document.getElementById('vis-cliente-sel');
+  if(!sel||!sb())return;
+  sel.innerHTML='<option value="">— Buscar cliente —</option>';
+  try{
+    var res=await sb().from('clientes').select('id,nombre,telefono,empresa,cargo').order('nombre');
+    if(res.error)throw res.error;
+    (res.data||[]).forEach(function(c){
+      var o=document.createElement('option');
+      o.value=c.id;
+      o.textContent=(c.empresa?c.empresa+' · ':'')+c.nombre;
+      o.dataset.c=JSON.stringify(c);
+      sel.appendChild(o);
+    });
+  }catch(e){console.warn('[BarrCan] No se pudieron cargar clientes:',e);}
+}
+function visCargarCliente(){
+  var sel=document.getElementById('vis-cliente-sel');
+  if(!sel||!sel.value){VISITA_CLIENTE=null;document.getElementById('vis-cliente-info').style.display='none';return;}
+  var opt=sel.options[sel.selectedIndex];
+  var c={};try{c=JSON.parse(opt.dataset.c||'{}');}catch(e){}
+  VISITA_CLIENTE=c;
+  var info=document.getElementById('vis-cliente-info');
+  info.style.display='block';
+  info.innerHTML='<strong>'+esc(c.nombre)+'</strong>'+(c.telefono?' · '+esc(c.telefono):'')+(c.empresa?'<br>'+esc(c.empresa):'');
+}
+function visNuevoClienteRapido(){
+  document.getElementById('vis-cli-nombre').value='';
+  document.getElementById('vis-cli-tel').value='';
+  document.getElementById('vis-cli-modal').style.display='block';
+}
+async function visGuardarClienteRapido(){
+  var nombre=document.getElementById('vis-cli-nombre').value.trim();
+  var tel=document.getElementById('vis-cli-tel').value.trim();
+  if(!nombre){toast('El nombre es obligatorio');return;}
+  document.getElementById('vis-cli-modal').style.display='none';
+  try{
+    var res=await sb().from('clientes').insert([{nombre:nombre,telefono:tel||null}]).select().single();
+    if(res.error)throw res.error;
+    VISITA_CLIENTE=res.data;
+    await visCargarDropdownClientes();
+    var sel=document.getElementById('vis-cliente-sel');
+    sel.value=res.data.id;
+    visCargarCliente();
+    toast('Cliente agregado');
+  }catch(e){toast('No se pudo guardar: '+e.message);}
+}
+
+// ── Botones de opción (escaleras / elevador) ──
+function visSelOpcion(btn){
+  var grupo=btn.dataset.grupo;
+  document.querySelectorAll('.visita-opcion-btn[data-grupo="'+grupo+'"]').forEach(function(b){b.classList.remove('sel');});
+  btn.classList.add('sel');
+  var otroInput=document.getElementById('vis-escaleras-otro');
+  if(grupo==='escaleras'&&otroInput) otroInput.style.display = btn.dataset.val==='otro' ? 'block' : 'none';
+}
+
+function visToggleCobro(){
+  var on=document.getElementById('vis-aplica-cobro').checked;
+  document.getElementById('vis-cobro-detalle').style.display=on?'flex':'none';
+  document.getElementById('vis-sin-cobro').style.display=on?'none':'block';
+}
+
+// ── Fotos (en memoria, se incrustan en el reporte al guardar — mismo patrón que entregas.html) ──
+var VISITA_FOTOS=[];
+function visAgregarFotos(input){
+  if(!input||!input.files)return;
+  for(var i=0;i<input.files.length;i++){
+    (function(file){
+      var reader=new FileReader();
+      reader.onload=function(e){
+        var idx=VISITA_FOTOS.length;
+        VISITA_FOTOS.push({dataUrl:e.target.result,desc:''});
+        visRenderFotos();
+      };
+      reader.readAsDataURL(file);
+    })(input.files[i]);
+  }
+  input.value='';
+}
+function visRenderFotos(){
+  var grid=document.getElementById('vis-fotos-grid');
+  grid.innerHTML=VISITA_FOTOS.map(function(f,i){
+    return '<div style="position:relative">'
+      +'<img src="'+f.dataUrl+'" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200)">'
+      +'<button onclick="visQuitarFoto('+i+')" style="position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.6);color:white;border:none;font-size:11px;cursor:pointer">&times;</button>'
+      +'<input type="text" placeholder="Descripción (ej: Cancel sala OX 1.20m)" value="'+esc(f.desc)+'" oninput="visDescFoto('+i+',this.value)" style="width:100%;margin-top:4px;font-size:10px;padding:5px 6px;border:1px solid var(--gray-200);border-radius:4px;box-sizing:border-box">'
+      +'</div>';
+  }).join('');
+  document.getElementById('vis-fotos-count').textContent=VISITA_FOTOS.length?VISITA_FOTOS.length+' foto(s)':'Sin fotos aún';
+}
+function visQuitarFoto(i){VISITA_FOTOS.splice(i,1);visRenderFotos();}
+function visDescFoto(i,v){if(VISITA_FOTOS[i])VISITA_FOTOS[i].desc=v;}
+
+// ── Reset / Abrir ──
+function visReset(){
+  VISITA_FOTOS=[];VISITA_CLIENTE=null;
+  document.getElementById('vis-fotos-grid').innerHTML='';
+  document.getElementById('vis-fotos-count').textContent='Sin fotos aún';
+  document.getElementById('vis-cliente-info').style.display='none';
+  document.getElementById('vis-cliente-sel').value='';
+  document.getElementById('vis-dir-obra').value='';
+  document.getElementById('vis-desc-obra').value='';
+  document.getElementById('vis-notas-tec').value='';
+  document.getElementById('vis-obs-logistica').value='';
+  document.getElementById('vis-num-piezas').value='';
+  ['vis-tool-laser','vis-tool-nivel','vis-tool-metro'].forEach(function(id){document.getElementById(id).checked=false;});
+  document.getElementById('vis-tool-flexo').checked=false;
+  document.getElementById('vis-tool-otro').value='';
+  ['vis-mat-escalera','vis-mat-cuerdas','vis-mat-andamio','vis-mat-taladro','vis-mat-grua','vis-mat-extension','vis-mat-proteccion','vis-mat-refuerzo'].forEach(function(id){var el=document.getElementById(id);if(el)el.checked=false;});
+  document.getElementById('vis-mat-otro').value='';
+  document.getElementById('vis-escaleras-otro').style.display='none';
+  document.getElementById('vis-aplica-cobro').checked=true;
+  document.getElementById('vis-monto').value='1000';
+  visToggleCobro();
+  document.querySelectorAll('.visita-opcion-btn').forEach(function(b){b.classList.remove('sel');});
+  document.getElementById('vis-tecnico').value='';
+  var ahora=new Date();
+  document.getElementById('vis-fecha').value=ahora.toISOString().split('T')[0];
+  document.getElementById('vis-hora').value=ahora.toTimeString().slice(0,5);
+  var folioGen=visGenerarFolio(ahora.toISOString().split('T')[0]);
+  document.getElementById('vis-folio-badge').textContent=folioGen;
+  visCargarDropdownClientes();
+  visCargarTecnicosDinamico();
+}
+
+// ── Guardar (con o sin reporte impreso) ──
+async function visGuardar(conReporte){
+  var folio    = document.getElementById('vis-folio-badge').textContent;
+  var fecha    = document.getElementById('vis-fecha').value;
+  var hora     = document.getElementById('vis-hora').value;
+  var dirObra  = document.getElementById('vis-dir-obra').value.trim();
+  var nivel    = document.getElementById('vis-nivel').value;
+  var personas = document.getElementById('vis-personas').value;
+  var obsLog   = document.getElementById('vis-obs-logistica').value.trim();
+  var descObra = document.getElementById('vis-desc-obra').value.trim();
+  var notasTec = document.getElementById('vis-notas-tec').value.trim();
+  var numPiezas= document.getElementById('vis-num-piezas').value;
+  var tecnico  = document.getElementById('vis-tecnico').value;
+
+  if(!dirObra){toast('Falta la dirección de la obra');return;}
+  if(!tecnico){toast('Selecciona el técnico que hizo el levantamiento');return;}
+
+  var herramientas=[];
+  if(document.getElementById('vis-tool-laser').checked)herramientas.push('Láser');
+  if(document.getElementById('vis-tool-nivel').checked)herramientas.push('Nivel');
+  if(document.getElementById('vis-tool-metro').checked)herramientas.push('Metro');
+  if(document.getElementById('vis-tool-flexo').checked)herramientas.push('Flexómetro');
+  var otroTool=document.getElementById('vis-tool-otro').value.trim();
+  if(otroTool)herramientas.push(otroTool);
+
+  var materiales=[];
+  var matMap={'vis-mat-escalera':'Escalera de extensión','vis-mat-cuerdas':'Cuerdas/poleas','vis-mat-andamio':'Andamio','vis-mat-taladro':'Taladro/rotomartillo industrial','vis-mat-grua':'Grúa/montacargas','vis-mat-extension':'Extensión eléctrica larga','vis-mat-proteccion':'Protección de piso/muebles','vis-mat-refuerzo':'Refuerzo (equipo extra)'};
+  Object.keys(matMap).forEach(function(id){var el=document.getElementById(id);if(el&&el.checked)materiales.push(matMap[id]);});
+  var matOtro=document.getElementById('vis-mat-otro').value.trim();
+  if(matOtro)materiales.push(matOtro);
+
+  var escBtn=document.querySelector('.visita-opcion-btn[data-grupo="escaleras"].sel');
+  var elevBtn=document.querySelector('.visita-opcion-btn[data-grupo="elevador"].sel');
+  var escaleras=escBtn?escBtn.dataset.val:'no_indicado';
+  if(escaleras==='otro')escaleras=document.getElementById('vis-escaleras-otro').value.trim()||'otro';
+  var elevador=elevBtn?elevBtn.dataset.val:'no_indicado';
+
+  var aplicaCobro=document.getElementById('vis-aplica-cobro').checked;
+  var monto=aplicaCobro?(parseFloat(document.getElementById('vis-monto').value)||1000):0;
+
+  var payload={
+    folio: folio,
+    cliente_id: VISITA_CLIENTE?VISITA_CLIENTE.id:null,
+    cliente_nombre: VISITA_CLIENTE?VISITA_CLIENTE.nombre:'',
+    cliente_tel: VISITA_CLIENTE?VISITA_CLIENTE.telefono:'',
+    tecnico: tecnico,
+    herramientas: herramientas.join(', '),
+    fecha_visita: fecha, hora_visita: hora, dir_obra: dirObra,
+    nivel: nivel, escaleras: escaleras, elevador: elevador,
+    personas_necesarias: personas, obs_logistica: obsLog, desc_obra: descObra,
+    notas_tecnico: notasTec, num_piezas: numPiezas?parseInt(numPiezas):null,
+    num_fotos: VISITA_FOTOS.length,
+    materiales_instalacion: materiales.join(', '),
+    aplica_cobro: aplicaCobro, monto: monto, estado: 'registrada'
+  };
+
+  var reporteUrl = '';
+  if(conReporte){
+    reporteUrl = await visGenerarYSubirReporte(payload);
+  }
+  if(reporteUrl) payload.reporte_url = reporteUrl;
+
+  try{
+    if(!sb())throw new Error('Sin conexión a Supabase');
+    var res=await sb().from('visitas_medicion').insert([payload]);
+    if(res.error)throw res.error;
+    toast('✅ Visita guardada · '+folio);
+    visReset();
+    visCambiarTab('hist');
+  }catch(e){
+    var pendientes=JSON.parse(localStorage.getItem('barrcan_visitas_pendientes')||'[]');
+    pendientes.push(payload);
+    localStorage.setItem('barrcan_visitas_pendientes',JSON.stringify(pendientes));
+    toast('💾 Guardada localmente (sin conexión) · '+folio+' — se sincroniza después');
+    visReset();
+  }
+}
+
+// ── Generar el reporte HTML y subirlo a Storage (mismo bucket "reportes" que entregas.html) ──
+async function visGenerarYSubirReporte(d){
+  var accesos = [
+    d.escaleras==='si' ? '✓ Escaleras amplias' : d.escaleras==='chicas' ? '⚠ Escaleras chicas' : d.escaleras==='no' ? '✗ Sin escaleras amplias' : ('Escaleras: '+esc(d.escaleras)),
+    d.elevador==='si' ? '✓ Elevador — cabe material' : d.elevador==='chico' ? '⚠ Elevador chico, no cabe' : d.elevador==='no' ? '✗ Sin elevador' : 'Elevador: N/A'
+  ].join(' &nbsp;|&nbsp; ');
+
+  var fotosHtml = VISITA_FOTOS.map(function(f,i){
+    return '<div style="break-inside:avoid;margin-bottom:16px">'
+      +'<img src="'+f.dataUrl+'" style="width:100%;max-height:220px;object-fit:cover;border-radius:6px;border:1px solid #ddd">'
+      +'<div style="font-size:11px;color:#666;margin-top:4px;padding:0 4px">'+(i+1)+'. '+esc(f.desc||'Sin descripción')+'</div></div>';
+  }).join('');
+
+  var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Reporte de Visita '+esc(d.folio)+'</title><style>'
+    +'*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:12px;color:#1B3A5C;padding:24px}'
+    +'.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;padding-bottom:16px;border-bottom:3px solid #1B3A5C}'
+    +'.logo{font-size:22px;font-weight:900;letter-spacing:-1px;color:#1B3A5C}.logo span{color:#C8923A}'
+    +'.folio-num{font-size:18px;font-weight:700;color:#2E6DA4;font-family:monospace}'
+    +'.seccion{margin-bottom:20px}.seccion-titulo{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#2E6DA4;border-bottom:1px solid #e0e0e0;padding-bottom:4px;margin-bottom:10px}'
+    +'.dato-row{display:flex;gap:16px;margin-bottom:6px}.dato-label{font-size:10px;color:#888;min-width:130px}.dato-val{font-size:12px;font-weight:600}'
+    +'.fotos-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}'
+    +'.monto-box{background:#1B3A5C;color:white;padding:16px 20px;border-radius:8px;display:flex;justify-content:space-between;align-items:center;margin-top:20px}'
+    +'.monto-num{font-size:28px;font-weight:900;color:#C8923A}'
+    +'.mat-box{background:#FFF8ED;border:1.5px solid #C8923A;border-radius:8px;padding:12px 14px}'
+    +'@media print{body{padding:12px}}</style></head><body>'
+    +'<div class="header"><div><div class="logo">Barr<span>Can</span></div><div style="font-size:10px;color:#888;margin-top:2px">CANCELERÍA · CAMPO</div></div>'
+    +'<div style="text-align:right"><div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px">Reporte de Visita</div><div class="folio-num">'+esc(d.folio)+'</div><div style="font-size:10px;color:#888">'+esc(d.fecha_visita)+(d.hora_visita?' · '+esc(d.hora_visita):'')+'</div></div></div>'
+    +'<div class="seccion"><div class="seccion-titulo">Cliente</div>'
+    +(d.cliente_nombre?'<div class="dato-row"><span class="dato-label">Nombre:</span><span class="dato-val">'+esc(d.cliente_nombre)+'</span></div>'+(d.cliente_tel?'<div class="dato-row"><span class="dato-label">Teléfono:</span><span class="dato-val">'+esc(d.cliente_tel)+'</span></div>':''):'<div style="color:#888">Cliente no registrado</div>')
+    +'</div>'
+    +'<div class="seccion"><div class="seccion-titulo">Datos de la Obra</div>'
+    +'<div class="dato-row"><span class="dato-label">Dirección:</span><span class="dato-val">'+esc(d.dir_obra)+'</span></div>'
+    +(d.desc_obra?'<div class="dato-row"><span class="dato-label">Descripción:</span><span class="dato-val">'+esc(d.desc_obra)+'</span></div>':'')
+    +'<div class="dato-row"><span class="dato-label">Técnico levantador:</span><span class="dato-val">'+esc(d.tecnico)+'</span></div>'
+    +(d.herramientas?'<div class="dato-row"><span class="dato-label">Herramienta de medición:</span><span class="dato-val">'+esc(d.herramientas)+'</span></div>':'')
+    +'</div>'
+    +'<div class="seccion"><div class="seccion-titulo">Logística y Dificultad</div>'
+    +'<div class="dato-row"><span class="dato-label">Nivel / Piso:</span><span class="dato-val">'+(d.nivel==='PB'?'Planta Baja':'Piso '+esc(d.nivel))+'</span></div>'
+    +'<div class="dato-row"><span class="dato-label">Acceso:</span><span class="dato-val">'+accesos+'</span></div>'
+    +'<div class="dato-row"><span class="dato-label">Personal requerido:</span><span class="dato-val">'+esc(d.personas_necesarias)+' persona(s)</span></div>'
+    +(d.num_piezas?'<div class="dato-row"><span class="dato-label">Piezas aprox.:</span><span class="dato-val">'+d.num_piezas+'</span></div>':'')
+    +(d.obs_logistica?'<div class="dato-row"><span class="dato-label">Observaciones:</span><span class="dato-val">'+esc(d.obs_logistica)+'</span></div>':'')
+    +'</div>'
+    +(d.notas_tecnico?'<div class="seccion"><div class="seccion-titulo">Notas Técnicas</div><div style="background:#f5f7fa;padding:10px 12px;border-radius:6px;line-height:1.6">'+esc(d.notas_tecnico)+'</div></div>':'')
+    +(d.materiales_instalacion?'<div class="seccion"><div class="seccion-titulo">🧰 Materiales / Herramientas para Instalación</div><div class="mat-box">'+esc(d.materiales_instalacion)+'</div></div>':'')
+    +(VISITA_FOTOS.length?'<div class="seccion"><div class="seccion-titulo">Fotos de Medición ('+VISITA_FOTOS.length+')</div><div class="fotos-grid">'+fotosHtml+'</div></div>':'')
+    +(d.aplica_cobro?'<div class="monto-box"><div><div style="font-size:10px;color:rgba(255,255,255,0.6);text-transform:uppercase;letter-spacing:1px">Cobro por visita de medición</div><div class="monto-num">$'+fmt(d.monto)+' MXN</div><div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:4px">Este monto se aplica como anticipo al aprobar el proyecto</div></div><div style="font-size:40px">🔑</div></div>':'')
+    +'<div style="display:flex;gap:24px;margin-top:32px"><div style="flex:1;border-top:1px solid #ccc;padding-top:8px;font-size:10px;color:#888;text-align:center">Técnico BarrCan<br>'+esc(d.tecnico)+'</div><div style="flex:1;border-top:1px solid #ccc;padding-top:8px;font-size:10px;color:#888;text-align:center">Cliente<br>'+(d.cliente_nombre?esc(d.cliente_nombre):'_________________')+'</div></div>'
+    +'</body></html>';
+
+  // Abrir para imprimir/guardar como PDF localmente
+  var win = window.open('', '_blank');
+  if(win){ win.document.write(html); win.document.close(); win.onload=function(){setTimeout(function(){win.print();},400);}; }
+
+  // Subir también a Supabase Storage para que quede accesible desde
+  // cualquier dispositivo (igual que los reportes de entregas.html)
+  if(!sb()) return '';
+  try{
+    var nombreArch = 'visita_'+d.folio+'_'+Date.now()+'.html';
+    var blob = new Blob([html], {type:'text/html'});
+    var up = await sb().storage.from('reportes').upload(nombreArch, blob, {contentType:'text/html', upsert:true});
+    if(up.error) throw up.error;
+    var urlRes = sb().storage.from('reportes').getPublicUrl(nombreArch);
+    return urlRes.data ? urlRes.data.publicUrl : '';
+  }catch(e){ console.warn('[BarrCan] No se pudo subir el reporte de visita a Storage:', e); return ''; }
+}
+
+// ── Historial ──
+var VIS_HIST_CACHE = [];
+async function visCargarHistorial(){
+  var div=document.getElementById('vis-hist-lista');
+  if(!sb()){div.innerHTML='<div style="text-align:center;padding:20px;color:var(--gray-400)">Sin conexión</div>';return;}
+  try{
+    var res=await sb().from('visitas_medicion').select('*').order('created_at',{ascending:false}).limit(200);
+    if(res.error)throw res.error;
+    VIS_HIST_CACHE=res.data||[];
+    visRenderHistorial(VIS_HIST_CACHE);
+  }catch(e){
+    div.innerHTML='<div style="text-align:center;padding:20px;color:var(--red)">Error al cargar historial</div>';
+    console.warn('[BarrCan] Error historial visitas:',e);
+  }
+}
+function visFiltrarHistorial(){
+  var q=document.getElementById('vis-hist-buscar').value.toLowerCase().trim();
+  if(!q){visRenderHistorial(VIS_HIST_CACHE);return;}
+  var filtrado=VIS_HIST_CACHE.filter(function(v){
+    return (v.folio||'').toLowerCase().indexOf(q)>=0
+      || (v.cliente_nombre||'').toLowerCase().indexOf(q)>=0
+      || (v.dir_obra||'').toLowerCase().indexOf(q)>=0;
+  });
+  visRenderHistorial(filtrado);
+}
+function visRenderHistorial(lista){
+  var div=document.getElementById('vis-hist-lista');
+  if(!lista.length){div.innerHTML='<div style="text-align:center;padding:20px;color:var(--gray-400)">Sin visitas registradas</div>';return;}
+  div.innerHTML=lista.map(function(v){
+    return '<div style="background:var(--white);border-radius:var(--radius-sm);padding:12px;margin-bottom:8px;box-shadow:var(--shadow-sm)'+(v.reporte_url?';cursor:pointer':'')+'"'+(v.reporte_url?' data-url="'+esc(v.reporte_url)+'" onclick="window.open(this.dataset.url,\'_blank\')"':'')+'>'
+      +'<div style="display:flex;justify-content:space-between;align-items:flex-start">'
+      +'<div><div style="font-size:12px;font-weight:700;color:var(--navy)">'+esc(v.folio)+'</div>'
+      +'<div style="font-size:11px;color:var(--gray-600)">'+esc(v.cliente_nombre||'Sin cliente')+'</div>'
+      +'<div style="font-size:10px;color:var(--gray-400)">'+esc(v.dir_obra||'')+'</div></div>'
+      +'<div style="text-align:right"><div style="font-size:10px;color:var(--gray-400)">'+esc(v.fecha_visita||'')+'</div>'
+      +(v.aplica_cobro?'<div style="font-size:11px;font-weight:700;color:var(--gold)">$'+fmt(v.monto)+'</div>':'')+'</div>'
+      +'</div>'
+      +(v.materiales_instalacion?'<div style="margin-top:6px;font-size:10px;color:#8E44AD;background:rgba(142,68,173,0.06);padding:4px 8px;border-radius:6px">🧰 '+esc(v.materiales_instalacion)+'</div>':'')
+      +(v.reporte_url?'<div style="font-size:9px;color:var(--blue);margin-top:6px">Toca para ver el reporte →</div>':'')
+      +'</div>';
+  }).join('');
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  detectarConexion();
+  visReset();
+  visCargarHistorial();
+});
+</script>
+</body>
+</html>
