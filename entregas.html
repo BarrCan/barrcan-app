@@ -6,6 +6,24 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.19.0
+  FECHA   : 2026-07-16
+  v3.19.0 - Fix: técnico instalador conectado con el catálogo real:
+    - "Técnico instalador" era texto libre desde que se extrajo este
+      módulo -- nunca se conectó con tecnicos.html. Ahora es un selector
+      dinámico igual que en ordenes.html: se llena solo desde la tabla
+      tecnicos (activos), con la lista fija de 5 nombres como respaldo
+      si no hay conexión.
+    - Diagnóstico aparte (diagnostico_clientes_entregas.sql): si el
+      selector de cliente sigue sin mostrar datos, es casi seguro un
+      permiso de lectura (RLS) faltante en clientes o
+      presupuestos_atrasados -- correr ese SQL para confirmar y
+      corregir.
+    - Nota: como el campo pasó de texto libre a selector con valores
+      fijos (ESAU/MIGUEL/etc.), reportes viejos que tengan un nombre de
+      técnico que no coincida con esos valores no se van a preseleccionar
+      solos al editarlos -- no se pierde el dato guardado, solo no se ve
+      resaltado en el selector.
   VERSION : v3.18.0
   FECHA   : 2026-07-15
   v3.18.0 - Nuevo tipo "Mantenimiento":
@@ -1262,8 +1280,15 @@ body{min-height:100vh}
           <div style="font-size:11px;font-weight:700;color:var(--navy);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">&#128295; Datos de instalaci&oacute;n</div>
           <div style="margin-top:8px">
             <label class="form-label">T&eacute;cnico instalador</label>
-            <input type="text" id="inst-tecnico-nombre" class="form-input" placeholder="Nombre del t&eacute;cnico" style="margin-bottom:4px">
-            <div style="font-size:10px;color:var(--gray-400)">Pre-llenado con el usuario activo &mdash; edita si es un t&eacute;cnico diferente</div>
+            <select id="inst-tecnico-nombre" class="form-select" style="margin-bottom:4px">
+              <option value="">-- Selecciona t&eacute;cnico --</option>
+              <option value="ESAU">Esa&uacute;</option>
+              <option value="MIGUEL">Miguel</option>
+              <option value="CARLOS">Carlos</option>
+              <option value="OMAR">Omar</option>
+              <option value="RODRIGO">Rodrigo</option>
+            </select>
+            <div style="font-size:10px;color:var(--gray-400)">Se llena solo desde el cat&aacute;logo de t&eacute;cnicos &mdash; si no ves a alguien, agr&eacute;galo en tecnicos.html</div>
           </div>
           <div style="margin-top:8px">
             <label class="form-label">Asignado por</label>
@@ -1652,6 +1677,29 @@ function offReintentarUno(reg) {
       entRenderHistorial();
     })
     .catch(function(e) { console.warn('[BarrCan] Reintento de reporte completo falló, se reintentará después:', e); });
+}
+
+// ── Lista de técnicos dinámica (desde tabla tecnicos, módulo tecnicos.html) ──
+// Si falla (sin conexión, o el SQL de tecnicos.html aún no se corrió),
+// se queda con las 5 opciones fijas que ya trae el <select> en el HTML.
+async function entCargarTecnicosDinamico() {
+  var sel = document.getElementById('inst-tecnico-nombre');
+  if (!sel || !sb()) return;
+  try {
+    var res = await sb().from('tecnicos').select('nombre_completo,tecnico_id_login')
+      .eq('activo', true).eq('eliminado', false).order('nombre_completo');
+    if (res.error) throw res.error;
+    var datos = (res.data || []).filter(function(t) { return t.tecnico_id_login; });
+    if (!datos.length) return;
+    var valorPrevio = sel.value;
+    sel.innerHTML = '<option value="">-- Selecciona t\u00e9cnico --</option>'
+      + datos.map(function(t) {
+          return '<option value="' + t.tecnico_id_login + '">' + t.nombre_completo + '</option>';
+        }).join('');
+    if (valorPrevio) sel.value = valorPrevio;
+  } catch(e) {
+    console.warn('[BarrCan] No se pudo cargar la lista de t\u00e9cnicos desde Supabase (se usa la lista fija):', e);
+  }
 }
 
 function detectarConexion() {
@@ -2845,6 +2893,7 @@ document.addEventListener('DOMContentLoaded', function() {
   entIniciarFirma();
   entCargarClientes();
   entCargarHistorial();
+  entCargarTecnicosDinamico();
   var cola = JSON.parse(localStorage.getItem('barrcan_entregas_pendientes') || '[]');
   if (cola.length) setTimeout(entReintentarPendientes, 1500);
   setTimeout(entReintentarPendientesInstalacion, 1500);
