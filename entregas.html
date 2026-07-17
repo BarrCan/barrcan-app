@@ -6,6 +6,22 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.21.0
+  FECHA   : 2026-07-17
+  v3.21.0 - Ajustes de interfaz (a solicitud del usuario):
+    - "Cliente" ahora es la primera tarjeta del formulario (antes iba
+      después de "Producto entregado").
+    - Las fotos de evidencia de instalación ya no fuerzan la cámara --
+      se quitó capture="environment" del input, así que en el celular
+      aparece la opción de elegir de galería, no solo tomar foto nueva.
+  VERSION : v3.20.0
+  FECHA   : 2026-07-17
+  v3.20.0 - Fix real: el reporte de instalación mostraba el CÓDIGO del
+    técnico (ej. "ESAU") en vez de su nombre (Esaú) -- consecuencia
+    directa de la v3.19.0, que cambió el campo a un selector con esos
+    valores. Ahora se mapea el código al nombre completo antes de
+    imprimir el reporte (usa la lista real de tecnicos.html si está
+    disponible, si no una lista fija de respaldo).
   VERSION : v3.19.0
   FECHA   : 2026-07-16
   v3.19.0 - Fix: técnico instalador conectado con el catálogo real:
@@ -1232,6 +1248,31 @@ body{min-height:100vh}
     <p class="section-title">Entregas de Producto</p>
     <p class="section-sub">En puerta &middot; Env&iacute;o &middot; Instalaci&oacute;n</p>
 
+    <!-- CLIENTE -->
+    <div class="wizard-card" style="margin-bottom:12px">
+      <div class="wizard-title">&#128100; Cliente</div>
+      <select id="ent-cli-select" class="form-select" onchange="entSelCliente()" style="margin-bottom:8px">
+        <option value="">&mdash; Selecciona cliente &mdash;</option>
+      </select>
+      <div class="form-group" style="margin-bottom:8px">
+        <label class="form-label">Nombre *</label>
+        <input type="text" id="ent-cliente" class="form-input" placeholder="Nombre del cliente">
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Tel&eacute;fono</label>
+          <input type="tel" id="ent-tel" class="form-input" inputmode="tel" placeholder="55 1234 5678">
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Folio CACN</label>
+          <select id="ent-folio-select" class="form-select" onchange="entSelPresupuesto()" style="font-family:monospace;font-size:12px">
+            <option value="">&mdash; Selecciona presupuesto &mdash;</option>
+          </select>
+          <input type="hidden" id="ent-folio">
+        </div>
+      </div>
+    </div>
+
     <!-- PRODUCTO Y TIPO -->
     <div class="wizard-card" style="margin-bottom:12px">
       <div class="wizard-title">&#128230; Producto entregado</div>
@@ -1384,31 +1425,6 @@ body{min-height:100vh}
     </div>
 
 
-    <!-- CLIENTE -->
-    <div class="wizard-card" style="margin-bottom:12px">
-      <div class="wizard-title">&#128100; Cliente</div>
-      <select id="ent-cli-select" class="form-select" onchange="entSelCliente()" style="margin-bottom:8px">
-        <option value="">&mdash; Selecciona cliente &mdash;</option>
-      </select>
-      <div class="form-group" style="margin-bottom:8px">
-        <label class="form-label">Nombre *</label>
-        <input type="text" id="ent-cliente" class="form-input" placeholder="Nombre del cliente">
-      </div>
-      <div class="form-row">
-        <div class="form-group" style="margin-bottom:0">
-          <label class="form-label">Tel&eacute;fono</label>
-          <input type="tel" id="ent-tel" class="form-input" inputmode="tel" placeholder="55 1234 5678">
-        </div>
-        <div class="form-group" style="margin-bottom:0">
-          <label class="form-label">Folio CACN</label>
-          <select id="ent-folio-select" class="form-select" onchange="entSelPresupuesto()" style="font-family:monospace;font-size:12px">
-            <option value="">&mdash; Selecciona presupuesto &mdash;</option>
-          </select>
-          <input type="hidden" id="ent-folio">
-        </div>
-      </div>
-    </div>
-
     <!-- DATOS DE LA OBRA (COMÚN) -->
     <div class="wizard-card" style="margin-bottom:12px">
       <div class="wizard-title">📍 Datos de la obra</div>
@@ -1539,7 +1555,7 @@ body{min-height:100vh}
   </div>
 </div>
 
-<input type="file" id="inst-file-input" accept="image/*,video/*" capture="environment" style="display:none" onchange="instArchivoCapturado(this)">
+<input type="file" id="inst-file-input" accept="image/*,video/*" style="display:none" onchange="instArchivoCapturado(this)">
 
 <script>
 // BARRCAN ENTREGAS v3.8.3 — Mejora en carga de dirección y logs
@@ -1682,6 +1698,8 @@ function offReintentarUno(reg) {
 // ── Lista de técnicos dinámica (desde tabla tecnicos, módulo tecnicos.html) ──
 // Si falla (sin conexión, o el SQL de tecnicos.html aún no se corrió),
 // se queda con las 5 opciones fijas que ya trae el <select> en el HTML.
+var ENT_TEC_NOMBRES_DIN = {}; // código -> nombre completo, para mostrar en reportes
+
 async function entCargarTecnicosDinamico() {
   var sel = document.getElementById('inst-tecnico-nombre');
   if (!sel || !sb()) return;
@@ -1697,6 +1715,7 @@ async function entCargarTecnicosDinamico() {
           return '<option value="' + t.tecnico_id_login + '">' + t.nombre_completo + '</option>';
         }).join('');
     if (valorPrevio) sel.value = valorPrevio;
+    datos.forEach(function(t) { ENT_TEC_NOMBRES_DIN[t.tecnico_id_login] = t.nombre_completo; });
   } catch(e) {
     console.warn('[BarrCan] No se pudo cargar la lista de t\u00e9cnicos desde Supabase (se usa la lista fija):', e);
   }
@@ -3175,7 +3194,9 @@ function entReintentarPendientesInstalacion() {
 async function entGenerarReporteInstalacion() {
   var cliente   = (document.getElementById('ent-cliente') || {}).value || '';
   var desc      = (document.getElementById('ent-desc')    || {}).value || '';
-  var tecnico   = (document.getElementById('inst-tecnico-nombre') || {}).value || '';
+  var tecnicoCod = (document.getElementById('inst-tecnico-nombre') || {}).value || '';
+  var TEC_NOMBRES = { ESAU:'Esa\u00fa', MIGUEL:'Miguel', CARLOS:'Carlos', OMAR:'Omar', RODRIGO:'Rodrigo' };
+  var tecnico    = ENT_TEC_NOMBRES_DIN[tecnicoCod] || TEC_NOMBRES[tecnicoCod] || tecnicoCod;
   var asignado  = (document.getElementById('inst-asignado') || {}).value || '';
   var direccion = (document.getElementById('inst-direccion') || {}).value || '';
   var fecha     = (document.getElementById('inst-fecha') || {}).value || '';
