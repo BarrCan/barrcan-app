@@ -6,6 +6,64 @@
 <title>BarrCan &middot; Ordenes</title>
 <!--
   BARRCAN - MODULO: ORDENES DE TRABAJO
+  VERSION : v2.0
+  FECHA   : 2026-07-16
+  v2.0 - El link de mapa ya no va en el aviso al cliente:
+    - El cliente no necesita navegar a ningún lado -- el técnico
+      llega a él. Su WhatsApp ahora es solo el aviso simple (que se
+      va a realizar/ya viene en camino la instalación, con fecha/hora
+      si aplica), sin el link de mapa.
+    - El link de mapa y el .ics se quedan exclusivamente en el aviso
+      del técnico, que sí necesita ubicar el sitio.
+    - Si la orden no tiene dirección capturada, el aviso al cliente
+      sigue funcionando igual -- solo se omite la parte del técnico.
+  v1.9 - Fix: el calendario (.ics) ahora es claramente del técnico:
+    - Antes se ofrecía como paso genérico entre el aviso al cliente y
+      el del técnico, sin dejar claro para quién era -- y de hecho no
+      le llegaba a nadie (se descargaba en el dispositivo de quien le
+      daba clic al botón). No le servía al cliente.
+    - Ahora el flujo es: 1) WhatsApp al cliente, 2) WhatsApp al
+      técnico, 3) descargar su recordatorio de calendario -- los 3
+      pasos ya dicen explícitamente para quién son.
+    - El .ics se sigue descargando en tu dispositivo (WhatsApp no
+      permite adjuntar archivos por link automáticamente) -- si
+      quieres que el técnico lo tenga en su calendario, se lo
+      reenvías tú como archivo adjunto después de descargarlo.
+  v1.8 - WhatsApp también al técnico asignado:
+    - Al usar "Avisar" (o al marcar "En camino"), ahora también
+      busca el teléfono del técnico asignado (tabla tecnicos, por
+      tecnico_id_login) y ofrece mandarle SU PROPIO WhatsApp con
+      cliente, dirección, mapa y hora -- aparte del que se le manda
+      al cliente.
+    - Si el técnico no tiene teléfono capturado en tecnicos.html, se
+      omite ese paso sin generar error.
+    - Sigue siendo manual (un toque por cada aviso) -- la versión
+      100% automática (sin clics, programada para el día antes)
+      queda pendiente para cuando se necesite.
+  v1.7 - Botón "Avisar" independiente + alarma de 1 día antes:
+    - Nuevo botón "🔔 Avisar" en cada tarjeta -- ya no depende de
+      cambiar el estado a "En camino". Se puede usar cuando quieras
+      (ej. la tarde anterior a la instalación) para mandar el mismo
+      WhatsApp + calendario, con el mensaje adaptado ("le recordamos
+      su instalación programada" en vez de "ya va en camino").
+    - El archivo de calendario (.ics) ahora trae TRES alarmas: 1 día
+      antes, 2 horas antes y 1 hora antes.
+    - Al marcar "En camino" sigue funcionando igual que antes (con
+      el mensaje de "ya va en camino").
+  v1.6 - "En camino": WhatsApp + calendario + link de mapa:
+    - Al marcar una orden como "En camino", ofrece (con un toque cada
+      una, no es automático porque WhatsApp/calendarios no lo permiten
+      sin confirmación):
+      1) Mensaje de WhatsApp al cliente ya escrito, avisando que el
+         técnico va en camino, con el link del mapa incluido.
+      2) Descargar un archivo .ics con el recordatorio -- funciona con
+         Google Calendar, Outlook y Apple Calendar sin conectar ninguna
+         cuenta -- con DOS alarmas: 2 horas antes y 1 hora antes de la
+         hora de instalación.
+    - La "Hoja de instalación" impresa ahora trae la dirección como link
+      "Ver en mapa" (abre Google Maps directo a esa ubicación).
+    - Requiere que la orden tenga capturada fecha_instalacion,
+      hora_instalacion y dir_obra para funcionar completo.
   VERSION : v1.5
   FECHA   : 2026-07-13
   v1.5 - Rubro por orden (incluye Taller):
@@ -1453,10 +1511,11 @@ function otRender(){
       +'<div style="font-size:10px;color:var(--gray-400);margin-top:2px">'+( o.tecnico_id||'')+'</div>'
       +'</div>'
       +'</div>'
-      +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px">'
-      +'<button onclick="otAbrir(\''+idStr+'\')" style="padding:7px 4px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:11px;font-weight:700;cursor:pointer">Editar</button>'
-      +'<button onclick="otCambiarEstado(\''+idStr+'\')" style="padding:7px 4px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer">Estado</button>'
-      +'<button onclick="otVerHoja(\''+idStr+'\')" style="padding:7px 4px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.3);border-radius:8px;color:var(--green);font-size:11px;font-weight:700;cursor:pointer">Hoja</button>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px">'
+      +'<button onclick="otAbrir(\''+idStr+'\')" style="padding:7px 3px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:10px;font-weight:700;cursor:pointer">Editar</button>'
+      +'<button onclick="otCambiarEstado(\''+idStr+'\')" style="padding:7px 3px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:10px;font-weight:700;cursor:pointer">Estado</button>'
+      +'<button onclick="otVerHoja(\''+idStr+'\')" style="padding:7px 3px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.3);border-radius:8px;color:var(--green);font-size:10px;font-weight:700;cursor:pointer">Hoja</button>'
+      +'<button onclick="otProgramarRecordatorio(\''+idStr+'\')" style="padding:7px 3px;background:rgba(142,68,173,0.08);border:1.5px solid rgba(142,68,173,0.3);border-radius:8px;color:#8E44AD;font-size:10px;font-weight:700;cursor:pointer">&#128276; Avisar</button>'
       +'</div>'
       +'</div>';
   }
@@ -1637,6 +1696,132 @@ function otCambiarEstado(id){
   otGuardarCache(OT_CACHE);otRender();
   if(SYNC.online&&sb()){sb().from('ordenes_trabajo').update(campos).eq('id',id).then(function(r){if(!r.error)toast('Estado: '+nuevo);else toast('Actualizado localmente');});}
   else toast('Estado actualizado sin conexion');
+
+  if(nuevo==='en_camino') otAccionesEnCamino(o, true);
+}
+
+// ── Acciones de aviso/recordatorio ──────────────────────────────
+// Ninguna de las dos se manda/agrega sola (WhatsApp y los calendarios no
+// dejan hacerlo sin que la persona confirme un toque) -- pero se le deja
+// todo listo: mensaje ya escrito y evento ya armado, solo falta un clic.
+function otMapsLink(direccion){
+  return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(direccion||'');
+}
+
+// Botón independiente "Avisar" en cada tarjeta — igual que se dispara al
+// marcar "En camino", pero se puede usar en cualquier momento (ej. la
+// tarde anterior a la instalación), sin tener que tocar el estado.
+function otProgramarRecordatorio(id){
+  var o=null;for(var i=0;i<OT_CACHE.length;i++){if(OT_CACHE[i].id===id){o=OT_CACHE[i];break;}}
+  if(!o)return;
+  otAccionesEnCamino(o, false);
+}
+
+// yaEnCamino=true -> "el técnico ya va en camino" (se usa al cambiar el
+// estado). yaEnCamino=false -> mensaje de recordatorio anticipado (se
+// usa desde el botón "Avisar", por ejemplo un día antes).
+function otAccionesEnCamino(o, yaEnCamino){
+  var mapsUrl = o.dir_obra ? otMapsLink(o.dir_obra) : '';
+
+  setTimeout(function(){
+    if(!confirm('¿Avisar al cliente "'+o.cliente_nombre+'" por WhatsApp'+(yaEnCamino?' que el técnico va en camino?':' recordándole su instalación?')))return;
+    if(!o.cliente_tel){toast('Este cliente no tiene teléfono capturado');return;}
+    var tel=o.cliente_tel.replace(/\D/g,'');
+    var textoAviso = yaEnCamino
+      ? 'le informamos que nuestro técnico *'+(o.tecnico_id||'BarrCan')+'* ya va en camino a su instalación.'
+      : 'le recordamos su instalación programada'+(o.fecha_instalacion?' para el *'+o.fecha_instalacion+'*':'')+'.';
+    var msg=encodeURIComponent('Hola '+o.cliente_nombre+', '+textoAviso
+      +(o.hora_instalacion?' Hora estimada: *'+o.hora_instalacion+' hrs*.':'')
+      +'\n\nGracias! BarrCan 56-15-15-84-15');
+    window.open('https://wa.me/52'+tel+'?text='+msg,'_blank');
+  },300);
+
+  if(!o.dir_obra){ toast('Sin dirección capturada — se omite el aviso/mapa para el técnico'); return; }
+  setTimeout(function(){ otAvisarTecnico(o, mapsUrl, yaEnCamino); },600);
+}
+
+// Busca el teléfono del técnico asignado (tabla tecnicos, por
+// tecnico_id_login) y le ofrece DOS cosas por separado, ambas suyas:
+// 1) Su propio WhatsApp con cliente, dirección y mapa.
+// 2) El recordatorio de calendario (.ics) -- este SÍ es para él, no
+//    para el cliente. Se descarga en tu dispositivo; si quieres que le
+//    quede guardado en su calendario, se lo tienes que reenviar tú
+//    mismo por WhatsApp como archivo adjunto (los links de WhatsApp no
+//    permiten adjuntar archivos automáticamente, solo texto).
+async function otAvisarTecnico(o, mapsUrl, yaEnCamino){
+  if(!o.tecnico_id || !sb()) { return; }
+  var tec = null;
+  try{
+    var res = await sb().from('tecnicos').select('nombre_completo,telefono').eq('tecnico_id_login', o.tecnico_id).eq('activo', true).limit(1).single();
+    if(!res.error && res.data) tec = res.data;
+  }catch(e){ console.warn('[BarrCan] No se pudo buscar el teléfono del técnico:', e); }
+
+  if(tec && tec.telefono){
+    if(confirm('¿Avisar a '+(tec.nombre_completo||o.tecnico_id)+' por WhatsApp'+(yaEnCamino?'?':' de su instalación de mañana/próxima?'))){
+      var tel = tec.telefono.replace(/\D/g,'');
+      var textoTec = yaEnCamino
+        ? 'te toca salir ahora a la instalación de *'+(o.cliente_nombre||'')+'*.'
+        : 'te recordamos tu instalación programada'+(o.fecha_instalacion?' para el *'+o.fecha_instalacion+'*':'')+' con *'+(o.cliente_nombre||'')+'*.';
+      var msgTec = encodeURIComponent('Hola '+(tec.nombre_completo||'')+', '+textoTec
+        +(o.hora_instalacion?' Hora: *'+o.hora_instalacion+' hrs*.':'')
+        +(o.cliente_tel?'\nTel. cliente: '+o.cliente_tel:'')
+        +'\nDirección: '+(o.dir_obra||'')
+        +'\nMapa: '+mapsUrl
+        +(o.descripcion_trabajo?'\n\n'+o.descripcion_trabajo:''));
+      window.open('https://wa.me/52'+tel+'?text='+msgTec,'_blank');
+    }
+  } else {
+    console.warn('[BarrCan] Técnico sin teléfono capturado en tecnicos.html, se omite su WhatsApp:', o.tecnico_id);
+  }
+
+  setTimeout(function(){
+    if(!confirm('¿Descargar el recordatorio de calendario para '+(tec ? (tec.nombre_completo||o.tecnico_id) : 'el técnico')+'? (Se descarga aquí — reenvíaselo por WhatsApp como archivo si quieres que le quede en su calendario)'))return;
+    otDescargarICS(o, mapsUrl);
+  },400);
+}
+
+// Genera un archivo .ics descargable — funciona con Google Calendar,
+// Outlook y Apple Calendar sin necesitar conectar ninguna cuenta. Trae
+// dos alarmas: 2 horas antes y 1 hora antes de la hora de instalación.
+function otDescargarICS(o, mapsUrl){
+  var fecha = o.fecha_instalacion || new Date().toISOString().split('T')[0];
+  var hora  = o.hora_instalacion || '10:00';
+  var inicio = new Date(fecha+'T'+hora+':00');
+  if (isNaN(inicio.getTime())) { toast('Fecha/hora de instalación no válida'); return; }
+  var fin = new Date(inicio.getTime() + 90*60000); // 1.5 hrs de duración por defecto
+
+  function aUTC(d){
+    return d.getUTCFullYear()+pad(d.getUTCMonth()+1)+pad(d.getUTCDate())+'T'+pad(d.getUTCHours())+pad(d.getUTCMinutes())+'00Z';
+  }
+  function pad(n){return (n<10?'0':'')+n;}
+
+  var desc = 'Cliente: '+(o.cliente_nombre||'')+'\\n'
+    + (o.cliente_tel ? 'Tel: '+o.cliente_tel+'\\n' : '')
+    + 'Técnico: '+(o.tecnico_id||'BarrCan')+'\\n'
+    + 'Dirección: '+(o.dir_obra||'')+'\\n'
+    + 'Ubicación (mapa): '+mapsUrl
+    + (o.descripcion_trabajo ? '\\n\\n'+o.descripcion_trabajo : '');
+
+  var ics = 'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//BarrCan//Ordenes//ES\r\nBEGIN:VEVENT\r\n'
+    + 'UID:'+(o.id||Date.now())+'@barrcan\r\n'
+    + 'DTSTAMP:'+aUTC(new Date())+'\r\n'
+    + 'DTSTART:'+aUTC(inicio)+'\r\n'
+    + 'DTEND:'+aUTC(fin)+'\r\n'
+    + 'SUMMARY:Instalación BarrCan - '+(o.cliente_nombre||'')+'\r\n'
+    + 'LOCATION:'+(o.dir_obra||'').replace(/,/g,'\\,')+'\r\n'
+    + 'DESCRIPTION:'+desc+'\r\n'
+    + 'BEGIN:VALARM\r\nTRIGGER:-P1D\r\nACTION:DISPLAY\r\nDESCRIPTION:Instalación mañana - '+(o.cliente_nombre||'')+'\r\nEND:VALARM\r\n'
+    + 'BEGIN:VALARM\r\nTRIGGER:-PT2H\r\nACTION:DISPLAY\r\nDESCRIPTION:Instalación en 2 horas - '+(o.cliente_nombre||'')+'\r\nEND:VALARM\r\n'
+    + 'BEGIN:VALARM\r\nTRIGGER:-PT1H\r\nACTION:DISPLAY\r\nDESCRIPTION:Instalación en 1 hora - '+(o.cliente_nombre||'')+'\r\nEND:VALARM\r\n'
+    + 'END:VEVENT\r\nEND:VCALENDAR\r\n';
+
+  var blob = new Blob([ics], {type:'text/calendar;charset=utf-8'});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = 'instalacion_'+(o.cliente_nombre||'obra').replace(/\s+/g,'_')+'.ics';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){URL.revokeObjectURL(url);}, 3000);
+  toast('Calendario descargado — ábrelo para agregarlo');
 }
 
 async function otEliminar(){
@@ -1691,7 +1876,7 @@ function otGenerarHojaDirecta(o){
     +'<table>'
     +'<tr><td class=lbl>Cliente</td><td><strong>'+(o.cliente_nombre||'-')+'</strong></td></tr>'
     +(o.cliente_tel?'<tr><td class=lbl>Telefono</td><td>'+o.cliente_tel+'</td></tr>':'')
-    +'<tr><td class=lbl>Direccion</td><td>'+(o.dir_obra||'-')+'</td></tr>'
+    +'<tr><td class=lbl>Direccion</td><td>'+(o.dir_obra?(o.dir_obra+' &middot; <a href="'+otMapsLink(o.dir_obra)+'" target=_blank style="color:#2E6DA4">Ver en mapa</a>'):'-')+'</td></tr>'
     +'<tr><td class=lbl>Fecha</td><td><strong>'+fd(o.fecha_instalacion)+'</strong></td></tr>'
     +(o.hora_instalacion?'<tr><td class=lbl>Hora</td><td>'+o.hora_instalacion+' hrs</td></tr>':'')
     +'</table>'
