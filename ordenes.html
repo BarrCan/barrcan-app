@@ -6,8 +6,16 @@
 <title>BarrCan &middot; Ordenes</title>
 <!--
   BARRCAN - MODULO: ORDENES DE TRABAJO
-  VERSION : v2.1
+  VERSION : v2.2
   FECHA   : 2026-07-17
+  v2.2 - Vincular la visita de medición con la orden:
+    - Nuevo campo "Visita de medición relacionada" al crear/editar
+      una orden -- busca por folio, cliente o dirección (autocompletar
+      con las visitas ya registradas en visitas.html).
+    - Es lo que permite que entregas.html muestre las
+      "Consideraciones para la instalación" jaladas de esa visita.
+    - Requiere el SQL de visitas_modulo.sql (columna visita_folio en
+      ordenes_trabajo) -- ya lo tenías si corriste ese archivo antes.
   v2.1 - Conectar la orden con el reporte de instalación:
     - El botón "Hoja" es solo la hoja impresa de referencia -- NO es
       un formulario, nunca lo fue. Se agregó un botón nuevo ▶
@@ -1285,6 +1293,13 @@ body{min-height:100vh}
     </div>
 
     <div class="form-group">
+      <label class="form-label">Visita de medición relacionada (opcional)</label>
+      <input type="text" id="ot-visita-folio" list="ot-visita-lista" class="form-input" placeholder="Busca por folio, cliente o dirección...">
+      <datalist id="ot-visita-lista"></datalist>
+      <div style="font-size:10px;color:var(--gray-400);margin-top:4px">Si vinculas la visita, sus notas y materiales para instalación van a aparecer al técnico cuando abra el reporte de esta orden.</div>
+    </div>
+
+    <div class="form-group">
       <label class="form-label">Rubro</label>
       <div class="form-select-wrap">
         <select id="ot-rubro" class="form-select">
@@ -1375,6 +1390,22 @@ var OT_TECNICOS_LISTA = [
   {tecnico_id_login:'OMAR', nombre_completo:'Omar'},
   {tecnico_id_login:'RODRIGO', nombre_completo:'Rodrigo'}
 ];
+
+// Lista de visitas de medición para vincular con la orden — igual
+// patrón de datalist (buscar y escribir libre) que ya se usa para
+// buscar la obra en otros módulos.
+async function otCargarVisitasDatalist() {
+  var dl = document.getElementById('ot-visita-lista');
+  if (!dl || !sb()) return;
+  try {
+    var res = await sb().from('visitas_medicion').select('folio,cliente_nombre,dir_obra')
+      .order('created_at', { ascending: false }).limit(200);
+    if (res.error) throw res.error;
+    dl.innerHTML = (res.data || []).map(function(v) {
+      return '<option value="' + v.folio + '">' + (v.cliente_nombre || '') + ' \u2014 ' + (v.dir_obra || '') + '</option>';
+    }).join('');
+  } catch(e) { console.warn('[BarrCan] No se pudo cargar la lista de visitas:', e); }
+}
 
 async function otCargarTecnicosDinamico() {
   var sel = document.getElementById('ot-tecnico');
@@ -1569,6 +1600,7 @@ function otAbrir(id){
     s('ot-piezas',o.num_piezas||1);s('ot-notas',o.notas_tecnico);s('ot-estado',o.estado||'pendiente');
     s('ot-costo-mo',o.costo_mano_obra||'');
     s('ot-rubro',o.rubro||'ventanas');
+    s('ot-visita-folio',o.visita_folio||'');
     otRenderApoyoCheckboxes([]);
     if (SYNC.online && sb()) {
       sb().from('orden_tecnicos').select('tecnico_id,rol').eq('orden_id', id).then(function(res) {
@@ -1591,6 +1623,7 @@ function otAbrir(id){
     var cs=document.getElementById('ot-pres-select');if(cs)cs.value='';
     var cm=document.getElementById('ot-costo-mo');if(cm)cm.value='';
     var rb=document.getElementById('ot-rubro');if(rb)rb.value='ventanas';
+    var vf=document.getElementById('ot-visita-folio');if(vf)vf.value='';
     otRenderApoyoCheckboxes([]);
     try{var raw=localStorage.getItem('barrcan_nueva_ot_prefill');
       if(raw){var pf=JSON.parse(raw);localStorage.removeItem('barrcan_nueva_ot_prefill');
@@ -1651,7 +1684,8 @@ async function otGuardar(){
     num_piezas:          parseInt(document.getElementById('ot-piezas').value)||1,
     estado:              gv('ot-estado')||'pendiente',
     costo_mano_obra:     parseFloat(gv('ot-costo-mo'))||null,
-    rubro:               gv('ot-rubro')||'ventanas'
+    rubro:               gv('ot-rubro')||'ventanas',
+    visita_folio:        gv('ot-visita-folio')||null
   };
   var apoyoSeleccionado = otApoyoSeleccionActual();
   var esEdicion=!!OT_EDITANDO;
@@ -1964,6 +1998,7 @@ document.addEventListener('DOMContentLoaded',function(){
   if(local.length){OT_CACHE=local;otRender();}
   otCargar();
   otCargarTecnicosDinamico();
+  otCargarVisitasDatalist();
 });
 </script>
 </body>
