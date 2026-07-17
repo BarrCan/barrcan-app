@@ -6,8 +6,18 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
-  VERSION : v3.22.0
+  VERSION : v3.23.0
   FECHA   : 2026-07-17
+  v3.23.0 - "Consideraciones para la instalación" (desde la visita):
+    - Si la orden tiene una visita de medición vinculada (nuevo campo
+      en ordenes.html), al precargar el reporte aparece una caja
+      dorada de solo lectura con: acceso (nivel, escaleras, elevador,
+      personas necesarias), qué materiales/herramientas llevar,
+      notas del levantamiento y piezas aproximadas.
+    - Es puramente informativo -- no se guarda nada de ahí, solo es
+      referencia para que el técnico sepa qué esperar antes de
+      instalar. Si la orden no tiene visita vinculada, la caja
+      simplemente no aparece.
   v3.22.0 - Precarga automática desde una orden de trabajo:
     - Si se llega aquí desde el botón ▶ "Reporte" de ordenes.html
       (URL con ?orden_id=...), se selecciona solo el tipo
@@ -1313,6 +1323,12 @@ body{min-height:100vh}
       <!-- ─── PANEL INSTALACIÓN ─────────────────────────── -->
       <div id="ent-inst-datos" style="display:none">
 
+        <!-- Consideraciones para la instalación (jala de la visita vinculada, solo informativo) -->
+        <div id="ent-vis-considera" style="display:none;background:#FFF8ED;border:1.5px solid var(--gold);border-radius:var(--radius-sm);padding:12px;margin-bottom:14px">
+          <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:6px">&#128203; Consideraciones para la instalación <span style="font-size:10px;font-weight:400;color:var(--gray-400)">(de la visita de medición)</span></div>
+          <div id="ent-vis-considera-body" style="font-size:12px;color:var(--gray-600);line-height:1.6"></div>
+        </div>
+
         <!-- Barra de progreso -->
         <div style="background:rgba(46,109,164,.06);border-radius:8px;padding:10px 12px;margin-bottom:12px">
           <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:var(--navy);margin-bottom:6px">
@@ -2169,6 +2185,7 @@ function entToggleCobro() {
 
 function entReset() {
   ENT_FOTOS_EMP = []; ENT_FOTOS_COMP = []; ENT_FOTOS_MANT = []; ENT_TIPO = 'puerta'; ENT_FORMA = 'efectivo'; ENT_CHECKS = {}; ENT_EVIDENCIA = {}; INST_DATOS_FOLIO = null;
+  var cajaVis = document.getElementById('ent-vis-considera'); if (cajaVis) cajaVis.style.display = 'none';
   var gridMant = document.getElementById('ent-grid-mant'); if (gridMant) gridMant.innerHTML = '';
   var campos = ['ent-cliente','ent-tel','ent-folio','ent-desc','ent-notas','ent-monto'];
   campos.forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
@@ -2940,10 +2957,40 @@ async function entPrecargarDesdeOrden() {
     if (o.folio_cotizacion) s('ent-folio', o.folio_cotizacion);
     if (o.tecnico_id) s('inst-tecnico-nombre', o.tecnico_id); // ya es el mismo código (ESAU, etc.)
 
+    if (o.visita_folio) await entMostrarConsideracionesVisita(o.visita_folio);
+
     toast('Orden precargada — revisa los datos antes de generar el reporte');
   } catch(e) {
     console.warn('[BarrCan] No se pudo precargar desde la orden:', e);
   }
+}
+
+// Trae la visita de medición vinculada a la orden y muestra sus notas y
+// materiales como bloque INFORMATIVO -- no se guarda nada de aquí, solo
+// es referencia para que el técnico sepa qué esperar antes de instalar.
+async function entMostrarConsideracionesVisita(visitaFolio) {
+  var caja = document.getElementById('ent-vis-considera');
+  var body = document.getElementById('ent-vis-considera-body');
+  if (!caja || !body || !sb()) return;
+  try {
+    var res = await sb().from('visitas_medicion').select('*').eq('folio', visitaFolio).single();
+    if (res.error || !res.data) return;
+    var v = res.data;
+    var lineas = [];
+    var accesoTxt = [];
+    if (v.nivel) accesoTxt.push('Nivel: ' + (v.nivel === 'PB' ? 'Planta Baja' : 'Piso ' + v.nivel));
+    if (v.escaleras) accesoTxt.push('Escaleras: ' + v.escaleras);
+    if (v.elevador) accesoTxt.push('Elevador: ' + v.elevador);
+    if (v.personas_necesarias) accesoTxt.push(v.personas_necesarias + ' persona(s) para subir material');
+    if (accesoTxt.length) lineas.push('<strong>Acceso:</strong> ' + accesoTxt.join(' &middot; '));
+    if (v.materiales_instalacion) lineas.push('<strong>&#129520; Llevar:</strong> ' + esc(v.materiales_instalacion));
+    if (v.notas_tecnico) lineas.push('<strong>Notas del levantamiento:</strong> ' + esc(v.notas_tecnico));
+    if (v.obs_logistica) lineas.push('<strong>Observaciones de acceso:</strong> ' + esc(v.obs_logistica));
+    if (v.num_piezas) lineas.push('<strong>Piezas aprox.:</strong> ' + v.num_piezas);
+    if (!lineas.length) return;
+    body.innerHTML = lineas.map(function(l) { return '<div style="margin-bottom:4px">' + l + '</div>'; }).join('');
+    caja.style.display = 'block';
+  } catch(e) { console.warn('[BarrCan] No se pudo cargar la visita vinculada:', e); }
 }
 
 document.addEventListener('DOMContentLoaded', function() {
