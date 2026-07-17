@@ -6,8 +6,16 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
-  VERSION : v3.21.0
+  VERSION : v3.22.0
   FECHA   : 2026-07-17
+  v3.22.0 - Precarga automática desde una orden de trabajo:
+    - Si se llega aquí desde el botón ▶ "Reporte" de ordenes.html
+      (URL con ?orden_id=...), se selecciona solo el tipo
+      "Instalación" y se precargan cliente, teléfono, dirección,
+      descripción, notas, monto y técnico directo de esa orden --
+      cierra el hueco donde la orden y el reporte no se hablaban.
+    - Si se abre normal (sin ese parámetro), todo funciona exactamente
+      igual que antes.
   v3.21.0 - Ajustes de interfaz (a solicitud del usuario):
     - "Cliente" ahora es la primera tarjeta del formulario (antes iba
       después de "Producto entregado").
@@ -2905,6 +2913,39 @@ async function entReintentarPendientes() {
   if (rest.length) toast(rest.length + ' aun pendiente(s)');
 }
 
+// Si se llega desde ordenes.html (botón "▶ Reporte"), la URL trae
+// ?orden_id=... — se usa para precargar cliente, dirección, técnico y
+// monto directo de la orden, en vez de que el técnico tenga que volver
+// a escribirlo o buscarlo por presupuesto.
+async function entPrecargarDesdeOrden() {
+  var params = new URLSearchParams(window.location.search);
+  var ordenId = params.get('orden_id');
+  if (!ordenId || !sb()) return;
+  try {
+    var res = await sb().from('ordenes_trabajo').select('*').eq('id', ordenId).single();
+    if (res.error || !res.data) { toast('No se encontró esa orden'); return; }
+    var o = res.data;
+
+    // Seleccionar el tipo "Instalación"
+    var btnInst = document.querySelector('.tipo-btn[data-tipo="instalacion"]');
+    if (btnInst) entSelTipo(btnInst);
+
+    var s = function(id, val) { var el = document.getElementById(id); if (el && val !== undefined && val !== null) el.value = val; };
+    s('ent-cliente', o.cliente_nombre);
+    s('ent-tel', o.cliente_tel);
+    s('inst-direccion', o.dir_obra);
+    s('ent-desc', o.descripcion_trabajo);
+    s('ent-notas', o.notas_tecnico);
+    if (o.saldo_pendiente) s('inst-monto', o.saldo_pendiente);
+    if (o.folio_cotizacion) s('ent-folio', o.folio_cotizacion);
+    if (o.tecnico_id) s('inst-tecnico-nombre', o.tecnico_id); // ya es el mismo código (ESAU, etc.)
+
+    toast('Orden precargada — revisa los datos antes de generar el reporte');
+  } catch(e) {
+    console.warn('[BarrCan] No se pudo precargar desde la orden:', e);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   detectarConexion();
   _LOGO_SRC = document.querySelector('.logo-mark img') ? document.querySelector('.logo-mark img').src : '';
@@ -2913,6 +2954,7 @@ document.addEventListener('DOMContentLoaded', function() {
   entCargarClientes();
   entCargarHistorial();
   entCargarTecnicosDinamico();
+  setTimeout(entPrecargarDesdeOrden, 400);
   var cola = JSON.parse(localStorage.getItem('barrcan_entregas_pendientes') || '[]');
   if (cola.length) setTimeout(entReintentarPendientes, 1500);
   setTimeout(entReintentarPendientesInstalacion, 1500);
