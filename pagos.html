@@ -6,6 +6,12 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.5
+  FECHA   : 2026-07-16
+  v4.5 — Leyenda de factura en el recibo:
+    - Agregado al pie del recibo generado: "¿Requiere factura? Solicítela
+      por correo a ventas@barrcan.com.mx" — antes no existía ningún aviso
+      de cómo pedir factura.
   VERSIÓN : v4.4
   FECHA   : 2026-07-13
   v4.4 — Fix: liquidar saldo ya no lo marca como "entregado":
@@ -1626,6 +1632,8 @@ function generarRecibo(d) {
     + '<div style="border:1px dashed #1B3A5C;border-radius:4px;padding:6px;text-align:center;font-size:7.5pt;color:#1B3A5C;margin-top:6px">'
     + 'Pago recibido conforme \u00b7 ' + fd(d.fecha) + '<br>'
     + '<strong>BarrCan \u00b7 TEL: 56-15-15-84-15</strong></div>'
+    + '<div style="text-align:center;font-size:6.5pt;color:#888;margin-top:6px">'
+    + '\u00bfRequiere factura? Solic\u00edtela por correo a <strong>ventas@barrcan.com.mx</strong></div>'
     + '<div style="font-size:6.5pt;color:#aaa;text-align:center;margin-top:8px;border-top:1px solid #eee;padding-top:6px">'
     + d.folioRB + ' \u00b7 BarrCan \u00b7 ' + (d.fecha || '') + '</div>'
     + '</div></body></html>';
