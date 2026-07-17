@@ -6,8 +6,15 @@
 <title>BarrCan &middot; Ordenes</title>
 <!--
   BARRCAN - MODULO: ORDENES DE TRABAJO
-  VERSION : v2.0
-  FECHA   : 2026-07-16
+  VERSION : v2.1
+  FECHA   : 2026-07-17
+  v2.1 - Conectar la orden con el reporte de instalación:
+    - El botón "Hoja" es solo la hoja impresa de referencia -- NO es
+      un formulario, nunca lo fue. Se agregó un botón nuevo ▶
+      "Reporte" que abre entregas.html YA PRECARGADO con los datos
+      de esta orden (cliente, teléfono, dirección, monto, técnico) --
+      antes había que volver a escribirlos o buscarlos por
+      presupuesto, con riesgo de que no coincidieran con la orden.
   v2.0 - El link de mapa ya no va en el aviso al cliente:
     - El cliente no necesita navegar a ningún lado -- el técnico
       llega a él. Su WhatsApp ahora es solo el aviso simple (que se
@@ -1511,11 +1518,14 @@ function otRender(){
       +'<div style="font-size:10px;color:var(--gray-400);margin-top:2px">'+( o.tecnico_id||'')+'</div>'
       +'</div>'
       +'</div>'
-      +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px">'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:5px">'
       +'<button onclick="otAbrir(\''+idStr+'\')" style="padding:7px 3px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:10px;font-weight:700;cursor:pointer">Editar</button>'
       +'<button onclick="otCambiarEstado(\''+idStr+'\')" style="padding:7px 3px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:10px;font-weight:700;cursor:pointer">Estado</button>'
       +'<button onclick="otVerHoja(\''+idStr+'\')" style="padding:7px 3px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.3);border-radius:8px;color:var(--green);font-size:10px;font-weight:700;cursor:pointer">Hoja</button>'
+      +'</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">'
       +'<button onclick="otProgramarRecordatorio(\''+idStr+'\')" style="padding:7px 3px;background:rgba(142,68,173,0.08);border:1.5px solid rgba(142,68,173,0.3);border-radius:8px;color:#8E44AD;font-size:10px;font-weight:700;cursor:pointer">&#128276; Avisar</button>'
+      +'<button onclick="otIrAReporte(\''+idStr+'\')" style="padding:7px 3px;background:var(--navy);border:1.5px solid var(--navy);border-radius:8px;color:white;font-size:10px;font-weight:700;cursor:pointer">&#9654; Reporte</button>'
       +'</div>'
       +'</div>';
   }
@@ -1833,6 +1843,16 @@ async function otEliminar(){
     OT_CACHE=OT_CACHE.filter(function(x){return x.id!==OT_EDITANDO;});
     otGuardarCache(OT_CACHE);toast('Orden eliminada');otCerrar();otRender();
   }catch(e){var errEl=document.getElementById('ot-error');if(errEl){errEl.textContent='Error: '+e.message;errEl.style.display='block';}}
+}
+
+// Conecta la orden con el reporte de instalación: abre entregas.html
+// con el id de la orden en la URL, para que llegue precargado (cliente,
+// dirección, técnico, fecha) en vez de que el técnico tenga que volver
+// a escribir todo -- esto era el hueco real que hacía parecer que el
+// botón "Hoja" debía "dejar llenar algo" cuando en realidad es solo la
+// hoja impresa de referencia.
+function otIrAReporte(id){
+  window.open('entregas.html?orden_id='+id, '_blank');
 }
 
 function otVerHoja(id){
