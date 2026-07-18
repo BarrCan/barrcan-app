@@ -1,0 +1,1640 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>BarrCan &middot; Garant&iacute;as</title>
+<!--
+  BARRCAN · MODULO: GARANTÍAS Y POSTVENTA (standalone)
+  VERSION : v1.0
+  FECHA   : 2026-07-18
+  v1.0 - Creación inicial (extraído del archivo base barrcan_app.html):
+    - Conectado a la tabla real "garantias" (ya existía en Supabase con
+      11 tickets reales -- este módulo era el único que faltaba para
+      poder verlos y gestionarlos).
+    - Mismo formulario del archivo base: cliente, tipo de problema (con
+      prioridad automática urgente/medio/normal), descripción, fecha de
+      instalación, disponibilidad, fotos/evidencia.
+    - Gestión interna: estado del ticket, técnico asignado, fecha de
+      visita, costo de reparación, notas internas. Al agendar visita,
+      ofrece avisar al cliente por WhatsApp.
+    - Mejoras sobre el archivo base:
+      - Técnico asignado ahora es un selector dinámico conectado con
+        tecnicos.html (antes era una lista fija TEC1/TEC2/MAU/HER).
+      - Las fotos de evidencia ahora SÍ se guardan de verdad (se suben a
+        Storage) -- en el archivo base se veían en el formulario pero
+        nunca llegaban a fotos_urls, se perdían al cerrar.
+      - "Registrado por" se llena solo con la persona que inició sesión
+        en el portal (barrcan_usuario_activo), no había ese dato antes.
+    - Requiere el SQL adjunto solo para el permiso de Storage de fotos
+      (la tabla y sus políticas principales ya existían).
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+:root {
+  --navy: #1B3A5C;
+  --blue: #2E6DA4;
+  --gold: #C8923A;
+  --gold-light: #E8B96A;
+  --orange: #FF6600;
+  --white: #FFFFFF;
+  --off-white: #F7F5F0;
+  --gray-100: #F0EDE8;
+  --gray-200: #DDD9D2;
+  --gray-400: #9A9590;
+  --gray-600: #5A5652;
+  --green: #2D7D46;
+  --red: #C0392B;
+  --amber: #E67E22;
+  --shadow-sm: 0 2px 8px rgba(27,58,92,0.08);
+  --shadow-md: 0 8px 32px rgba(27,58,92,0.14);
+  --shadow-lg: 0 20px 60px rgba(27,58,92,0.20);
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  height: 100%;
+  font-family: 'DM Sans', sans-serif;
+  background: var(--off-white);
+  color: var(--navy);
+  overscroll-behavior: none;
+}
+
+/* ─── LAYOUT ─── */
+#app { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+/* ─── HEADER ─── */
+.header {
+  background: var(--navy);
+  padding: 0 20px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+  position: relative;
+  z-index: 100;
+}
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.logo-mark {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, var(--gold), var(--gold-light));
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Playfair Display', serif;
+  font-weight: 900;
+  font-size: 16px;
+  color: var(--navy);
+  letter-spacing: -0.5px;
+}
+.logo-text {
+  font-family: 'Playfair Display', serif;
+  font-weight: 700;
+  font-size: 18px;
+  color: var(--white);
+  letter-spacing: 0.5px;
+}
+.logo-sub {
+  font-size: 9px;
+  color: var(--gold-light);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  display: block;
+  margin-top: -3px;
+}
+.offline-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(200,146,58,0.15);
+  border: 1px solid rgba(200,146,58,0.3);
+  border-radius: 20px;
+  padding: 4px 10px;
+  font-size: 11px;
+  color: var(--gold-light);
+  font-weight: 500;
+}
+.offline-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--gold-light);
+  animation: pulse-dot 2s infinite;
+}
+@keyframes pulse-dot {
+  0%,100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* ─── TABS ─── */
+.tabs {
+  background: var(--navy);
+  display: flex;
+  border-bottom: 2px solid rgba(200,146,58,0.3);
+  flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  scroll-behavior: smooth;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  flex: 0 0 auto;
+  min-width: 68px;
+  padding: 10px 10px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.45);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  transition: all 0.2s;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+.tab-icon { font-size: 16px; }
+.tab.active { color: var(--gold-light); border-bottom-color: var(--gold); }
+.tab:active { background: rgba(255,255,255,0.05); }
+
+/* ─── CONTENT ─── */
+.content {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ─── SCREEN ─── */
+.screen { display: none; padding: 16px; }
+.screen.active { display: block; }
+
+/* ─── CATÁLOGO AGRUPADO ─── */
+.familia-grupo {
+  margin-bottom: 10px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.familia-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 13px 16px;
+  background: var(--navy);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+  gap: 10px;
+}
+.familia-header:active { background: #0f2a45; }
+.familia-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+.familia-emoji { font-size: 20px; flex-shrink: 0; }
+.familia-nombre {
+  font-family: 'Playfair Display', serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--white);
+  line-height: 1.2;
+}
+.familia-desc {
+  font-size: 10px;
+  color: rgba(255,255,255,0.5);
+  margin-top: 1px;
+}
+.familia-badge {
+  background: rgba(200,146,58,0.25);
+  color: var(--gold-light);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.familia-chevron {
+  color: rgba(255,255,255,0.5);
+  font-size: 12px;
+  transition: transform 0.25s;
+  flex-shrink: 0;
+}
+.familia-grupo.open .familia-chevron { transform: rotate(180deg); }
+.familia-body {
+  display: none;
+  background: var(--white);
+  padding: 12px;
+}
+.familia-grupo.open .familia-body { display: block; }
+.catalogo-seccion-header {
+  font-family: 'Playfair Display', serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--gold);
+  padding: 18px 4px 6px;
+  margin-top: 4px;
+  border-bottom: 1px solid var(--gray-200);
+  margin-bottom: 8px;
+}
+.catalogo-seccion-header:first-child { padding-top: 4px; margin-top: 0; }
+.familia-vacia .familia-header { opacity: 0.55; cursor: default; }
+.familia-vacia .familia-badge { background: rgba(90,86,82,0.15); color: var(--gray-400); }
+.familia-vacia-label {
+  padding: 14px 16px;
+  font-size: 12px;
+  color: var(--gray-400);
+  background: var(--white);
+  text-align: center;
+  font-style: italic;
+}
+.orden-filtro-btn {
+  padding:6px 14px;border-radius:20px;border:1.5px solid var(--gray-200);
+  background:none;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;
+  color:var(--gray-400);cursor:pointer;white-space:nowrap;transition:all 0.15s;
+}
+.orden-filtro-btn.active {
+  background:var(--navy);color:#fff;border-color:var(--navy);
+}
+.orden-card {
+  background:var(--white);border-radius:var(--radius);padding:14px 16px;
+  margin-bottom:10px;box-shadow:var(--shadow-sm);cursor:pointer;
+  border-left:5px solid var(--gray-200);transition:all 0.15s;
+}
+.orden-card.pendiente  { border-left-color:#F39C12; }
+.orden-card.en_camino  { border-left-color:#2980B9; }
+.orden-card.completada { border-left-color:#27AE60; }
+.orden-card.cancelada  { border-left-color:#E74C3C; opacity:0.6; }
+.orden-estado-badge {
+  font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;
+  letter-spacing:0.5px;text-transform:uppercase;
+}
+.badge-pendiente  { background:rgba(243,156,18,0.12);  color:#E67E22; }
+.badge-en_camino  { background:rgba(41,128,185,0.12);  color:#2980B9; }
+.badge-completada { background:rgba(39,174,96,0.12);   color:#27AE60; }
+.badge-cancelada  { background:rgba(231,76,60,0.12);   color:#E74C3C; }
+  background: rgba(46,109,164,0.12);
+  color: var(--blue);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 8px;
+  margin-left: 6px;
+}
+
+/* ─── CATALOG GRID ─── */
+.section-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--navy);
+  margin-bottom: 4px;
+}
+.section-sub {
+  font-size: 12px;
+  color: var(--gray-400);
+  margin-bottom: 16px;
+  letter-spacing: 0.3px;
+}
+
+.catalog-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.catalog-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 2px solid transparent;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+}
+.catalog-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--blue);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.catalog-card.selected {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px rgba(200,146,58,0.15);
+}
+.catalog-card.selected::before { opacity: 1; background: var(--gold); }
+.catalog-card:active { transform: scale(0.97); }
+
+.card-svg {
+  width: 100%;
+  height: 80px;
+  margin-bottom: 10px;
+}
+.card-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--navy);
+  line-height: 1.3;
+  margin-bottom: 3px;
+}
+.card-series {
+  font-size: 10px;
+  color: var(--blue);
+  font-weight: 500;
+  background: rgba(46,109,164,0.08);
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-bottom: 4px;
+}
+.card-badge {
+  font-size: 9px;
+  color: var(--gray-400);
+  font-family: 'DM Mono', monospace;
+}
+
+/* ─── FORM ─── */
+.wizard-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-sm);
+}
+.wizard-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--blue);
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wizard-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--gray-200);
+}
+
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-group { margin-bottom: 14px; }
+.form-group:last-child { margin-bottom: 0; }
+.form-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray-600);
+  margin-bottom: 5px;
+  letter-spacing: 0.3px;
+}
+.form-input, .form-select {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1.5px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--navy);
+  background: var(--off-white);
+  transition: border-color 0.2s, box-shadow 0.2s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.form-input:focus, .form-select:focus {
+  outline: none;
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(46,109,164,0.12);
+  background: var(--white);
+}
+.form-input.mm-input { font-family: 'DM Mono', monospace; font-size: 18px; letter-spacing: 1px; }
+.input-unit {
+  position: relative;
+}
+.input-unit .form-input { padding-right: 48px; }
+.input-unit-label {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--gray-400);
+  letter-spacing: 0.5px;
+  pointer-events: none;
+}
+
+.form-select-wrap { position: relative; }
+.form-select-wrap::after {
+  content: '▾';
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--blue);
+  pointer-events: none;
+  font-size: 14px;
+}
+select.form-select { padding-right: 36px; cursor: pointer; }
+
+/* Switch */
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+}
+.switch-info {}
+.switch-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--navy);
+}
+.switch-desc {
+  font-size: 11px;
+  color: var(--gray-400);
+  margin-top: 2px;
+}
+.toggle {
+  width: 46px;
+  height: 26px;
+  background: var(--gray-200);
+  border-radius: 13px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.toggle.on { background: var(--blue); }
+.toggle-knob {
+  width: 20px;
+  height: 20px;
+  background: white;
+  border-radius: 50%;
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+.toggle.on .toggle-knob { transform: translateX(20px); }
+
+/* Piso selector */
+.piso-selector {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.piso-btn {
+  flex: 1;
+  min-width: 36px;
+  padding: 8px 4px;
+  border: 1.5px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  background: var(--off-white);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-600);
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s;
+}
+.piso-btn.active {
+  background: var(--navy);
+  border-color: var(--navy);
+  color: var(--white);
+}
+.piso-btn:active { transform: scale(0.92); }
+
+/* Modalidad */
+.modalidad-selector { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.modalidad-btn {
+  padding: 12px 10px;
+  border: 1.5px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  background: var(--off-white);
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.modalidad-btn.active {
+  border-color: var(--gold);
+  background: rgba(200,146,58,0.06);
+}
+.modalidad-icon { font-size: 20px; margin-bottom: 4px; }
+.modalidad-label { font-size: 11px; font-weight: 600; color: var(--navy); }
+.modalidad-desc { font-size: 10px; color: var(--gray-400); }
+
+/* ─── CALCULAR BTN ─── */
+.btn-calcular {
+  width: 100%;
+  padding: 18px;
+  background: linear-gradient(135deg, var(--orange), #FF8533);
+  color: white;
+  border: none;
+  border-radius: var(--radius);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 6px 20px rgba(255,102,0,0.35);
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+.btn-calcular:active { transform: scale(0.97); box-shadow: 0 3px 10px rgba(255,102,0,0.25); }
+.btn-calcular:disabled { background: var(--gray-200); box-shadow: none; color: var(--gray-400); }
+
+/* ─── ALERTA DE PESO ─── */
+.peso-alert {
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.peso-alert.verde { background: rgba(45,125,70,0.08); border: 1.5px solid rgba(45,125,70,0.25); }
+.peso-alert.ambar { background: rgba(230,126,34,0.08); border: 1.5px solid rgba(230,126,34,0.30); }
+.peso-alert.rojo { background: rgba(192,57,43,0.08); border: 1.5px solid rgba(192,57,43,0.35); }
+.alert-icon { font-size: 24px; flex-shrink: 0; margin-top: 1px; }
+.alert-title { font-size: 13px; font-weight: 700; margin-bottom: 2px; }
+.peso-alert.verde .alert-title { color: var(--green); }
+.peso-alert.ambar .alert-title { color: var(--amber); }
+.peso-alert.rojo .alert-title { color: var(--red); }
+.alert-body { font-size: 11px; color: var(--gray-600); line-height: 1.5; }
+
+/* ─── RESULTADO / PRESUPUESTO ─── */
+.resultado-header {
+  background: linear-gradient(135deg, var(--navy), #2A4F7A);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 12px;
+  color: white;
+  position: relative;
+  overflow: hidden;
+}
+.resultado-header::after {
+  content: 'BC';
+  position: absolute;
+  right: -8px;
+  bottom: -20px;
+  font-family: 'Playfair Display', serif;
+  font-size: 80px;
+  font-weight: 900;
+  color: rgba(255,255,255,0.04);
+  pointer-events: none;
+}
+.res-label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,0.5); margin-bottom: 4px; }
+.res-diseno { font-family: 'Playfair Display', serif; font-size: 18px; font-weight: 700; margin-bottom: 12px; }
+.res-medidas {
+  font-family: 'DM Mono', monospace;
+  font-size: 14px;
+  color: var(--gold-light);
+  letter-spacing: 1px;
+}
+.res-precio-final {
+  text-align: right;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.15);
+}
+.res-precio-label { font-size: 10px; letter-spacing: 1px; color: rgba(255,255,255,0.5); text-transform: uppercase; }
+.res-precio-monto {
+  font-family: 'Playfair Display', serif;
+  font-size: 32px;
+  font-weight: 900;
+  color: var(--gold-light);
+}
+.res-precio-mxn { font-size: 14px; font-weight: 400; margin-left: 4px; opacity: 0.7; }
+
+/* Vista toggle */
+.vista-toggle {
+  display: flex;
+  background: var(--gray-100);
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  margin-bottom: 12px;
+}
+.vista-btn {
+  flex: 1;
+  padding: 8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-400);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.vista-btn.active {
+  background: var(--white);
+  color: var(--navy);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Desglose */
+.desglose-card {
+  background: var(--white);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow-sm);
+}
+.desglose-header {
+  padding: 12px 16px;
+  background: var(--navy);
+  color: white;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.desglose-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--gray-100);
+  gap: 10px;
+}
+.desglose-row:last-child { border-bottom: none; }
+.desglose-clave {
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  color: var(--blue);
+  background: rgba(46,109,164,0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.desglose-desc {
+  flex: 1;
+  font-size: 12px;
+  color: var(--navy);
+  line-height: 1.3;
+}
+.desglose-val {
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--navy);
+  text-align: right;
+  white-space: nowrap;
+}
+.desglose-val.gold { color: var(--gold); }
+
+/* Costos table */
+.costo-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--gray-100);
+  font-size: 13px;
+}
+.costo-row:last-child { border-bottom: none; }
+.costo-row.subtotal { background: var(--gray-100); font-weight: 600; }
+.costo-row.total {
+  background: var(--navy);
+  color: white;
+  font-weight: 700;
+  font-size: 15px;
+  padding: 14px 16px;
+}
+.costo-row.total .costo-monto { color: var(--gold-light); font-family: 'DM Mono', monospace; }
+.costo-monto { font-family: 'DM Mono', monospace; font-weight: 600; }
+.costo-pct { font-size: 10px; color: var(--gray-400); margin-left: 6px; }
+
+/* ─── HISTORIAL ─── */
+.historial-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--gray-400);
+}
+.historial-empty-icon { font-size: 48px; margin-bottom: 12px; }
+.historial-item {
+  background: var(--white);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.historial-item:active { transform: scale(0.98); }
+.hist-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+.hist-diseno { font-size: 14px; font-weight: 700; color: var(--navy); }
+.hist-precio { font-size: 16px; font-weight: 700; color: var(--gold); font-family: 'DM Mono', monospace; }
+.hist-bottom { display: flex; gap: 8px; flex-wrap: wrap; }
+.hist-tag {
+  font-size: 10px;
+  background: var(--gray-100);
+  color: var(--gray-600);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-family: 'DM Mono', monospace;
+}
+.hist-date { font-size: 10px; color: var(--gray-400); margin-top: 4px; }
+
+/* ─── CONFIG ─── */
+.config-section { margin-bottom: 20px; }
+.config-item {
+  background: var(--white);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: var(--shadow-sm);
+}
+.config-item-label { font-size: 13px; font-weight: 600; color: var(--navy); }
+.config-item-val {
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  color: var(--blue);
+  font-weight: 600;
+}
+.config-input-inline {
+  width: 80px;
+  padding: 6px 10px;
+  border: 1.5px solid var(--gray-200);
+  border-radius: var(--radius-sm);
+  font-family: 'DM Mono', monospace;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--navy);
+  text-align: right;
+  background: var(--off-white);
+}
+.config-input-inline:focus { outline: none; border-color: var(--blue); }
+
+.btn-limpiar {
+  width: 100%;
+  padding: 14px;
+  background: rgba(192,57,43,0.08);
+  border: 1.5px solid rgba(192,57,43,0.25);
+  border-radius: var(--radius);
+  color: var(--red);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-limpiar:active { background: rgba(192,57,43,0.15); }
+
+/* ─── NO RESULTS ─── */
+.no-selection {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--gray-400);
+}
+.no-sel-icon { font-size: 40px; margin-bottom: 12px; }
+.no-sel-text { font-size: 14px; }
+
+/* ─── FOOTER EXPORT BTN ─── */
+.export-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--white);
+  border-top: 1px solid var(--gray-200);
+  padding: 12px 16px;
+  display: none;
+  gap: 10px;
+  z-index: 200;
+}
+.export-bar.visible { display: flex; }
+.btn-export {
+  flex: 1;
+  padding: 14px;
+  background: var(--navy);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.2s;
+}
+.btn-export:active { transform: scale(0.97); }
+.btn-save {
+  width: 52px;
+  height: 52px;
+  background: var(--gold);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 22px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+.btn-save:active { transform: scale(0.95); }
+
+/* ─── SELECCIÓN MÚLTIPLE ─── */
+.historial-item { transition: all 0.15s; }
+.hist-selected {
+  border: 2px solid var(--blue) !important;
+  background: rgba(46,109,164,0.04) !important;
+}
+.hist-check {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--gray-200);
+  background: var(--off-white);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: white;
+  transition: all 0.15s;
+  margin-top: 2px;
+}
+.hist-check.checked {
+  background: var(--blue);
+  border-color: var(--blue);
+}
+
+/* Barra flotante de selección */
+.barra-seleccion {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--navy);
+  padding: 12px 16px;
+  display: none;
+  align-items: center;
+  gap: 12px;
+  z-index: 300;
+  box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
+  border-top: 2px solid var(--gold);
+}
+.barra-seleccion.visible { display: flex; }
+.sel-info { flex: 1; }
+.sel-count { font-size: 11px; color: rgba(255,255,255,0.6); }
+.sel-total { font-family: 'DM Mono', monospace; font-size: 17px; font-weight: 700; color: var(--gold-light); }
+.btn-generar-global {
+  padding: 12px 18px;
+  background: linear-gradient(135deg, var(--orange), #FF8533);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(255,102,0,0.4);
+  transition: all 0.2s;
+}
+.btn-generar-global:active { transform: scale(0.96); }
+
+/* ─── PRINT / PDF ─── */
+@media print {
+  /* Ocultar toda la app */
+  #app, .header, .tabs, .export-bar, .toast,
+  .barra-seleccion, #modal-overlay, #modal-edicion,
+  #modal-contrato-overlay, #modal-contrato,
+  #entrega-overlay { display: none !important; }
+  /* Mostrar solo el área de impresión activa */
+  #print-area, #ent-print-area {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: white;
+  }
+  body { margin: 0; padding: 0; background: white; }
+  @page { margin: 12mm 14mm; size: letter; }
+}
+
+/* ─── MÓDULO ENTREGA ─── */
+.ent-check-item {
+  display:flex;align-items:flex-start;gap:10px;
+  background:var(--off-white);border-radius:var(--radius-sm);
+  padding:10px 12px;border:1.5px solid var(--gray-100);transition:border-color 0.15s;
+}
+.ent-check-item.ok { border-color:rgba(45,125,70,0.3);background:rgba(45,125,70,0.04); }
+.ent-check-item.fail { border-color:rgba(192,57,43,0.3);background:rgba(192,57,43,0.04); }
+.ent-check-toggle { display:flex;gap:5px;flex-shrink:0;margin-top:2px; }
+.ent-check-btn {
+  width:28px;height:28px;border-radius:50%;border:1.5px solid var(--gray-200);
+  background:white;font-size:13px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:all 0.15s;
+}
+.ent-check-btn.sel-ok { background:var(--green);border-color:var(--green); }
+.ent-check-btn.sel-fail { background:var(--red);border-color:var(--red); }
+.ent-check-desc { flex:1;font-size:12px;color:var(--navy);line-height:1.4; }
+.ent-check-nota { width:100%;margin-top:6px;padding:6px 8px;border:1px solid var(--gray-200);border-radius:4px;font-size:11px;font-family:'DM Sans',sans-serif; }
+.ent-evidencia-item {
+  border:2px dashed var(--gray-200);border-radius:var(--radius-sm);
+  padding:12px;cursor:pointer;transition:all 0.2s;
+  background:var(--off-white);position:relative;
+}
+.ent-evidencia-item.completo { border-color:rgba(45,125,70,0.4);background:rgba(45,125,70,0.04); }
+.ent-ev-row { display:flex;align-items:center;gap:10px; }
+.ent-ev-ico { font-size:22px;flex-shrink:0; }
+.ent-ev-titulo { font-size:12px;font-weight:700;color:var(--navy); }
+.ent-ev-sub { font-size:10px;color:var(--gray-400);margin-top:1px; }
+.ent-ev-preview { width:100%;max-height:140px;object-fit:cover;border-radius:6px;margin-top:8px;display:none; }
+.ent-ev-done { position:absolute;top:8px;right:8px;width:22px;height:22px;background:var(--green);border-radius:50%;display:none;align-items:center;justify-content:center;color:white;font-size:12px;font-weight:700; }
+.ent-evidencia-item.completo .ent-ev-done { display:flex; }
+
+/* Encuesta */
+.encuesta-overlay {
+  position:fixed;inset:0;
+  background:linear-gradient(160deg,#0F2A45,#1B3A5C);
+  z-index:9100;overflow-y:auto;padding:24px 20px 60px;display:none;
+}
+.encuesta-overlay.visible { display:block; }
+.enc-card { background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:var(--radius);padding:14px 16px;margin-bottom:12px; }
+.enc-pregunta { font-size:14px;font-weight:600;color:white;margin-bottom:10px;line-height:1.4; }
+.enc-opciones { display:flex;flex-direction:column;gap:7px; }
+.enc-opcion {
+  padding:10px 14px;border-radius:var(--radius-sm);
+  border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);
+  color:rgba(255,255,255,0.8);font-size:13px;cursor:pointer;text-align:left;
+  transition:all 0.15s;font-family:'DM Sans',sans-serif;width:100%;
+}
+.enc-opcion.sel { background:rgba(200,146,58,0.25);border-color:var(--gold);color:white;font-weight:600; }
+.enc-opcion:active { transform:scale(0.98); }
+.enc-textarea {
+  width:100%;padding:10px;border-radius:var(--radius-sm);
+  border:1.5px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.07);
+  color:white;font-family:'DM Sans',sans-serif;font-size:13px;resize:none;box-sizing:border-box;
+}
+.enc-textarea::placeholder { color:rgba(255,255,255,0.3); }
+
+/* Animations */
+.fade-in { animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+.slide-up { animation: slideUp 0.35s cubic-bezier(.4,0,.2,1); }
+@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+
+.shake { animation: shake 0.4s ease; }
+@keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+
+/* ─── TOAST ─── */
+.toast {
+  position: fixed;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-20px);
+  background: var(--navy);
+  color: white;
+  padding: 10px 18px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0;
+  transition: all 0.3s;
+  z-index: 999;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* Vidrio SVG preview */
+.vidrio-preview {
+  background: var(--gray-100);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+</style>
+<style>
+body{min-height:100vh}
+#app{display:flex;flex-direction:column;min-height:100vh}
+.content{flex:1;padding:16px;max-width:640px;margin:0 auto;width:100%;box-sizing:border-box}
+.filtro-btn{padding:7px 14px;border:1.5px solid var(--gray-200);border-radius:20px;background:var(--white);font-size:12px;font-weight:600;color:var(--gray-600);white-space:nowrap;cursor:pointer}
+.filtro-btn.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.gtia-prior-btn{padding:10px 4px;border:2px solid var(--gray-200);border-radius:var(--radius-sm);background:none;cursor:pointer;font-size:12px;font-weight:700;color:var(--gray-400);font-family:'DM Sans',sans-serif}
+.ticket-card{background:var(--white);border-radius:var(--radius);padding:14px 16px;margin-bottom:10px;box-shadow:var(--shadow-sm);cursor:pointer}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="header">
+    <div class="header-logo">
+      <div class="logo-mark" style="padding:0;overflow:hidden">
+        <img src="https://barrcan.github.io/barrcan-app/assets/logo-icono.jpg" onerror="this.onerror=null;this.src=_LOGO_ICONO_B64;" style="width:100%;height:100%;object-fit:cover;display:block">
+      </div>
+      <div><span class="logo-text">BarrCan</span><span class="logo-sub">Garant&iacute;as &middot; Postventa</span></div>
+    </div>
+    <div class="offline-badge">
+      <div class="offline-dot"></div>
+      <span id="conn-status">Offline-First</span>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div>
+        <p class="section-title" style="margin-bottom:2px">Garant&iacute;as y Postventa</p>
+        <p class="section-sub" style="margin:0">Tickets de servicio &middot; Reportes de clientes</p>
+      </div>
+      <button onclick="garantiaAbrir()" style="padding:9px 14px;background:var(--navy);color:white;border:none;border-radius:var(--radius-sm);font-size:12px;font-weight:700;cursor:pointer">+ Ticket</button>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:14px;overflow-x:auto;padding-bottom:4px">
+      <button class="filtro-btn active" data-filtro="todos" onclick="garantiasFiltrar(this)">Todos</button>
+      <button class="filtro-btn" data-filtro="urgente" onclick="garantiasFiltrar(this)">&#128308; Urgente</button>
+      <button class="filtro-btn" data-filtro="medio" onclick="garantiasFiltrar(this)">&#128993; Medio</button>
+      <button class="filtro-btn" data-filtro="normal" onclick="garantiasFiltrar(this)">&#128994; Normal</button>
+      <button class="filtro-btn" data-filtro="resuelto" onclick="garantiasFiltrar(this)">&#9989; Resuelto</button>
+    </div>
+
+    <div id="garantias-lista">
+      <div style="text-align:center;padding:40px;color:var(--gray-400)">
+        <div style="font-size:40px;margin-bottom:10px">&#128737;&#65039;</div>
+        <div>Cargando...</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════ MODAL: NUEVO TICKET ═══════ -->
+<div id="garantia-modal-overlay" onclick="garantiaCerrar()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:800;backdrop-filter:blur(3px)"></div>
+<div id="garantia-modal" style="display:none;position:fixed;bottom:0;left:0;right:0;background:var(--white);border-radius:20px 20px 0 0;z-index:900;max-height:92vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(0,0,0,0.3)">
+  <div style="padding:16px 20px 40px">
+    <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 16px"></div>
+    <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--navy);margin-bottom:16px">Nuevo Ticket de Garant&iacute;a</div>
+
+    <div class="form-group">
+      <label class="form-label">Cliente *</label>
+      <input type="text" id="gtia-cliente" class="form-input" placeholder="Nombre del cliente">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tel&eacute;fono *</label>
+      <input type="tel" id="gtia-tel" class="form-input" placeholder="55 1234 5678" inputmode="tel">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Folio de contrato (si recuerda)</label>
+      <input type="text" id="gtia-folio" class="form-input" placeholder="CACN-...">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Tipo de problema *</label>
+      <div class="form-select-wrap">
+        <select id="gtia-tipo" class="form-select" onchange="gtiaActualizarPrioridad()">
+          <optgroup label="&#128308; Urgente">
+            <option value="filtracion">Filtraci&oacute;n de agua</option>
+            <option value="vidrio_roto">Vidrio roto</option>
+            <option value="no_cierra">No cierra / no abre</option>
+            <option value="seguridad">Problema de seguridad</option>
+          </optgroup>
+          <optgroup label="&#128993; Medio">
+            <option value="herraje_danado">Herraje da&ntilde;ado</option>
+            <option value="ruido">Ruido al abrir/cerrar</option>
+            <option value="mosquitero">Mosquitero roto</option>
+            <option value="condensacion">Condensaci&oacute;n</option>
+          </optgroup>
+          <optgroup label="&#128994; Normal">
+            <option value="ajuste">Ajuste menor</option>
+            <option value="silicon">Silic&oacute;n despegado</option>
+            <option value="limpieza">Limpieza / mantenimiento</option>
+            <option value="revision">Revisi&oacute;n general</option>
+          </optgroup>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Prioridad</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <button type="button" class="gtia-prior-btn" data-prior="urgente" onclick="gtiaSelPrioridad(this)">&#128308; Urgente</button>
+        <button type="button" class="gtia-prior-btn" data-prior="medio" onclick="gtiaSelPrioridad(this)">&#128993; Medio</button>
+        <button type="button" class="gtia-prior-btn" data-prior="normal" onclick="gtiaSelPrioridad(this)">&#128994; Normal</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Descripci&oacute;n del problema *</label>
+      <textarea id="gtia-desc" class="form-input" rows="3" placeholder="Describe qu&eacute; est&aacute; pasando con detalle..." style="resize:none"></textarea>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Fecha de instalaci&oacute;n aprox.</label>
+        <input type="date" id="gtia-fecha-inst" class="form-input">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Disponibilidad visita</label>
+        <div class="form-select-wrap">
+          <select id="gtia-disponibilidad" class="form-select">
+            <option value="manana">Ma&ntilde;ana (8-2pm)</option>
+            <option value="tarde">Tarde (2-6pm)</option>
+            <option value="sabado">S&aacute;bado</option>
+            <option value="coordinar">A coordinar</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Fotos / evidencia</label>
+      <input type="file" id="gtia-fotos-input" accept="image/*,video/*" multiple style="display:none" onchange="gtiaAgregarEvidencia(this)">
+      <button type="button" onclick="document.getElementById('gtia-fotos-input').click()" style="width:100%;padding:12px;background:var(--off-white);border:1.5px dashed var(--gray-200);border-radius:var(--radius-sm);cursor:pointer;font-size:13px;color:var(--gray-400)">&#128247; Agregar fotos o video</button>
+      <div id="gtia-evidencia-preview" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px"></div>
+    </div>
+
+    <div id="gtia-error" style="display:none;color:var(--red);font-size:12px;padding:8px 12px;background:rgba(192,57,43,0.08);border-radius:var(--radius-sm);margin-bottom:12px"></div>
+
+    <button onclick="gtiaGuardar()" style="width:100%;padding:14px;background:linear-gradient(135deg,#E74C3C,#C0392B);color:white;border:none;border-radius:var(--radius);font-family:'DM Sans',sans-serif;font-size:15px;font-weight:700;cursor:pointer;box-shadow:0 4px 16px rgba(231,76,60,0.35)">&#128737;&#65039; CREAR TICKET</button>
+  </div>
+</div>
+
+<!-- ═══════ MODAL: DETALLE / GESTIÓN ═══════ -->
+<div id="gtia-det-overlay" onclick="gtiaDetCerrar()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:1000;backdrop-filter:blur(3px)"></div>
+<div id="gtia-det-modal" style="display:none;position:fixed;bottom:0;left:0;right:0;background:var(--white);border-radius:20px 20px 0 0;z-index:1001;max-height:92vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(0,0,0,0.3)">
+  <input type="hidden" id="gtia-det-id">
+  <div style="padding:16px 20px 40px">
+    <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 16px"></div>
+
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px">
+      <div>
+        <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:var(--navy)" id="gtia-det-nombre">&mdash;</div>
+        <div style="font-size:12px;color:var(--gray-400);margin-top:2px" id="gtia-det-tel">&mdash;</div>
+      </div>
+      <span id="gtia-det-prior" style="font-size:12px;font-weight:700"></span>
+    </div>
+
+    <div style="background:var(--off-white);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:14px">
+      <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--gray-400);margin-bottom:8px">Reporte del cliente</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px">
+        <div><span style="color:var(--gray-400)">Tipo: </span><span id="gtia-det-tipo" style="font-weight:600;color:var(--navy)">&mdash;</span></div>
+        <div><span style="color:var(--gray-400)">Folio: </span><span id="gtia-det-folio" style="font-weight:600;color:var(--blue);font-family:monospace">&mdash;</span></div>
+        <div><span style="color:var(--gray-400)">Instalaci&oacute;n: </span><span id="gtia-det-fecha-inst" style="font-weight:600;color:var(--navy)">&mdash;</span></div>
+        <div><span style="color:var(--gray-400)">Disponibilidad: </span><span id="gtia-det-disp" style="font-weight:600;color:var(--navy)">&mdash;</span></div>
+      </div>
+      <div style="margin-top:8px;font-size:12px;color:var(--gray-600);line-height:1.5" id="gtia-det-desc">&mdash;</div>
+      <div id="gtia-det-fotos" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:10px"></div>
+    </div>
+
+    <div style="font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--blue);margin-bottom:10px">Gesti&oacute;n interna</div>
+
+    <div class="form-group">
+      <label class="form-label">Estado del ticket</label>
+      <div class="form-select-wrap">
+        <select id="gtia-det-estado" class="form-select">
+          <option value="nuevo">&#127991;&#65039; Nuevo</option>
+          <option value="en_revision">&#128269; En revisi&oacute;n</option>
+          <option value="visita_agendada">&#128197; Visita agendada</option>
+          <option value="resuelto">&#9989; Resuelto</option>
+          <option value="cerrado">&#128274; Cerrado</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">T&eacute;cnico asignado</label>
+        <select id="gtia-det-tecnico" class="form-select">
+          <option value="">&mdash; Sin asignar &mdash;</option>
+          <option value="ESAU">Esa&uacute;</option>
+          <option value="MIGUEL">Miguel</option>
+          <option value="CARLOS">Carlos</option>
+          <option value="OMAR">Omar</option>
+          <option value="RODRIGO">Rodrigo</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Fecha de visita</label>
+        <input type="date" id="gtia-det-fecha-vis" class="form-input">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Costo de reparaci&oacute;n (si aplica)</label>
+      <input type="number" id="gtia-det-costo" class="form-input" placeholder="0" min="0" inputmode="numeric">
+      <div style="font-size:10px;color:var(--gray-400);margin-top:3px">Dejar vac&iacute;o si est&aacute; cubierto por garant&iacute;a</div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Notas internas</label>
+      <textarea id="gtia-det-notas" class="form-input" rows="3" placeholder="Diagn&oacute;stico, materiales usados, acciones realizadas..." style="resize:none"></textarea>
+    </div>
+
+    <div id="gtia-det-error" style="display:none;color:var(--red);font-size:12px;padding:8px 12px;background:rgba(192,57,43,0.08);border-radius:var(--radius-sm);margin-bottom:12px"></div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <button onclick="gtiaDetWhatsApp()" style="padding:12px;background:rgba(37,211,102,0.1);color:#25D366;border:1.5px solid rgba(37,211,102,0.3);border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer">&#128172; WhatsApp cliente</button>
+      <button onclick="gtiaDetGuardar()" style="padding:12px;background:var(--navy);color:white;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer">&#128190; Guardar cambios</button>
+    </div>
+    <button onclick="gtiaDetCerrar()" style="width:100%;padding:11px;background:none;border:1px solid var(--gray-200);border-radius:var(--radius-sm);color:var(--gray-400);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer">Cerrar</button>
+  </div>
+</div>
+
+<script>
+var _LOGO_ICONO_B64 = 'data:image/jpeg;base64,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';
+
+var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
+var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
+var _sbClient=null;
+function sb(){
+  if(!_sbClient&&window.supabase){
+    _sbClient=window.supabase.createClient(SB_URL,SB_KEY,{db:{schema:'barrcan'},auth:{persistSession:true,storageKey:'barrcan_auth'}});
+  }
+  return _sbClient;
+}
+var SYNC={online:navigator.onLine};
+window.addEventListener('online', function(){SYNC.online=true;detectarConexion();});
+window.addEventListener('offline',function(){SYNC.online=false;detectarConexion();});
+function detectarConexion(){var b=document.getElementById('conn-status');if(b)b.textContent=navigator.onLine?'Online':'Offline-First';}
+function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
+function esc(s){return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function fmt(n){return Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:0,maximumFractionDigits:2});}
+function usuarioActivo(){try{return JSON.parse(localStorage.getItem('barrcan_usuario_activo')||'{}');}catch(e){return {};}}
+
+// ── Configuración de prioridad y estilos ──
+var GTIA_PRIORIDAD_MAP = {
+  filtracion:'urgente', vidrio_roto:'urgente', no_cierra:'urgente', seguridad:'urgente',
+  herraje_danado:'medio', ruido:'medio', mosquitero:'medio', condensacion:'medio',
+  ajuste:'normal', silicon:'normal', limpieza:'normal', revision:'normal'
+};
+var GTIA_PRIOR_STYLE = {
+  urgente: { emoji:'🔴', color:'#E74C3C', bg:'rgba(231,76,60,0.1)'  },
+  medio:   { emoji:'🟡', color:'#F39C12', bg:'rgba(243,156,18,0.1)' },
+  normal:  { emoji:'🟢', color:'#27AE60', bg:'rgba(39,174,96,0.1)'  }
+};
+var GARANTIAS_CACHE = [];
+var GARANTIA_FILTRO = 'todos';
+var GTIA_PRIOR_SEL  = 'urgente';
+var GTIA_EVIDENCIAS = [];
+
+function gtiaActualizarPrioridad() {
+  var tipo = document.getElementById('gtia-tipo').value;
+  gtiaSelPrioridadById(GTIA_PRIORIDAD_MAP[tipo] || 'normal');
+}
+function gtiaSelPrioridadById(prior) {
+  var btn = document.querySelector('.gtia-prior-btn[data-prior="' + prior + '"]');
+  if (btn) gtiaSelPrioridad(btn);
+}
+function gtiaSelPrioridad(btn) {
+  GTIA_PRIOR_SEL = btn.dataset.prior;
+  var st = GTIA_PRIOR_STYLE[GTIA_PRIOR_SEL] || GTIA_PRIOR_STYLE.normal;
+  document.querySelectorAll('.gtia-prior-btn').forEach(function(b) {
+    var activo = b === btn;
+    b.style.borderColor = activo ? st.color : 'var(--gray-200)';
+    b.style.background  = activo ? st.bg    : 'none';
+    b.style.color       = activo ? st.color : 'var(--gray-400)';
+  });
+}
+
+// ── Evidencia (fotos/video) — en memoria hasta guardar, luego se suben de verdad ──
+function gtiaAgregarEvidencia(input) {
+  if (!input || !input.files) return;
+  for (var i = 0; i < input.files.length; i++) {
+    (function(file) {
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        GTIA_EVIDENCIAS.push({ dataUrl: e.target.result, tipo: file.type, nombre: file.name });
+        gtiaRenderEvidencias();
+      };
+      reader.readAsDataURL(file);
+    })(input.files[i]);
+  }
+  input.value = '';
+}
+function gtiaRenderEvidencias() {
+  var cont = document.getElementById('gtia-evidencia-preview');
+  cont.innerHTML = GTIA_EVIDENCIAS.map(function(e, i) {
+    var media = e.tipo.indexOf('video') === 0
+      ? '<video src="' + e.dataUrl + '" style="width:100%;height:80px;object-fit:cover;border-radius:6px"></video>'
+      : '<img src="' + e.dataUrl + '" style="width:100%;height:80px;object-fit:cover;border-radius:6px">';
+    return '<div style="position:relative">' + media
+      + '<button type="button" onclick="gtiaQuitarEvidencia(' + i + ')" style="position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;border:none;background:rgba(0,0,0,0.6);color:white;font-size:11px;cursor:pointer">&times;</button></div>';
+  }).join('');
+}
+function gtiaQuitarEvidencia(i) { GTIA_EVIDENCIAS.splice(i, 1); gtiaRenderEvidencias(); }
+
+// Sube las fotos/video a Storage de verdad (en el archivo base se
+// quedaban solo en memoria y se perdían -- nunca llegaban a fotos_urls).
+async function gtiaSubirEvidencias(ticketId) {
+  if (!GTIA_EVIDENCIAS.length || !sb()) return [];
+  var urls = [];
+  for (var i = 0; i < GTIA_EVIDENCIAS.length; i++) {
+    try {
+      var e = GTIA_EVIDENCIAS[i];
+      var blob = await (await fetch(e.dataUrl)).blob();
+      var ext = (e.nombre && e.nombre.indexOf('.') >= 0) ? e.nombre.split('.').pop() : (e.tipo.indexOf('video') === 0 ? 'mp4' : 'jpg');
+      var nombreArch = 'garantia_' + ticketId + '_' + i + '_' + Date.now() + '.' + ext;
+      var up = await sb().storage.from('reportes').upload(nombreArch, blob, { contentType: e.tipo, upsert: true });
+      if (up.error) throw up.error;
+      var urlRes = sb().storage.from('reportes').getPublicUrl(nombreArch);
+      if (urlRes.data) urls.push(urlRes.data.publicUrl);
+    } catch(err) { console.warn('[BarrCan] No se pudo subir una evidencia:', err); }
+  }
+  return urls;
+}
+
+// ── Técnico dinámico (mismo patrón que ordenes.html/entregas.html/visitas.html) ──
+async function gtiaCargarTecnicosDinamico() {
+  var sel = document.getElementById('gtia-det-tecnico');
+  if (!sel || !sb()) return;
+  try {
+    var res = await sb().from('tecnicos').select('nombre_completo,tecnico_id_login')
+      .eq('activo', true).eq('eliminado', false).order('nombre_completo');
+    if (res.error) throw res.error;
+    var datos = (res.data || []).filter(function(t) { return t.tecnico_id_login; });
+    if (!datos.length) return;
+    var valorPrevio = sel.value;
+    sel.innerHTML = '<option value="">-- Sin asignar --</option>'
+      + datos.map(function(t) { return '<option value="' + t.tecnico_id_login + '">' + t.nombre_completo + '</option>'; }).join('');
+    if (valorPrevio) sel.value = valorPrevio;
+  } catch(e) { console.warn('[BarrCan] No se pudo cargar técnicos:', e); }
+}
+
+// ── Cargar / listar tickets ──
+async function garantiasCargar() {
+  var cache = JSON.parse(localStorage.getItem('barrcan_garantias_cache') || '[]');
+  if (cache.length) { GARANTIAS_CACHE = cache; garantiasRenderLista(); }
+  if (!sb()) return;
+  try {
+    var res = await sb().from('garantias').select('*').order('created_at', { ascending: false });
+    if (res.error) throw res.error;
+    GARANTIAS_CACHE = res.data || [];
+    localStorage.setItem('barrcan_garantias_cache', JSON.stringify(GARANTIAS_CACHE));
+    garantiasRenderLista();
+  } catch(e) { console.warn('[Garantias]', e.message); }
+}
+
+function garantiasRenderLista() {
+  var lista = document.getElementById('garantias-lista');
+  if (!lista) return;
+  var filtradas = GARANTIAS_CACHE;
+  if (GARANTIA_FILTRO !== 'todos') {
+    filtradas = GARANTIAS_CACHE.filter(function(g) {
+      return GARANTIA_FILTRO === 'resuelto' ? g.estado === 'resuelto' : g.prioridad === GARANTIA_FILTRO;
+    });
+  }
+  if (!filtradas.length) {
+    lista.innerHTML = '<div style="text-align:center;padding:40px;color:var(--gray-400)"><div style="font-size:40px;margin-bottom:10px">🛡️</div><div>Sin tickets en esta categoría</div></div>';
+    return;
+  }
+  var estadoLabels = { nuevo:'🆕 Nuevo', en_revision:'🔍 En revisión', visita_agendada:'📅 Visita agendada', resuelto:'✅ Resuelto', cerrado:'🔒 Cerrado' };
+
+  lista.innerHTML = filtradas.map(function(g) {
+    var st = GTIA_PRIOR_STYLE[g.prioridad] || GTIA_PRIOR_STYLE.normal;
+    var estLabel = estadoLabels[g.estado] || g.estado;
+    var descCorta = (g.descripcion || '').slice(0, 80) + ((g.descripcion || '').length > 80 ? '…' : '');
+    return '<div class="ticket-card" onclick="gtiaAbrirDetalle(\'' + g.id + '\')" style="border-left:5px solid ' + st.color + '">'
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'
+      + '<div style="font-size:15px;font-weight:700;color:var(--navy)">' + esc(g.cliente_nombre) + '</div>'
+      + '<span style="font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;background:' + st.bg + ';color:' + st.color + '">' + st.emoji + ' ' + (g.prioridad || '').toUpperCase() + '</span>'
+      + '</div>'
+      + '<div style="font-size:12px;color:var(--gray-600);margin-bottom:4px">' + esc(g.tipo_problema || '—') + '</div>'
+      + '<div style="font-size:11px;color:var(--gray-400)">' + esc(descCorta) + '</div>'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">'
+      + '<span style="font-size:10px;color:var(--gray-400)">' + estLabel + '</span>'
+      + '<div style="display:flex;gap:6px">'
+      + (g.cliente_tel ? '<span style="font-size:11px;background:#F3F4F6;color:var(--gray-600);padding:2px 7px;border-radius:4px">📞 ' + esc(g.cliente_tel) + '</span>' : '')
+      + (g.fecha_visita_agendada ? '<span style="font-size:11px;background:rgba(46,109,164,0.08);color:var(--blue);padding:2px 7px;border-radius:4px">📅 ' + g.fecha_visita_agendada + '</span>' : '')
+      + (g.costo_reparacion ? '<span style="font-size:11px;background:rgba(39,174,96,0.08);color:var(--green);padding:2px 7px;border-radius:4px">$' + fmt(g.costo_reparacion) + '</span>' : '')
+      + '</div></div></div>';
+  }).join('');
+}
+
+function garantiasFiltrar(btn) {
+  GARANTIA_FILTRO = btn.dataset.filtro;
+  document.querySelectorAll('.filtro-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  garantiasRenderLista();
+}
+
+// ── Nuevo ticket ──
+function garantiaAbrir() {
+  GTIA_PRIOR_SEL = 'urgente'; GTIA_EVIDENCIAS = [];
+  ['gtia-cliente','gtia-tel','gtia-folio','gtia-desc'].forEach(function(f) { document.getElementById(f).value = ''; });
+  document.getElementById('gtia-fecha-inst').value = '';
+  document.getElementById('gtia-evidencia-preview').innerHTML = '';
+  document.getElementById('gtia-error').style.display = 'none';
+  gtiaSelPrioridadById('urgente');
+  document.getElementById('garantia-modal-overlay').style.display = 'block';
+  document.getElementById('garantia-modal').style.display = 'block';
+}
+function garantiaCerrar() {
+  document.getElementById('garantia-modal-overlay').style.display = 'none';
+  document.getElementById('garantia-modal').style.display = 'none';
+}
+
+async function gtiaGuardar() {
+  var cliente = document.getElementById('gtia-cliente').value.trim();
+  var tel = document.getElementById('gtia-tel').value.trim();
+  var desc = document.getElementById('gtia-desc').value.trim();
+  var errEl = document.getElementById('gtia-error');
+  if (!cliente) { errEl.textContent = '⚠️ Nombre obligatorio'; errEl.style.display = 'block'; return; }
+  if (!tel) { errEl.textContent = '⚠️ Teléfono obligatorio'; errEl.style.display = 'block'; return; }
+  if (!desc) { errEl.textContent = '⚠️ Describe el problema'; errEl.style.display = 'block'; return; }
+  errEl.style.display = 'none';
+
+  var payload = {
+    cliente_nombre: cliente, cliente_tel: tel,
+    folio_contrato: document.getElementById('gtia-folio').value.trim() || null,
+    tipo_problema: document.getElementById('gtia-tipo').value,
+    prioridad: GTIA_PRIOR_SEL, descripcion: desc,
+    fecha_instalacion: document.getElementById('gtia-fecha-inst').value || null,
+    disponibilidad: document.getElementById('gtia-disponibilidad').value,
+    estado: 'nuevo', registrado_por: usuarioActivo().id || 'desconocido',
+    num_evidencias: GTIA_EVIDENCIAS.length
+  };
+  try {
+    if (!sb()) throw new Error('Sin conexión a Supabase');
+    var res = await sb().from('garantias').insert([payload]).select().single();
+    if (res.error) throw res.error;
+    var nuevoId = res.data.id;
+    if (GTIA_EVIDENCIAS.length) {
+      var urls = await gtiaSubirEvidencias(nuevoId);
+      if (urls.length) await sb().from('garantias').update({ fotos_urls: urls }).eq('id', nuevoId);
+    }
+    toast('🛡️ Ticket creado — prioridad ' + GTIA_PRIOR_SEL);
+    garantiaCerrar();
+    await garantiasCargar();
+    gtiaNotificarWhatsApp(payload);
+  } catch(e) {
+    var local = JSON.parse(localStorage.getItem('barrcan_garantias_cache') || '[]');
+    var offlineTicket = Object.assign({}, payload, { id: 'local_' + Date.now(), created_at: new Date().toISOString() });
+    local.unshift(offlineTicket);
+    localStorage.setItem('barrcan_garantias_cache', JSON.stringify(local));
+    GARANTIAS_CACHE = local;
+    garantiasRenderLista();
+    toast('💾 Ticket guardado localmente — se reintentará al reconectar');
+    garantiaCerrar();
+  }
+}
+
+function gtiaNotificarWhatsApp(g) {
+  var st = GTIA_PRIOR_STYLE[g.prioridad] || GTIA_PRIOR_STYLE.normal;
+  var msg = encodeURIComponent(
+    st.emoji + ' *TICKET GARANTÍA BarrCan*\n' +
+    'Cliente: ' + g.cliente_nombre + ' · ' + g.cliente_tel + '\n' +
+    'Problema: ' + g.tipo_problema + '\n' +
+    g.descripcion + '\n' +
+    (g.folio_contrato ? 'Folio: ' + g.folio_contrato + '\n' : '') +
+    'Disponibilidad: ' + g.disponibilidad + '\n' +
+    'Prioridad: ' + (g.prioridad || '').toUpperCase()
+  );
+  window.open('https://wa.me/525615158415?text=' + msg, '_blank');
+}
+
+// ── Detalle / gestión ──
+function gtiaAbrirDetalle(id) {
+  var g = GARANTIAS_CACHE.filter(function(x) { return x.id === id; })[0];
+  if (!g) return;
+  var st = GTIA_PRIOR_STYLE[g.prioridad] || GTIA_PRIOR_STYLE.normal;
+  document.getElementById('gtia-det-id').value = g.id;
+  document.getElementById('gtia-det-nombre').textContent = g.cliente_nombre || '—';
+  document.getElementById('gtia-det-tel').textContent = g.cliente_tel || '—';
+  document.getElementById('gtia-det-folio').textContent = g.folio_contrato || '—';
+  document.getElementById('gtia-det-tipo').textContent = g.tipo_problema || '—';
+  document.getElementById('gtia-det-prior').textContent = st.emoji + ' ' + (g.prioridad || '').toUpperCase();
+  document.getElementById('gtia-det-prior').style.color = st.color;
+  document.getElementById('gtia-det-desc').textContent = g.descripcion || '—';
+  document.getElementById('gtia-det-disp').textContent = g.disponibilidad || '—';
+  document.getElementById('gtia-det-fecha-inst').textContent = g.fecha_instalacion || '—';
+  document.getElementById('gtia-det-estado').value = g.estado || 'nuevo';
+  document.getElementById('gtia-det-tecnico').value = g.tecnico_asignado || '';
+  document.getElementById('gtia-det-fecha-vis').value = g.fecha_visita_agendada || '';
+  document.getElementById('gtia-det-costo').value = g.costo_reparacion || '';
+  document.getElementById('gtia-det-notas').value = g.notas_internas || '';
+  document.getElementById('gtia-det-error').style.display = 'none';
+
+  var fotosDiv = document.getElementById('gtia-det-fotos');
+  var fotos = g.fotos_urls || [];
+  fotosDiv.innerHTML = fotos.length ? fotos.map(function(u) {
+    return '<a href="' + u + '" target="_blank"><img src="' + u + '" style="width:100%;height:60px;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200)"></a>';
+  }).join('') : '';
+
+  document.getElementById('gtia-det-overlay').style.display = 'block';
+  document.getElementById('gtia-det-modal').style.display = 'block';
+}
+function gtiaDetCerrar() {
+  document.getElementById('gtia-det-overlay').style.display = 'none';
+  document.getElementById('gtia-det-modal').style.display = 'none';
+}
+
+async function gtiaDetGuardar() {
+  var id = document.getElementById('gtia-det-id').value;
+  var estado = document.getElementById('gtia-det-estado').value;
+  var tecnico = document.getElementById('gtia-det-tecnico').value.trim();
+  var fechaVis = document.getElementById('gtia-det-fecha-vis').value;
+  var costoRep = parseFloat(document.getElementById('gtia-det-costo').value) || null;
+  var notasInt = document.getElementById('gtia-det-notas').value.trim();
+  var errEl = document.getElementById('gtia-det-error');
+
+  var cambios = {
+    estado: estado,
+    tecnico_asignado: tecnico || null,
+    fecha_visita_agendada: fechaVis || null,
+    costo_reparacion: costoRep,
+    notas_internas: notasInt || null
+  };
+
+  try {
+    if (!sb()) throw new Error('Sin conexión');
+    var res = await sb().from('garantias').update(cambios).eq('id', id);
+    if (res.error) throw res.error;
+
+    var idx = -1;
+    for (var i = 0; i < GARANTIAS_CACHE.length; i++) { if (GARANTIAS_CACHE[i].id === id) { idx = i; break; } }
+    var gActual = idx >= 0 ? GARANTIAS_CACHE[idx] : null;
+    if (idx >= 0) {
+      GARANTIAS_CACHE[idx] = Object.assign({}, GARANTIAS_CACHE[idx], cambios);
+      localStorage.setItem('barrcan_garantias_cache', JSON.stringify(GARANTIAS_CACHE));
+    }
+
+    if (fechaVis && estado === 'visita_agendada' && gActual) {
+      var msg = encodeURIComponent(
+        '🛡️ *BarrCan · Visita de garantía agendada*\n' +
+        'Hola ' + (gActual.cliente_nombre || '') + ', agendamos una visita para revisar tu reporte.\n' +
+        '📅 Fecha: ' + fechaVis + '\n' +
+        '👷 Técnico: ' + (tecnico || 'Por confirmar') + '\n' +
+        '¿Tienes alguna pregunta? Escríbenos aquí.'
+      );
+      var telLimpio = (gActual.cliente_tel || '').replace(/\D/g, '');
+      window.open('https://wa.me/52' + telLimpio + '?text=' + msg, '_blank');
+    }
+
+    toast('✅ Ticket actualizado · ' + estado);
+    gtiaDetCerrar();
+    garantiasRenderLista();
+  } catch(e) {
+    errEl.textContent = '❌ ' + e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+function gtiaDetWhatsApp() {
+  var id = document.getElementById('gtia-det-id').value;
+  var g = GARANTIAS_CACHE.filter(function(x) { return x.id === id; })[0];
+  if (g) gtiaNotificarWhatsApp(g);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  detectarConexion();
+  garantiasCargar();
+  gtiaCargarTecnicosDinamico();
+});
+</script>
+</body>
+</html>
