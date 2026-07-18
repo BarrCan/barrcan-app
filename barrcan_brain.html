@@ -6,8 +6,25 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
-  VERSION : v1.5
+  VERSION : v1.6
   FECHA   : 2026-07-18
+  v1.6 - Permisos por rol en el portal:
+    - Administrador supremo (MAU, identificado por id, no por rol --
+      mismo patrón que el candado de Pago en tecnicos.html): ve TODO.
+    - Administrador normal (HER/Luis): Ventas y Cotizadores completo,
+      Operación completo EXCEPTO Técnicos (queda oculto), Finanzas
+      oculto, Compras e Inventario completo.
+    - Técnicos (y Taller, tratado igual por ahora): SOLO ven dentro
+      de Operación los 3 módulos Visitas / Órdenes / Entregas -- el
+      resto (Ventas, Presupuestos, Técnicos, Finanzas, Compras) queda
+      oculto para ellos.
+    - El botón "⚙️ Usuarios" (administrar personas) también quedó
+      restringido a supremo únicamente (antes lo veían ambos admin).
+    - Pendiente (avisar si se quiere): esto solo controla A QUÉ
+      MÓDULOS SE ENTRA desde el portal. Dentro de ordenes.html/
+      entregas.html un técnico con el link directo todavía podría
+      editar/eliminar registros de otros -- ese candado más fino
+      requiere tocar esos 3 archivos por separado.
   v1.5 - Fix estético: el emoji del avatar se salía del círculo:
     - En algunos teléfonos (MIUI/Xiaomi entre otros), ciertos emoji
       como el de traje/corbata se renderizan más grandes de lo
@@ -158,8 +175,8 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
 
   <div class="portal-content">
 
-    <div class="grupo-titulo">📋 Ventas &amp; Cotizadores</div>
-    <div class="modulos-grid">
+    <div class="grupo-titulo" data-grupo-roles="supremo,admin">📋 Ventas &amp; Cotizadores</div>
+    <div class="modulos-grid" data-grupo-roles="supremo,admin">
       <a class="modulo-card" href="cotizador_nacional.html"><div class="modulo-icono">🪟</div><div class="modulo-nombre">Nacional</div><div class="modulo-desc">Ventanas y puertas</div></a>
       <a class="modulo-card" href="cotizador_espanol.html"><div class="modulo-icono">🏛️</div><div class="modulo-nombre">Española</div><div class="modulo-desc">Línea aluminio</div></a>
       <a class="modulo-card" href="cotizador_eurovent.html"><div class="modulo-icono">🌐</div><div class="modulo-nombre">Eurovent</div><div class="modulo-desc">Línea europea</div></a>
@@ -170,22 +187,22 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
 
     <div class="grupo-titulo">🏗️ Operación</div>
     <div class="modulos-grid">
-      <a class="modulo-card" href="visitas.html"><div class="modulo-icono">📐</div><div class="modulo-nombre">Visitas</div><div class="modulo-desc">Levantamiento/medición</div></a>
-      <a class="modulo-card" href="historial.html"><div class="modulo-icono">📁</div><div class="modulo-nombre">Presupuestos</div><div class="modulo-desc">Historial y estados</div></a>
-      <a class="modulo-card" href="ordenes.html"><div class="modulo-icono">🛠️</div><div class="modulo-nombre">Órdenes</div><div class="modulo-desc">Asignar instalación</div></a>
-      <a class="modulo-card" href="entregas.html"><div class="modulo-icono">📦</div><div class="modulo-nombre">Entregas</div><div class="modulo-desc">Comprobantes</div></a>
-      <a class="modulo-card" href="tecnicos.html"><div class="modulo-icono">👷</div><div class="modulo-nombre">Técnicos</div><div class="modulo-desc">Equipo y pagos</div></a>
+      <a class="modulo-card" href="visitas.html" data-roles="supremo,admin,tecnico,taller"><div class="modulo-icono">📐</div><div class="modulo-nombre">Visitas</div><div class="modulo-desc">Levantamiento/medición</div></a>
+      <a class="modulo-card" href="historial.html" data-roles="supremo,admin"><div class="modulo-icono">📁</div><div class="modulo-nombre">Presupuestos</div><div class="modulo-desc">Historial y estados</div></a>
+      <a class="modulo-card" href="ordenes.html" data-roles="supremo,admin,tecnico,taller"><div class="modulo-icono">🛠️</div><div class="modulo-nombre">Órdenes</div><div class="modulo-desc">Asignar instalación</div></a>
+      <a class="modulo-card" href="entregas.html" data-roles="supremo,admin,tecnico,taller"><div class="modulo-icono">📦</div><div class="modulo-nombre">Entregas</div><div class="modulo-desc">Comprobantes</div></a>
+      <a class="modulo-card" href="tecnicos.html" data-roles="supremo"><div class="modulo-icono">👷</div><div class="modulo-nombre">Técnicos</div><div class="modulo-desc">Equipo y pagos</div></a>
     </div>
 
-    <div class="grupo-titulo">💰 Finanzas</div>
-    <div class="modulos-grid">
+    <div class="grupo-titulo" data-grupo-roles="supremo">💰 Finanzas</div>
+    <div class="modulos-grid" data-grupo-roles="supremo">
       <a class="modulo-card" href="pagos.html"><div class="modulo-icono">💵</div><div class="modulo-nombre">Pagos</div><div class="modulo-desc">Recibos de cliente</div></a>
       <a class="modulo-card" href="costos.html"><div class="modulo-icono">🧮</div><div class="modulo-nombre">Costos</div><div class="modulo-desc">Márgenes</div></a>
       <a class="modulo-card" href="reportes.html"><div class="modulo-icono">📈</div><div class="modulo-nombre">Reportes</div><div class="modulo-desc">Flujo y ganancia</div></a>
     </div>
 
-    <div class="grupo-titulo">📦 Compras &amp; Inventario</div>
-    <div class="modulos-grid">
+    <div class="grupo-titulo" data-grupo-roles="supremo,admin">📦 Compras &amp; Inventario</div>
+    <div class="modulos-grid" data-grupo-roles="supremo,admin">
       <a class="modulo-card" href="compras.html"><div class="modulo-icono">🧾</div><div class="modulo-nombre">Compras</div><div class="modulo-desc">Facturas recibidas</div></a>
       <a class="modulo-card" href="inventario.html"><div class="modulo-icono">📊</div><div class="modulo-nombre">Inventario</div><div class="modulo-desc">Materiales</div></a>
       <a class="modulo-card" href="bodega.html"><div class="modulo-icono">🏬</div><div class="modulo-nombre">Bodega</div><div class="modulo-desc">Despacho a obra</div></a>
@@ -412,7 +429,32 @@ function entrarAlPortal() {
   document.getElementById('portal-rol').textContent = USUARIO_SEL.rol === 'admin' ? 'Administrador' : USUARIO_SEL.rol === 'taller' ? 'Taller' : 'Técnico';
   document.getElementById('pantalla-portal').style.display = 'block';
   var btnAdmin = document.getElementById('btn-admin-usuarios');
-  if (btnAdmin) btnAdmin.style.display = USUARIO_SEL.rol === 'admin' ? 'inline-block' : 'none';
+  if (btnAdmin) btnAdmin.style.display = nivelAcceso(USUARIO_SEL) === 'supremo' ? 'inline-block' : 'none';
+  filtrarModulosPorRol();
+}
+
+// Nivel de acceso real: "supremo" es únicamente MAU (aunque su rol en
+// la base de datos siga siendo "admin", igual que HER -- se distingue
+// por el id, mismo patrón que ya se usa para el candado de Pago en
+// tecnicos.html). Así no hay que tocar el resto de los módulos que ya
+// checan rol==='admin' para MAU y HER por igual.
+function nivelAcceso(u) {
+  if (u.id === 'MAU') return 'supremo';
+  if (u.rol === 'admin') return 'admin';
+  if (u.rol === 'taller') return 'taller';
+  return 'tecnico';
+}
+
+function filtrarModulosPorRol() {
+  var nivel = nivelAcceso(USUARIO_SEL);
+  document.querySelectorAll('[data-grupo-roles]').forEach(function(el) {
+    var roles = el.dataset.grupoRoles.split(',');
+    el.style.display = roles.indexOf(nivel) >= 0 ? '' : 'none';
+  });
+  document.querySelectorAll('.modulo-card[data-roles]').forEach(function(el) {
+    var roles = el.dataset.roles.split(',');
+    el.style.display = roles.indexOf(nivel) >= 0 ? '' : 'none';
+  });
 }
 
 function cerrarSesion() {
