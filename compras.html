@@ -6,6 +6,17 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.4
+  FECHA   : 2026-07-18
+  v1.4 - Auto-sugerir categoría por proveedor (usa la tabla real
+    "proveedores", 37 ya cargados):
+    - Al clasificar una factura sin categoría, busca el proveedor por
+      RFC (o por nombre si no hay RFC) y sugiere su categoría sola --
+      antes siempre caía en "Aluminio y Herrajes" por default.
+    - Al guardar CUALQUIER clasificación (manual o sugerida), actualiza
+      o crea al proveedor en el catálogo con esa categoría -- así el
+      diccionario se mantiene solo con el uso normal, sin tener que
+      capturarlo aparte.
   VERSION : v1.3
   FECHA   : 2026-07-14
   v1.3 - Categorías personalizadas + lectura de XML + desglose visible:
@@ -589,7 +600,7 @@ function cmpProcesarXML(input) {
   reader.readAsText(input.files[0]);
 }
 
-function cmpAbrirClasificar(id, prov, folio, catActual, obraActual, desglosada, totalFactura, rfcActual) {
+async function cmpAbrirClasificar(id, prov, folio, catActual, obraActual, desglosada, totalFactura, rfcActual) {
   MC_ID = id;
   MC_TOTAL_FACTURA = parseFloat(totalFactura) || 0;
   document.getElementById('mc-titulo').textContent = 'Clasificar: ' + folio;
@@ -597,7 +608,6 @@ function cmpAbrirClasificar(id, prov, folio, catActual, obraActual, desglosada, 
   document.getElementById('mc-rfc').value = rfcActual || '';
   document.getElementById('mc-xml-status').style.display = 'none';
   cmpAsegurarOpcionCategoria(catActual);
-  document.getElementById('mc-cat').value = catActual && catActual !== 'POR CLASIFICAR' ? catActual : 'ALUMINIO Y HERRAJES';
   document.getElementById('mc-cat-nueva').style.display = 'none';
   document.getElementById('mc-cat-nueva').value = '';
   document.getElementById('mc-obra').value = obraActual || '';
@@ -605,6 +615,22 @@ function cmpAbrirClasificar(id, prov, folio, catActual, obraActual, desglosada, 
   MC_ITEMS = [];
   cmpToggleDesglose();
   document.getElementById('modal-clasificar').style.display = 'flex';
+
+  if (catActual && catActual !== 'POR CLASIFICAR') {
+    document.getElementById('mc-cat').value = catActual;
+  } else {
+    // Sin clasificar todavía — se busca en el catálogo de proveedores
+    // (por RFC primero, si no por nombre) para sugerir la categoría
+    // sola, en vez de que siempre caiga en "Aluminio y Herrajes" por
+    // default.
+    document.getElementById('mc-cat').value = 'ALUMINIO Y HERRAJES'; // mientras se busca
+    var sugerida = await cmpSugerirCategoria(rfcActual, prov);
+    if (sugerida) {
+      cmpAsegurarOpcionCategoria(sugerida);
+      document.getElementById('mc-cat').value = sugerida;
+      toast('Categoría sugerida por proveedor: ' + sugerida);
+    }
+  }
 
   if (desglosada) {
     document.getElementById('mc-multi-obra').checked = true;
@@ -618,6 +644,48 @@ function cmpAbrirClasificar(id, prov, folio, catActual, obraActual, desglosada, 
       cmpRenderItems();
     });
   }
+}
+
+// Busca en barrcan.proveedores (37 ya cargados) una coincidencia por RFC
+// (exacta, más confiable) o si no, por nombre (parecido). Si el
+// proveedor no existía en el catálogo, se agrega solo -- así la próxima
+// vez que compres ahí, ya lo sugiere sin tener que hacer nada más.
+async function cmpSugerirCategoria(rfc, proveedorNombre) {
+  if (!sb()) return null;
+  try {
+    if (rfc) {
+      var resRfc = await sb().from('proveedores').select('categoria').eq('rfc', rfc).limit(1).maybeSingle();
+      if (!resRfc.error && resRfc.data && resRfc.data.categoria) return resRfc.data.categoria;
+    }
+    if (proveedorNombre) {
+      var resNom = await sb().from('proveedores').select('categoria').ilike('nombre', '%' + proveedorNombre.trim() + '%').limit(1).maybeSingle();
+      if (!resNom.error && resNom.data && resNom.data.categoria) return resNom.data.categoria;
+    }
+  } catch(e) { console.warn('[BarrCan] No se pudo sugerir categoría por proveedor:', e); }
+  return null;
+}
+
+// Cuando SÍ se guarda una clasificación manual, se aprovecha para
+// actualizar/crear el proveedor en el catálogo -- así la próxima
+// factura del mismo proveedor ya se sugiere sola, sin que nadie tenga
+// que mantener el diccionario a mano.
+async function cmpRecordarProveedor(rfc, proveedorNombre, categoria) {
+  if (!sb() || !proveedorNombre || !categoria) return;
+  try {
+    if (rfc) {
+      var existeRfc = await sb().from('proveedores').select('id').eq('rfc', rfc).limit(1).maybeSingle();
+      if (!existeRfc.error && existeRfc.data) {
+        await sb().from('proveedores').update({ categoria: categoria, nombre: proveedorNombre }).eq('id', existeRfc.data.id);
+        return;
+      }
+    }
+    var existeNom = await sb().from('proveedores').select('id').ilike('nombre', proveedorNombre.trim()).limit(1).maybeSingle();
+    if (!existeNom.error && existeNom.data) {
+      await sb().from('proveedores').update({ categoria: categoria, rfc: rfc || null }).eq('id', existeNom.data.id);
+    } else {
+      await sb().from('proveedores').insert([{ nombre: proveedorNombre.trim(), rfc: rfc || null, categoria: categoria, activo: true }]);
+    }
+  } catch(e) { console.warn('[BarrCan] No se pudo actualizar el catálogo de proveedores (no crítico):', e); }
 }
 
 // ── Desglose por artículo (una factura, varias obras) ───────────
@@ -696,6 +764,9 @@ async function cmpGuardarClasificacion() {
 
     var res = await sb().from('facturas_recibidas').update({ categoria: cat, folio_obra: obra, desglosada: esDesglose, rfc_emisor: rfc }).eq('id', MC_ID);
     if (res.error) throw res.error;
+
+    var proveedorNombre = document.getElementById('mc-sub').textContent;
+    cmpRecordarProveedor(rfc, proveedorNombre, cat); // no se espera -- no debe frenar el guardado si falla
 
     // Siempre se borran los artículos anteriores primero -- si se
     // desactivó el desglose, o si se está reeditando, no deja basura.
