@@ -6,6 +6,26 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v1.2
+  FECHA   : 2026-07-17
+  v1.2 - Administrar usuarios (solo administrador):
+    - Nuevo botón "⚙️ Usuarios" en el portal -- SOLO aparece si entraste
+      como administrador (Mauricio o Luis), nadie más lo ve.
+    - Desde ahí: agregar personas nuevas, editar nombre/apodo/rol/
+      emoji/color, desactivar a alguien (deja de aparecer en "¿Quién
+      eres?" sin borrar su historial), y restablecer el PIN de alguien
+      si se le olvidó (sin poder ver cuál era -- solo se borra para que
+      configure uno nuevo).
+    - Antes esto solo se podía hacer entrando directo a Supabase.
+  VERSION : v1.1
+  FECHA   : 2026-07-17
+  v1.1 - Logo grande en vez del icono:
+    - La pantalla de "¿Quién eres?" ahora usa el logo oficial completo
+      (logo-oficial.jpg) en vez del icono cuadrado pequeño.
+    - Si ese archivo no existe todavía en /assets/ del repo, la imagen
+      simplemente se oculta (sin romper nada) y se queda el texto
+      "BarrCan" de abajo -- avisa si necesitas que lo suba yo mismo si
+      me compartes el archivo.
   VERSION : v1.0
   FECHA   : 2026-07-15
   v1.0 - Creación inicial:
@@ -29,8 +49,8 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
 
 /* ── Pantalla de acceso ── */
 #pantalla-login{min-height:100vh;display:flex;flex-direction:column;background:linear-gradient(160deg,var(--navy),#0F2540);color:#fff;padding:32px 20px}
-.login-logo{width:76px;height:76px;border-radius:18px;overflow:hidden;margin:20px auto 6px;box-shadow:var(--shadow-md)}
-.login-logo img{width:100%;height:100%;object-fit:cover;display:block}
+.login-logo{max-width:220px;margin:24px auto 10px;text-align:center}
+.login-logo img{max-width:100%;height:auto;display:block;margin:0 auto}
 .login-title{text-align:center;font-size:22px;font-weight:700;margin:6px 0 2px}
 .login-sub{text-align:center;font-size:12px;color:rgba(255,255,255,.55);margin-bottom:28px}
 
@@ -80,7 +100,7 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
 <!-- ═══════ PANTALLA 1: SELECCIONAR USUARIO ═══════ -->
 <div id="pantalla-login">
   <div class="login-logo">
-    <img src="https://barrcan.github.io/barrcan-app/assets/logo-icono.jpg" onerror="this.onerror=null;this.src=_LOGO_ICONO_B64;" alt="BarrCan">
+    <img src="https://barrcan.github.io/barrcan-app/assets/logo-oficial.jpg" onerror="this.style.display='none'" alt="BarrCan">
   </div>
   <div class="login-title">BarrCan</div>
   <div class="login-sub">¿Quién eres?</div>
@@ -110,7 +130,10 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
         <div class="portal-rol" id="portal-rol"></div>
       </div>
     </div>
-    <button class="portal-salir" onclick="cerrarSesion()">Salir</button>
+    <div style="display:flex;gap:6px">
+      <button class="portal-salir" id="btn-admin-usuarios" onclick="abrirAdminUsuarios()" style="display:none">&#9881;&#65039; Usuarios</button>
+      <button class="portal-salir" onclick="cerrarSesion()">Salir</button>
+    </div>
   </div>
 
   <div class="portal-content">
@@ -148,6 +171,68 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
       <a class="modulo-card" href="mostrador.html"><div class="modulo-icono">🏪</div><div class="modulo-nombre">Mostrador</div><div class="modulo-desc">Venta directa</div></a>
     </div>
 
+  </div>
+</div>
+
+<!-- ═══════ MODAL: ADMINISTRAR USUARIOS (solo admin) ═══════ -->
+<div id="modal-admin-usuarios" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:900;overflow-y:auto">
+  <div style="background:var(--off-white);min-height:100vh;padding:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-size:18px;font-weight:700;color:var(--navy)">&#9881;&#65039; Administrar usuarios</div>
+      <button onclick="cerrarAdminUsuarios()" style="background:var(--white);border:1.5px solid var(--gray-200);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;color:var(--gray-600);cursor:pointer">&times; Cerrar</button>
+    </div>
+
+    <button onclick="abrirEditorUsuario(null)" style="width:100%;padding:12px;background:var(--navy);color:#fff;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:14px">+ Agregar persona nueva</button>
+
+    <div id="admin-usuarios-lista"></div>
+  </div>
+</div>
+
+<!-- ═══════ MODAL: EDITAR / AGREGAR UNA PERSONA ═══════ -->
+<div id="modal-editor-usuario" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:950;align-items:flex-end">
+  <div style="background:var(--white);border-radius:20px 20px 0 0;padding:20px;width:100%;max-width:480px;margin:0 auto">
+    <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 14px"></div>
+    <div id="editor-usuario-titulo" style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:14px">Editar persona</div>
+
+    <label class="form-label" style="display:block;font-size:11px;font-weight:600;color:var(--navy);margin-bottom:4px">ID interno (may&uacute;sculas, sin espacios) *</label>
+    <input type="text" id="edit-usr-id" placeholder="Ej. JUAN" style="width:100%;padding:10px;border:1.5px solid var(--gray-200);border-radius:8px;margin-bottom:10px;text-transform:uppercase;box-sizing:border-box">
+
+    <label class="form-label" style="display:block;font-size:11px;font-weight:600;color:var(--navy);margin-bottom:4px">Nombre completo *</label>
+    <input type="text" id="edit-usr-nombre" placeholder="Ej. Juan P&eacute;rez" style="width:100%;padding:10px;border:1.5px solid var(--gray-200);border-radius:8px;margin-bottom:10px;box-sizing:border-box">
+
+    <label class="form-label" style="display:block;font-size:11px;font-weight:600;color:var(--navy);margin-bottom:4px">Apodo (c&oacute;mo se ve en el bot&oacute;n)</label>
+    <input type="text" id="edit-usr-apodo" placeholder="Ej. Juan" style="width:100%;padding:10px;border:1.5px solid var(--gray-200);border-radius:8px;margin-bottom:10px;box-sizing:border-box">
+
+    <label class="form-label" style="display:block;font-size:11px;font-weight:600;color:var(--navy);margin-bottom:4px">Rol</label>
+    <select id="edit-usr-rol" style="width:100%;padding:10px;border:1.5px solid var(--gray-200);border-radius:8px;margin-bottom:10px;box-sizing:border-box">
+      <option value="tecnico">T&eacute;cnico</option>
+      <option value="admin">Administrador</option>
+      <option value="taller">Taller</option>
+    </select>
+
+    <div style="display:flex;gap:10px;margin-bottom:10px">
+      <div style="flex:1">
+        <label class="form-label" style="display:block;font-size:11px;font-weight:600;color:var(--navy);margin-bottom:4px">Emoji</label>
+        <input type="text" id="edit-usr-emoji" placeholder="&#128119;" style="width:100%;padding:10px;border:1.5px solid var(--gray-200);border-radius:8px;box-sizing:border-box;text-align:center;font-size:18px">
+      </div>
+      <div style="flex:1">
+        <label class="form-label" style="display:block;font-size:11px;font-weight:600;color:var(--navy);margin-bottom:4px">Color</label>
+        <input type="color" id="edit-usr-color" value="#2E6DA4" style="width:100%;height:42px;border:1.5px solid var(--gray-200);border-radius:8px;box-sizing:border-box">
+      </div>
+    </div>
+
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--navy);margin-bottom:16px">
+      <input type="checkbox" id="edit-usr-activo" checked style="width:18px;height:18px">
+      Activo (aparece en la pantalla de acceso)
+    </label>
+
+    <div id="edit-usr-pin-info" style="display:none;background:rgba(46,109,164,0.06);border-radius:8px;padding:10px 12px;font-size:11px;color:var(--gray-600);margin-bottom:14px"></div>
+    <button id="btn-resetear-pin" onclick="resetearPinUsuario()" style="display:none;width:100%;padding:10px;background:rgba(192,57,43,0.08);border:1.5px solid rgba(192,57,43,0.3);border-radius:8px;color:var(--red);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:14px">Restablecer PIN (le pedir&aacute; crear uno nuevo)</button>
+
+    <div style="display:flex;gap:8px">
+      <button onclick="guardarUsuario()" style="flex:1;padding:12px;background:var(--navy);color:white;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">Guardar</button>
+      <button onclick="document.getElementById('modal-editor-usuario').style.display='none'" style="padding:12px 14px;background:none;border:1.5px solid var(--gray-200);border-radius:8px;color:var(--gray-600);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer">Cancelar</button>
+    </div>
   </div>
 </div>
 
@@ -192,7 +277,7 @@ async function cargarUsuarios() {
         + '</div>';
     }).join('');
   } catch(e) {
-    cont.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:rgba(255,255,255,.6);font-size:12px">Error al cargar — revisa el SQL</div>';
+    cont.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:rgba(255,255,255,.75);font-size:11px;padding:0 20px;line-height:1.6">Error real: ' + esc(e.message || String(e)) + '<br><br><span style="cursor:pointer;text-decoration:underline;color:#C8923A" onclick="cargarUsuarios()">Reintentar</span></div>';
     console.warn('[BarrCan] No se pudieron cargar usuarios:', e);
   }
 }
@@ -305,12 +390,111 @@ function entrarAlPortal() {
   document.getElementById('portal-nombre').textContent = USUARIO_SEL.apodo || USUARIO_SEL.nombre;
   document.getElementById('portal-rol').textContent = USUARIO_SEL.rol === 'admin' ? 'Administrador' : USUARIO_SEL.rol === 'taller' ? 'Taller' : 'Técnico';
   document.getElementById('pantalla-portal').style.display = 'block';
+  var btnAdmin = document.getElementById('btn-admin-usuarios');
+  if (btnAdmin) btnAdmin.style.display = USUARIO_SEL.rol === 'admin' ? 'inline-block' : 'none';
 }
 
 function cerrarSesion() {
   localStorage.removeItem('barrcan_usuario_activo');
   document.getElementById('pantalla-portal').style.display = 'none';
   volverALogin();
+}
+
+// ── Administrar usuarios (solo admin) ───────────────────────────
+function abrirAdminUsuarios() {
+  document.getElementById('modal-admin-usuarios').style.display = 'block';
+  renderAdminUsuariosLista();
+}
+function cerrarAdminUsuarios() {
+  document.getElementById('modal-admin-usuarios').style.display = 'none';
+}
+function renderAdminUsuariosLista() {
+  var cont = document.getElementById('admin-usuarios-lista');
+  cont.innerHTML = USUARIOS.map(function(u) {
+    return '<div style="background:var(--white);border-radius:12px;padding:12px 14px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 1px 4px rgba(0,0,0,.06)' + (u.activo === false ? ';opacity:.5' : '') + '">'
+      + '<div style="display:flex;align-items:center;gap:10px">'
+      + '<div style="width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;background:' + (u.color || '#2E6DA4') + '33;color:' + (u.color || '#2E6DA4') + '">' + (u.emoji || '👤') + '</div>'
+      + '<div><div style="font-size:13px;font-weight:700;color:var(--navy)">' + esc(u.apodo || u.nombre) + '</div>'
+      + '<div style="font-size:10px;color:var(--gray-400)">' + u.id + ' &middot; ' + (u.rol === 'admin' ? 'Administrador' : u.rol === 'taller' ? 'Taller' : 'Técnico') + (u.activo === false ? ' &middot; Inactivo' : '') + (u.pin ? '' : ' &middot; Sin PIN configurado') + '</div></div>'
+      + '</div>'
+      + '<button onclick="abrirEditorUsuario(\'' + u.id + '\')" style="background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;padding:6px 12px;font-size:11px;font-weight:700;color:var(--blue);cursor:pointer">Editar</button>'
+      + '</div>';
+  }).join('');
+}
+
+var EDITOR_USR_ID_ORIGINAL = null;
+function abrirEditorUsuario(id) {
+  var u = id ? USUARIOS.filter(function(x) { return x.id === id; })[0] : null;
+  EDITOR_USR_ID_ORIGINAL = id;
+  document.getElementById('editor-usuario-titulo').textContent = u ? 'Editar persona' : 'Agregar persona nueva';
+  document.getElementById('edit-usr-id').value = u ? u.id : '';
+  document.getElementById('edit-usr-id').disabled = !!u; // el ID no se cambia una vez creado
+  document.getElementById('edit-usr-nombre').value = u ? u.nombre : '';
+  document.getElementById('edit-usr-apodo').value = u ? (u.apodo || '') : '';
+  document.getElementById('edit-usr-rol').value = u ? u.rol : 'tecnico';
+  document.getElementById('edit-usr-emoji').value = u ? (u.emoji || '🔧') : '🔧';
+  document.getElementById('edit-usr-color').value = u ? (u.color || '#2E6DA4') : '#2E6DA4';
+  document.getElementById('edit-usr-activo').checked = u ? u.activo !== false : true;
+
+  var pinInfo = document.getElementById('edit-usr-pin-info');
+  var btnReset = document.getElementById('btn-resetear-pin');
+  if (u) {
+    pinInfo.style.display = 'block';
+    pinInfo.textContent = u.pin ? 'Ya tiene un PIN configurado.' : 'Todavía no ha configurado su PIN — se lo va a pedir la próxima vez que entre.';
+    btnReset.style.display = u.pin ? 'block' : 'none';
+  } else {
+    pinInfo.style.display = 'none';
+    btnReset.style.display = 'none';
+  }
+
+  document.getElementById('modal-editor-usuario').style.display = 'flex';
+}
+
+async function guardarUsuario() {
+  var id = document.getElementById('edit-usr-id').value.trim().toUpperCase().replace(/\s+/g, '_');
+  var nombre = document.getElementById('edit-usr-nombre').value.trim();
+  var apodo = document.getElementById('edit-usr-apodo').value.trim();
+  var rol = document.getElementById('edit-usr-rol').value;
+  var emoji = document.getElementById('edit-usr-emoji').value.trim() || '🔧';
+  var color = document.getElementById('edit-usr-color').value;
+  var activo = document.getElementById('edit-usr-activo').checked;
+
+  if (!id || !nombre) { toast('El ID y el nombre son obligatorios'); return; }
+  if (!sb()) { toast('Sin conexión'); return; }
+
+  var esNuevo = !EDITOR_USR_ID_ORIGINAL;
+  var payload = { id: id, nombre: nombre, apodo: apodo || null, rol: rol, emoji: emoji, color: color, activo: activo };
+
+  try {
+    var res;
+    if (esNuevo) {
+      res = await sb().from('usuarios_pin').insert([payload]);
+    } else {
+      res = await sb().from('usuarios_pin').update(payload).eq('id', EDITOR_USR_ID_ORIGINAL);
+    }
+    if (res.error) throw res.error;
+    toast(esNuevo ? 'Persona agregada' : 'Cambios guardados');
+    document.getElementById('modal-editor-usuario').style.display = 'none';
+    await cargarUsuarios();
+    renderAdminUsuariosLista();
+  } catch(e) {
+    toast('No se pudo guardar: ' + e.message);
+  }
+}
+
+async function resetearPinUsuario() {
+  if (!EDITOR_USR_ID_ORIGINAL) return;
+  if (!confirm('¿Seguro que quieres borrar el PIN de esta persona? La próxima vez que entre le va a pedir crear uno nuevo.')) return;
+  try {
+    var res = await sb().from('usuarios_pin').update({ pin: null }).eq('id', EDITOR_USR_ID_ORIGINAL);
+    if (res.error) throw res.error;
+    toast('PIN restablecido');
+    document.getElementById('modal-editor-usuario').style.display = 'none';
+    await cargarUsuarios();
+    renderAdminUsuariosLista();
+  } catch(e) {
+    toast('No se pudo restablecer: ' + e.message);
+  }
 }
 
 // ── Si ya había sesión guardada (de otro módulo, o de antes), entra directo ──
