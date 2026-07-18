@@ -6,8 +6,13 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
-  VERSION : v1.3
-  FECHA   : 2026-07-17
+  VERSION : v1.4
+  FECHA   : 2026-07-18
+  v1.4 - Fix: faltaba la tarjeta de Visitas en el portal:
+    - El módulo visitas.html estaba construido y funcionando, pero
+      nunca se agregó al menú del portal -- por eso no aparecía.
+      Ya está primero dentro de "Operación" (es el primer paso del
+      flujo: Visita → Presupuesto → Orden → Entrega).
   v1.3 - FIX REAL del error "Failed to fetch":
     - Encontrado por fin: la URL de Supabase estaba mal escrita
       (rmngjtzupukhylxGCWW en vez de rmngjtzupukhylxLGCWW -- le
@@ -158,6 +163,7 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
 
     <div class="grupo-titulo">🏗️ Operación</div>
     <div class="modulos-grid">
+      <a class="modulo-card" href="visitas.html"><div class="modulo-icono">📐</div><div class="modulo-nombre">Visitas</div><div class="modulo-desc">Levantamiento/medición</div></a>
       <a class="modulo-card" href="historial.html"><div class="modulo-icono">📁</div><div class="modulo-nombre">Presupuestos</div><div class="modulo-desc">Historial y estados</div></a>
       <a class="modulo-card" href="ordenes.html"><div class="modulo-icono">🛠️</div><div class="modulo-nombre">Órdenes</div><div class="modulo-desc">Asignar instalación</div></a>
       <a class="modulo-card" href="entregas.html"><div class="modulo-icono">📦</div><div class="modulo-nombre">Entregas</div><div class="modulo-desc">Comprobantes</div></a>
