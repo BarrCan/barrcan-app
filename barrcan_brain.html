@@ -6,8 +6,15 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
-  VERSION : v1.4
+  VERSION : v1.5
   FECHA   : 2026-07-18
+  v1.5 - Fix estético: el emoji del avatar se salía del círculo:
+    - En algunos teléfonos (MIUI/Xiaomi entre otros), ciertos emoji
+      como el de traje/corbata se renderizan más grandes de lo
+      normal y se desbordaban del círculo. Se agregó overflow:hidden
+      y line-height:1 a los 3 avatares (selección de usuario, pantalla
+      de PIN, y el del portal) para que SIEMPRE quede recortado
+      dentro del círculo sin importar cómo lo dibuje el teléfono.
   v1.4 - Fix: faltaba la tarjeta de Visitas en el portal:
     - El módulo visitas.html estaba construido y funcionando, pero
       nunca se agregó al menú del portal -- por eso no aparecía.
@@ -70,12 +77,12 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
 .usuarios-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;max-width:420px;margin:0 auto;width:100%}
 .usuario-card{background:rgba(255,255,255,.06);border:1.5px solid rgba(255,255,255,.12);border-radius:var(--radius);padding:16px 10px;text-align:center;cursor:pointer;transition:.15s}
 .usuario-card:active{transform:scale(.96);background:rgba(255,255,255,.14)}
-.usuario-avatar{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;margin:0 auto 8px}
+.usuario-avatar{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;line-height:1;margin:0 auto 8px;overflow:hidden}
 .usuario-nombre{font-size:13px;font-weight:700}
 .usuario-rol{font-size:9px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
 
 #pantalla-pin{min-height:100vh;display:none;flex-direction:column;align-items:center;background:linear-gradient(160deg,var(--navy),#0F2540);color:#fff;padding:32px 20px}
-.pin-avatar{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;margin:20px 0 8px}
+.pin-avatar{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:26px;line-height:1;margin:20px 0 8px;overflow:hidden}
 .pin-nombre{font-size:18px;font-weight:700;margin-bottom:2px}
 .pin-hint{font-size:12px;color:rgba(255,255,255,.55);margin-bottom:26px;text-align:center;max-width:280px}
 .pin-dots{display:flex;gap:10px;margin-bottom:30px}
@@ -92,7 +99,7 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
 #pantalla-portal{display:none;min-height:100vh}
 .portal-header{background:var(--navy);color:#fff;padding:16px 18px;display:flex;justify-content:space-between;align-items:center}
 .portal-user{display:flex;align-items:center;gap:10px}
-.portal-avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:17px}
+.portal-avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1;overflow:hidden}
 .portal-nombre{font-size:14px;font-weight:700}
 .portal-rol{font-size:9px;color:rgba(255,255,255,.5);text-transform:uppercase}
 .portal-salir{background:rgba(255,255,255,.12);border:none;color:#fff;padding:7px 12px;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer}
