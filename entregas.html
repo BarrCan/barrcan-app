@@ -6,6 +6,14 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.25.0
+  FECHA   : 2026-07-18
+  v3.25.0 - Fix: se me había pasado un segundo campo de técnico:
+    - "Asignado por" (id inst-asignado) tenía la misma lista fija de 5
+      nombres que "Técnico instalador" -- no lo detecté antes porque su
+      ID no contiene la palabra "tecnico". Ya se llena solo desde el
+      mismo catálogo real (tecnicos.html), y el reporte también muestra
+      el nombre completo en vez del código.
   VERSION : v3.24.0
   FECHA   : 2026-07-17
   v3.24.0 - Fix real: las fotos del reporte no se veían en 2
@@ -1736,19 +1744,28 @@ var ENT_TEC_NOMBRES_DIN = {}; // código -> nombre completo, para mostrar en rep
 
 async function entCargarTecnicosDinamico() {
   var sel = document.getElementById('inst-tecnico-nombre');
-  if (!sel || !sb()) return;
+  var selAsig = document.getElementById('inst-asignado');
+  if ((!sel && !selAsig) || !sb()) return;
   try {
     var res = await sb().from('tecnicos').select('nombre_completo,tecnico_id_login')
       .eq('activo', true).eq('eliminado', false).order('nombre_completo');
     if (res.error) throw res.error;
     var datos = (res.data || []).filter(function(t) { return t.tecnico_id_login; });
     if (!datos.length) return;
-    var valorPrevio = sel.value;
-    sel.innerHTML = '<option value="">-- Selecciona t\u00e9cnico --</option>'
+    var opciones = '<option value="">-- Selecciona --</option>'
       + datos.map(function(t) {
           return '<option value="' + t.tecnico_id_login + '">' + t.nombre_completo + '</option>';
         }).join('');
-    if (valorPrevio) sel.value = valorPrevio;
+    if (sel) {
+      var valorPrevio = sel.value;
+      sel.innerHTML = opciones;
+      if (valorPrevio) sel.value = valorPrevio;
+    }
+    if (selAsig) {
+      var valorPrevioAsig = selAsig.value;
+      selAsig.innerHTML = opciones;
+      if (valorPrevioAsig) selAsig.value = valorPrevioAsig;
+    }
     datos.forEach(function(t) { ENT_TEC_NOMBRES_DIN[t.tecnico_id_login] = t.nombre_completo; });
   } catch(e) {
     console.warn('[BarrCan] No se pudo cargar la lista de t\u00e9cnicos desde Supabase (se usa la lista fija):', e);
@@ -3299,7 +3316,8 @@ async function entGenerarReporteInstalacion() {
   var tecnicoCod = (document.getElementById('inst-tecnico-nombre') || {}).value || '';
   var TEC_NOMBRES = { ESAU:'Esa\u00fa', MIGUEL:'Miguel', CARLOS:'Carlos', OMAR:'Omar', RODRIGO:'Rodrigo' };
   var tecnico    = ENT_TEC_NOMBRES_DIN[tecnicoCod] || TEC_NOMBRES[tecnicoCod] || tecnicoCod;
-  var asignado  = (document.getElementById('inst-asignado') || {}).value || '';
+  var asignadoCod = (document.getElementById('inst-asignado') || {}).value || '';
+  var asignado    = ENT_TEC_NOMBRES_DIN[asignadoCod] || { ESAU:'Esa\u00fa', MIGUEL:'Miguel', CARLOS:'Carlos', OMAR:'Omar', RODRIGO:'Rodrigo' }[asignadoCod] || asignadoCod;
   var direccion = (document.getElementById('inst-direccion') || {}).value || '';
   var fecha     = (document.getElementById('inst-fecha') || {}).value || '';
   var monto     = parseFloat((document.getElementById('inst-monto') || {}).value) || 0;
