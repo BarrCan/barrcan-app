@@ -6,8 +6,22 @@
 <title>BarrCan &middot; Visitas</title>
 <!--
   BARRCAN · MODULO: VISITAS DE MEDICIÓN (standalone)
-  VERSION : v1.3
-  FECHA   : 2026-07-18
+  VERSION : v1.4
+  FECHA   : 2026-07-19
+  v1.4 - Fix real: las fotos de la visita se perdían:
+    - Antes SOLO quedaban incrustadas dentro del reporte impreso --
+      si usabas "Guardar sin reporte", se perdían por completo (nunca
+      llegaban a fotos_urls, aunque la columna ya existía para eso).
+    - Ahora se suben de verdad a Storage SIEMPRE, sin importar si
+      generas el reporte o no.
+    - El detalle de la visita (Historial) ahora muestra las fotos en
+      una galería -- antes no las mostraba en absoluto.
+    - Al editar una visita, las fotos ya guardadas se precargan (no
+      se vuelven a subir, se reconocen y se conservan).
+    - Nota honesta: las visitas guardadas ANTES de esta versión con
+      "Guardar sin reporte" no se pueden recuperar -- esas fotos
+      nunca llegaron a ningún lado. Las que sí generaron reporte se
+      pueden seguir viendo abriendo ese reporte desde el detalle.
   v1.3 - Ver detalle y editar visitas ya guardadas (solo Mauricio):
     - Al tocar una visita en el Historial, ahora abre un detalle
       completo (cliente, dirección, acceso, materiales, notas, cobro)
@@ -1473,15 +1487,41 @@ function visAgregarFotos(input){
 function visRenderFotos(){
   var grid=document.getElementById('vis-fotos-grid');
   grid.innerHTML=VISITA_FOTOS.map(function(f,i){
+    var src = f.dataUrl || f.url;
     return '<div style="position:relative">'
-      +'<img src="'+f.dataUrl+'" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200)">'
+      +'<img src="'+src+'" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200)">'
       +'<button onclick="visQuitarFoto('+i+')" style="position:absolute;top:3px;right:3px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.6);color:white;border:none;font-size:11px;cursor:pointer">&times;</button>'
-      +'<input type="text" placeholder="Descripción (ej: Cancel sala OX 1.20m)" value="'+esc(f.desc)+'" oninput="visDescFoto('+i+',this.value)" style="width:100%;margin-top:4px;font-size:10px;padding:5px 6px;border:1px solid var(--gray-200);border-radius:4px;box-sizing:border-box">'
+      +'<input type="text" placeholder="Descripción (ej: Cancel sala OX 1.20m)" value="'+esc(f.desc||'')+'" oninput="visDescFoto('+i+',this.value)" style="width:100%;margin-top:4px;font-size:10px;padding:5px 6px;border:1px solid var(--gray-200);border-radius:4px;box-sizing:border-box">'
       +'</div>';
   }).join('');
   document.getElementById('vis-fotos-count').textContent=VISITA_FOTOS.length?VISITA_FOTOS.length+' foto(s)':'Sin fotos aún';
 }
 function visQuitarFoto(i){VISITA_FOTOS.splice(i,1);visRenderFotos();}
+
+// Sube cada foto de verdad a Storage y regresa el arreglo de URLs -- antes
+// las fotos SOLO quedaban incrustadas dentro del reporte impreso (si se
+// generaba), y si usabas "Guardar sin reporte" se perdían por completo.
+// Ahora se guardan siempre, sin importar si generas el reporte o no.
+async function visSubirFotosIndividuales(folio) {
+  if (!VISITA_FOTOS.length || !sb()) return [];
+  var urls = [];
+  for (var i = 0; i < VISITA_FOTOS.length; i++) {
+    // Si la foto ya es una URL (viene de una visita que se está editando,
+    // no una nueva capturada ahora), no hay que volver a subirla.
+    if (VISITA_FOTOS[i].url) { urls.push(VISITA_FOTOS[i].url); continue; }
+    try {
+      var f = VISITA_FOTOS[i];
+      var blob = await (await fetch(f.dataUrl)).blob();
+      var nombreArch = 'visita_' + folio + '_foto' + i + '_' + Date.now() + '.jpg';
+      var up = await sb().storage.from('reportes').upload(nombreArch, blob, { contentType: 'image/jpeg', upsert: true });
+      if (up.error) throw up.error;
+      var urlRes = sb().storage.from('reportes').getPublicUrl(nombreArch);
+      if (urlRes.data) urls.push(urlRes.data.publicUrl);
+    } catch(e) { console.warn('[BarrCan] No se pudo subir una foto de la visita:', e); }
+  }
+  return urls;
+}
+
 function visDescFoto(i,v){if(VISITA_FOTOS[i])VISITA_FOTOS[i].desc=v;}
 
 // ── Reset / Abrir ──
@@ -1556,6 +1596,8 @@ async function visGuardar(conReporte){
   var aplicaCobro=document.getElementById('vis-aplica-cobro').checked;
   var monto=aplicaCobro?(parseFloat(document.getElementById('vis-monto').value)||1000):0;
 
+  var fotosUrls = await visSubirFotosIndividuales(folio);
+
   var payload={
     folio: folio,
     cliente_id: VISITA_CLIENTE?VISITA_CLIENTE.id:null,
@@ -1569,7 +1611,8 @@ async function visGuardar(conReporte){
     notas_tecnico: notasTec, num_piezas: numPiezas?parseInt(numPiezas):null,
     num_fotos: VISITA_FOTOS.length,
     materiales_instalacion: materiales.join(', '),
-    aplica_cobro: aplicaCobro, monto: monto, estado: 'registrada'
+    aplica_cobro: aplicaCobro, monto: monto, estado: 'registrada',
+    fotos_urls: fotosUrls
   };
 
   var reporteUrl = '';
@@ -1745,7 +1788,8 @@ function visAbrirDetalle(id){
     + (accesoTxt.length ? '<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--gray-400)">Acceso</div><div style="font-size:13px;color:var(--navy)">' + accesoTxt.join(' &middot; ') + '</div></div>' : '')
     + (v.materiales_instalacion ? '<div style="margin-bottom:10px;background:#FFF8ED;border:1px solid var(--gold);border-radius:8px;padding:8px 10px"><div style="font-size:10px;color:var(--gray-400)">🧰 Materiales para instalación</div><div style="font-size:12px;color:var(--navy)">' + esc(v.materiales_instalacion) + '</div></div>' : '')
     + (v.notas_tecnico ? '<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--gray-400)">Notas del levantamiento</div><div style="font-size:12px;color:var(--navy)">' + esc(v.notas_tecnico) + '</div></div>' : '')
-    + (v.aplica_cobro ? '<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--gray-400)">Cobro de visita</div><div style="font-size:14px;font-weight:700;color:var(--gold)">$' + fmt(v.monto) + '</div></div>' : '');
+    + (v.aplica_cobro ? '<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--gray-400)">Cobro de visita</div><div style="font-size:14px;font-weight:700;color:var(--gold)">$' + fmt(v.monto) + '</div></div>' : '')
+    + (v.fotos_urls && v.fotos_urls.length ? '<div style="margin-bottom:6px"><div style="font-size:10px;color:var(--gray-400);margin-bottom:6px">Fotos (' + v.fotos_urls.length + ')</div><div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">' + v.fotos_urls.map(function(u){ return '<a href="' + u + '" target="_blank"><img src="' + u + '" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200)"></a>'; }).join('') + '</div></div>' : '');
 
   var btnReporte = document.getElementById('vis-detalle-btn-reporte');
   if (v.reporte_url) { btnReporte.style.display = 'block'; btnReporte.onclick = function(){ window.open(v.reporte_url, '_blank'); }; }
@@ -1765,6 +1809,9 @@ function visAbrirEdicion(id){
   visCerrarDetalle();
   visReset();
   VIS_EDITANDO_ID = id;
+
+  VISITA_FOTOS = (v.fotos_urls || []).map(function(u){ return { url: u, desc: '' }; });
+  visRenderFotos();
 
   document.getElementById('vis-folio-badge').textContent = v.folio;
   document.getElementById('vis-dir-obra').value = v.dir_obra || '';
