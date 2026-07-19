@@ -6,8 +6,14 @@
 <title>BarrCan &middot; Ordenes</title>
 <!--
   BARRCAN - MODULO: ORDENES DE TRABAJO
-  VERSION : v2.2
-  FECHA   : 2026-07-17
+  VERSION : v2.3
+  FECHA   : 2026-07-18
+  v2.3 - Candado fino: técnicos solo ven/avanzan, no crean ni editan:
+    - "+ Nueva Orden de Trabajo" y el botón "Editar" de cada tarjeta
+      ahora solo aparecen para administradores (MAU/HER). Los
+      técnicos siguen viendo Estado/Hoja/Avisar/Reporte -- pueden
+      avanzar su propio trabajo y generar el reporte, pero no crear
+      órdenes nuevas ni reasignar/editar los datos completos.
   v2.2 - Vincular la visita de medición con la orden:
     - Nuevo campo "Visita de medición relacionada" al crear/editar
       una orden -- busca por folio, cliente o dirección (autocompletar
@@ -1209,7 +1215,7 @@ body{min-height:100vh}
       <div style="text-align:center;padding:30px;color:var(--gray-400);font-size:13px">Cargando...</div>
     </div>
 
-    <button onclick="otAbrir(null)" style="width:100%;padding:14px;margin-top:14px;
+    <button id="ot-btn-nueva" onclick="otAbrir(null)" style="width:100%;padding:14px;margin-top:14px;
       background:linear-gradient(135deg,var(--navy),#2A4F7A);color:#fff;border:none;
       border-radius:var(--radius);font-family:'DM Sans',sans-serif;font-size:14px;
       font-weight:700;cursor:pointer;box-shadow:var(--shadow-md)">
@@ -1366,6 +1372,20 @@ var _LOGO_ICONO_B64 = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sbClient=null;
+// Los técnicos solo ven y avanzan sus órdenes (Estado/Hoja/Avisar/
+// Reporte) -- crear órdenes nuevas y editar los datos completos es
+// solo de administradores (supremo o normal).
+function esAdmin() {
+  try {
+    var u = JSON.parse(localStorage.getItem('barrcan_usuario_activo') || '{}');
+    return u.rol === 'admin' || u.id === 'MAU' || u.id === 'HER';
+  } catch(e) { return false; }
+}
+function otAplicarPermisos() {
+  var btnNueva = document.getElementById('ot-btn-nueva');
+  if (btnNueva) btnNueva.style.display = esAdmin() ? 'block' : 'none';
+}
+
 function sb(){
   if(!_sbClient&&window.supabase){
     _sbClient=window.supabase.createClient(SB_URL,SB_KEY,{
@@ -1550,7 +1570,7 @@ function otRender(){
       +'</div>'
       +'</div>'
       +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:5px">'
-      +'<button onclick="otAbrir(\''+idStr+'\')" style="padding:7px 3px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:10px;font-weight:700;cursor:pointer">Editar</button>'
+      +(esAdmin()?'<button onclick="otAbrir(\''+idStr+'\')" style="padding:7px 3px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:10px;font-weight:700;cursor:pointer">Editar</button>':'<div></div>')
       +'<button onclick="otCambiarEstado(\''+idStr+'\')" style="padding:7px 3px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:10px;font-weight:700;cursor:pointer">Estado</button>'
       +'<button onclick="otVerHoja(\''+idStr+'\')" style="padding:7px 3px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.3);border-radius:8px;color:var(--green);font-size:10px;font-weight:700;cursor:pointer">Hoja</button>'
       +'</div>'
@@ -1999,6 +2019,7 @@ document.addEventListener('DOMContentLoaded',function(){
   otCargar();
   otCargarTecnicosDinamico();
   otCargarVisitasDatalist();
+  otAplicarPermisos();
 });
 </script>
 </body>
