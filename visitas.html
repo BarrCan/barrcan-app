@@ -6,8 +6,17 @@
 <title>BarrCan &middot; Visitas</title>
 <!--
   BARRCAN · MODULO: VISITAS DE MEDICIÓN (standalone)
-  VERSION : v1.2
-  FECHA   : 2026-07-17
+  VERSION : v1.3
+  FECHA   : 2026-07-18
+  v1.3 - Ver detalle y editar visitas ya guardadas (solo Mauricio):
+    - Al tocar una visita en el Historial, ahora abre un detalle
+      completo (cliente, dirección, acceso, materiales, notas, cobro)
+      -- antes solo abría el reporte impreso si existía.
+    - Botón "🔒 Editar (solo Mauricio)" -- pide el PIN de Mauricio
+      específicamente (ni siquiera el de Luis funciona aquí, mismo
+      candado que la pestaña de Pago en tecnicos.html). Al editar,
+      reutiliza el formulario de "Nueva Visita" ya precargado, y
+      guarda como actualización (no crea una visita duplicada).
   v1.2 - Fix: URL de Supabase mal escrita (faltaba una "l"):
     - Igual que en barrcan_brain.html, la URL tenía un error de
       dedo desde que se creó este archivo -- nunca lograba conectar
@@ -1292,6 +1301,20 @@ body{min-height:100vh}
 </div>
 
 <!-- Mini modal cliente rápido -->
+<!-- Modal de detalle de una visita ya guardada -->
+<div id="vis-detalle-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:800;backdrop-filter:blur(3px)">
+  <div style="position:absolute;bottom:0;left:0;right:0;background:var(--white);border-radius:20px 20px 0 0;padding:20px;max-height:85vh;overflow-y:auto">
+    <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 14px"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-size:16px;font-weight:700;color:var(--navy)">Detalle de la visita</div>
+      <span onclick="visCerrarDetalle()" style="cursor:pointer;color:var(--gray-400);font-size:20px">&times;</span>
+    </div>
+    <div id="vis-detalle-body"></div>
+    <button id="vis-detalle-btn-reporte" style="display:none;width:100%;padding:11px;background:var(--blue);color:white;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-top:10px">📄 Ver reporte</button>
+    <button id="vis-detalle-btn-editar" style="width:100%;padding:11px;background:none;border:1.5px solid var(--gold);border-radius:var(--radius-sm);color:var(--gold);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;margin-top:8px">&#128274; Editar (solo Mauricio)</button>
+  </div>
+</div>
+
 <div id="vis-cli-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:800;backdrop-filter:blur(3px)">
   <div style="position:absolute;bottom:0;left:0;right:0;background:var(--white);border-radius:20px 20px 0 0;padding:20px">
     <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 14px"></div>
@@ -1463,7 +1486,7 @@ function visDescFoto(i,v){if(VISITA_FOTOS[i])VISITA_FOTOS[i].desc=v;}
 
 // ── Reset / Abrir ──
 function visReset(){
-  VISITA_FOTOS=[];VISITA_CLIENTE=null;
+  VISITA_FOTOS=[];VISITA_CLIENTE=null;VIS_EDITANDO_ID=null;
   document.getElementById('vis-fotos-grid').innerHTML='';
   document.getElementById('vis-fotos-count').textContent='Sin fotos aún';
   document.getElementById('vis-cliente-info').style.display='none';
@@ -1557,9 +1580,11 @@ async function visGuardar(conReporte){
 
   try{
     if(!sb())throw new Error('Sin conexión a Supabase');
-    var res=await sb().from('visitas_medicion').insert([payload]);
+    var res = VIS_EDITANDO_ID
+      ? await sb().from('visitas_medicion').update(payload).eq('id', VIS_EDITANDO_ID)
+      : await sb().from('visitas_medicion').insert([payload]);
     if(res.error)throw res.error;
-    toast('✅ Visita guardada · '+folio);
+    toast(VIS_EDITANDO_ID ? '✅ Visita actualizada · '+folio : '✅ Visita guardada · '+folio);
     visReset();
     visCambiarTab('hist');
   }catch(e){
@@ -1667,7 +1692,7 @@ function visRenderHistorial(lista){
   var div=document.getElementById('vis-hist-lista');
   if(!lista.length){div.innerHTML='<div style="text-align:center;padding:20px;color:var(--gray-400)">Sin visitas registradas</div>';return;}
   div.innerHTML=lista.map(function(v){
-    return '<div style="background:var(--white);border-radius:var(--radius-sm);padding:12px;margin-bottom:8px;box-shadow:var(--shadow-sm)'+(v.reporte_url?';cursor:pointer':'')+'"'+(v.reporte_url?' data-url="'+esc(v.reporte_url)+'" onclick="window.open(this.dataset.url,\'_blank\')"':'')+'>'
+    return '<div style="background:var(--white);border-radius:var(--radius-sm);padding:12px;margin-bottom:8px;box-shadow:var(--shadow-sm);cursor:pointer" onclick="visAbrirDetalle(\''+v.id+'\')">'
       +'<div style="display:flex;justify-content:space-between;align-items:flex-start">'
       +'<div><div style="font-size:12px;font-weight:700;color:var(--navy)">'+esc(v.folio)+'</div>'
       +'<div style="font-size:11px;color:var(--gray-600)">'+esc(v.cliente_nombre||'Sin cliente')+'</div>'
@@ -1676,9 +1701,112 @@ function visRenderHistorial(lista){
       +(v.aplica_cobro?'<div style="font-size:11px;font-weight:700;color:var(--gold)">$'+fmt(v.monto)+'</div>':'')+'</div>'
       +'</div>'
       +(v.materiales_instalacion?'<div style="margin-top:6px;font-size:10px;color:#8E44AD;background:rgba(142,68,173,0.06);padding:4px 8px;border-radius:6px">🧰 '+esc(v.materiales_instalacion)+'</div>':'')
-      +(v.reporte_url?'<div style="font-size:9px;color:var(--blue);margin-top:6px">Toca para ver el reporte →</div>':'')
+      +'<div style="font-size:9px;color:var(--blue);margin-top:6px">Toca para ver el detalle &rarr;</div>'
       +'</div>';
   }).join('');
+}
+
+// ── Ver detalle / Editar (solo Mauricio, mismo candado que Pago en tecnicos.html) ──
+function esMauricio() {
+  try {
+    var u = JSON.parse(localStorage.getItem('barrcan_usuario_activo') || '{}');
+    return u.id === 'MAU';
+  } catch(e) { return false; }
+}
+var VIS_MAURICIO_DESBLOQUEADO = false;
+function visVerificarMauricio(callback) {
+  if (VIS_MAURICIO_DESBLOQUEADO || esMauricio()) { callback(); return; }
+  var pin = prompt('PIN:');
+  if (pin === null) return;
+  var pinMau = localStorage.getItem('barrcan_pin_MAU');
+  if (pin && pin === pinMau) {
+    VIS_MAURICIO_DESBLOQUEADO = true;
+    localStorage.setItem('barrcan_usuario_activo', JSON.stringify({ id: 'MAU', rol: 'admin' }));
+    callback();
+  } else {
+    toast('PIN incorrecto');
+  }
+}
+
+function visAbrirDetalle(id){
+  var v = VIS_HIST_CACHE.filter(function(x){ return x.id === id; })[0];
+  if (!v) return;
+  var body = document.getElementById('vis-detalle-body');
+  var accesoTxt = [];
+  if (v.nivel) accesoTxt.push('Nivel: ' + (v.nivel === 'PB' ? 'Planta Baja' : 'Piso ' + v.nivel));
+  if (v.escaleras) accesoTxt.push('Escaleras: ' + v.escaleras);
+  if (v.elevador) accesoTxt.push('Elevador: ' + v.elevador);
+  if (v.personas_necesarias) accesoTxt.push(v.personas_necesarias + ' persona(s)');
+  body.innerHTML =
+      '<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--gray-400)">Folio</div><div style="font-size:14px;font-weight:700;color:var(--navy)">' + esc(v.folio) + '</div></div>'
+    + '<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--gray-400)">Cliente</div><div style="font-size:13px;color:var(--navy)">' + esc(v.cliente_nombre || 'Sin cliente') + (v.cliente_tel ? ' &middot; ' + esc(v.cliente_tel) : '') + '</div></div>'
+    + '<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--gray-400)">Dirección</div><div style="font-size:13px;color:var(--navy)">' + esc(v.dir_obra || '-') + '</div></div>'
+    + '<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--gray-400)">Técnico &middot; Fecha</div><div style="font-size:13px;color:var(--navy)">' + esc(v.tecnico || '-') + ' &middot; ' + esc(v.fecha_visita || '') + '</div></div>'
+    + (accesoTxt.length ? '<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--gray-400)">Acceso</div><div style="font-size:13px;color:var(--navy)">' + accesoTxt.join(' &middot; ') + '</div></div>' : '')
+    + (v.materiales_instalacion ? '<div style="margin-bottom:10px;background:#FFF8ED;border:1px solid var(--gold);border-radius:8px;padding:8px 10px"><div style="font-size:10px;color:var(--gray-400)">🧰 Materiales para instalación</div><div style="font-size:12px;color:var(--navy)">' + esc(v.materiales_instalacion) + '</div></div>' : '')
+    + (v.notas_tecnico ? '<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--gray-400)">Notas del levantamiento</div><div style="font-size:12px;color:var(--navy)">' + esc(v.notas_tecnico) + '</div></div>' : '')
+    + (v.aplica_cobro ? '<div style="margin-bottom:10px"><div style="font-size:10px;color:var(--gray-400)">Cobro de visita</div><div style="font-size:14px;font-weight:700;color:var(--gold)">$' + fmt(v.monto) + '</div></div>' : '');
+
+  var btnReporte = document.getElementById('vis-detalle-btn-reporte');
+  if (v.reporte_url) { btnReporte.style.display = 'block'; btnReporte.onclick = function(){ window.open(v.reporte_url, '_blank'); }; }
+  else { btnReporte.style.display = 'none'; }
+
+  document.getElementById('vis-detalle-btn-editar').onclick = function(){ visVerificarMauricio(function(){ visAbrirEdicion(id); }); };
+  document.getElementById('vis-detalle-modal').style.display = 'block';
+}
+
+function visCerrarDetalle(){ document.getElementById('vis-detalle-modal').style.display = 'none'; }
+
+// ── Editar (solo Mauricio) — reutiliza el formulario de "Nueva Visita" ──
+var VIS_EDITANDO_ID = null;
+function visAbrirEdicion(id){
+  var v = VIS_HIST_CACHE.filter(function(x){ return x.id === id; })[0];
+  if (!v) return;
+  visCerrarDetalle();
+  visReset();
+  VIS_EDITANDO_ID = id;
+
+  document.getElementById('vis-folio-badge').textContent = v.folio;
+  document.getElementById('vis-dir-obra').value = v.dir_obra || '';
+  document.getElementById('vis-fecha').value = v.fecha_visita || '';
+  document.getElementById('vis-hora').value = v.hora_visita || '';
+  document.getElementById('vis-desc-obra').value = v.desc_obra || '';
+  document.getElementById('vis-tecnico').value = v.tecnico || '';
+  document.getElementById('vis-nivel').value = v.nivel || 'PB';
+  document.getElementById('vis-personas').value = v.personas_necesarias || '2';
+  document.getElementById('vis-obs-logistica').value = v.obs_logistica || '';
+  document.getElementById('vis-notas-tec').value = v.notas_tecnico || '';
+  document.getElementById('vis-num-piezas').value = v.num_piezas || '';
+  document.getElementById('vis-aplica-cobro').checked = v.aplica_cobro !== false;
+  document.getElementById('vis-monto').value = v.monto || 1000;
+  visToggleCobro();
+
+  // Herramientas de medición (guardadas como texto separado por coma)
+  var herr = (v.herramientas || '').split(',').map(function(s){ return s.trim(); });
+  document.getElementById('vis-tool-laser').checked = herr.indexOf('Láser') >= 0;
+  document.getElementById('vis-tool-nivel').checked = herr.indexOf('Nivel') >= 0;
+  document.getElementById('vis-tool-metro').checked = herr.indexOf('Metro') >= 0;
+  document.getElementById('vis-tool-flexo').checked = herr.indexOf('Flexómetro') >= 0;
+  var herrExtra = herr.filter(function(h){ return ['Láser','Nivel','Metro','Flexómetro',''].indexOf(h) < 0; });
+  document.getElementById('vis-tool-otro').value = herrExtra.join(', ');
+
+  // Escaleras / elevador (botones de opción)
+  var btnEsc = document.querySelector('.visita-opcion-btn[data-grupo="escaleras"][data-val="' + v.escaleras + '"]');
+  if (btnEsc) { visSelOpcion(btnEsc); }
+  else if (v.escaleras) { var btnOtroEsc = document.querySelector('.visita-opcion-btn[data-grupo="escaleras"][data-val="otro"]'); if (btnOtroEsc) { visSelOpcion(btnOtroEsc); document.getElementById('vis-escaleras-otro').value = v.escaleras; } }
+  var btnElev = document.querySelector('.visita-opcion-btn[data-grupo="elevador"][data-val="' + v.elevador + '"]');
+  if (btnElev) visSelOpcion(btnElev);
+
+  // Materiales para instalación (guardados como texto separado por coma)
+  var matMapInv = {'Escalera de extensión':'vis-mat-escalera','Cuerdas/poleas':'vis-mat-cuerdas','Andamio':'vis-mat-andamio','Taladro/rotomartillo industrial':'vis-mat-taladro','Grúa/montacargas':'vis-mat-grua','Extensión eléctrica larga':'vis-mat-extension','Protección de piso/muebles':'vis-mat-proteccion','Refuerzo (equipo extra)':'vis-mat-refuerzo'};
+  var mats = (v.materiales_instalacion || '').split(',').map(function(s){ return s.trim(); });
+  var matsConocidos = Object.keys(matMapInv);
+  mats.forEach(function(m){ if (matMapInv[m]) { var el = document.getElementById(matMapInv[m]); if (el) el.checked = true; } });
+  var matsExtra = mats.filter(function(m){ return matsConocidos.indexOf(m) < 0 && m; });
+  document.getElementById('vis-mat-otro').value = matsExtra.join(', ');
+
+  visCambiarTab('nueva');
+  toast('Editando ' + v.folio + ' — guarda cuando termines');
 }
 
 document.addEventListener('DOMContentLoaded', function(){
