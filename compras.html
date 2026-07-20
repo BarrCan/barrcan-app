@@ -6,6 +6,18 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.5
+  FECHA   : 2026-07-19
+  v1.5 - Sobrante de material va solo al stock (usa inventario_materiales,
+    tabla que ya existía):
+    - En el desglose por artículo, cada rengl\u00f3n ahora tiene un campo
+      opcional "Cantidad TOTAL comprada" -- si compraste más de lo que
+      usa esta obra (ej. caja de 100 tornillos, usas 12), la diferencia
+      se guarda sola como stock disponible (sin obra), lista para la
+      próxima vez.
+    - No aplica a herramientas/equipo reusable (carretillas, escaleras)
+      -- esas se recomienda dejarlas sin obra desde un inicio, no
+      desglosarlas (son gasto general, no material que se consuma).
   VERSION : v1.4
   FECHA   : 2026-07-18
   v1.4 - Auto-sugerir categoría por proveedor (usa la tabla real
@@ -701,7 +713,7 @@ function cmpToggleDesglose() {
 
 function cmpAgregarItem() {
   MC_ITEM_SEQ++;
-  MC_ITEMS.push({ id: 'it' + MC_ITEM_SEQ, descripcion: '', cantidad: 1, precio_unitario: 0, folio_obra: '' });
+  MC_ITEMS.push({ id: 'it' + MC_ITEM_SEQ, descripcion: '', cantidad: 1, cantidad_total: null, precio_unitario: 0, folio_obra: '' });
   cmpRenderItems();
 }
 
@@ -714,13 +726,14 @@ function cmpQuitarItem(id) {
 function cmpItemActualizar(id, campo, valor) {
   var it = MC_ITEMS.filter(function(x) { return x.id === id; })[0];
   if (!it) return;
-  it[campo] = (campo === 'cantidad' || campo === 'precio_unitario') ? (parseFloat(valor) || 0) : valor;
+  it[campo] = (campo === 'cantidad' || campo === 'precio_unitario' || campo === 'cantidad_total') ? (valor === '' ? null : (parseFloat(valor) || 0)) : valor;
   cmpActualizarTotalDesglose();
 }
 
 function cmpRenderItems() {
   var cont = document.getElementById('mc-items-lista');
   cont.innerHTML = MC_ITEMS.map(function(it, i) {
+    var sobrante = (it.cantidad_total != null && it.cantidad_total > (it.cantidad || 0)) ? (it.cantidad_total - it.cantidad) : 0;
     return '<div style="border:1px solid var(--gray-200);border-radius:8px;padding:8px;margin-top:6px;background:#F8F9FA">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
       + '<span style="font-size:10px;font-weight:700;color:var(--blue)">Artículo ' + (i + 1) + '</span>'
@@ -728,10 +741,13 @@ function cmpRenderItems() {
       + '</div>'
       + '<input type="text" class="form-input" placeholder="Descripción (ej. 10 barras perfil 0858)" value="' + esc(it.descripcion) + '" style="margin-bottom:5px;font-size:12px" oninput="cmpItemActualizar(\'' + it.id + '\',\'descripcion\',this.value)">'
       + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:5px">'
-      + '<input type="number" class="form-input" placeholder="Cantidad" value="' + it.cantidad + '" style="font-size:12px" oninput="cmpItemActualizar(\'' + it.id + '\',\'cantidad\',this.value);cmpRenderItems()">'
+      + '<input type="number" class="form-input" placeholder="Cantidad para esta obra" value="' + it.cantidad + '" style="font-size:12px" oninput="cmpItemActualizar(\'' + it.id + '\',\'cantidad\',this.value);cmpRenderItems()">'
       + '<input type="number" class="form-input" placeholder="Precio unitario" value="' + it.precio_unitario + '" style="font-size:12px" oninput="cmpItemActualizar(\'' + it.id + '\',\'precio_unitario\',this.value);cmpRenderItems()">'
       + '</div>'
-      + '<input type="text" class="form-input" list="mc-obra-lista" placeholder="Folio de la obra" value="' + esc(it.folio_obra) + '" style="margin-bottom:4px;font-size:12px" oninput="cmpItemActualizar(\'' + it.id + '\',\'folio_obra\',this.value)">'
+      + '<input type="text" class="form-input" list="mc-obra-lista" placeholder="Folio de la obra" value="' + esc(it.folio_obra) + '" style="margin-bottom:6px;font-size:12px" oninput="cmpItemActualizar(\'' + it.id + '\',\'folio_obra\',this.value)">'
+      + '<label style="font-size:10px;color:var(--gray-400);display:block;margin-bottom:2px">¿Compraste más de lo que usa esta obra? (ej. caja de 100 tornillos, usas 12)</label>'
+      + '<input type="number" class="form-input" placeholder="Cantidad TOTAL comprada (opcional)" value="' + (it.cantidad_total != null ? it.cantidad_total : '') + '" style="font-size:12px;margin-bottom:4px" oninput="cmpItemActualizar(\'' + it.id + '\',\'cantidad_total\',this.value);cmpRenderItems()">'
+      + (sobrante > 0 ? '<div style="font-size:10px;color:#8E44AD;background:rgba(142,68,173,0.08);padding:4px 8px;border-radius:6px;margin-bottom:4px">🧰 ' + fmt(sobrante) + ' de sobrante se guarda como stock disponible (sin obra) para la próxima vez</div>' : '')
       + '<div style="text-align:right;font-size:11px;font-weight:700;color:var(--navy)">Importe: $' + fmt((it.cantidad || 0) * (it.precio_unitario || 0)) + '</div>'
       + '</div>';
   }).join('');
@@ -782,6 +798,27 @@ async function cmpGuardarClasificacion() {
       });
       var resItems = await sb().from('facturas_conceptos').insert(filas);
       if (resItems.error) throw resItems.error;
+
+      // El sobrante (cantidad_total comprada - cantidad usada en esta
+      // obra) se guarda como stock disponible, sin obra, para que la
+      // próxima vez que se necesite ese material ya esté ahí -- en vez
+      // de perderse sin registro.
+      var sobrantes = MC_ITEMS.filter(function(it) {
+        return it.cantidad_total != null && it.cantidad_total > (it.cantidad || 0);
+      }).map(function(it) {
+        return {
+          fecha_compra: new Date().toISOString().split('T')[0],
+          proveedor: proveedorNombre, factura: document.getElementById('mc-titulo').textContent.replace('Clasificar: ', ''),
+          descripcion: it.descripcion.trim(), cantidad: it.cantidad_total - it.cantidad,
+          precio_compra: it.precio_unitario || 0, estado: 'Disponible',
+          folio_obra: null, origen: 'compras.html (sobrante de desglose)'
+        };
+      });
+      if (sobrantes.length) {
+        var resStock = await sb().from('inventario_materiales').insert(sobrantes);
+        if (resStock.error) console.warn('[BarrCan] No se pudo guardar el sobrante en inventario (no crítico):', resStock.error);
+        else toast('Clasificado — ' + sobrantes.length + ' artículo(s) con sobrante guardado en stock');
+      }
     }
 
     // Actualizar cache local

@@ -6,8 +6,39 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
-  VERSION : v3.25.0
-  FECHA   : 2026-07-18
+  VERSION : v3.27.0
+  FECHA   : 2026-07-19
+  v3.27.0 - Fix real: editar un reporte agregando fotos decía
+    "guardado" pero no guardaba los cambios:
+    - Cada reporte sube DOS archivos: el reporte visible, y una
+      copia aparte con todas las fotos (para poder reabrirlo a
+      editar después). El código marcaba "éxito" en cuanto la
+      PRIMERA subía bien, y si la SEGUNDA fallaba (más probable con
+      más fotos, porque pesa más), se descartaba como "no crítico".
+    - El reporte impreso sí quedaba bien, pero la próxima vez que se
+      editaba, no traía las fotos nuevas -- esa copia nunca llegó.
+    - Ahora, si CUALQUIERA de las dos subidas falla, se trata igual
+      de grave -- se encola para reintentar completo (como ya
+      pasaba solo cuando fallaba la primera), en vez de reportar
+      éxito a medias.
+    - Aplica a los 2 tipos de reporte (Puerta/Envío/Mantenimiento e
+      Instalación).
+  v3.26.0 - Fix real: reportes de instalación que "se generan" pero
+    no aparecen en el Historial:
+    - Causa encontrada: el guardado en Supabase se disparaba SIN
+      esperar su resultado (fire-and-forget) mientras la ventana de
+      impresión se abría de inmediato -- así que parecía que ya
+      había quedado listo aunque el guardado real fallara después,
+      con el único aviso siendo un toast fácil de perder al cambiar
+      de pestaña hacia la vista previa.
+    - Ahora SÍ espera la confirmación real antes de decir que quedó
+      listo. La pantalla final ("Ver / imprimir", "Enviar por
+      WhatsApp", etc.) ahora dice explícitamente: "Guardado
+      correctamente" (verde) o "Aún NO se ha guardado -- se
+      reintentará solo" (dorado) -- ya no hay ambigüedad de si de
+      verdad quedó en la base de datos.
+    - El otro tipo de reporte (Puerta/Envío/Mantenimiento) ya estaba
+      bien hecho desde antes -- no tenía este bug.
   v3.25.0 - Fix: se me había pasado un segundo campo de técnico:
     - "Asignado por" (id inst-asignado) tenía la misma lista fija de 5
       nombres que "Técnico instalador" -- no lo detecté antes porque su
@@ -1589,7 +1620,7 @@ body{min-height:100vh}
   <div style="width:100%;background:var(--white);border-radius:20px 20px 0 0;padding:20px 20px 36px">
     <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 14px"></div>
     <div id="ent-post-folio" style="font-size:17px;font-weight:700;color:var(--navy);margin-bottom:4px"></div>
-    <div style="font-size:12px;color:var(--gray-400);margin-bottom:16px">&iquest;Qu&eacute; deseas hacer?</div>
+    <div id="ent-post-estado" style="font-size:12px;color:var(--gray-400);margin-bottom:16px">&iquest;Qu&eacute; deseas hacer?</div>
     <button id="ent-post-btn-ver" onclick="entReverReporte()" style="width:100%;padding:13px;margin-bottom:8px;background:rgba(46,109,164,0.08);border:1.5px solid var(--blue);border-radius:var(--radius);color:var(--blue);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">Ver / imprimir comprobante</button>
     <button onclick="entEnviarWA()" style="width:100%;padding:13px;margin-bottom:8px;background:#25D366;border:none;border-radius:var(--radius);color:white;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">Enviar por WhatsApp</button>
     <button onclick="entEnviarEncuesta()" style="width:100%;padding:13px;margin-bottom:8px;background:rgba(46,109,164,0.08);border:1.5px solid var(--blue);border-radius:var(--radius);color:var(--blue);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">Enviar encuesta de satisfacci&oacute;n</button>
@@ -2375,8 +2406,16 @@ async function entGenerarReporte() {
             if (!upResDatos.error) {
               var urlResDatos = sb().storage.from('reportes').getPublicUrl(nombreDatos);
               datosUrl = urlResDatos.data ? urlResDatos.data.publicUrl : null;
+            } else {
+              // Antes esto se ignoraba como "no crítico" y el guardado
+              // seguía como si todo hubiera salido bien -- pero sin esta
+              // copia, la próxima vez que se edite el reporte no van a
+              // aparecer las fotos que se acaban de agregar. Se trata
+              // igual de grave que si fallara el reporte principal.
+              subidaOk = false;
+              console.warn('[BarrCan] Falló la copia editable (con fotos) -- se reintentará todo:', upResDatos.error);
             }
-          } catch(eDatos) { console.warn('[BarrCan] No se pudo subir datos completos (no crítico):', eDatos); }
+          } catch(eDatos) { subidaOk = false; console.warn('[BarrCan] Falló la copia editable (con fotos) -- se reintentará todo:', eDatos); }
         } else { console.warn('Storage:', upRes.error); }
       } catch(eStorage) { console.warn('Storage:', eStorage.message); }
     }
@@ -3474,8 +3513,11 @@ async function entGenerarReporteInstalacion() {
             if (!upResDatosInst.error) {
               var urlResDatosInst = sb().storage.from('reportes').getPublicUrl(nombreDatosInst);
               datosUrl = urlResDatosInst.data ? urlResDatosInst.data.publicUrl : null;
+            } else {
+              subidaOkInst = false;
+              console.warn('[BarrCan] Falló la copia editable (con fotos) -- se reintentará todo:', upResDatosInst.error);
             }
-          } catch(eDatosInst) { console.warn('[BarrCan] No se pudo subir datos completos (no crítico):', eDatosInst); }
+          } catch(eDatosInst) { subidaOkInst = false; console.warn('[BarrCan] Falló la copia editable (con fotos) -- se reintentará todo:', eDatosInst); }
         } else {
           console.warn('[BarrCan] No se pudo subir el HTML del reporte de instalación a Storage:', upResInst.error);
         }
@@ -3504,29 +3546,33 @@ async function entGenerarReporteInstalacion() {
 
     var editandoId = ENT_EDIT_ID;
     var esEdicion   = ENT_EDIT_TABLA === 'entregas_instalacion' && !!editandoId;
+    var guardadoOk = false;
 
     // Si no hay conexión, o si el HTML con fotos y firmas no logró subirse
     // a Storage, se encola COMPLETO en IndexedDB (no solo el registro
     // ligero) para reintentar la subida pesada más adelante sin perder nada.
     if (!SYNC.online || typeof sb !== 'function' || !sb() || !subidaOkInst) {
       offEncolarReporte('entregas_instalacion', payload, htmlReporte, nombreArchInst, datosJsonStr, nombreDatosInst, esEdicion ? editandoId : null);
-      toast(subidaOkInst === false && SYNC.online ? 'Fotos pesadas, se reintentará automáticamente · ' + folio : 'Guardado sin conexión, se sincronizará al reconectar · ' + folio);
+      toast(subidaOkInst === false && SYNC.online ? '⏳ Fotos pesadas, se reintentará automáticamente · ' + folio + ' (revisa el Historial en un momento)' : '💾 Guardado sin conexión, se sincronizará al reconectar · ' + folio, 5000);
     } else {
-      var opInst = esEdicion
-        ? sb().from('entregas_instalacion').update(payload).eq('id', editandoId)
-        : sb().from('entregas_instalacion').insert([payload]);
-      opInst.then(function(res) {
-        if (res.error) {
-          console.warn('[BarrCan] No se pudo guardar la instalación en Supabase, se reencola completa:', res.error);
-          offEncolarReporte('entregas_instalacion', payload, htmlReporte, nombreArchInst, datosJsonStr, nombreDatosInst, esEdicion ? editandoId : null);
-          toast('⚠️ No se pudo guardar, se reintentará · ' + folio);
-        } else {
-          entCargarHistorial();
-        }
-      }).catch(function(e){
-        console.warn('[BarrCan] Error de red al guardar instalación, se reencola completa:', e);
+      // AHORA SÍ SE ESPERA el resultado real antes de decir que quedó
+      // listo -- antes se disparaba sin esperar (fire-and-forget), así
+      // que se podía abrir la vista de impresión y creer que ya había
+      // quedado guardado aunque el guardado real fallara unos
+      // milisegundos después, con el único aviso siendo un toast fácil
+      // de perder.
+      try {
+        var opInst = esEdicion
+          ? await sb().from('entregas_instalacion').update(payload).eq('id', editandoId)
+          : await sb().from('entregas_instalacion').insert([payload]);
+        if (opInst.error) throw opInst.error;
+        guardadoOk = true;
+        await entCargarHistorial();
+      } catch(eGuardar) {
+        console.warn('[BarrCan] No se pudo guardar la instalación en Supabase, se reencola completa:', eGuardar);
         offEncolarReporte('entregas_instalacion', payload, htmlReporte, nombreArchInst, datosJsonStr, nombreDatosInst, esEdicion ? editandoId : null);
-      });
+        toast('⚠️ NO se guardó todavía (se reintentará solo) · ' + folio + ' — revisa el Historial en un momento', 5000);
+      }
     }
 
     entSalirModoEdicion();
@@ -3536,8 +3582,14 @@ async function entGenerarReporteInstalacion() {
 
     var postOv   = document.getElementById('ent-post-ov');
     var postFol  = document.getElementById('ent-post-folio');
+    var postEst  = document.getElementById('ent-post-estado');
     if (postOv)  postOv.style.display  = 'flex';
     if (postFol) postFol.textContent   = folio;
+    if (postEst) {
+      postEst.innerHTML = guardadoOk
+        ? '<span style="color:var(--green)">&#10003; Guardado correctamente</span>'
+        : '<span style="color:var(--gold)">&#9203; A&uacute;n NO se ha guardado &mdash; se reintentar&aacute; solo, revisa Historial en un momento</span>';
+    }
 
   } catch(e) {
     var errEl2 = document.getElementById('ent-error');
