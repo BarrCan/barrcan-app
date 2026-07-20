@@ -6,6 +6,20 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.6
+  FECHA   : 2026-07-19
+  v1.6 - Nueva pestaña "🧰 Herramientas" -- registro real de equipo:
+    - Qué herramientas tiene BarrCan, cuántas, en qué condición (bueno/
+      regular/malo/en reparación/perdido), y quién la trae (técnico o
+      "en el taller") -- separado por completo del flujo de clasificar
+      facturas por obra.
+    - Filtros: en el taller / con alguien / necesitan atención / dadas
+      de baja.
+    - Al clasificar una factura como categoría "Herramientas" (sin
+      desglosar), ahora ofrece agregarla directo al registro -- ya con
+      el costo y proveedor precargados.
+    - "Dar de baja" no borra el historial, solo la marca inactiva.
+    - Requiere el SQL adjunto (herramientas_equipo.sql).
   VERSION : v1.5
   FECHA   : 2026-07-19
   v1.5 - Sobrante de material va solo al stock (usa inventario_materiales,
@@ -181,6 +195,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
   <div class="tabs">
     <button class="tab-btn active" onclick="cmpTab(this,'facturas')">Facturas</button>
     <button class="tab-btn" onclick="cmpTab(this,'inventario')">Inventario</button>
+    <button class="tab-btn" onclick="cmpTab(this,'herramientas')">🧰 Herramientas</button>
     <button class="tab-btn" onclick="cmpTab(this,'precios')">Precios hist.</button>
     <button class="tab-btn" onclick="cmpTab(this,'proveedores')">Proveedores</button>
   </div>
@@ -243,6 +258,28 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     </div>
   </div>
 
+  <!-- TAB: HERRAMIENTAS Y EQUIPO -->
+  <div id="tab-herramientas" style="display:none">
+    <div class="card">
+      <div class="card-title">
+        Herramientas y equipo
+        <button class="btn btn-sm btn-primary" onclick="hrrAbrirNueva()">+ Agregar</button>
+      </div>
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" class="form-input" id="hrr-busca" placeholder="Nombre..." oninput="cmpFiltrarHerramientas()" style="margin-bottom:0">
+      </div>
+      <select class="form-select" id="hrr-filtro-estado" onchange="cmpFiltrarHerramientas()">
+        <option value="">Todas</option>
+        <option value="taller">En el taller</option>
+        <option value="asignada">Con alguien</option>
+        <option value="malo">Necesitan atención (regular/malo/reparación)</option>
+        <option value="perdido">Perdidas/dadas de baja</option>
+      </select>
+      <div id="hrr-lista"><div style="text-align:center;padding:20px;color:var(--gray-400)">Cargando...</div></div>
+    </div>
+  </div>
+
   <!-- TAB: PROVEEDORES -->
   <div id="tab-proveedores" style="display:none">
     <div class="card">
@@ -270,6 +307,61 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 </div>
 
 <!-- MODAL CLASIFICAR FACTURA -->
+<!-- Modal: agregar/editar herramienta -->
+<div id="modal-herramienta" class="modal-ov">
+  <div class="modal-box">
+    <div class="modal-handle"></div>
+    <div style="font-size:16px;font-weight:700;color:var(--navy);margin-bottom:14px" id="hrr-titulo">Agregar herramienta</div>
+    <input type="hidden" id="hrr-id">
+
+    <label class="form-label">Nombre *</label>
+    <input type="text" class="form-input" id="hrr-nombre" placeholder="Ej. Carretilla, Escalera 6m, Taladro Bosch" style="margin-bottom:10px">
+
+    <label class="form-label">Cantidad</label>
+    <input type="number" class="form-input" id="hrr-cantidad" value="1" min="1" style="margin-bottom:10px">
+
+    <label class="form-label">Condición</label>
+    <select class="form-select" id="hrr-condicion" style="margin-bottom:10px">
+      <option value="bueno">✅ Bueno</option>
+      <option value="regular">⚠️ Regular</option>
+      <option value="malo">🔴 Malo</option>
+      <option value="reparacion">🔧 En reparación</option>
+      <option value="perdido">❌ Perdido / dado de baja</option>
+    </select>
+
+    <label class="form-label">¿Quién la trae? (opcional)</label>
+    <select class="form-select" id="hrr-asignado" style="margin-bottom:10px">
+      <option value="">— En el taller —</option>
+      <option value="ESAU">Esaú</option>
+      <option value="MIGUEL">Miguel</option>
+      <option value="CARLOS">Carlos</option>
+      <option value="OMAR">Omar</option>
+      <option value="RODRIGO">Rodrigo</option>
+    </select>
+
+    <label class="form-label">Ubicación extra (opcional)</label>
+    <input type="text" class="form-input" id="hrr-ubicacion" placeholder="Ej. Camioneta 2" style="margin-bottom:10px">
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+      <div>
+        <label class="form-label">Fecha de compra</label>
+        <input type="date" class="form-input" id="hrr-fecha">
+      </div>
+      <div>
+        <label class="form-label">Costo</label>
+        <input type="number" class="form-input" id="hrr-costo" placeholder="0">
+      </div>
+    </div>
+
+    <label class="form-label">Notas</label>
+    <textarea class="form-input" id="hrr-notas" rows="2" style="resize:none;margin-bottom:14px"></textarea>
+
+    <button onclick="hrrGuardar()" style="width:100%;padding:12px;background:var(--navy);color:white;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;margin-bottom:8px">Guardar</button>
+    <button id="hrr-btn-baja" onclick="hrrDarDeBaja()" style="display:none;width:100%;padding:10px;background:rgba(192,57,43,0.08);border:1.5px solid rgba(192,57,43,0.3);border-radius:8px;color:var(--red);font-family:'DM Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:8px">Dar de baja</button>
+    <button onclick="document.getElementById('modal-herramienta').style.display='none'" style="width:100%;padding:10px;background:none;border:1.5px solid var(--gray-200);border-radius:8px;color:var(--gray-600);font-family:'DM Sans',sans-serif;font-size:13px;cursor:pointer">Cancelar</button>
+  </div>
+</div>
+
 <div id="modal-clasificar" class="modal-ov">
   <div class="modal-box">
     <div class="modal-handle"></div>
@@ -385,13 +477,14 @@ var MC_ID = null;  // ID factura a clasificar
 function cmpTab(btn, tab) {
   document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
   btn.classList.add('active');
-  var tabs = ['facturas','inventario','precios','proveedores'];
+  var tabs = ['facturas','inventario','herramientas','precios','proveedores'];
   tabs.forEach(function(t) {
     var el = document.getElementById('tab-' + t);
     if (el) el.style.display = t === tab ? 'block' : 'none';
   });
-  if (tab === 'inventario' && !INV_CACHE.length)   cmpCargarInventario();
-  if (tab === 'proveedores' && !PROV_CACHE.length) cmpCargarProveedores();
+  if (tab === 'inventario' && !INV_CACHE.length)     cmpCargarInventario();
+  if (tab === 'herramientas' && !HRR_CACHE.length)   cmpCargarHerramientas();
+  if (tab === 'proveedores' && !PROV_CACHE.length)   cmpCargarProveedores();
 }
 
 // ── Catbadge ─────────────────────────────────────────────────
@@ -834,7 +927,26 @@ async function cmpGuardarClasificacion() {
     cmpFiltrarFacturas();
     document.getElementById('modal-clasificar').style.display = 'none';
     toast('Factura clasificada');
+    var facturaClasificada = MC_ID; var proveedorFact = proveedorNombre; var totalFact = MC_TOTAL_FACTURA;
     MC_ID = null;
+    if (cat === 'HERRAMIENTAS' && !esDesglose) {
+      setTimeout(function() {
+        if (confirm('¿Agregar esto al registro de Herramientas y Equipo?')) {
+          document.getElementById('hrr-titulo').textContent = 'Agregar herramienta';
+          document.getElementById('hrr-id').value = '';
+          document.getElementById('hrr-nombre').value = proveedorFact ? '' : '';
+          document.getElementById('hrr-cantidad').value = '1';
+          document.getElementById('hrr-condicion').value = 'bueno';
+          document.getElementById('hrr-asignado').value = '';
+          document.getElementById('hrr-ubicacion').value = '';
+          document.getElementById('hrr-fecha').value = new Date().toISOString().split('T')[0];
+          document.getElementById('hrr-costo').value = totalFact || '';
+          document.getElementById('hrr-notas').value = 'Factura: ' + proveedorFact;
+          document.getElementById('hrr-btn-baja').style.display = 'none';
+          document.getElementById('modal-herramienta').style.display = 'flex';
+        }
+      }, 300);
+    }
   } catch(e) {
     toast('Error al guardar: ' + e.message);
   }
@@ -949,6 +1061,132 @@ async function cmpFiltrarPrecios() {
 }
 
 // ── PROVEEDORES ───────────────────────────────────────────────
+// ── Herramientas y Equipo ───────────────────────────────────
+var HRR_CACHE = [];
+async function cmpCargarHerramientas() {
+  var lista = document.getElementById('hrr-lista');
+  lista.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">Cargando...</div>';
+  if (!sb()) return;
+  try {
+    var res = await sb().from('herramientas_equipo').select('*')
+      .eq('activo', true).order('nombre', { ascending: true });
+    if (res.error) throw res.error;
+    HRR_CACHE = res.data || [];
+    cmpFiltrarHerramientas();
+  } catch(e) {
+    lista.innerHTML = '<div style="text-align:center;padding:20px;color:var(--red)">Error al cargar</div>';
+    console.warn('[BarrCan] Error herramientas:', e);
+  }
+}
+
+var HRR_TEC_NOMBRES = { ESAU:'Esaú', MIGUEL:'Miguel', CARLOS:'Carlos', OMAR:'Omar', RODRIGO:'Rodrigo' };
+var HRR_COND_CFG = {
+  bueno:      { label: '✅ Bueno',        color: 'var(--green)' },
+  regular:    { label: '⚠️ Regular',      color: 'var(--gold)' },
+  malo:       { label: '🔴 Malo',         color: 'var(--red)' },
+  reparacion: { label: '🔧 Reparación',   color: 'var(--blue)' },
+  perdido:    { label: '❌ Perdido',      color: 'var(--red)' }
+};
+
+function cmpFiltrarHerramientas() {
+  var busca = (document.getElementById('hrr-busca').value || '').toLowerCase();
+  var filtro = document.getElementById('hrr-filtro-estado').value;
+  var lista = document.getElementById('hrr-lista');
+  var filtrado = HRR_CACHE.filter(function(h) {
+    var matchB = !busca || (h.nombre || '').toLowerCase().indexOf(busca) >= 0;
+    var matchF = true;
+    if (filtro === 'taller') matchF = !h.asignado_a;
+    else if (filtro === 'asignada') matchF = !!h.asignado_a;
+    else if (filtro === 'malo') matchF = ['regular', 'malo', 'reparacion'].indexOf(h.condicion) >= 0;
+    else if (filtro === 'perdido') matchF = h.condicion === 'perdido';
+    return matchB && matchF;
+  });
+  if (!filtrado.length) {
+    lista.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">Sin herramientas registradas</div>';
+    return;
+  }
+  lista.innerHTML = filtrado.map(function(h) {
+    var cond = HRR_COND_CFG[h.condicion] || HRR_COND_CFG.bueno;
+    var quien = h.asignado_a ? (HRR_TEC_NOMBRES[h.asignado_a] || h.asignado_a) : 'En el taller';
+    return '<div onclick="hrrAbrirEditar(\'' + h.id + '\')" style="background:var(--white);border-radius:10px;padding:12px 14px;margin-bottom:8px;box-shadow:var(--shadow-sm);cursor:pointer">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center">'
+      + '<div><div style="font-size:13px;font-weight:700;color:var(--navy)">' + esc(h.nombre) + (h.cantidad > 1 ? ' ×' + h.cantidad : '') + '</div>'
+      + '<div style="font-size:11px;color:var(--gray-400)">' + (h.asignado_a ? '👤 ' : '🏠 ') + esc(quien) + (h.ubicacion ? ' · ' + esc(h.ubicacion) : '') + '</div></div>'
+      + '<span style="font-size:11px;font-weight:700;color:' + cond.color + '">' + cond.label + '</span>'
+      + '</div></div>';
+  }).join('');
+}
+
+function hrrAbrirNueva() {
+  document.getElementById('hrr-titulo').textContent = 'Agregar herramienta';
+  document.getElementById('hrr-id').value = '';
+  document.getElementById('hrr-nombre').value = '';
+  document.getElementById('hrr-cantidad').value = '1';
+  document.getElementById('hrr-condicion').value = 'bueno';
+  document.getElementById('hrr-asignado').value = '';
+  document.getElementById('hrr-ubicacion').value = '';
+  document.getElementById('hrr-fecha').value = '';
+  document.getElementById('hrr-costo').value = '';
+  document.getElementById('hrr-notas').value = '';
+  document.getElementById('hrr-btn-baja').style.display = 'none';
+  document.getElementById('modal-herramienta').style.display = 'flex';
+}
+
+function hrrAbrirEditar(id) {
+  var h = HRR_CACHE.filter(function(x) { return x.id === id; })[0];
+  if (!h) return;
+  document.getElementById('hrr-titulo').textContent = 'Editar herramienta';
+  document.getElementById('hrr-id').value = h.id;
+  document.getElementById('hrr-nombre').value = h.nombre || '';
+  document.getElementById('hrr-cantidad').value = h.cantidad || 1;
+  document.getElementById('hrr-condicion').value = h.condicion || 'bueno';
+  document.getElementById('hrr-asignado').value = h.asignado_a || '';
+  document.getElementById('hrr-ubicacion').value = h.ubicacion || '';
+  document.getElementById('hrr-fecha').value = h.fecha_compra || '';
+  document.getElementById('hrr-costo').value = h.costo || '';
+  document.getElementById('hrr-notas').value = h.notas || '';
+  document.getElementById('hrr-btn-baja').style.display = 'block';
+  document.getElementById('modal-herramienta').style.display = 'flex';
+}
+
+async function hrrGuardar() {
+  var id = document.getElementById('hrr-id').value;
+  var nombre = document.getElementById('hrr-nombre').value.trim();
+  if (!nombre) { toast('El nombre es obligatorio'); return; }
+  var payload = {
+    nombre: nombre,
+    cantidad: parseInt(document.getElementById('hrr-cantidad').value) || 1,
+    condicion: document.getElementById('hrr-condicion').value,
+    asignado_a: document.getElementById('hrr-asignado').value || null,
+    ubicacion: document.getElementById('hrr-ubicacion').value.trim() || null,
+    fecha_compra: document.getElementById('hrr-fecha').value || null,
+    costo: parseFloat(document.getElementById('hrr-costo').value) || null,
+    notas: document.getElementById('hrr-notas').value.trim() || null,
+    updated_at: new Date().toISOString()
+  };
+  try {
+    var res = id
+      ? await sb().from('herramientas_equipo').update(payload).eq('id', id)
+      : await sb().from('herramientas_equipo').insert([payload]);
+    if (res.error) throw res.error;
+    toast(id ? 'Herramienta actualizada' : 'Herramienta agregada');
+    document.getElementById('modal-herramienta').style.display = 'none';
+    await cmpCargarHerramientas();
+  } catch(e) { toast('No se pudo guardar: ' + e.message); }
+}
+
+async function hrrDarDeBaja() {
+  var id = document.getElementById('hrr-id').value;
+  if (!id) return;
+  if (!confirm('¿Dar de baja esta herramienta? (se marca como inactiva, no se borra el historial)')) return;
+  try {
+    await sb().from('herramientas_equipo').update({ activo: false, condicion: 'perdido' }).eq('id', id);
+    toast('Dada de baja');
+    document.getElementById('modal-herramienta').style.display = 'none';
+    await cmpCargarHerramientas();
+  } catch(e) { toast('No se pudo: ' + e.message); }
+}
+
 async function cmpCargarProveedores() {
   var lista = document.getElementById('prov-lista');
   if (!sb()) return;
