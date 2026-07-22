@@ -6,8 +6,9 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
-  VERSION : v1.7
-  FECHA   : 2026-07-18
+  VERSION : v1.8
+  FECHA   : 2026-07-22
+  v1.8 - centrado de teclado   
   v1.7 - Agregado el módulo de Garantías al portal (supremo+admin).
   v1.6 - Permisos por rol en el portal:
     - Administrador supremo (MAU, identificado por id, no por rol --
@@ -107,7 +108,7 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
 .pin-dot{width:14px;height:14px;border-radius:50%;border:1.5px solid rgba(255,255,255,.4);transition:.15s}
 .pin-dot.filled{background:var(--gold);border-color:var(--gold)}
 .pin-teclado{display:grid;grid-template-columns:repeat(3,64px);gap:14px;justify-content:center}
-.pin-tecla{width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:22px;font-weight:600;cursor:pointer}
+.pin-tecla{width:64px;height:64px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);color:#fff;font-size:22px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .pin-tecla:active{background:rgba(255,255,255,.22)}
 .pin-tecla.vacia{background:none;border:none;cursor:default}
 .pin-error{color:#FF8A80;font-size:12px;margin-top:14px;min-height:16px}
