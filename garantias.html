@@ -6,8 +6,9 @@
 <title>BarrCan &middot; Garant&iacute;as</title>
 <!--
   BARRCAN · MODULO: GARANTÍAS Y POSTVENTA (standalone)
-  VERSION : v1.0
-  FECHA   : 2026-07-18
+  VERSION : v1.1
+  FECHA   : 2026-07-23
+  v1.1 - Actualización de identificación
   v1.0 - Creación inicial (extraído del archivo base barrcan_app.html):
     - Conectado a la tabla real "garantias" (ya existía en Supabase con
       11 tickets reales -- este módulo era el único que faltaba para
@@ -1126,11 +1127,17 @@ body{min-height:100vh}
     </div>
     <div class="form-group">
       <label class="form-label">Tel&eacute;fono *</label>
-      <input type="tel" id="gtia-tel" class="form-input" placeholder="55 1234 5678" inputmode="tel">
+      <input type="tel" id="gtia-tel" class="form-input" placeholder="55 1234 5678" inputmode="tel" onblur="gtiaBuscarPorTelefono()">
     </div>
-    <div class="form-group">
+     <div class="form-group">
       <label class="form-label">Folio de contrato (si recuerda)</label>
       <input type="text" id="gtia-folio" class="form-input" placeholder="CACN-...">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Direcci&oacute;n de la obra</label>
+      <input type="text" id="gtia-dir" class="form-input" placeholder="Se autocompleta si el tel&eacute;fono coincide con un cliente">
+      <div id="gtia-dir-hint" style="font-size:10px;color:var(--gray-400);margin-top:3px;display:none"></div>
     </div>
 
     <div class="form-group">
@@ -1226,6 +1233,7 @@ body{min-height:100vh}
         <div><span style="color:var(--gray-400)">Folio: </span><span id="gtia-det-folio" style="font-weight:600;color:var(--blue);font-family:monospace">&mdash;</span></div>
         <div><span style="color:var(--gray-400)">Instalaci&oacute;n: </span><span id="gtia-det-fecha-inst" style="font-weight:600;color:var(--navy)">&mdash;</span></div>
         <div><span style="color:var(--gray-400)">Disponibilidad: </span><span id="gtia-det-disp" style="font-weight:600;color:var(--navy)">&mdash;</span></div>
+        <div style="grid-column:1/-1"><span style="color:var(--gray-400)">&#128205; Direcci&oacute;n: </span><span id="gtia-det-dir" style="font-weight:600;color:var(--navy)">&mdash;</span></div>
       </div>
       <div style="margin-top:8px;font-size:12px;color:var(--gray-600);line-height:1.5" id="gtia-det-desc">&mdash;</div>
       <div id="gtia-det-fotos" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:10px"></div>
