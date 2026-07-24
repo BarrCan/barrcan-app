@@ -1655,6 +1655,7 @@ body{background:var(--off-white)}
     <input type="hidden" id="cfg-utilidad"    value="25">
     <input type="hidden" id="cfg-ga"          value="25">
     <input type="hidden" id="cfg-iva"         value="16">
+    <input type="hidden" id="cfg-iva-compras" value="16">
     <input type="hidden" id="cfg-merma"       value="10">
     <input type="hidden" id="cfg-precio-al"   value="120">
     <input type="hidden" id="cfg-cargo-piso"  value="150">
@@ -3838,7 +3839,7 @@ const CONFIG_KEY = 'barrcan_config_v1';
 
 const CONFIG_DEFAULTS = {
   // Financieros
-  'cfg-gif': 15, 'cfg-utilidad': 30, 'cfg-ga': 25, 'cfg-iva': 16, 'cfg-merma': 10,
+  'cfg-gif': 15, 'cfg-utilidad': 30, 'cfg-ga': 25, 'cfg-iva': 16, 'cfg-iva-compras': 16, 'cfg-merma': 10,
   'cfg-cargo-piso': 150, 'cfg-cargo-campo': 500,
   // Aluminio
   'cfg-precio-al': 120,
@@ -3896,6 +3897,7 @@ function guardarConfig() {
 const SB_CONFIG_MAPA = {
   'gif_pct':       'cfg-gif',        'utilidad_pct':  'cfg-utilidad',
   'ga_pct':        'cfg-ga',         'iva_pct':       'cfg-iva',
+  'iva_compras_pct': 'cfg-iva-compras',
   'merma_pct':     'cfg-merma',      'precio_al_kg':  'cfg-precio-al',
   'cargo_piso':    'cfg-cargo-piso', 'cargo_campo':   'cfg-cargo-campo',
   'vid_6mm':       'cfg-vid-6',      'vid_8mm':       'cfg-vid-8',
@@ -5361,6 +5363,7 @@ function calcular() {
   const utilidadPct = cfg('cfg-utilidad') / 100;
   const gaPct = cfg('cfg-ga') / 100;
   const ivaPct = cfg('cfg-iva') / 100;
+  const ivaComprasPct = cfg('cfg-iva-compras') / 100;
   const merma = 1 + (cfg('cfg-merma') / 100);
   const precioAl = cfg('cfg-precio-al');
   const cargoPiso = cfg('cfg-cargo-piso');
@@ -5419,7 +5422,14 @@ function calcular() {
   // ─── 5. Costos acumulados ───
   const costoAluminio = cortesCalc.reduce((a, c) => a + c.costo, 0);
   const mdoTotal = mdo * factorMO;
-  const subtotalFabricacion = costoAluminio + costoVidrio + costoHerrajes + mdoTotal;
+  // Los precios de aluminio/vidrio/herrajes en Config vienen de listas de proveedor
+  // que YA incluyen IVA. Ese IVA es acreditable (no es costo real tuyo), así que se
+  // descuenta aquí antes de calcular GIF/GA/Utilidad, para no margar sobre un costo
+  // inflado. Los renglones de "Orden al Proveedor" siguen mostrando el precio bruto
+  // (con IVA) porque es lo que realmente se paga al comprar.
+  const costoMaterialesBruto = costoAluminio + costoVidrio + costoHerrajes;
+  const costoMaterialesNeto = costoMaterialesBruto / (1 + ivaComprasPct);
+  const subtotalFabricacion = costoMaterialesNeto + mdoTotal;
   const gif = subtotalFabricacion * gifPct;
   const ga = subtotalFabricacion * gaPct;
 
@@ -5470,6 +5480,9 @@ function calcular() {
     costoVidrio,
     costoHerrajes,
     mdoTotal,
+    costoMaterialesBruto,
+    costoMaterialesNeto,
+    ivaComprasPct,
     subtotalFabricacion,
     gif,
     ga,
@@ -6147,7 +6160,11 @@ function renderVista(r) {
         ${renderFilaCosto('Vidrio', r.costoVidrio)}
         ${renderFilaCosto('Herrajes', r.costoHerrajes)}
         ${renderFilaCosto('Mano de obra (×' + r.alertaPeso.factorMO.toFixed(1) + ')', r.mdoTotal, false, false, true)}
-        <div class=costo-row subtotal><span>SUBTOTAL FABRICACIÓN</span><span class=costo-monto>$${fmt(r.subtotalFabricacion)}</span></div>
+        <div class="costo-row" style="opacity:0.6;font-size:11px">
+          <span>Materiales bruto (c/IVA compra ${document.getElementById('cfg-iva-compras').value}%): $${fmt(r.costoMaterialesBruto)} → neto</span>
+          <span class="costo-monto">$${fmt(r.costoMaterialesNeto)}</span>
+        </div>
+        <div class=costo-row subtotal><span>SUBTOTAL FABRICACIÓN (neto)</span><span class=costo-monto>$${fmt(r.subtotalFabricacion)}</span></div>
         ${renderFilaCosto('GIF +' + document.getElementById('cfg-gif').value + '%', r.gif)}
         ${renderFilaCosto('GA +' + document.getElementById('cfg-ga').value + '%', r.ga)}
         ${renderFilaCosto('Logística', r.costoLogistica)}
