@@ -207,6 +207,35 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
         Facturas recibidas
         <button class="btn btn-sm btn-primary" onclick="cmpCargarFacturas()">Actualizar</button>
       </div>
+
+      <!-- Selector de periodo -->
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <select class="form-select" id="fact-periodo-tipo" onchange="cmpCambiarPeriodo()" style="flex:1;margin-bottom:0">
+          <option value="mes">Mensual</option>
+          <option value="trimestre">Trimestral</option>
+          <option value="semestre">Semestral</option>
+          <option value="anio">Anual</option>
+          <option value="todo">Todo (histórico)</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px" id="fact-periodo-nav">
+        <button class="btn btn-sm" onclick="cmpPeriodoMover(-1)" style="padding:6px 12px">◀</button>
+        <div style="flex:1;text-align:center;font-weight:700;color:var(--navy);font-size:13px" id="fact-periodo-label">—</div>
+        <button class="btn btn-sm" onclick="cmpPeriodoMover(1)" style="padding:6px 12px">▶</button>
+      </div>
+
+      <!-- Resumen del periodo -->
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <div style="flex:1;background:#F8F9FA;border-radius:8px;padding:8px 10px">
+          <div style="font-size:10px;color:var(--gray-400)">Total periodo</div>
+          <div style="font-size:15px;font-weight:700;color:var(--navy)" id="fact-resumen-total">$0</div>
+        </div>
+        <div style="flex:1;background:#F8F9FA;border-radius:8px;padding:8px 10px">
+          <div style="font-size:10px;color:var(--gray-400)">Facturas</div>
+          <div style="font-size:15px;font-weight:700;color:var(--navy)" id="fact-resumen-count">0</div>
+        </div>
+      </div>
+
       <div class="search-box">
         <span class="search-icon">🔍</span>
         <input type="text" class="form-input" id="fact-busca" placeholder="Buscar proveedor, folio..." oninput="cmpFiltrarFacturas()" style="margin-bottom:0">
@@ -498,14 +527,74 @@ function catClass(cat) {
 }
 
 // ── FACTURAS ─────────────────────────────────────────────────
+// ── Periodo (mensual / trimestral / semestral / anual / todo) ──────
+var PERIODO = { tipo: 'mes', ref: new Date() };
+var MESES_LARGO = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+
+function cmpPad(n) { return n < 10 ? '0' + n : '' + n; }
+
+function cmpCalcularRango() {
+  var tipo = PERIODO.tipo;
+  var ref  = PERIODO.ref;
+  var y = ref.getFullYear(), m = ref.getMonth();
+  var desde, hasta, label;
+  if (tipo === 'mes') {
+    desde = new Date(y, m, 1);
+    hasta = new Date(y, m + 1, 0);
+    label = MESES_LARGO[m] + ' ' + y;
+  } else if (tipo === 'trimestre') {
+    var qStart = Math.floor(m / 3) * 3;
+    desde = new Date(y, qStart, 1);
+    hasta = new Date(y, qStart + 3, 0);
+    label = 'T' + (qStart / 3 + 1) + ' ' + y + ' (' + MESES_LARGO[qStart].slice(0,3) + '–' + MESES_LARGO[qStart+2].slice(0,3) + ')';
+  } else if (tipo === 'semestre') {
+    var sStart = m < 6 ? 0 : 6;
+    desde = new Date(y, sStart, 1);
+    hasta = new Date(y, sStart + 6, 0);
+    label = (sStart === 0 ? '1er' : '2do') + ' semestre ' + y;
+  } else if (tipo === 'anio') {
+    desde = new Date(y, 0, 1);
+    hasta = new Date(y, 11, 31);
+    label = 'Año ' + y;
+  } else { // todo
+    desde = null; hasta = null; label = 'Todo el histórico';
+  }
+  var fmtISO = function(d) { return d.getFullYear() + '-' + cmpPad(d.getMonth()+1) + '-' + cmpPad(d.getDate()); };
+  return {
+    desde: desde ? fmtISO(desde) : null,
+    hasta: hasta ? fmtISO(hasta) : null,
+    label: label
+  };
+}
+
+function cmpCambiarPeriodo() {
+  PERIODO.tipo = document.getElementById('fact-periodo-tipo').value;
+  PERIODO.ref = new Date();
+  cmpCargarFacturas();
+}
+
+function cmpPeriodoMover(delta) {
+  if (PERIODO.tipo === 'todo') return;
+  var meses = { mes: 1, trimestre: 3, semestre: 6, anio: 12 }[PERIODO.tipo];
+  PERIODO.ref = new Date(PERIODO.ref.getFullYear(), PERIODO.ref.getMonth() + delta * meses, 1);
+  cmpCargarFacturas();
+}
+
 async function cmpCargarFacturas() {
   var lista = document.getElementById('fact-lista');
   lista.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">Cargando...</div>';
   if (!sb()) return;
   try {
-    var res = await sb().from('facturas_recibidas')
+    var rango = cmpCalcularRango();
+    document.getElementById('fact-periodo-label').textContent = rango.label;
+    document.getElementById('fact-periodo-nav').style.display = PERIODO.tipo === 'todo' ? 'none' : 'flex';
+
+    var q = sb().from('facturas_recibidas')
       .select('id,fecha,rfc_emisor,proveedor,folio_factura,categoria,folio_obra,desglosada,subtotal,iva,total')
-      .order('fecha', { ascending: false }).limit(200);
+      .order('fecha', { ascending: false });
+    if (rango.desde) q = q.gte('fecha', rango.desde);
+    if (rango.hasta) q = q.lte('fecha', rango.hasta);
+    var res = await q.limit(5000);
     if (res.error) throw res.error;
     SYNC.online = true; detectar();
     FACT_CACHE = res.data || [];
@@ -553,16 +642,33 @@ function cmpFiltrarFacturas() {
     return matchBusca && matchCat;
   });
 
+  // Resumen del periodo (sobre lo filtrado)
+  var totalPeriodo = filtrado.reduce(function(a, f) { return a + (parseFloat(f.total) || 0); }, 0);
+  document.getElementById('fact-resumen-total').textContent = fmt(totalPeriodo);
+  document.getElementById('fact-resumen-count').textContent = filtrado.length;
+
   if (!filtrado.length) {
     lista.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">Sin resultados</div>';
     return;
   }
 
-  var html = '';
-  for (var i = 0; i < filtrado.length; i++) {
-    var f = filtrado[i];
+  // Agrupar por mes cuando el periodo puede abarcar varios (trimestre/semestre/año/todo)
+  var agrupar = PERIODO.tipo !== 'mes';
+  var grupos = {};
+  var ordenGrupos = [];
+  filtrado.forEach(function(f) {
+    var key = 'Sin fecha';
+    if (f.fecha) {
+      var partes = f.fecha.split('-');
+      key = MESES_LARGO[parseInt(partes[1],10)-1] + ' ' + partes[0];
+    }
+    if (!grupos[key]) { grupos[key] = []; ordenGrupos.push(key); }
+    grupos[key].push(f);
+  });
+
+  function renderFactura(f) {
     var esPnd = f.categoria === 'POR CLASIFICAR';
-    html += '<div class="row-item">'
+    return '<div class="row-item">'
       + '<div class="row-main">'
       + '<div>'
       + '<div class="row-folio">' + esc(f.folio_factura||'—') + '</div>'
@@ -591,6 +697,21 @@ function cmpFiltrarFacturas() {
       + '</div>'
       + '</div>'
       + '</div>';
+  }
+
+  var html = '';
+  if (agrupar) {
+    ordenGrupos.forEach(function(key) {
+      var items = grupos[key];
+      var subtotal = items.reduce(function(a, f) { return a + (parseFloat(f.total) || 0); }, 0);
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 6px;padding:6px 4px;border-bottom:2px solid var(--navy)">'
+        + '<span style="font-weight:700;color:var(--navy);font-size:13px">' + key + '</span>'
+        + '<span style="font-weight:700;color:var(--gray-600);font-size:12px">' + fmt(subtotal) + ' · ' + items.length + ' fact.</span>'
+        + '</div>';
+      items.forEach(function(f) { html += renderFactura(f); });
+    });
+  } else {
+    filtrado.forEach(function(f) { html += renderFactura(f); });
   }
   lista.innerHTML = html;
 }
