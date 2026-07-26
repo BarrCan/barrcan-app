@@ -5,7 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Cotizador Española</title>
 <!--
-  BARRCAN COTIZADOR ESPAÑOLA v1.0
+  BARRCAN COTIZADOR ESPAÑOLA v1.1.0
+  v1.1.0 - GA, IVA de venta e IVA de compra + control de rol:
+    - Mismo cambio que Nacional v3.1.0: GA agregado, IVA de venta al
+      final, netificación de materiales antes de márgenes, fix del
+      cargarDesdeStorage() nunca invocado, y vista cliente simplificada
+      (Aluminio/Herrajes/Vidrio/IVA) para todos menos supremo (MAU).
   Motor extraído del app base · Selector visual GIFs animados
   Línea 1400 · 4600 · 6000 · 6400 · 10000
   Logo actualizado el 2026-07-13: ahora carga desde GitHub Pages
@@ -1441,6 +1446,9 @@ body{background:var(--off-white)}
     <!-- Campos ocultos requeridos por cfg() -->
     <input type="hidden" id="cfg-gif"           value="15">
     <input type="hidden" id="cfg-utilidad"      value="25">
+    <input type="hidden" id="cfg-ga"          value="25">
+    <input type="hidden" id="cfg-iva"         value="16">
+    <input type="hidden" id="cfg-iva-compras" value="16">
     <input type="hidden" id="cfg-merma"         value="10">
     <input type="hidden" id="cfg-precio-al"     value="120">
     <input type="hidden" id="cfg-cargo-piso"    value="150">
@@ -3674,6 +3682,8 @@ function cargarDesdeStorage() {
     if (h) STATE.historial = JSON.parse(h);
   } catch(e){}
   cargarConfig();
+  // Sobreescribe con lo más reciente de Supabase si hay conexión (no bloquea el arranque)
+  sbCargarConfigPrecios();
 }
 
 // ══════════════════════════════════════════════
@@ -3683,7 +3693,7 @@ const CONFIG_KEY = 'barrcan_config_v1';
 
 const CONFIG_DEFAULTS = {
   // Financieros
-  'cfg-gif': 15, 'cfg-utilidad': 30, 'cfg-merma': 10,
+  'cfg-gif': 15, 'cfg-utilidad': 30, 'cfg-ga': 25, 'cfg-iva': 16, 'cfg-iva-compras': 16, 'cfg-merma': 10,
   'cfg-cargo-piso': 150, 'cfg-cargo-campo': 500,
   // Aluminio
   'cfg-precio-al': 120,
@@ -3735,6 +3745,57 @@ function guardarConfig() {
     sbActualizarConfigPrecios();
     toast('✅ Precios actualizados');
   } catch(e){}
+}
+
+// ── Mapa clave Supabase (config_precios) ↔ id de campo local ──
+const SB_CONFIG_MAPA = {
+  'gif_pct':       'cfg-gif',        'utilidad_pct':  'cfg-utilidad',
+  'ga_pct':        'cfg-ga',         'iva_pct':       'cfg-iva',
+  'iva_compras_pct': 'cfg-iva-compras',
+  'merma_pct':     'cfg-merma',      'precio_al_kg':  'cfg-precio-al',
+  'cargo_piso':    'cfg-cargo-piso', 'cargo_campo':   'cfg-cargo-campo',
+  'vid_6mm':       'cfg-vid-6',      'vid_8mm':       'cfg-vid-8',
+  'vid_9mm':       'cfg-vid-9',      'vid_10mm':      'cfg-vid-10',
+  'vid_12mm':      'cfg-vid-12',     'vid_24mm':      'cfg-vid-24',
+  'pct_filtrasol': 'cfg-pct-filtrasol', 'pct_verde':  'cfg-pct-verde',
+  'pct_bronce':    'cfg-pct-bronce', 'pct_azul':      'cfg-pct-azul',
+  'pel_esm_venta': 'cfg-pel-esm-venta', 'pel_esm_costo':'cfg-pel-esm-costo',
+  'pel_fil_venta': 'cfg-pel-fil-venta', 'pel_fil_costo':'cfg-pel-fil-costo',
+  'pel_vin_venta': 'cfg-pel-vin-venta'
+};
+
+// ── Cargar config_precios desde Supabase (fuente de verdad cuando hay conexión) ──
+async function sbCargarConfigPrecios() {
+  if (!sb() || !navigator.onLine) return;
+  try {
+    const { data, error } = await sb().from('config_precios').select('clave,valor');
+    if (error || !data) return;
+    data.forEach(row => {
+      const elId = SB_CONFIG_MAPA[row.clave];
+      if (elId) {
+        const el = document.getElementById(elId);
+        if (el) el.value = row.valor;
+      }
+    });
+    console.log('[Supabase] Config de precios sincronizada desde la nube');
+  } catch(e) {
+    console.warn('[Supabase] Error cargando config:', e.message);
+  }
+}
+
+// ── Actualizar config_precios en Supabase ──
+async function sbActualizarConfigPrecios() {
+  if (!sb() || !navigator.onLine) return;
+  try {
+    const updates = Object.entries(SB_CONFIG_MAPA).map(([clave, elId]) => ({
+      clave, valor: parseFloat(document.getElementById(elId)?.value || 0),
+      updated_at: new Date().toISOString()
+    }));
+    await sb().from('config_precios').upsert(updates, { onConflict: 'clave' });
+    console.log('[Supabase] Config de precios actualizada en la nube');
+  } catch(e) {
+    console.warn('[Supabase] Error actualizando config:', e.message);
+  }
 }
 
 // ── Sincronizar dropdown de acabados con valores de Config ──
@@ -4815,7 +4876,17 @@ function sb(){
 }
 
 // ── Auxiliares del app base ────────────────────────────────
+const APP_VERSION = 'v1.1.0';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
+// "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
+// Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
+// más seguro ocultar el margen que exponerlo por accidente.
+function esSupremo() {
+  try {
+    const u = JSON.parse(localStorage.getItem('barrcan_usuario_activo') || '{}');
+    return u.id === 'MAU';
+  } catch(e) { return false; }
+}
 function fmt(n) {
   return parseFloat(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -5016,19 +5087,31 @@ function renderVista(r) {
       <!-- Resumen costos cliente -->
       <div class=desglose-card fade-in>
         <div class=desglose-header>💰 Desglose de Precio</div>
+        ${esSupremo() ? `
         ${renderFilaCosto('Materiales (aluminio + herrajes)', r.costoAluminio + r.costoHerrajes)}
         ${renderFilaCosto('Vidrio ' + r.vidTipo, r.costoVidrio)}
         ${renderFilaCosto('Mano de obra', r.mdoTotal)}
         ${renderFilaCosto('Gastos indirectos (GIF)', r.gif, true)}
+        ${renderFilaCosto('Gastos de administración (GA)', r.ga)}
         ${renderFilaCosto('Logística de campo', r.costoLogistica)}
         ${r.costoVisita > 0 ? renderFilaCosto('Visita técnica previa', r.costoVisita) : ''}
         ${renderFilaCosto('Utilidad', r.utilidad, false, true)}
+        ` : `
+        ${renderFilaCosto('Aluminio', r.costoAluminio)}
+        ${renderFilaCosto('Herrajes', r.costoHerrajes)}
+        ${renderFilaCosto('Vidrio ' + r.vidTipo, r.costoVidrio)}
+        `}
         ${r.descuentoMonto > 0 ? `
         <div style="height:1px;background:var(--gray-100)"></div>
         <div class="costo-row" style="background:rgba(192,57,43,0.04)">
           <span style="color:var(--red)">🏷️ Descuento cliente (${Math.round((r.descuentoPct||0)*100)}%)</span>
           <span class="costo-monto" style="color:var(--red)">−$${fmt(r.descuentoMonto)}</span>
         </div>` : ''}
+        <div style="height:1px;background:var(--gray-100)"></div>
+        <div class="costo-row" style="background:rgba(46,109,164,0.04)">
+          <span>IVA (${Math.round((r.ivaPct||0)*100)}%)<span class=costo-pct></span></span>
+          <span class="costo-monto">$${fmt(r.ivaMonto||0)}</span>
+        </div>
         ${r.pelData ? `
         <div style=height:1px;background:var(--gray-100)></div>
         <div class=costo-row style=background:rgba(46,109,164,0.04)>
@@ -5111,12 +5194,18 @@ function renderVista(r) {
         ${renderFilaCosto('Vidrio', r.costoVidrio)}
         ${renderFilaCosto('Herrajes', r.costoHerrajes)}
         ${renderFilaCosto('Mano de obra (×' + r.alertaPeso.factorMO.toFixed(1) + ')', r.mdoTotal, false, false, true)}
-        <div class=costo-row subtotal><span>SUBTOTAL FABRICACIÓN</span><span class=costo-monto>$${fmt(r.subtotalFabricacion)}</span></div>
+        <div class="costo-row" style="opacity:0.6;font-size:11px">
+          <span>Materiales bruto (c/IVA compra ${document.getElementById('cfg-iva-compras').value}%): $${fmt(r.costoMaterialesBruto)} → neto</span>
+          <span class="costo-monto">$${fmt(r.costoMaterialesNeto)}</span>
+        </div>
+        <div class=costo-row subtotal><span>SUBTOTAL FABRICACIÓN (neto)</span><span class=costo-monto>$${fmt(r.subtotalFabricacion)}</span></div>
         ${renderFilaCosto('GIF +' + document.getElementById('cfg-gif').value + '%', r.gif)}
+        ${renderFilaCosto('GA +' + document.getElementById('cfg-ga').value + '%', r.ga)}
         ${renderFilaCosto('Logística', r.costoLogistica)}
         ${r.costoVisita > 0 ? renderFilaCosto('Visita técnica', r.costoVisita) : ''}
         <div class=costo-row subtotal><span>COSTO REAL ACUMULADO</span><span class=costo-monto>$${fmt(r.costoRealAcumulado)}</span></div>
         ${renderFilaCosto('Utilidad +' + document.getElementById('cfg-utilidad').value + '%', r.utilidad, false, true)}
+        ${renderFilaCosto('IVA +' + document.getElementById('cfg-iva').value + '%', r.ivaMonto || 0)}
         ${r.pelData ? `
         <div style=height:1px;background:rgba(255,255,255,0.1)></div>
         <div class=costo-row style=background:rgba(46,109,164,0.08)>
@@ -5331,6 +5420,9 @@ function calcular() {
   const mdo = cfg('inp-mdo');
   const gifPct = cfg('cfg-gif') / 100;
   const utilidadPct = cfg('cfg-utilidad') / 100;
+  const gaPct = cfg('cfg-ga') / 100;
+  const ivaPct = cfg('cfg-iva') / 100;
+  const ivaComprasPct = cfg('cfg-iva-compras') / 100;
   const merma = 1 + (cfg('cfg-merma') / 100);
   const precioAl = cfg('cfg-precio-al');
   const cargoPiso = cfg('cfg-cargo-piso');
@@ -5389,8 +5481,16 @@ function calcular() {
   // ─── 5. Costos acumulados ───
   const costoAluminio = cortesCalc.reduce((a, c) => a + c.costo, 0);
   const mdoTotal = mdo * factorMO;
-  const subtotalFabricacion = costoAluminio + costoVidrio + costoHerrajes + mdoTotal;
+  // Los precios de aluminio/vidrio/herrajes en Config vienen de listas de proveedor
+  // que YA incluyen IVA. Ese IVA es acreditable (no es costo real tuyo), así que se
+  // descuenta aquí antes de calcular GIF/GA/Utilidad, para no margar sobre un costo
+  // inflado. Los renglones de "Orden al Proveedor" siguen mostrando el precio bruto
+  // (con IVA) porque es lo que realmente se paga al comprar.
+  const costoMaterialesBruto = costoAluminio + costoVidrio + costoHerrajes;
+  const costoMaterialesNeto = costoMaterialesBruto / (1 + ivaComprasPct);
+  const subtotalFabricacion = costoMaterialesNeto + mdoTotal;
   const gif = subtotalFabricacion * gifPct;
+  const ga = subtotalFabricacion * gaPct;
   
   // Logística
   let costoLogistica = 0;
@@ -5405,7 +5505,7 @@ function calcular() {
   }
 
   const costoVisita = STATE.visitaTecnica ? 1000 : 0;
-  const costoRealAcumulado = subtotalFabricacion + gif + costoLogistica;
+  const costoRealAcumulado = subtotalFabricacion + gif + ga + costoLogistica;
   const precioSinUtilidad = costoRealAcumulado;
   const utilidad = precioSinUtilidad * utilidadPct;
   const precioBase = precioSinUtilidad * (1 + utilidadPct) + costoVisita;
@@ -5417,7 +5517,11 @@ function calcular() {
   // ─── 7. Película / Vinilo (opcional) ───
   const pelData = calcularPelicula(L, H);
   const pelExtra = (pelData && !isNaN(pelData.totalVenta)) ? pelData.totalVenta : 0;
-  const precioFinal = precioBase - descuentoMonto + pelExtra;
+  const precioAntesIva = precioBase - descuentoMonto + pelExtra;
+
+  // ─── 8. IVA ───
+  const ivaMonto = precioAntesIva * ivaPct;
+  const precioFinal = precioAntesIva + ivaMonto;
 
   const resultado = {
     sistema: sistema.nombre,
@@ -5435,14 +5539,21 @@ function calcular() {
     costoVidrio,
     costoHerrajes,
     mdoTotal,
+    costoMaterialesBruto,
+    costoMaterialesNeto,
+    ivaComprasPct,
     subtotalFabricacion,
     gif,
+    ga,
     costoLogistica,
     costoVisita,
     costoRealAcumulado,
     utilidad,
     precioBase,
     pelData,
+    precioAntesIva,
+    ivaPct,
+    ivaMonto,
     precioFinal,
     descuentoPct,
     descuentoMonto,
@@ -5461,8 +5572,9 @@ let snArchivoAdjFile = null;
 
 function snDetectar(){
   const d=document.getElementById('conn-dot'),t=document.getElementById('conn-status');
-  if(d)d.style.background='#27AE60';
-  if(t)t.textContent='Online';
+  const online = navigator.onLine;
+  if(d)d.style.background = online ? '#27AE60' : '#C0392B';
+  if(t)t.textContent = (online ? 'Online' : 'Offline') + ' · ' + APP_VERSION;
 }
 
 function snBuildUI(){
@@ -5708,6 +5820,7 @@ window.snActualizarResumenFijo = snActualizarResumenFijo;
 
 // ── Init ──────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded',()=>{
+  cargarDesdeStorage();
   snDetectar();
   snBuildUI();
   snHistorial();
