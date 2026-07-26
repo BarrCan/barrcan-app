@@ -5,7 +5,23 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Servicios y Accesorios</title>
 <!--
-  BARRCAN SERVICIOS Y ACCESORIOS v1.2
+  BARRCAN SERVICIOS Y ACCESORIOS v1.3.0
+  v1.3.0 - GA/IVA/rol en motor principal + Espejos/Servicio, y Combo de Mantenimiento:
+    - Motor principal (Baños con marco): mismo cambio que Nacional v3.1.0.
+    - Espejos y Servicio/Mantenimiento: antes solo aplicaban GIF 15% fijo
+      SIN utilidad real -- ahora usan el mismo stack completo (GIF+GA+
+      Utilidad+IVA) leyendo de Config, y vista simplificada por rol igual
+      que los demás motores.
+    - Catálogo de Mantenimiento ampliado: Cambio de Broches, Calce de
+      Puerta, Cambio de Chapa, Cambio de Pivote, Cambio de Vidrio Roto.
+    - Nuevo modo "Combo" en Servicio: selección múltiple de trabajos de
+      la misma visita, con descuento por tiempo compartido.
+    - Nuevos campos "Complejidad de la maniobra" (×1/×1.5/×2) y "Cargo
+      por traslado", compartidos por visita en vez de por pieza -- para
+      no subestimar mano de obra en obras difíciles (loza colgada, etc.)
+      ni cobrar traslado repetido en un combo.
+    - Checkbox de aviso de riesgo por manipulación de material existente,
+      con párrafo de descargo agregado al presupuesto impreso.
   v1.2 - Fix CRÍTICO: el módulo no podía calcular nada.
     - calcular() (el motor estándar de ancho×alto) es el único que
       existía aquí, pero NINGUNO de los 14 sistemas de este módulo lo
@@ -1640,6 +1656,9 @@ body{background:var(--off-white)}
     <!-- Campos config ocultos requeridos por calcular() y cfg() -->
     <input type="hidden" id="cfg-gif"         value="15">
     <input type="hidden" id="cfg-utilidad"    value="25">
+    <input type="hidden" id="cfg-ga"          value="25">
+    <input type="hidden" id="cfg-iva"         value="16">
+    <input type="hidden" id="cfg-iva-compras" value="16">
     <input type="hidden" id="cfg-merma"       value="10">
     <input type="hidden" id="cfg-precio-al"   value="120">
     <input type="hidden" id="cfg-cargo-piso"  value="150">
@@ -1736,8 +1755,11 @@ body{background:var(--off-white)}
       <div class="costo-row"><span id="esp-label-mat">Material espejo</span><span class="costo-monto" id="esp-c-mat"></span></div>
       <div class="costo-row" id="esp-row-forma" style="display:none"><span id="esp-label-forma">Corte circular (+35%)</span><span class="costo-monto" id="esp-c-forma"></span></div>
       <div class="costo-row"><span>Mano de obra</span><span class="costo-monto" id="esp-c-mo"></span></div>
-      <div class="costo-row subtotal"><span>Subtotal</span><span class="costo-monto" id="esp-c-sub"></span></div>
-      <div class="costo-row"><span>GIF 15%</span><span class="costo-monto" id="esp-c-gif"></span></div>
+      <div class="costo-row subtotal"><span>Subtotal (neto)</span><span class="costo-monto" id="esp-c-sub"></span></div>
+      <div class="costo-row"><span id="esp-label-gif">GIF</span><span class="costo-monto" id="esp-c-gif"></span></div>
+      <div class="costo-row"><span id="esp-label-ga">GA</span><span class="costo-monto" id="esp-c-ga"></span></div>
+      <div class="costo-row"><span id="esp-label-util">Utilidad</span><span class="costo-monto" id="esp-c-util"></span></div>
+      <div class="costo-row"><span id="esp-label-iva">IVA</span><span class="costo-monto" id="esp-c-iva"></span></div>
       <div class="costo-row total"><span>PRECIO FINAL</span><span class="costo-monto" id="esp-c-total"></span></div>
     </div>
     <button class="btn-calcular" onclick="espCalcular()"><span>🪞</span> Calcular espejo</button>
@@ -1747,32 +1769,78 @@ body{background:var(--off-white)}
   <!-- ══════════ WIZARD SERVICIO / MANTENIMIENTO ══════════ -->
   <div id="wizard-servicio" style="display:none">
     <div class="wizard-card">
-      <div class="wizard-title" id="serv-titulo">🔧 Servicio</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div class="wizard-title" id="serv-titulo" style="margin:0">🔧 Servicio</div>
+        <button type="button" id="serv-btn-combo" onclick="servToggleCombo()"
+          style="padding:6px 10px;background:rgba(142,68,173,0.08);border:1.5px solid rgba(142,68,173,0.3);border-radius:8px;color:#8E44AD;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">🎁 Armar combo</button>
+      </div>
       <div id="serv-desc" style="font-size:12px;color:var(--gray-400);margin-bottom:14px;line-height:1.5"></div>
+
+      <!-- Complejidad de la maniobra y traslado — la mano de obra varía mucho
+           según el edificio (loza colgada, difícil acceso) y la distancia.
+           Los precios base son "condición normal, 1 sola visita cercana". -->
       <div class="form-group">
-        <label class="form-label" id="serv-label-cant">Cantidad</label>
-        <div class="input-unit">
-          <input type="number" id="serv-cantidad" class="form-input" min="1" value="1" placeholder="1" inputmode="numeric" oninput="servicioActualizar()">
-          <span class="input-unit-label" id="serv-unidad">pza</span>
-        </div>
+        <label class="form-label">Complejidad de la maniobra</label>
+        <select id="serv-complejidad" class="form-select" onchange="servActualizarAjustes()">
+          <option value="1">Normal — acceso fácil, ~1 hora</option>
+          <option value="1.5">Difícil — loza colgada, ventana comprimida, +tiempo</option>
+          <option value="2">Muy difícil — desmontaje mayor, +2 horas</option>
+        </select>
       </div>
       <div class="form-group">
-        <label class="form-label">Precio unitario</label>
+        <label class="form-label">Cargo por traslado (distancia de la obra)</label>
         <div class="input-unit">
-          <input type="number" id="serv-precio" class="form-input" min="0" placeholder="0" inputmode="numeric" oninput="servicioActualizar()">
+          <input type="number" id="serv-cargo-traslado" class="form-input" min="0" value="500" inputmode="numeric" oninput="servActualizarAjustes()">
           <span class="input-unit-label">$</span>
         </div>
-        <div style="font-size:10px;color:var(--gray-400);margin-top:3px">Precio sugerido — editable</div>
+        <div style="font-size:10px;color:var(--gray-400);margin-top:3px">Precargado de Config — ajústalo según qué tan lejos está</div>
       </div>
-      <div class="form-group">
+
+      <!-- MODO NORMAL: un solo servicio -->
+      <div id="serv-modo-normal">
+        <div class="form-group">
+          <label class="form-label" id="serv-label-cant">Cantidad</label>
+          <div class="input-unit">
+            <input type="number" id="serv-cantidad" class="form-input" min="1" value="1" placeholder="1" inputmode="numeric" oninput="servicioActualizar()">
+            <span class="input-unit-label" id="serv-unidad">pza</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Precio unitario</label>
+          <div class="input-unit">
+            <input type="number" id="serv-precio" class="form-input" min="0" placeholder="0" inputmode="numeric" oninput="servicioActualizar()">
+            <span class="input-unit-label">$</span>
+          </div>
+          <div style="font-size:10px;color:var(--gray-400);margin-top:3px">Precio sugerido — editable</div>
+        </div>
+      </div>
+
+      <!-- MODO COMBO: varios servicios en la misma visita (ahorro de tiempo compartido) -->
+      <div id="serv-modo-combo" style="display:none">
+        <div style="font-size:11px;color:var(--gray-400);margin-bottom:8px">Selecciona 2 o 3 servicios de la misma visita — el descuento refleja el tiempo compartido de traslado/instalación</div>
+        <div id="serv-combo-lista"></div>
+        <div id="serv-combo-descuento-nota" style="display:none;font-size:11px;color:#27AE60;background:rgba(39,174,96,.06);padding:6px 10px;border-radius:6px;margin-top:8px;font-weight:700"></div>
+      </div>
+
+      <div class="form-group" style="margin-top:8px">
         <label class="form-label">Notas / descripción adicional</label>
         <textarea id="serv-notas" class="form-input" rows="2" placeholder="Detalles del servicio, observaciones..." style="resize:none" oninput="servicioActualizar()"></textarea>
       </div>
+
+      <label style="display:flex;align-items:flex-start;gap:8px;margin-top:10px;padding:9px 10px;background:rgba(230,126,34,.06);border:1px solid rgba(230,126,34,.25);border-radius:8px;font-size:11px;color:var(--navy);cursor:pointer">
+        <input type="checkbox" id="serv-aviso-riesgo" style="width:16px;height:16px;flex-shrink:0;margin-top:1px">
+        <span>⚠️ Incluir aviso de riesgo por manipulación de material existente (vidrio, sellos, herrajes ya instalados) — recomendado cuando el trabajo implica retirar/mover material que puede estar frágil o dañado de antes</span>
+      </label>
     </div>
     <div id="serv-resultado" class="wizard-card" style="display:none">
       <div class="wizard-title">💰 Resumen</div>
       <div class="costo-row"><span id="serv-label-sub">Servicio × 1</span><span class="costo-monto" id="serv-c-sub"></span></div>
-      <div class="costo-row"><span>GIF 15%</span><span class="costo-monto" id="serv-c-gif"></span></div>
+      <div class="costo-row" id="serv-row-complejidad" style="display:none"><span id="serv-label-complejidad">Ajuste por complejidad</span><span class="costo-monto" id="serv-c-complejidad"></span></div>
+      <div class="costo-row" id="serv-row-traslado" style="display:none"><span>Traslado</span><span class="costo-monto" id="serv-c-traslado"></span></div>
+      <div class="costo-row"><span id="serv-label-gif">GIF</span><span class="costo-monto" id="serv-c-gif"></span></div>
+      <div class="costo-row"><span id="serv-label-ga">GA</span><span class="costo-monto" id="serv-c-ga"></span></div>
+      <div class="costo-row"><span id="serv-label-util">Utilidad</span><span class="costo-monto" id="serv-c-util"></span></div>
+      <div class="costo-row"><span id="serv-label-iva">IVA</span><span class="costo-monto" id="serv-c-iva"></span></div>
       <div class="costo-row total"><span>PRECIO FINAL</span><span class="costo-monto" id="serv-c-total"></span></div>
     </div>
     <button class="btn-calcular" onclick="servicioCalcular()"><span>🔧</span> Calcular servicio</button>
@@ -2004,6 +2072,36 @@ const DB = {
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
+      id:"MANT_CAMBIO_BROCHES", nombre:"Cambio de Broches", serie:"Mantenimiento", emoji:"🔒",
+      tipo:"Servicio", esServicio:true, precioBase:250, unidad:'par',
+      desc:'Reemplazo de broches/cierres de ventana corrediza. Precio por par instalado.',
+      holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
+      id:"MANT_PUERTA_CALCE", nombre:"Calce de Puerta", serie:"Mantenimiento", emoji:"🚪",
+      tipo:"Servicio", esServicio:true, precioBase:350, unidad:'pieza',
+      desc:'Ajuste/nivelación de puerta que roza, cierra mal o quedó desnivelada.',
+      holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
+      id:"MANT_PUERTA_CHAPA", nombre:"Cambio de Chapa", serie:"Mantenimiento", emoji:"🔑",
+      tipo:"Servicio", esServicio:true, precioBase:450, unidad:'pieza',
+      desc:'Reemplazo de chapa de puerta. Material estándar incluido (chapa especial se cotiza aparte).',
+      holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
+      id:"MANT_PUERTA_PIVOTE", nombre:"Cambio de Pivote", serie:"Mantenimiento", emoji:"🔩",
+      tipo:"Servicio", esServicio:true, precioBase:380, unidad:'pieza',
+      desc:'Reemplazo de pivote superior/inferior de puerta de aluminio.',
+      holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
+      id:"MANT_VIDRIO_ROTO", nombre:"Cambio de Vidrio Roto", serie:"Mantenimiento", emoji:"🪟",
+      tipo:"Servicio", esServicio:true, precioBase:500, unidad:'pieza',
+      desc:'Precio de referencia por pieza — el costo final depende de medidas y tipo de cristal (se ajusta el precio unitario al cotizar).',
+      holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
       id:"GTIA_ESTANDAR", nombre:"Garantía Extendida Estándar 1 año", serie:"Garantía Extendida", emoji:"🛡️",
       tipo:"Garantia", esGarantia:true, primaPorc:0.20, deducible:1100,
       desc:'Cobertura de reemplazo ante fallas estructurales. 2 intervenciones MO en CDMX. No cubre fuerza mayor.',
@@ -2060,6 +2158,8 @@ function cargarDesdeStorage() {
     if (h) STATE.historial = JSON.parse(h);
   } catch(e){}
   cargarConfig();
+  // Sobreescribe con lo más reciente de Supabase si hay conexión (no bloquea el arranque)
+  sbCargarConfigPrecios();
 }
 
 // ══════════════════════════════════════════════
@@ -2069,7 +2169,7 @@ const CONFIG_KEY = 'barrcan_config_v1';
 
 const CONFIG_DEFAULTS = {
   // Financieros
-  'cfg-gif': 15, 'cfg-utilidad': 30, 'cfg-merma': 10,
+  'cfg-gif': 15, 'cfg-utilidad': 30, 'cfg-ga': 25, 'cfg-iva': 16, 'cfg-iva-compras': 16, 'cfg-merma': 10,
   'cfg-cargo-piso': 150, 'cfg-cargo-campo': 500,
   // Aluminio
   'cfg-precio-al': 120,
@@ -2121,6 +2221,57 @@ function guardarConfig() {
     sbActualizarConfigPrecios();
     toast('✅ Precios actualizados');
   } catch(e){}
+}
+
+// ── Mapa clave Supabase (config_precios) ↔ id de campo local ──
+const SB_CONFIG_MAPA = {
+  'gif_pct':       'cfg-gif',        'utilidad_pct':  'cfg-utilidad',
+  'ga_pct':        'cfg-ga',         'iva_pct':       'cfg-iva',
+  'iva_compras_pct': 'cfg-iva-compras',
+  'merma_pct':     'cfg-merma',      'precio_al_kg':  'cfg-precio-al',
+  'cargo_piso':    'cfg-cargo-piso', 'cargo_campo':   'cfg-cargo-campo',
+  'vid_6mm':       'cfg-vid-6',      'vid_8mm':       'cfg-vid-8',
+  'vid_9mm':       'cfg-vid-9',      'vid_10mm':      'cfg-vid-10',
+  'vid_12mm':      'cfg-vid-12',     'vid_24mm':      'cfg-vid-24',
+  'pct_filtrasol': 'cfg-pct-filtrasol', 'pct_verde':  'cfg-pct-verde',
+  'pct_bronce':    'cfg-pct-bronce', 'pct_azul':      'cfg-pct-azul',
+  'pel_esm_venta': 'cfg-pel-esm-venta', 'pel_esm_costo':'cfg-pel-esm-costo',
+  'pel_fil_venta': 'cfg-pel-fil-venta', 'pel_fil_costo':'cfg-pel-fil-costo',
+  'pel_vin_venta': 'cfg-pel-vin-venta'
+};
+
+// ── Cargar config_precios desde Supabase (fuente de verdad cuando hay conexión) ──
+async function sbCargarConfigPrecios() {
+  if (!sb() || !navigator.onLine) return;
+  try {
+    const { data, error } = await sb().from('config_precios').select('clave,valor');
+    if (error || !data) return;
+    data.forEach(row => {
+      const elId = SB_CONFIG_MAPA[row.clave];
+      if (elId) {
+        const el = document.getElementById(elId);
+        if (el) el.value = row.valor;
+      }
+    });
+    console.log('[Supabase] Config de precios sincronizada desde la nube');
+  } catch(e) {
+    console.warn('[Supabase] Error cargando config:', e.message);
+  }
+}
+
+// ── Actualizar config_precios en Supabase ──
+async function sbActualizarConfigPrecios() {
+  if (!sb() || !navigator.onLine) return;
+  try {
+    const updates = Object.entries(SB_CONFIG_MAPA).map(([clave, elId]) => ({
+      clave, valor: parseFloat(document.getElementById(elId)?.value || 0),
+      updated_at: new Date().toISOString()
+    }));
+    await sb().from('config_precios').upsert(updates, { onConflict: 'clave' });
+    console.log('[Supabase] Config de precios actualizada en la nube');
+  } catch(e) {
+    console.warn('[Supabase] Error actualizando config:', e.message);
+  }
 }
 
 // ── Sincronizar dropdown de acabados con valores de Config ──
@@ -3156,7 +3307,17 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
+const APP_VERSION = 'v1.3.0';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
+// "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
+// Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
+// más seguro ocultar el margen que exponerlo por accidente.
+function esSupremo() {
+  try {
+    const u = JSON.parse(localStorage.getItem('barrcan_usuario_activo') || '{}');
+    return u.id === 'MAU';
+  } catch(e) { return false; }
+}
 function fmt(n) {
   return parseFloat(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -3355,10 +3516,23 @@ function renderResultado(r) {
         </div>
         <div class="desglose-card fade-in" style="margin-top:16px">
           <div class="desglose-header">💰 Desglose</div>
-          <div class="desglose-row"><span>${s.sistemaNombre} × ${s.servCantidad} ${s.servUnidad}</span><span>$${fmt(s.subtotal)}</span></div>
-          <div class="desglose-row"><span>GIF 15%</span><span>$${fmt(s.gif)}</span></div>
+          ${s.esCombo ? s.comboDetalle.map(function(d){
+            return '<div class="desglose-row"><span>' + d.nombre + ' × ' + d.cantidad + ' ' + d.unidad + '</span><span>$' + fmt(d.precioUnit * d.cantidad) + '</span></div>';
+          }).join('') + (s.comboDescuentoPct > 0 ? '<div class="desglose-row" style="color:#27AE60"><span>🎁 Descuento por combo (' + Math.round(s.comboDescuentoPct*100) + '%)</span><span>−$' + fmt(s.subtotal * s.comboDescuentoPct) + '</span></div>' : '')
+          : `<div class="desglose-row"><span>${s.sistemaNombre} × ${s.servCantidad} ${s.servUnidad}</span><span>$${fmt(s.subtotalBase != null ? s.subtotalBase : s.subtotal)}</span></div>`}
+          ${!s.esSinMargen && s.complejidad > 1 ? `<div class="desglose-row"><span>Ajuste por complejidad (×${s.complejidad})</span><span>$${fmt((s.esCombo ? s.subtotal*(1-s.comboDescuentoPct) : s.subtotalBase) * (s.complejidad - 1))}</span></div>` : ''}
+          ${!s.esSinMargen && s.cargoTraslado > 0 ? `<div class="desglose-row"><span>Traslado</span><span>$${fmt(s.cargoTraslado)}</span></div>` : ''}
+          ${!s.esSinMargen && esSupremo() ? `
+          <div class="desglose-row"><span>GIF +${document.getElementById('cfg-gif').value}%</span><span>$${fmt(s.gif||0)}</span></div>
+          <div class="desglose-row"><span>GA +${document.getElementById('cfg-ga').value}%</span><span>$${fmt(s.ga||0)}</span></div>
+          <div class="desglose-row"><span>Utilidad +${document.getElementById('cfg-utilidad').value}%</span><span>$${fmt(s.utilidad||0)}</span></div>` : ''}
+          ${!s.esSinMargen ? `<div class="desglose-row"><span>IVA +${document.getElementById('cfg-iva').value}%</span><span>$${fmt(s.ivaMonto||0)}</span></div>` :
+          `<div class="desglose-row"><span style="color:var(--green)">🛡️ Servicio de garantía — sin cargo adicional</span><span>$0</span></div>`}
           <div class="desglose-row total-row"><span>PRECIO FINAL</span><span>$${fmt(s.precioFinal)}</span></div>
         </div>
+        ${s.avisoRiesgo ? `<div class="wizard-card fade-in" style="margin-top:12px;background:rgba(230,126,34,.06);border:1.5px solid rgba(230,126,34,.3)">
+          <div style="font-size:11px;color:var(--navy);line-height:1.5"><b>⚠️ Aviso de riesgo por manipulación:</b> este servicio implica la manipulación de material ya instalado (vidrio, sellos, herrajes existentes). Por el estado, antigüedad o fragilidad del material, existe riesgo de rotura o daño durante el proceso. BarrCan toma todas las precauciones necesarias, pero no se hace responsable por roturas de material preexistente frágil o dañado; cualquier reposición adicional que resulte necesaria se cotiza por separado.</div>
+        </div>` : ''}
         ${s.servNotas ? `<div class="wizard-card fade-in" style="margin-top:12px"><div style="font-size:12px;color:var(--navy)">${s.servNotas}</div></div>` : ''}
       </div>` + snPromptCarrito();
     document.getElementById('export-bar').classList.add('visible');
@@ -3432,8 +3606,11 @@ function renderResultado(r) {
           <div class="desglose-row"><span>Espejo ${esp.m2.toFixed(3)} m² × $${DB.sistemas.find(s=>s.id===esp.sistemaId)?.precioBase || 0}/m²</span><span>$${fmt(esp.costoMat)}</span></div>
           ${esp.cargoForma > 0 ? `<div class="desglose-row"><span>${ESP_LABELS_FORMA[esp.espForma]}</span><span>$${fmt(esp.cargoForma)}</span></div>` : ''}
           <div class="desglose-row"><span>Mano de obra instalación</span><span>$${fmt(esp.costoMO)}</span></div>
-          <div class="desglose-row subtotal-row"><span>Subtotal</span><span>$${fmt(esp.subtotal)}</span></div>
-          <div class="desglose-row"><span>GIF 15%</span><span>$${fmt(esp.gif)}</span></div>
+          <div class="desglose-row subtotal-row"><span>Subtotal (neto)</span><span>$${fmt(esp.subtotal)}</span></div>
+          <div class="desglose-row"><span>GIF +${document.getElementById('cfg-gif').value}%</span><span>$${fmt(esp.gif||0)}</span></div>
+          <div class="desglose-row"><span>GA +${document.getElementById('cfg-ga').value}%</span><span>$${fmt(esp.ga||0)}</span></div>
+          <div class="desglose-row"><span>Utilidad +${document.getElementById('cfg-utilidad').value}%</span><span>$${fmt(esp.utilidad||0)}</span></div>
+          <div class="desglose-row"><span>IVA +${document.getElementById('cfg-iva').value}%</span><span>$${fmt(esp.ivaMonto||0)}</span></div>
           <div class="desglose-row total-row"><span>PRECIO FINAL</span><span>$${fmt(esp.precioFinal)}</span></div>
         </div>
 
@@ -3528,6 +3705,9 @@ function calcular() {
   const mdo = cfg('inp-mdo');
   const gifPct = cfg('cfg-gif') / 100;
   const utilidadPct = cfg('cfg-utilidad') / 100;
+  const gaPct = cfg('cfg-ga') / 100;
+  const ivaPct = cfg('cfg-iva') / 100;
+  const ivaComprasPct = cfg('cfg-iva-compras') / 100;
   const merma = 1 + (cfg('cfg-merma') / 100);
   const precioAl = cfg('cfg-precio-al');
   const cargoPiso = cfg('cfg-cargo-piso');
@@ -3586,8 +3766,16 @@ function calcular() {
   // ─── 5. Costos acumulados ───
   const costoAluminio = cortesCalc.reduce((a, c) => a + c.costo, 0);
   const mdoTotal = mdo * factorMO;
-  const subtotalFabricacion = costoAluminio + costoVidrio + costoHerrajes + mdoTotal;
+  // Los precios de aluminio/vidrio/herrajes en Config vienen de listas de proveedor
+  // que YA incluyen IVA. Ese IVA es acreditable (no es costo real tuyo), así que se
+  // descuenta aquí antes de calcular GIF/GA/Utilidad, para no margar sobre un costo
+  // inflado. Los renglones de "Orden al Proveedor" siguen mostrando el precio bruto
+  // (con IVA) porque es lo que realmente se paga al comprar.
+  const costoMaterialesBruto = costoAluminio + costoVidrio + costoHerrajes;
+  const costoMaterialesNeto = costoMaterialesBruto / (1 + ivaComprasPct);
+  const subtotalFabricacion = costoMaterialesNeto + mdoTotal;
   const gif = subtotalFabricacion * gifPct;
+  const ga = subtotalFabricacion * gaPct;
   
   // Logística
   let costoLogistica = 0;
@@ -3602,7 +3790,7 @@ function calcular() {
   }
 
   const costoVisita = STATE.visitaTecnica ? 1000 : 0;
-  const costoRealAcumulado = subtotalFabricacion + gif + costoLogistica;
+  const costoRealAcumulado = subtotalFabricacion + gif + ga + costoLogistica;
   const precioSinUtilidad = costoRealAcumulado;
   const utilidad = precioSinUtilidad * utilidadPct;
   const precioBase = precioSinUtilidad * (1 + utilidadPct) + costoVisita;
@@ -3614,7 +3802,11 @@ function calcular() {
   // ─── 7. Película / Vinilo (opcional) ───
   const pelData = calcularPelicula(L, H);
   const pelExtra = (pelData && !isNaN(pelData.totalVenta)) ? pelData.totalVenta : 0;
-  const precioFinal = precioBase - descuentoMonto + pelExtra;
+  const precioAntesIva = precioBase - descuentoMonto + pelExtra;
+
+  // ─── 8. IVA ───
+  const ivaMonto = precioAntesIva * ivaPct;
+  const precioFinal = precioAntesIva + ivaMonto;
 
   const resultado = {
     sistema: sistema.nombre,
@@ -3632,14 +3824,21 @@ function calcular() {
     costoVidrio,
     costoHerrajes,
     mdoTotal,
+    costoMaterialesBruto,
+    costoMaterialesNeto,
+    ivaComprasPct,
     subtotalFabricacion,
     gif,
+    ga,
     costoLogistica,
     costoVisita,
     costoRealAcumulado,
     utilidad,
     precioBase,
     pelData,
+    precioAntesIva,
+    ivaPct,
+    ivaMonto,
     precioFinal,
     descuentoPct,
     descuentoMonto,
@@ -3658,8 +3857,9 @@ let snArchivoAdjFile=null;
 
 function snDetectar(){
   const d=document.getElementById('conn-dot'),t=document.getElementById('conn-status');
-  if(d)d.style.background='#27AE60';
-  if(t)t.textContent='Online';
+  const online = navigator.onLine;
+  if(d)d.style.background = online ? '#27AE60' : '#C0392B';
+  if(t)t.textContent = (online ? 'Online' : 'Offline') + ' · ' + APP_VERSION;
 }
 
 function snBuildUI(){
@@ -3824,9 +4024,21 @@ function espCalcularPreview(ancho, alto) {
   const matBase = m2 * precioBase;
   const cargoForma = ESP_FORMA !== 'rect' ? matBase * (factorForma - 1) : 0;
   const totalMat = matBase + cargoForma;
-  const subtotal = totalMat + mo;
-  const gif = subtotal * 0.15;
-  const total = subtotal + gif;
+  // El precio de lista del cristal ya incluye IVA de compra; se netifica antes de margen
+  const ivaComprasPct = cfg('cfg-iva-compras') / 100;
+  const totalMatNeto = totalMat / (1 + ivaComprasPct);
+  const subtotal = totalMatNeto + mo;
+  const gifPct = cfg('cfg-gif') / 100;
+  const gaPct = cfg('cfg-ga') / 100;
+  const utilidadPct = cfg('cfg-utilidad') / 100;
+  const ivaPct = cfg('cfg-iva') / 100;
+  const gif = subtotal * gifPct;
+  const ga = subtotal * gaPct;
+  const costoReal = subtotal + gif + ga;
+  const utilidad = costoReal * utilidadPct;
+  const precioAntesIva = costoReal + utilidad;
+  const ivaMonto = precioAntesIva * ivaPct;
+  const total = precioAntesIva + ivaMonto;
   const res = document.getElementById('esp-resultado');
   res.style.display = 'block';
   const formaLabel = { rect: 'Rectangular', circ: 'Circular', libre: 'Forma Libre' };
@@ -3842,7 +4054,18 @@ function espCalcularPreview(ancho, alto) {
   } else rowForma.style.display = 'none';
   document.getElementById('esp-c-mo').textContent  = fmt(mo);
   document.getElementById('esp-c-sub').textContent = fmt(subtotal);
+  document.getElementById('esp-label-gif').textContent = 'GIF +' + document.getElementById('cfg-gif').value + '%';
   document.getElementById('esp-c-gif').textContent = fmt(gif);
+  document.getElementById('esp-label-ga').textContent = 'GA +' + document.getElementById('cfg-ga').value + '%';
+  document.getElementById('esp-c-ga').textContent = fmt(ga);
+  document.getElementById('esp-label-util').textContent = 'Utilidad +' + document.getElementById('cfg-utilidad').value + '%';
+  document.getElementById('esp-c-util').textContent = fmt(utilidad);
+  ['esp-c-gif','esp-c-ga','esp-c-util'].forEach(function(id){
+    var row = document.getElementById(id).closest('.costo-row');
+    if (row) row.style.display = esSupremo() ? 'flex' : 'none';
+  });
+  document.getElementById('esp-label-iva').textContent = 'IVA +' + document.getElementById('cfg-iva').value + '%';
+  document.getElementById('esp-c-iva').textContent = fmt(ivaMonto);
   document.getElementById('esp-c-total').textContent = fmt(total);
 }
 
@@ -3862,9 +4085,20 @@ function espCalcular() {
   const matBase     = m2 * precioBase;
   const cargoForma  = ESP_FORMA !== 'rect' ? matBase * (factorForma - 1) : 0;
   const totalMat    = matBase + cargoForma;
-  const subtotal    = totalMat + mo;
-  const gif         = subtotal * 0.15;
-  const total       = subtotal + gif;
+  const ivaComprasPct = cfg('cfg-iva-compras') / 100;
+  const totalMatNeto = totalMat / (1 + ivaComprasPct);
+  const subtotal    = totalMatNeto + mo;
+  const gifPct = cfg('cfg-gif') / 100;
+  const gaPct = cfg('cfg-ga') / 100;
+  const utilidadPct = cfg('cfg-utilidad') / 100;
+  const ivaPct = cfg('cfg-iva') / 100;
+  const gif = subtotal * gifPct;
+  const ga = subtotal * gaPct;
+  const costoReal = subtotal + gif + ga;
+  const utilidad = costoReal * utilidadPct;
+  const precioAntesIva = costoReal + utilidad;
+  const ivaMonto = precioAntesIva * ivaPct;
+  const total = precioAntesIva + ivaMonto;
   const bastidor  = ESP_SISTEMA.id === 'ESP_BASTIDOR' || ESP_SISTEMA.id === 'ESP_MARCO_CERCO'
     ? document.getElementById('esp-bastidor').value + '"' : null;
   const luz       = ESP_SISTEMA.id === 'ESP_LED'
@@ -3874,7 +4108,7 @@ function espCalcular() {
     sistemaId: ESP_SISTEMA.id, sistemaNombre: ESP_SISTEMA.nombre, serie: ESP_SISTEMA.serie, tipo: ESP_SISTEMA.tipo,
     ancho, alto: ESP_FORMA === 'circ' ? ancho : alto, esEspejo: true,
     espForma: ESP_FORMA, espFormaLabel: formaLabel[ESP_FORMA], espBastidor: bastidor, espLuz: luz,
-    m2, costoMat: matBase, cargoForma, costoMO: mo, subtotal, gif, precioFinal: total
+    m2, costoMat: matBase, cargoForma, costoMO: mo, subtotal, gif, ga, utilidad, ivaPct, ivaMonto, precioFinal: total
   };
   toast('✅ Espejo calculado');
   renderResultado();
@@ -3886,6 +4120,11 @@ let SERV_SISTEMA = null;
 
 function servicioReset(sistema) {
   SERV_SISTEMA = sistema;
+  SERV_MODO = 'normal';
+  document.getElementById('serv-modo-normal').style.display = 'block';
+  document.getElementById('serv-modo-combo').style.display = 'none';
+  document.getElementById('serv-btn-combo').textContent = '🎁 Armar combo';
+  SERV_COMBO_SEL = {};
   document.getElementById('serv-titulo').textContent = sistema.emoji + ' ' + sistema.nombre;
   document.getElementById('serv-desc').textContent   = sistema.desc || '';
   document.getElementById('serv-unidad').textContent = sistema.unidad || 'pza';
@@ -3896,7 +4135,84 @@ function servicioReset(sistema) {
   document.getElementById('serv-cantidad').value = '1';
   document.getElementById('serv-precio').value   = sistema.precioBase || '';
   document.getElementById('serv-notas').value    = '';
+  document.getElementById('serv-complejidad').value = '1';
+  document.getElementById('serv-cargo-traslado').value = cfg('cfg-cargo-campo') || 500;
+  document.getElementById('serv-aviso-riesgo').checked = false;
   document.getElementById('serv-resultado').style.display = 'none';
+}
+
+// ── Modo Combo: varios servicios de mantenimiento en la misma visita ──
+var SERV_MODO = 'normal'; // 'normal' | 'combo'
+var SERV_COMBO_SEL = {};  // { sistemaId: { sistema, cantidad } }
+
+function servToggleCombo() {
+  SERV_MODO = (SERV_MODO === 'combo') ? 'normal' : 'combo';
+  document.getElementById('serv-modo-normal').style.display = SERV_MODO === 'combo' ? 'none' : 'block';
+  document.getElementById('serv-modo-combo').style.display  = SERV_MODO === 'combo' ? 'block' : 'none';
+  document.getElementById('serv-btn-combo').textContent = SERV_MODO === 'combo' ? '✕ Cancelar combo' : '🎁 Armar combo';
+  document.getElementById('serv-resultado').style.display = 'none';
+  if (SERV_MODO === 'combo') servRenderComboLista();
+}
+
+function servRenderComboLista() {
+  var items = DB.sistemas.filter(function(s) { return s.esServicio; });
+  var cont = document.getElementById('serv-combo-lista');
+  cont.innerHTML = items.map(function(it) {
+    var sel = SERV_COMBO_SEL[it.id];
+    return '<label style="display:flex;align-items:center;gap:8px;padding:8px;border:1.5px solid ' + (sel ? 'var(--blue)' : 'var(--gray-200)') + ';border-radius:8px;margin-bottom:6px;cursor:pointer;background:' + (sel ? 'rgba(46,109,164,.05)' : 'white') + '">'
+      + '<input type="checkbox" ' + (sel ? 'checked' : '') + ' onchange="servComboToggle(\'' + it.id + '\',this.checked)" style="width:18px;height:18px;flex-shrink:0">'
+      + '<span style="flex:1;font-size:12px;color:var(--navy)">' + it.emoji + ' ' + it.nombre + '</span>'
+      + (sel ? '<input type="number" min="1" value="' + sel.cantidad + '" onchange="servComboCant(\'' + it.id + '\',this.value)" style="width:50px;padding:4px;border:1px solid var(--gray-200);border-radius:6px;font-size:12px;text-align:center">' : '')
+      + '</label>';
+  }).join('');
+  servComboCalcular();
+}
+
+function servComboToggle(id, checked) {
+  if (checked) {
+    var sis = DB.sistemas.find(function(s) { return s.id === id; });
+    SERV_COMBO_SEL[id] = { sistema: sis, cantidad: 1 };
+  } else {
+    delete SERV_COMBO_SEL[id];
+  }
+  servRenderComboLista();
+}
+
+function servComboCant(id, val) {
+  if (SERV_COMBO_SEL[id]) SERV_COMBO_SEL[id].cantidad = Math.max(1, parseInt(val, 10) || 1);
+  servComboCalcular();
+}
+
+// Descuento por combo: refleja que 2-3 servicios en la misma visita comparten
+// traslado y montaje/desmontaje, no que cada uno se cobre como visita aparte.
+function servComboDescuentoPct() {
+  var n = Object.keys(SERV_COMBO_SEL).length;
+  if (n >= 3) return 0.15;
+  if (n === 2) return 0.10;
+  return 0;
+}
+
+function servComboCalcular() {
+  var ids = Object.keys(SERV_COMBO_SEL);
+  var nota = document.getElementById('serv-combo-descuento-nota');
+  if (!ids.length) {
+    document.getElementById('serv-resultado').style.display = 'none';
+    if (nota) nota.style.display = 'none';
+    return;
+  }
+  var subtotalBruto = ids.reduce(function(a, id) {
+    var s = SERV_COMBO_SEL[id];
+    return a + (s.sistema.precioBase || 0) * s.cantidad;
+  }, 0);
+  var descPct = servComboDescuentoPct();
+  var subtotal = subtotalBruto * (1 - descPct);
+  if (nota) {
+    nota.style.display = descPct > 0 ? 'block' : 'none';
+    nota.textContent = descPct > 0 ? ('🎁 Descuento por combo (' + ids.length + ' servicios): -' + Math.round(descPct*100) + '% por tiempo compartido') : '';
+  }
+  var nombreCombo = ids.map(function(id) { return SERV_COMBO_SEL[id].sistema.nombre; }).join(' + ');
+  document.getElementById('serv-titulo').textContent = '🎁 Combo: ' + nombreCombo;
+  servicioCalcPreview(1, subtotal, nombreCombo + ' (combo)');
 }
 
 function servicioActualizar() {
@@ -3905,34 +4221,135 @@ function servicioActualizar() {
   if (cant > 0 && precio > 0) servicioCalcPreview(cant, precio);
 }
 
-function servicioCalcPreview(cant, precio) {
-  const subtotal = cant * precio;
-  const gif      = subtotal * (SERV_SISTEMA?.factorGIF - 1 || 0.15);
-  const total    = subtotal + gif;
+function servActualizarAjustes() {
+  if (SERV_MODO === 'combo') servComboCalcular();
+  else servicioActualizar();
+}
+
+function servicioCalcPreview(cant, precio, nombreOverride) {
+  const esGarantia = (SERV_SISTEMA?.factorGIF === 1.0) && SERV_MODO !== 'combo';
+  const complejidad = parseFloat(document.getElementById('serv-complejidad')?.value) || 1;
+  const cargoTraslado = parseFloat(document.getElementById('serv-cargo-traslado')?.value) || 0;
+  const subtotalBase = cant * precio;
+  const subtotal = esGarantia ? subtotalBase : (subtotalBase * complejidad + cargoTraslado);
   const unidad   = SERV_SISTEMA?.unidad || 'pza';
   const res = document.getElementById('serv-resultado');
   res.style.display = 'block';
-  document.getElementById('serv-label-sub').textContent = `${SERV_SISTEMA?.nombre} × ${cant} ${unidad}`;
-  document.getElementById('serv-c-sub').textContent   = fmt(subtotal);
+  document.getElementById('serv-label-sub').textContent = nombreOverride ? nombreOverride : `${SERV_SISTEMA?.nombre} × ${cant} ${unidad}`;
+  document.getElementById('serv-c-sub').textContent   = fmt(subtotalBase);
+  const rowComp = document.getElementById('serv-row-complejidad');
+  const rowTras = document.getElementById('serv-row-traslado');
+  if (!esGarantia && complejidad > 1) {
+    rowComp.style.display = 'flex';
+    document.getElementById('serv-label-complejidad').textContent = 'Ajuste por complejidad (×' + complejidad + ')';
+    document.getElementById('serv-c-complejidad').textContent = fmt(subtotalBase * (complejidad - 1));
+  } else { rowComp.style.display = 'none'; }
+  if (!esGarantia && cargoTraslado > 0) {
+    rowTras.style.display = 'flex';
+    document.getElementById('serv-c-traslado').textContent = fmt(cargoTraslado);
+  } else { rowTras.style.display = 'none'; }
+  ['gif','ga','util','iva'].forEach(function(k){
+    var row = document.getElementById('serv-c-'+k).closest('.costo-row');
+    if (row) row.style.display = (esGarantia || (k !== 'iva' && !esSupremo())) ? 'none' : 'flex';
+  });
+  if (esGarantia) {
+    document.getElementById('serv-c-total').textContent = fmt(subtotal);
+    return;
+  }
+  const gifPct = cfg('cfg-gif') / 100;
+  const gaPct = cfg('cfg-ga') / 100;
+  const utilidadPct = cfg('cfg-utilidad') / 100;
+  const ivaPct = cfg('cfg-iva') / 100;
+  const gif = subtotal * gifPct;
+  const ga = subtotal * gaPct;
+  const costoReal = subtotal + gif + ga;
+  const utilidad = costoReal * utilidadPct;
+  const precioAntesIva = costoReal + utilidad;
+  const ivaMonto = precioAntesIva * ivaPct;
+  const total = precioAntesIva + ivaMonto;
+  document.getElementById('serv-label-gif').textContent = 'GIF +' + document.getElementById('cfg-gif').value + '%';
   document.getElementById('serv-c-gif').textContent   = fmt(gif);
+  document.getElementById('serv-label-ga').textContent = 'GA +' + document.getElementById('cfg-ga').value + '%';
+  document.getElementById('serv-c-ga').textContent   = fmt(ga);
+  document.getElementById('serv-label-util').textContent = 'Utilidad +' + document.getElementById('cfg-utilidad').value + '%';
+  document.getElementById('serv-c-util').textContent   = fmt(utilidad);
+  document.getElementById('serv-label-iva').textContent = 'IVA +' + document.getElementById('cfg-iva').value + '%';
+  document.getElementById('serv-c-iva').textContent   = fmt(ivaMonto);
   document.getElementById('serv-c-total').textContent = fmt(total);
 }
 
 function servicioCalcular() {
+  if (SERV_MODO === 'combo') {
+    var ids = Object.keys(SERV_COMBO_SEL);
+    if (!ids.length) { toast('⚠️ Selecciona al menos 1 servicio para el combo'); return; }
+    var subtotalBruto = ids.reduce(function(a, id) {
+      var s = SERV_COMBO_SEL[id];
+      return a + (s.sistema.precioBase || 0) * s.cantidad;
+    }, 0);
+    var descPct = servComboDescuentoPct();
+    var complejidadC = parseFloat(document.getElementById('serv-complejidad').value) || 1;
+    var cargoTrasladoC = parseFloat(document.getElementById('serv-cargo-traslado').value) || 0;
+    var subtotalCombo = subtotalBruto * (1 - descPct) * complejidadC + cargoTrasladoC;
+    var gifPctC = cfg('cfg-gif') / 100, gaPctC = cfg('cfg-ga') / 100, utilidadPctC = cfg('cfg-utilidad') / 100, ivaPctC = cfg('cfg-iva') / 100;
+    var gifC = subtotalCombo * gifPctC, gaC = subtotalCombo * gaPctC;
+    var costoRealC = subtotalCombo + gifC + gaC;
+    var utilidadC = costoRealC * utilidadPctC;
+    var precioAntesIvaC = costoRealC + utilidadC;
+    var ivaMontoC = precioAntesIvaC * ivaPctC;
+    var totalC = precioAntesIvaC + ivaMontoC;
+    var detalleCombo = ids.map(function(id) {
+      var s = SERV_COMBO_SEL[id];
+      return { nombre: s.sistema.nombre, cantidad: s.cantidad, unidad: s.sistema.unidad, precioUnit: s.sistema.precioBase };
+    });
+    var nombreCombo = detalleCombo.map(function(d) { return d.nombre; }).join(' + ');
+    servComboCalcular();
+    STATE.ultimoResultado = {
+      sistemaId: 'COMBO', sistemaNombre: '🎁 Combo: ' + nombreCombo, serie: 'Mantenimiento', tipo: 'Servicio',
+      esServicio: true, esCombo: true, comboDetalle: detalleCombo, comboDescuentoPct: descPct,
+      complejidad: complejidadC, cargoTraslado: cargoTrasladoC,
+      servCantidad: 1, servUnidad: 'combo', servPrecio: subtotalCombo,
+      servNotas: document.getElementById('serv-notas').value.trim(),
+      avisoRiesgo: document.getElementById('serv-aviso-riesgo').checked,
+      subtotal: subtotalBruto, gif: gifC, ga: gaC, utilidad: utilidadC, ivaPct: ivaPctC, ivaMonto: ivaMontoC, precioFinal: totalC, esSinMargen: false
+    };
+    toast('✅ Combo calculado');
+    renderResultado();
+    switchTab('resultado');
+    return;
+  }
+
   if (!SERV_SISTEMA) return;
   const cant   = parseFloat(document.getElementById('serv-cantidad').value) || 0;
   const precio = parseFloat(document.getElementById('serv-precio').value)   || 0;
   if (!cant || !precio) { toast('⚠️ Ingresa cantidad y precio'); return; }
-  const subtotal = cant * precio;
-  const gif      = subtotal * (SERV_SISTEMA.factorGIF - 1 || 0.15);
-  const total    = subtotal + gif;
+  const esGarantia = (SERV_SISTEMA.factorGIF === 1.0);
+  const complejidad = parseFloat(document.getElementById('serv-complejidad').value) || 1;
+  const cargoTraslado = parseFloat(document.getElementById('serv-cargo-traslado').value) || 0;
+  const subtotalBase = cant * precio;
+  const subtotal = esGarantia ? subtotalBase : (subtotalBase * complejidad + cargoTraslado);
+  let gif = 0, ga = 0, utilidad = 0, ivaMonto = 0, total = subtotal, ivaPct = 0;
+  if (!esGarantia) {
+    const gifPct = cfg('cfg-gif') / 100;
+    const gaPct = cfg('cfg-ga') / 100;
+    const utilidadPct = cfg('cfg-utilidad') / 100;
+    ivaPct = cfg('cfg-iva') / 100;
+    gif = subtotal * gifPct;
+    ga = subtotal * gaPct;
+    const costoReal = subtotal + gif + ga;
+    utilidad = costoReal * utilidadPct;
+    const precioAntesIva = costoReal + utilidad;
+    ivaMonto = precioAntesIva * ivaPct;
+    total = precioAntesIva + ivaMonto;
+  }
   const unidad   = SERV_SISTEMA.unidad || 'pza';
   servicioCalcPreview(cant, precio);
   STATE.ultimoResultado = {
     sistemaId: SERV_SISTEMA.id, sistemaNombre: SERV_SISTEMA.nombre, serie: SERV_SISTEMA.serie, tipo: SERV_SISTEMA.tipo,
     esServicio: true, servCantidad: cant, servUnidad: unidad, servPrecio: precio,
     servNotas: document.getElementById('serv-notas').value.trim(),
-    subtotal, gif, precioFinal: total
+    avisoRiesgo: document.getElementById('serv-aviso-riesgo').checked,
+    subtotalBase, complejidad, cargoTraslado,
+    subtotal, gif, ga, utilidad, ivaPct, ivaMonto, precioFinal: total, esSinMargen: esGarantia
   };
   toast('✅ Servicio calculado');
   renderResultado();
@@ -4105,6 +4522,10 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha) {
     + (dir ? '<div style="font-size:10pt;color:#666;margin-bottom:14px">' + esc(dir) + '</div>' : '<div style="margin-bottom:14px"></div>')
     + lista
     + '<div style="display:flex;justify-content:flex-end;padding-top:12px;font-size:14pt;font-weight:900;color:#1B3A5C">$' + fmt(total) + '</div>'
+    + (items.some(function(it){ return it.resultado && it.resultado.avisoRiesgo; }) ?
+      '<div style="margin-top:16px;font-size:9pt;color:#1B3A5C;background:#FFF8ED;border:1px solid #E67E22;border-radius:6px;padding:10px 12px;line-height:1.5">'
+      + '<strong>\u26a0\ufe0f Aviso de riesgo por manipulaci\u00f3n:</strong> uno o m\u00e1s de los trabajos anteriores implica la manipulaci\u00f3n de material ya instalado (vidrio, sellos, herrajes existentes). Por el estado, antig\u00fcedad o fragilidad del material, existe riesgo de rotura o da\u00f1o durante el proceso. BarrCan toma todas las precauciones necesarias, pero no se hace responsable por roturas de material preexistente fr\u00e1gil o da\u00f1ado; cualquier reposici\u00f3n adicional que resulte necesaria se cotiza por separado.'
+      + '</div>' : '')
     + '<div style="margin-top:24px;font-size:9pt;text-align:center;color:#1B3A5C;background:#F7F5F0;padding:10px;border-radius:6px">'
     + 'El presente presupuesto contempla los trabajos antes descritos, cualquier otro trabajo adicional se cotizar\u00e1. Estos precios est\u00e1n sujetos a cambios sin previo aviso.'
     + '</div>'
@@ -4394,6 +4815,7 @@ function snAdjuntarArch(id){
 
 // ── Init ──────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded',()=>{
+  cargarDesdeStorage();
   snDetectar();
   snBuildUI();
   snHistorial();
@@ -4455,19 +4877,31 @@ function renderVista(r) {
       <!-- Resumen costos cliente -->
       <div class=desglose-card fade-in>
         <div class=desglose-header>💰 Desglose de Precio</div>
+        ${esSupremo() ? `
         ${renderFilaCosto('Materiales (aluminio + herrajes)', r.costoAluminio + r.costoHerrajes)}
         ${renderFilaCosto('Vidrio ' + r.vidTipo, r.costoVidrio)}
         ${renderFilaCosto('Mano de obra', r.mdoTotal)}
         ${renderFilaCosto('Gastos indirectos (GIF)', r.gif, true)}
+        ${renderFilaCosto('Gastos de administración (GA)', r.ga)}
         ${renderFilaCosto('Logística de campo', r.costoLogistica)}
         ${r.costoVisita > 0 ? renderFilaCosto('Visita técnica previa', r.costoVisita) : ''}
         ${renderFilaCosto('Utilidad', r.utilidad, false, true)}
+        ` : `
+        ${renderFilaCosto('Aluminio', r.costoAluminio)}
+        ${renderFilaCosto('Herrajes', r.costoHerrajes)}
+        ${renderFilaCosto('Vidrio ' + r.vidTipo, r.costoVidrio)}
+        `}
         ${r.descuentoMonto > 0 ? `
         <div style="height:1px;background:var(--gray-100)"></div>
         <div class="costo-row" style="background:rgba(192,57,43,0.04)">
           <span style="color:var(--red)">🏷️ Descuento cliente (${Math.round((r.descuentoPct||0)*100)}%)</span>
           <span class="costo-monto" style="color:var(--red)">−$${fmt(r.descuentoMonto)}</span>
         </div>` : ''}
+        <div style="height:1px;background:var(--gray-100)"></div>
+        <div class="costo-row" style="background:rgba(46,109,164,0.04)">
+          <span>IVA (${Math.round((r.ivaPct||0)*100)}%)<span class=costo-pct></span></span>
+          <span class="costo-monto">$${fmt(r.ivaMonto||0)}</span>
+        </div>
         ${r.pelData ? `
         <div style=height:1px;background:var(--gray-100)></div>
         <div class=costo-row style=background:rgba(46,109,164,0.04)>
@@ -4550,12 +4984,18 @@ function renderVista(r) {
         ${renderFilaCosto('Vidrio', r.costoVidrio)}
         ${renderFilaCosto('Herrajes', r.costoHerrajes)}
         ${renderFilaCosto('Mano de obra (×' + r.alertaPeso.factorMO.toFixed(1) + ')', r.mdoTotal, false, false, true)}
-        <div class=costo-row subtotal><span>SUBTOTAL FABRICACIÓN</span><span class=costo-monto>$${fmt(r.subtotalFabricacion)}</span></div>
+        <div class="costo-row" style="opacity:0.6;font-size:11px">
+          <span>Materiales bruto (c/IVA compra ${document.getElementById('cfg-iva-compras').value}%): $${fmt(r.costoMaterialesBruto)} → neto</span>
+          <span class="costo-monto">$${fmt(r.costoMaterialesNeto)}</span>
+        </div>
+        <div class=costo-row subtotal><span>SUBTOTAL FABRICACIÓN (neto)</span><span class=costo-monto>$${fmt(r.subtotalFabricacion)}</span></div>
         ${renderFilaCosto('GIF +' + document.getElementById('cfg-gif').value + '%', r.gif)}
+        ${renderFilaCosto('GA +' + document.getElementById('cfg-ga').value + '%', r.ga)}
         ${renderFilaCosto('Logística', r.costoLogistica)}
         ${r.costoVisita > 0 ? renderFilaCosto('Visita técnica', r.costoVisita) : ''}
         <div class=costo-row subtotal><span>COSTO REAL ACUMULADO</span><span class=costo-monto>$${fmt(r.costoRealAcumulado)}</span></div>
         ${renderFilaCosto('Utilidad +' + document.getElementById('cfg-utilidad').value + '%', r.utilidad, false, true)}
+        ${renderFilaCosto('IVA +' + document.getElementById('cfg-iva').value + '%', r.ivaMonto || 0)}
         ${r.pelData ? `
         <div style=height:1px;background:rgba(255,255,255,0.1)></div>
         <div class=costo-row style=background:rgba(46,109,164,0.08)>
