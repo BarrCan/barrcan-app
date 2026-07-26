@@ -6,6 +6,16 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.7
+  FECHA   : 2026-07-26
+  v1.7 - Organización por periodo y agrupación por categoría:
+    - Tab Facturas: selector Mensual/Trimestral/Semestral/Anual/Todo,
+      con navegación ◀▶ y agrupación por mes cuando el rango abarca
+      varios meses. Antes traía "las últimas 200 facturas" a lo bruto,
+      sin importar la fecha -- ahora filtra por rango real.
+    - Tab Inventario: agrupado por tipo (Aluminio/Herrajes/Vidrio/
+      Consumible) con subtotal de valor en stock por grupo.
+    - Tab Proveedores: agrupado por categoría con conteo por grupo.
   VERSION : v1.6
   FECHA   : 2026-07-19
   v1.6 - Nueva pestaña "🧰 Herramientas" -- registro real de equipo:
@@ -469,11 +479,12 @@ var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
 
+var APP_VERSION = 'v1.7';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
   if (dot) dot.style.background  = SYNC.online ? '#27AE60' : '#C8923A';
-  if (txt) txt.textContent       = SYNC.online ? 'Online'  : 'Offline';
+  if (txt) txt.textContent       = (SYNC.online ? 'Online'  : 'Offline') + ' · ' + APP_VERSION;
 }
 
 function fmt(n) { return '$' + Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -1115,13 +1126,11 @@ function cmpFiltrarInventario() {
     return;
   }
 
-  var html = '';
-  for (var i = 0; i < filtrado.length; i++) {
-    var m = filtrado[i];
+  function renderItem(m) {
     var cant = parseFloat(m.cantidad||0);
     var stockClass = cant >= 3 ? 'stock-ok' : cant > 0 ? 'stock-low' : 'stock-out';
     var unidad = m.tipo_tramo && m.tipo_tramo !== '-' ? 'barras' : 'pza';
-    html += '<div class="inv-row">'
+    return '<div class="inv-row">'
       + '<div style="flex:1">'
       + '<div class="inv-clave">' + esc(m.clave_base||'—') + ' <span class="badge-cat ' + catClass(m.tipo) + '">' + esc(m.tipo||'') + '</span></div>'
       + '<div class="inv-desc">' + esc((m.descripcion||'').slice(0,55)) + '</div>'
@@ -1133,6 +1142,28 @@ function cmpFiltrarInventario() {
       + '<div class="inv-precio">' + unidad + '</div>'
       + '</div>'
       + '</div>';
+  }
+
+  // Agrupar por tipo (ALUMINIO / HERRAJES / VIDRIO / CONSUMIBLE) — salvo que ya se filtró a un solo tipo
+  var html = '';
+  if (!tipo) {
+    var grupos = {}; var orden = [];
+    filtrado.forEach(function(m) {
+      var key = m.tipo || 'Sin tipo';
+      if (!grupos[key]) { grupos[key] = []; orden.push(key); }
+      grupos[key].push(m);
+    });
+    orden.forEach(function(key) {
+      var items = grupos[key];
+      var valorStock = items.reduce(function(a, m) { return a + (parseFloat(m.cantidad||0) * parseFloat(m.precio_inventario || m.precio_compra || 0)); }, 0);
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 6px;padding:6px 4px;border-bottom:2px solid var(--navy)">'
+        + '<span style="font-weight:700;color:var(--navy);font-size:13px">' + esc(key) + '</span>'
+        + '<span style="font-weight:700;color:var(--gray-600);font-size:12px">' + fmt(valorStock) + ' · ' + items.length + ' art.</span>'
+        + '</div>';
+      items.forEach(function(m) { html += renderItem(m); });
+    });
+  } else {
+    filtrado.forEach(function(m) { html += renderItem(m); });
   }
   lista.innerHTML = html;
 }
@@ -1312,20 +1343,32 @@ async function cmpCargarProveedores() {
   var lista = document.getElementById('prov-lista');
   if (!sb()) return;
   try {
-    var res = await sb().from('proveedores').select('*').order('nombre').limit(100);
+    var res = await sb().from('proveedores').select('*').order('categoria').order('nombre').limit(200);
     if (res.error) throw res.error;
     PROV_CACHE = res.data || [];
+    var grupos = {}; var orden = [];
+    PROV_CACHE.forEach(function(p) {
+      var key = p.categoria || 'Sin categoría';
+      if (!grupos[key]) { grupos[key] = []; orden.push(key); }
+      grupos[key].push(p);
+    });
     var html = '';
-    for (var i = 0; i < PROV_CACHE.length; i++) {
-      var p = PROV_CACHE[i];
-      html += '<div class="inv-row">'
-        + '<div style="flex:1">'
-        + '<div style="font-size:13px;font-weight:700;color:var(--navy)">' + esc(p.nombre||'') + '</div>'
-        + '<div style="font-size:11px;color:var(--gray-400)">' + (p.rfc||'Sin RFC') + '</div>'
-        + '</div>'
-        + '<span class="badge-cat ' + catClass(p.categoria) + '">' + esc(p.categoria||'—') + '</span>'
+    orden.forEach(function(key) {
+      var items = grupos[key];
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 6px;padding:6px 4px;border-bottom:2px solid var(--navy)">'
+        + '<span style="font-weight:700;color:var(--navy);font-size:13px">' + esc(key) + '</span>'
+        + '<span style="font-weight:700;color:var(--gray-600);font-size:12px">' + items.length + '</span>'
         + '</div>';
-    }
+      items.forEach(function(p) {
+        html += '<div class="inv-row">'
+          + '<div style="flex:1">'
+          + '<div style="font-size:13px;font-weight:700;color:var(--navy)">' + esc(p.nombre||'') + '</div>'
+          + '<div style="font-size:11px;color:var(--gray-400)">' + (p.rfc||'Sin RFC') + '</div>'
+          + '</div>'
+          + '<span class="badge-cat ' + catClass(p.categoria) + '">' + esc(p.categoria||'—') + '</span>'
+          + '</div>';
+      });
+    });
     lista.innerHTML = html || '<div style="text-align:center;padding:20px;color:var(--gray-400)">Sin proveedores</div>';
   } catch(e) {
     lista.innerHTML = '<div style="text-align:center;padding:20px;color:var(--red)">Error</div>';
