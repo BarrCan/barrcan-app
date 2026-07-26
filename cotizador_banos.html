@@ -6,6 +6,16 @@
 <title>BarrCan · Cotizador Baños</title>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v1.2
+  FECHA   : 2026-07-26
+  v1.2 - GA, IVA de venta e IVA de compra:
+    - Se agregaron campos GA/IVA/IVA-compra visibles en los 3 paneles
+      (Frameless, Bacalar, Escuadra) — antes solo tenían GIF/Utilidad,
+      y Escuadra ni siquiera tenía GIF editable (estaba fijo en 15%).
+    - Netificación de materiales antes de calcular márgenes, mismo
+      criterio que los demás cotizadores.
+    - sbCargarConfigPrecios() precarga estos valores desde Supabase al
+      abrir la app, pero siguen editables por cotización.
   VERSION : v1.1
   FECHA   : 2026-07-13
   v1.1 - 2026-07-13 - Logo estandarizado y cargado desde GitHub Pages:
@@ -78,6 +88,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 </style>
 </head>
 <body>
+<input type="hidden" id="cfg-iva-compras" value="16">
 <div class="header">
   <div class="logo-wrap">
     <div class="logo-img"><img src="https://barrcan.github.io/barrcan-app/assets/logo-icono.jpg" onerror="this.onerror=null;this.src=_LOGO_ICONO_B64;"></div>
@@ -169,8 +180,18 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
           <input type="number" class="form-input" id="fl-utilidad" value="25" inputmode="decimal">
         </div>
         <div>
+          <label class="form-label">GA (%)</label>
+          <input type="number" class="form-input" id="fl-ga" value="25" inputmode="decimal">
+        </div>
+      </div>
+      <div class="form-row">
+        <div>
           <label class="form-label">Precio vidrio ($/m&sup2;)</label>
           <input type="number" class="form-input" id="fl-precio-vid" value="480" inputmode="decimal">
+        </div>
+        <div>
+          <label class="form-label">IVA (%)</label>
+          <input type="number" class="form-input" id="fl-iva" value="16" inputmode="decimal">
         </div>
       </div>
 
@@ -189,7 +210,9 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
           <div class="desglose-row"><span>Herrajes</span><span id="fl-d-her">$0</span></div>
           <div class="desglose-row"><span>Mano de obra</span><span id="fl-d-mdo">$0</span></div>
           <div class="desglose-row"><span>GIF</span><span id="fl-d-gif">$0</span></div>
+          <div class="desglose-row"><span>GA</span><span id="fl-d-ga">$0</span></div>
           <div class="desglose-row"><span>Utilidad</span><span id="fl-d-util">$0</span></div>
+          <div class="desglose-row"><span>IVA</span><span id="fl-d-iva">$0</span></div>
         </div>
       </div>
       <div class="card">
@@ -262,6 +285,16 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
           <input type="number" class="form-input" id="bc-utilidad" value="25" inputmode="decimal">
         </div>
       </div>
+      <div class="form-row">
+        <div>
+          <label class="form-label">GA (%)</label>
+          <input type="number" class="form-input" id="bc-ga" value="25" inputmode="decimal">
+        </div>
+        <div>
+          <label class="form-label">IVA (%)</label>
+          <input type="number" class="form-input" id="bc-iva" value="16" inputmode="decimal">
+        </div>
+      </div>
 
       <button class="btn btn-primary" onclick="cbCalcBacalar()">Calcular</button>
     </div>
@@ -275,7 +308,10 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
           <div class="desglose-row"><span>Clips CV-08</span><span id="bc-d-clips">$0</span></div>
           <div class="desglose-row"><span>Vidrio <span id="bc-m2"></span>m&sup2;</span><span id="bc-d-vid">$0</span></div>
           <div class="desglose-row"><span>Mano de obra</span><span id="bc-d-mdo">$0</span></div>
-          <div class="desglose-row"><span>GIF + Utilidad</span><span id="bc-d-gif">$0</span></div>
+          <div class="desglose-row"><span>GIF</span><span id="bc-d-gif">$0</span></div>
+          <div class="desglose-row"><span>GA</span><span id="bc-d-ga">$0</span></div>
+          <div class="desglose-row"><span>Utilidad</span><span id="bc-d-util">$0</span></div>
+          <div class="desglose-row"><span>IVA</span><span id="bc-d-iva">$0</span></div>
         </div>
       </div>
       <div class="card">
@@ -342,6 +378,22 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
           <input type="number" class="form-input" id="esc-utilidad" value="25" inputmode="decimal">
         </div>
       </div>
+      <div class="form-row">
+        <div>
+          <label class="form-label">GIF (%)</label>
+          <input type="number" class="form-input" id="esc-gif" value="15" inputmode="decimal">
+        </div>
+        <div>
+          <label class="form-label">GA (%)</label>
+          <input type="number" class="form-input" id="esc-ga" value="25" inputmode="decimal">
+        </div>
+      </div>
+      <div class="form-row">
+        <div>
+          <label class="form-label">IVA (%)</label>
+          <input type="number" class="form-input" id="esc-iva" value="16" inputmode="decimal">
+        </div>
+      </div>
 
       <button class="btn btn-primary" onclick="cbCalcEscuadra()">Calcular</button>
     </div>
@@ -355,7 +407,10 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
           <div class="desglose-row"><span>Vidrio/cristal</span><span id="esc-d-vid">$0</span></div>
           <div class="desglose-row"><span>Herrajes</span><span id="esc-d-her">$0</span></div>
           <div class="desglose-row"><span>Mano de obra</span><span id="esc-d-mdo">$0</span></div>
-          <div class="desglose-row"><span>GIF + Utilidad</span><span id="esc-d-gif">$0</span></div>
+          <div class="desglose-row"><span>GIF</span><span id="esc-d-gif">$0</span></div>
+          <div class="desglose-row"><span>GA</span><span id="esc-d-ga">$0</span></div>
+          <div class="desglose-row"><span>Utilidad</span><span id="esc-d-util">$0</span></div>
+          <div class="desglose-row"><span>IVA</span><span id="esc-d-iva">$0</span></div>
         </div>
       </div>
       <div class="card">
@@ -397,11 +452,12 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
+var APP_VERSION = 'v1.2';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
   if (dot) dot.style.background = SYNC.online ? '#27AE60' : '#C8923A';
-  if (txt) txt.textContent      = SYNC.online ? 'Online'  : 'Offline';
+  if (txt) txt.textContent      = (SYNC.online ? 'Online'  : 'Offline') + ' · ' + APP_VERSION;
 }
 
 function fmt(n) { return '$' + Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -520,6 +576,9 @@ function cbCalcFrameless() {
   var mdo       = parseFloat(document.getElementById('fl-mdo').value) || 0;
   var gifPct    = (parseFloat(document.getElementById('fl-gif').value)||15) / 100;
   var utilPct   = (parseFloat(document.getElementById('fl-utilidad').value)||25) / 100;
+  var gaPct     = (parseFloat(document.getElementById('fl-ga').value)||25) / 100;
+  var ivaPct    = (parseFloat(document.getElementById('fl-iva').value)||16) / 100;
+  var ivaComprasPct = (parseFloat(document.getElementById('cfg-iva-compras').value)||16) / 100;
 
   // BOM
   var bomItems = FL_BOM[FL_SIS] ? FL_BOM[FL_SIS](jal) : [];
@@ -551,10 +610,17 @@ function cbCalcFrameless() {
 
   var factorMO   = pesoVid < 30 ? 1 : pesoVid <= 80 ? 2.5 : 5;
   var mdoTotal   = mdo * factorMO;
-  var subtotal   = costoHerrajes + costoVidrio + mdoTotal;
+  // Vidrio+herrajes vienen de lista de proveedor con IVA incluido (acreditable, no es costo real)
+  var costoMaterialesBruto = costoHerrajes + costoVidrio;
+  var costoMaterialesNeto  = costoMaterialesBruto / (1 + ivaComprasPct);
+  var subtotal   = costoMaterialesNeto + mdoTotal;
   var gif        = subtotal * gifPct;
-  var base       = (subtotal + gif) * (1 + utilPct);
-  var utilidad   = (subtotal + gif) * utilPct;
+  var ga         = subtotal * gaPct;
+  var costoReal  = subtotal + gif + ga;
+  var utilidad   = costoReal * utilPct;
+  var antesIva   = costoReal + utilidad;
+  var ivaMonto   = antesIva * ivaPct;
+  var base       = antesIva + ivaMonto;
 
   CB_RESULTADO = {
     tipo: 'frameless', sistema: FL_SIS, jaladera: jal,
@@ -562,7 +628,7 @@ function cbCalcFrameless() {
     m2Vidrio: m2.toFixed(3),
     costoHerrajes: costoHerrajes, costoVidrio: costoVidrio,
     costoAluminio: 0, mdoTotal: mdoTotal,
-    subtotal: subtotal, gif: gif, utilidad: utilidad,
+    subtotal: subtotal, gif: gif, ga: ga, utilidad: utilidad, ivaMonto: ivaMonto,
     precioFinal: base, bom: herBOM
   };
 
@@ -578,7 +644,9 @@ function cbCalcFrameless() {
   document.getElementById('fl-d-her').textContent        = fmt(costoHerrajes);
   document.getElementById('fl-d-mdo').textContent        = fmt(mdoTotal);
   document.getElementById('fl-d-gif').textContent        = fmt(gif);
+  document.getElementById('fl-d-ga').textContent         = fmt(ga);
   document.getElementById('fl-d-util').textContent       = fmt(utilidad);
+  document.getElementById('fl-d-iva').textContent        = fmt(ivaMonto);
 
   // BOM
   var bomHtml = '';
@@ -611,6 +679,9 @@ function cbCalcBacalar() {
   var mdo       = parseFloat(document.getElementById('bc-mdo').value) || 1200;
   var gifPct    = (parseFloat(document.getElementById('bc-gif').value)||15) / 100;
   var utilPct   = (parseFloat(document.getElementById('bc-utilidad').value)||25) / 100;
+  var gaPct     = (parseFloat(document.getElementById('bc-ga').value)||25) / 100;
+  var ivaPct    = (parseFloat(document.getElementById('bc-iva').value)||16) / 100;
+  var ivaComprasPct = (parseFloat(document.getElementById('cfg-iva-compras').value)||16) / 100;
 
   // Vidrio: 2 paneles de L/2 × H
   var m2     = 2 * (L/2/1000) * (H/1000);
@@ -622,15 +693,22 @@ function cbCalcBacalar() {
   var cKit   = kitPrecio;
 
   var costoHer  = cKit + cClips;
-  var subtotal  = costoHer + cVid + mdo;
+  var costoMaterialesBruto = costoHer + cVid;
+  var costoMaterialesNeto  = costoMaterialesBruto / (1 + ivaComprasPct);
+  var subtotal  = costoMaterialesNeto + mdo;
   var gif       = subtotal * gifPct;
-  var base      = (subtotal + gif) * (1 + utilPct);
+  var ga        = subtotal * gaPct;
+  var costoReal = subtotal + gif + ga;
+  var utilidad  = costoReal * utilPct;
+  var antesIva  = costoReal + utilidad;
+  var ivaMonto  = antesIva * ivaPct;
+  var base      = antesIva + ivaMonto;
 
   CB_RESULTADO = {
     tipo: 'bacalar', sistema: 'Bacalar ' + BC_SIS, kit: kitDesc,
     L: L, H: H, m2Vidrio: m2.toFixed(3),
     costoKit: cKit, costoClips: cClips, costoVidrio: cVid,
-    mdoTotal: mdo, subtotal: subtotal, gif: gif,
+    mdoTotal: mdo, subtotal: subtotal, gif: gif, ga: ga, utilidad: utilidad, ivaMonto: ivaMonto,
     precioFinal: base
   };
 
@@ -640,7 +718,10 @@ function cbCalcBacalar() {
   document.getElementById('bc-d-clips').textContent      = fmt(cClips);
   document.getElementById('bc-d-vid').textContent        = fmt(cVid);
   document.getElementById('bc-d-mdo').textContent        = fmt(mdo);
-  document.getElementById('bc-d-gif').textContent        = fmt(gif + base * utilPct / (1+utilPct));
+  document.getElementById('bc-d-gif').textContent        = fmt(gif);
+  document.getElementById('bc-d-ga').textContent         = fmt(ga);
+  document.getElementById('bc-d-util').textContent       = fmt(utilidad);
+  document.getElementById('bc-d-iva').textContent        = fmt(ivaMonto);
   document.getElementById('bc-resultado').style.display  = 'block';
   document.getElementById('bc-resultado').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -658,7 +739,10 @@ function cbCalcEscuadra() {
   var precioVid= (parseFloat(document.getElementById('esc-precio-vid').value)||280) * factVid;
   var mdo      = parseFloat(document.getElementById('esc-mdo').value) || 600;
   var utilPct  = (parseFloat(document.getElementById('esc-utilidad').value)||25) / 100;
-  var gifPct   = 0.15;
+  var gifPct   = (parseFloat(document.getElementById('esc-gif').value)||15) / 100;
+  var gaPct    = (parseFloat(document.getElementById('esc-ga').value)||25) / 100;
+  var ivaPct   = (parseFloat(document.getElementById('esc-iva').value)||16) / 100;
+  var ivaComprasPct = (parseFloat(document.getElementById('cfg-iva-compras').value)||16) / 100;
 
   // Perfiles escuadra: perimetro de los 2 vanos (frontal + lateral)
   // Peso promedio perfiles de baño: 0.45 kg/m
@@ -676,9 +760,16 @@ function cbCalcEscuadra() {
   // Herrajes escuadra: chapas, carretillas, jaladera embutir ~$800 estimado
   var cHer = 800;
 
-  var subtotal = cAlu + cVid + cHer + mdo;
+  var costoMaterialesBruto = cAlu + cVid + cHer;
+  var costoMaterialesNeto  = costoMaterialesBruto / (1 + ivaComprasPct);
+  var subtotal = costoMaterialesNeto + mdo;
   var gif      = subtotal * gifPct;
-  var base     = (subtotal + gif) * (1 + utilPct);
+  var ga       = subtotal * gaPct;
+  var costoReal = subtotal + gif + ga;
+  var utilidad = costoReal * utilPct;
+  var antesIva = costoReal + utilidad;
+  var ivaMonto = antesIva * ivaPct;
+  var base     = antesIva + ivaMonto;
 
   CB_RESULTADO = {
     tipo: 'escuadra', sistema: 'Escuadra ' + ESC_COLOR,
@@ -686,7 +777,7 @@ function cbCalcEscuadra() {
     m2Vidrio: m2Total.toFixed(3),
     costoAluminio: cAlu, costoVidrio: cVid,
     costoHerrajes: cHer, mdoTotal: mdo,
-    subtotal: subtotal, gif: gif, precioFinal: base
+    subtotal: subtotal, gif: gif, ga: ga, utilidad: utilidad, ivaMonto: ivaMonto, precioFinal: base
   };
 
   document.getElementById('esc-precio-final').textContent = fmt(base);
@@ -694,7 +785,10 @@ function cbCalcEscuadra() {
   document.getElementById('esc-d-vid').textContent        = fmt(cVid);
   document.getElementById('esc-d-her').textContent        = fmt(cHer);
   document.getElementById('esc-d-mdo').textContent        = fmt(mdo);
-  document.getElementById('esc-d-gif').textContent        = fmt(gif + base*utilPct/(1+utilPct));
+  document.getElementById('esc-d-gif').textContent        = fmt(gif);
+  document.getElementById('esc-d-ga').textContent         = fmt(ga);
+  document.getElementById('esc-d-util').textContent       = fmt(utilidad);
+  document.getElementById('esc-d-iva').textContent        = fmt(ivaMonto);
   document.getElementById('esc-resultado').style.display  = 'block';
   document.getElementById('esc-resultado').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -802,9 +896,38 @@ async function cbCargarHistorial() {
 }
 
 // ── INIT ──────────────────────────────────────────────────────
+// ── Cargar config_precios desde Supabase (pre-llena los campos, siguen editables por cotización) ──
+async function cbCargarConfigPrecios() {
+  if (!sb() || !navigator.onLine) return;
+  try {
+    var resp = await sb().from('config_precios').select('clave,valor');
+    if (resp.error || !resp.data) return;
+    var mapa = {};
+    resp.data.forEach(function(row) { mapa[row.clave] = row.valor; });
+    var campos = {
+      'gif_pct': ['fl-gif', 'bc-gif', 'esc-gif'],
+      'ga_pct': ['fl-ga', 'bc-ga', 'esc-ga'],
+      'utilidad_pct': ['fl-utilidad', 'bc-utilidad', 'esc-utilidad'],
+      'iva_pct': ['fl-iva', 'bc-iva', 'esc-iva'],
+      'iva_compras_pct': ['cfg-iva-compras']
+    };
+    Object.keys(campos).forEach(function(clave) {
+      if (mapa[clave] === undefined) return;
+      campos[clave].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.value = mapa[clave];
+      });
+    });
+    console.log('[Supabase] Config de precios sincronizada (Baños)');
+  } catch(e) {
+    console.warn('[Supabase] Error cargando config:', e.message);
+  }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   detectar();
   cbCargarHistorial();
+  cbCargarConfigPrecios();
 });
 </script>
 </html>
