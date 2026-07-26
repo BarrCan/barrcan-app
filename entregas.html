@@ -6,6 +6,34 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.28.0
+  FECHA   : 2026-07-26
+  v3.28.0 - Modo Express para Instalación + varios ajustes de campo:
+    - Nuevo modo de captura "Express" dentro de Instalación (selector
+      Completo/Express), pensado para uso administrativo: se salta el
+      checklist técnico de 9 puntos y los 5 slots guiados de evidencia,
+      y en su lugar usa la tarjeta simple de fotos libres (mínimo 1
+      obligatoria). Mismos registros/tabla que el modo Completo
+      (entregas_instalacion), solo cambia cómo se captura.
+    - Checkbox "Sin encargado/cliente presente" en Instalación (oculta
+      la firma del cliente, queda solo la del técnico) y equivalente en
+      Entrega en puerta/Envío/Mantenimiento (antes solo decía "Sin
+      firma digital" sin distinguir la causa). Nueva columna
+      sin_encargado en entregas_instalacion y en reportes_entrega.
+    - Fix real: si una entrega no se marcaba "aplica cobro" pero el
+      presupuesto vinculado seguía con saldo pendiente real, el
+      comprobante no decía nada al respecto -- ahora muestra "Saldo
+      pendiente: $X -- no cobrado en esta entrega" en rojo cuando
+      aplica.
+    - Nuevo campo "Técnico acompañante" (opcional) en Instalación, para
+      llevar estadística de apoyos entre técnicos -- separado de
+      "Asignado por". Nueva columna tecnico_acompanante.
+    - Fix real: Técnico instalador/Asignado por/Acompañante se guardan
+      como NOMBRE ("Miguel"), pero el &lt;select&gt; identifica cada
+      opción por su CÓDIGO ("MIGUEL") -- al editar un reporte, el
+      campo se quedaba en blanco aunque el dato sí estaba bien
+      guardado, porque "Miguel" no matcheaba ninguna opción. Ahora se
+      busca por el nombre visible de la opción, no por su value.
   VERSION : v3.27.0
   FECHA   : 2026-07-19
   v3.27.0 - Fix real: editar un reporte agregando fotos decía
@@ -1427,6 +1455,18 @@ body{min-height:100vh}
               <option value="RODRIGO">Rodrigo</option>
             </select>
           </div>
+          <div style="margin-top:8px">
+            <label class="form-label">T&eacute;cnico acompa&ntilde;ante <span style="font-weight:400;color:var(--gray-400)">(opcional, si fueron 2)</span></label>
+            <select id="inst-tecnico-acompanante" class="form-select">
+              <option value="">-- Ninguno / trabaj&oacute; solo --</option>
+              <option value="ESAU">Esa&uacute;</option>
+              <option value="MIGUEL">Miguel</option>
+              <option value="CARLOS">Carlos</option>
+              <option value="OMAR">Omar</option>
+              <option value="RODRIGO">Rodrigo</option>
+            </select>
+            <div style="font-size:10px;color:var(--gray-400)">Para llevar estad&iacute;stica de apoyos entre t&eacute;cnicos</div>
+          </div>
         </div>
 
         <!-- PIEZAS INSTALADAS (soporta varias piezas distintas en un mismo reporte) -->
@@ -1804,7 +1844,8 @@ var ENT_TEC_NOMBRES_DIN = {}; // código -> nombre completo, para mostrar en rep
 async function entCargarTecnicosDinamico() {
   var sel = document.getElementById('inst-tecnico-nombre');
   var selAsig = document.getElementById('inst-asignado');
-  if ((!sel && !selAsig) || !sb()) return;
+  var selAcomp = document.getElementById('inst-tecnico-acompanante');
+  if ((!sel && !selAsig && !selAcomp) || !sb()) return;
   try {
     var res = await sb().from('tecnicos').select('nombre_completo,tecnico_id_login')
       .eq('activo', true).eq('eliminado', false).order('nombre_completo');
@@ -1812,6 +1853,10 @@ async function entCargarTecnicosDinamico() {
     var datos = (res.data || []).filter(function(t) { return t.tecnico_id_login; });
     if (!datos.length) return;
     var opciones = '<option value="">-- Selecciona --</option>'
+      + datos.map(function(t) {
+          return '<option value="' + t.tecnico_id_login + '">' + t.nombre_completo + '</option>';
+        }).join('');
+    var opcionesAcomp = '<option value="">-- Ninguno / trabaj\u00f3 solo --</option>'
       + datos.map(function(t) {
           return '<option value="' + t.tecnico_id_login + '">' + t.nombre_completo + '</option>';
         }).join('');
@@ -1824,6 +1869,11 @@ async function entCargarTecnicosDinamico() {
       var valorPrevioAsig = selAsig.value;
       selAsig.innerHTML = opciones;
       if (valorPrevioAsig) selAsig.value = valorPrevioAsig;
+    }
+    if (selAcomp) {
+      var valorPrevioAcomp = selAcomp.value;
+      selAcomp.innerHTML = opcionesAcomp;
+      if (valorPrevioAcomp) selAcomp.value = valorPrevioAcomp;
     }
     datos.forEach(function(t) { ENT_TEC_NOMBRES_DIN[t.tecnico_id_login] = t.nombre_completo; });
   } catch(e) {
@@ -2862,8 +2912,9 @@ async function entEditarCompleto(id) {
   if (tabla === 'entregas_instalacion') {
     document.getElementById('inst-direccion').value       = datos.direccion || r.direccion || '';
     document.getElementById('inst-monto').value            = datos.monto || r.monto || '';
-    document.getElementById('inst-tecnico-nombre').value   = datos.tecnico || r.tecnico || '';
-    var selAsig = document.getElementById('inst-asignado'); if (selAsig) selAsig.value = datos.asignado || r.asignado_por || '';
+    entSetSelectPorNombre('inst-tecnico-nombre', datos.tecnico || r.tecnico || '');
+    entSetSelectPorNombre('inst-asignado', datos.asignado || r.asignado_por || '');
+    entSetSelectPorNombre('inst-tecnico-acompanante', datos.tecnicoAcompanante || r.tecnico_acompanante || '');
     document.getElementById('inst-fecha') && (document.getElementById('inst-fecha').value = datos.fecha || r.fecha || '');
 
     ENT_MODO_INST = datos.modoCaptura || r.modo_captura || 'completo';
@@ -2928,6 +2979,30 @@ async function entEditarCompleto(id) {
 
 // Dibuja una imagen (dataURL) dentro de un canvas ya inicializado, para
 // precargar firmas guardadas al editar.
+// Los campos de técnico (instalador/asignado/acompañante) se guardan como
+// NOMBRE resuelto (ej. "Miguel"), no como código (ej. "MIGUEL") — porque así
+// se ve mejor en el reporte impreso. Pero el <select> usa el código como
+// value. Si al restaurar para editar se hace select.value = "Miguel" a
+// secas, no matchea ninguna <option> y el campo queda en blanco aunque el
+// dato sí se haya guardado bien. Esta función busca la opción por su TEXTO
+// visible (o por value, por si acaso) y selecciona la correcta.
+function entSetSelectPorNombre(selId, nombre) {
+  var sel = document.getElementById(selId);
+  if (!sel) return;
+  if (!nombre) { sel.value = ''; return; }
+  var nombreNorm = String(nombre).trim().toLowerCase();
+  for (var i = 0; i < sel.options.length; i++) {
+    var opt = sel.options[i];
+    if (opt.text.trim().toLowerCase() === nombreNorm || opt.value.trim().toLowerCase() === nombreNorm) {
+      sel.value = opt.value;
+      return;
+    }
+  }
+  // No se encontró (técnico desactivado/renombrado desde entonces): se deja
+  // vacío en vez de forzar un valor que no existe como opción.
+  sel.value = '';
+}
+
 function entDibujarFirmaEnCanvas(canvasId, dataUrl, marcarDibujada) {
   var canvas = document.getElementById(canvasId);
   if (!canvas || !dataUrl) return;
@@ -3492,6 +3567,8 @@ async function entGenerarReporteInstalacion() {
   var tecnico    = ENT_TEC_NOMBRES_DIN[tecnicoCod] || TEC_NOMBRES[tecnicoCod] || tecnicoCod;
   var asignadoCod = (document.getElementById('inst-asignado') || {}).value || '';
   var asignado    = ENT_TEC_NOMBRES_DIN[asignadoCod] || { ESAU:'Esa\u00fa', MIGUEL:'Miguel', CARLOS:'Carlos', OMAR:'Omar', RODRIGO:'Rodrigo' }[asignadoCod] || asignadoCod;
+  var acompCod    = (document.getElementById('inst-tecnico-acompanante') || {}).value || '';
+  var acompanante = ENT_TEC_NOMBRES_DIN[acompCod] || { ESAU:'Esa\u00fa', MIGUEL:'Miguel', CARLOS:'Carlos', OMAR:'Omar', RODRIGO:'Rodrigo' }[acompCod] || acompCod;
   var direccion = (document.getElementById('inst-direccion') || {}).value || '';
   var fecha     = (document.getElementById('inst-fecha') || {}).value || '';
   var monto     = parseFloat((document.getElementById('inst-monto') || {}).value) || 0;
@@ -3607,7 +3684,7 @@ async function entGenerarReporteInstalacion() {
       + '<div style="font-size:11px;color:#9CA3AF;margin-bottom:14px;text-align:center">Fecha: ' + fechaStr + '</div>'
       + '<div class="meta">'
       + '<div class="meta-item"><div class="meta-label">Cliente</div><div class="meta-val">' + cliente + '</div></div>'
-      + '<div class="meta-item"><div class="meta-label">T\u00e9cnico</div><div class="meta-val">' + (tecnico||'N/A') + '</div></div>'
+      + '<div class="meta-item"><div class="meta-label">T\u00e9cnico</div><div class="meta-val">' + (tecnico||'N/A') + (acompanante ? ' + ' + acompanante : '') + '</div></div>'
       + '<div class="meta-item"><div class="meta-label">Asignado por</div><div class="meta-val">' + (asignado||'N/A') + '</div></div>'
       + '<div class="meta-item"><div class="meta-label">Monto</div><div class="meta-val">' + (monto?'$'+monto.toLocaleString('es-MX'):'N/A') + '</div></div>'
       + '</div>'
@@ -3645,7 +3722,7 @@ async function entGenerarReporteInstalacion() {
     // quedó capturado, no solo folio/cliente/fecha.
     var datosCompletos = {
       cliente: cliente.trim(), tel: (document.getElementById('ent-tel')||{}).value || null,
-      desc: desc.trim(), fecha: fecha, tecnico: tecnico, asignado: asignado,
+      desc: desc.trim(), fecha: fecha, tecnico: tecnico, asignado: asignado, tecnicoAcompanante: acompanante,
       direccion: direccion, monto: monto,
       checklist: ENT_CHECKS, piezas: piezasValidas, evidencia: ENT_EVIDENCIA,
       fotosComp: ENT_FOTOS_COMP, fotosEmp: ENT_FOTOS_EMP,
@@ -3695,6 +3772,7 @@ async function entGenerarReporteInstalacion() {
       checklist_total: ENT_MODO_INST === 'completo' ? ENT_CHECKLIST_ITEMS.length : null,
       tecnico: tecnico,
       asignado_por: asignado,
+      tecnico_acompanante: acompanante || null,
       monto: monto || null,
       direccion: direccion,
       piezas: piezasValidas,
