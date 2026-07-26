@@ -6,6 +6,29 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.30.0
+  FECHA   : 2026-07-26
+  v3.30.0 - Reorden del Checklist de Salida:
+    - Se movió de hasta abajo (junto a las firmas) a hasta arriba,
+      justo después del selector Completo/Express -- para revisarlo
+      al empezar (o antes de salir del taller) y no solo como
+      trámite de último momento al ya estar por irse. Sigue siendo
+      editable durante todo el trabajo.
+  VERSION : v3.29.0
+  FECHA   : 2026-07-26
+  v3.29.0 - Estado por pieza + Checklist de Salida:
+    - Cada pieza capturada en Instalación ahora tiene un estado:
+      Instalada / Pendiente (faltó material) / A reponer (medida
+      incorrecta o dañada) -- para reflejar obras que se hacen en más
+      de una visita por falta de tiempo o de material. El reporte
+      impreso marca la obra como "en progreso" si hay piezas
+      pendientes, y muestra el estado de cada una con su color.
+    - Nuevo "Checklist de Salida" (herramientas, silicones, cinta 3M/
+      Norton, masking tape, sobrantes, basura) antes de cerrar el
+      reporte de instalación -- no bloquea el guardado, es un
+      recordatorio para no dejar nada en el sitio. Se guarda el
+      detalle (columna checklist_salida) y se resume en el pie del
+      reporte impreso ("X/6 verificado").
   VERSION : v3.28.0
   FECHA   : 2026-07-26
   v3.28.0 - Modo Express para Instalación + varios ajustes de campo:
@@ -1412,6 +1435,18 @@ body{min-height:100vh}
           </button>
         </div>
 
+        <!-- CHECKLIST DE SALIDA — herramientas e insumos. Se revisa AL INICIO
+             (para no salir del taller sin algo) y se puede seguir marcando
+             durante el trabajo, hasta confirmar todo antes de irse. -->
+        <div style="background:var(--white);border:1.5px solid rgba(230,126,34,.3);border-radius:10px;padding:12px;margin-bottom:14px;box-shadow:0 2px 8px rgba(0,0,0,.05)">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+            <span style="font-size:16px">&#128230;</span>
+            <span style="font-size:13px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px">Checklist de Salida</span>
+          </div>
+          <div style="font-size:11px;color:var(--gray-400);margin-bottom:10px">Revísalo antes de salir del taller para no quedarte sin algo, y confírmalo de nuevo antes de irte del sitio</div>
+          <div id="ent-checklist-salida-lista"></div>
+        </div>
+
         <!-- Consideraciones para la instalación (jala de la visita vinculada, solo informativo) -->
         <div id="ent-vis-considera" style="display:none;background:#FFF8ED;border:1.5px solid var(--gold);border-radius:var(--radius-sm);padding:12px;margin-bottom:14px">
           <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:6px">&#128203; Consideraciones para la instalación <span style="font-size:10px;font-weight:400;color:var(--gray-400)">(de la visita de medición)</span></div>
@@ -1881,11 +1916,12 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
+var APP_VERSION = 'v3.30.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
   var dot  = document.querySelector('.offline-dot');
-  if (b) b.textContent = SYNC.online ? 'Online' : 'Offline-First';
+  if (b) b.textContent = (SYNC.online ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
   if (wrap) {
     wrap.style.background   = SYNC.online ? 'rgba(39,174,96,0.15)'  : 'rgba(200,146,58,0.15)';
     wrap.style.borderColor  = SYNC.online ? 'rgba(39,174,96,0.4)'   : 'rgba(200,146,58,0.3)';
@@ -2235,6 +2271,7 @@ function entSelTipo(btn) {
       if (!(it.id in ENT_CHECKS)) ENT_CHECKS[it.id] = undefined;
     });
     entRenderChecklist();
+    entRenderChecklistSalida();
     entRenderEvidencia();
     setTimeout(instIniciarFirmas, 150);
     // Pre-llenar técnico con el nombre de usuario si está disponible
@@ -2385,6 +2422,7 @@ function entToggleCobro() {
 function entReset() {
   ENT_FOTOS_EMP = []; ENT_FOTOS_COMP = []; ENT_FOTOS_MANT = []; ENT_TIPO = 'puerta'; ENT_FORMA = 'efectivo'; ENT_CHECKS = {}; ENT_EVIDENCIA = {}; INST_DATOS_FOLIO = null;
   ENT_MODO_INST = 'completo'; ENT_SIN_ENCARGADO = false;
+  ENT_CHECKS_SALIDA = {};
   ENT_SIN_ENCARGADO_SIMPLE = false; ENT_SALDO_REAL = 0;
   var chkSinEncS = document.getElementById('ent-sin-encargado-simple'); if (chkSinEncS) chkSinEncS.checked = false;
   var wrapSimple = document.getElementById('ent-firma-simple-wrap'); if (wrapSimple) wrapSimple.style.display = 'block';
@@ -2435,7 +2473,7 @@ function entReset() {
   var instAsig = document.getElementById('inst-asignado'); if(instAsig) instAsig.value='';
   var numPzEl = document.getElementById('inst-num-piezas'); if (numPzEl) numPzEl.value = '1';
   _inst_pieza_seq = 0;
-  INST_PIEZAS = [{ id: 'pz0', tipo: '', medidas: '', notas: '' }];
+  INST_PIEZAS = [{ id: 'pz0', tipo: '', medidas: '', notas: '', estado: 'instalada' }];
   instRenderPiezas();
   entLimpiarFirma();
 }
@@ -2927,9 +2965,11 @@ async function entEditarCompleto(id) {
 
     ENT_CHECKS = datos.checklist || {};
     entRenderChecklist();
+    ENT_CHECKS_SALIDA = datos.checklistSalida || {};
+    entRenderChecklistSalida();
 
     var pzs = datos.piezas || r.piezas || [];
-    INST_PIEZAS = pzs.length ? pzs.map(function(p, i) { return Object.assign({ id: 'pz' + i }, p); }) : [{ id: 'pz0', tipo: '', medidas: '', notas: '' }];
+    INST_PIEZAS = pzs.length ? pzs.map(function(p, i) { return Object.assign({ id: 'pz' + i, estado: 'instalada' }, p); }) : [{ id: 'pz0', tipo: '', medidas: '', notas: '', estado: 'instalada' }];
     var numPzEl = document.getElementById('inst-num-piezas'); if (numPzEl) numPzEl.value = INST_PIEZAS.length;
     instRenderPiezas();
 
@@ -3296,6 +3336,33 @@ var _tec_draw        = false;
 var _cli_draw        = false;
 var _inst_slot_activo = null;
 
+var ENT_CHECKLIST_SALIDA_ITEMS = [
+  {id:'sal1', titulo:'Herramientas',      icono:'&#128295;'},
+  {id:'sal2', titulo:'Sil\u00edcon(es)',        icono:'&#129441;'},
+  {id:'sal3', titulo:'Cinta 3M / Norton', icono:'&#128220;'},
+  {id:'sal4', titulo:'Masking tape',      icono:'&#128220;'},
+  {id:'sal5', titulo:'Sobrantes de material', icono:'&#128230;'},
+  {id:'sal6', titulo:'Basura / empaque retirado', icono:'&#128465;'}
+];
+var ENT_CHECKS_SALIDA = {};
+
+function entToggleSalida(id) {
+  ENT_CHECKS_SALIDA[id] = !ENT_CHECKS_SALIDA[id];
+  entRenderChecklistSalida();
+}
+
+function entRenderChecklistSalida() {
+  var div = document.getElementById('ent-checklist-salida-lista');
+  if (!div) return;
+  div.innerHTML = ENT_CHECKLIST_SALIDA_ITEMS.map(function(it) {
+    var ok = !!ENT_CHECKS_SALIDA[it.id];
+    return '<label style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:pointer;background:' + (ok ? 'rgba(39,174,96,.06)' : 'transparent') + '" onclick="entToggleSalida(\'' + it.id + '\')">'
+      + '<span style="width:20px;height:20px;border-radius:5px;border:1.5px solid ' + (ok ? 'var(--green,#27AE60)' : 'var(--gray-200)') + ';background:' + (ok ? 'var(--green,#27AE60)' : 'white') + ';display:flex;align-items:center;justify-content:center;font-size:12px;color:white;flex-shrink:0">' + (ok ? '&#10003;' : '') + '</span>'
+      + '<span style="font-size:12px;color:var(--navy)">' + it.icono + ' ' + it.titulo + '</span>'
+      + '</label>';
+  }).join('');
+}
+
 var ENT_CHECKLIST_ITEMS = [
   {id:'ck1', titulo:'Marco Perimetral',        desc:'Plomeado, nivelado y fijación firme sin descuadres ni holguras.'},
   {id:'ck2', titulo:'Sellado Perimetral',      desc:'Silicón uniforme interior y exterior, sin grietas ni huecos de filtración.'},
@@ -3311,7 +3378,7 @@ var ENT_CHECKLIST_ITEMS = [
 // ── Piezas instaladas (varias piezas distintas en un mismo reporte) ──
 function instPiezaAgregar() {
   _inst_pieza_seq++;
-  INST_PIEZAS.push({ id: 'pz' + _inst_pieza_seq, tipo: '', medidas: '', notas: '' });
+  INST_PIEZAS.push({ id: 'pz' + _inst_pieza_seq, tipo: '', medidas: '', notas: '', estado: 'instalada' });
   instRenderPiezas();
   entRenderEvidencia();
 }
@@ -3337,7 +3404,7 @@ function instPiezaActualizar(id, campo, valor) {
 function instSincronizarNumPiezas() {
   var numEl = document.getElementById('inst-num-piezas');
   var n = Math.max(1, parseInt((numEl || {}).value, 10) || 1);
-  while (INST_PIEZAS.length < n) { _inst_pieza_seq++; INST_PIEZAS.push({ id: 'pz' + _inst_pieza_seq, tipo: '', medidas: '', notas: '' }); }
+  while (INST_PIEZAS.length < n) { _inst_pieza_seq++; INST_PIEZAS.push({ id: 'pz' + _inst_pieza_seq, tipo: '', medidas: '', notas: '', estado: 'instalada' }); }
   while (INST_PIEZAS.length > n) INST_PIEZAS.pop();
   instRenderPiezas();
   entRenderEvidencia();
@@ -3347,13 +3414,20 @@ function instRenderPiezas() {
   var cont = document.getElementById('inst-piezas-lista');
   if (!cont) return;
   cont.innerHTML = INST_PIEZAS.map(function(p, i) {
-    return '<div style="border:1px solid var(--gray-200);border-radius:8px;padding:10px;margin-top:8px;background:rgba(46,109,164,.03)">'
+    var estado = p.estado || 'instalada';
+    var colores = { instalada: 'var(--green,#27AE60)', pendiente_material: '#E67E22', a_reponer: 'var(--red,#C0392B)' };
+    return '<div style="border:1px solid var(--gray-200);border-radius:8px;padding:10px;margin-top:8px;background:rgba(46,109,164,.03);border-left:3px solid ' + colores[estado] + '">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
       + '<span style="font-size:11px;font-weight:700;color:var(--blue)">Pieza ' + (i + 1) + '</span>'
       + (INST_PIEZAS.length > 1 ? '<button type="button" onclick="instPiezaQuitar(\'' + p.id + '\')" style="border:none;background:none;color:var(--red,#C0392B);font-size:11px;font-weight:700;cursor:pointer">Quitar &times;</button>' : '')
       + '</div>'
       + '<input type="text" class="form-input" placeholder="Tipo / descripción (ej. Ventana OX 1.20x1.50)" value="' + esc(p.tipo) + '" style="margin-bottom:6px" oninput="instPiezaActualizar(\'' + p.id + '\',\'tipo\',this.value)">'
       + '<input type="text" class="form-input" placeholder="Medidas (opcional)" value="' + esc(p.medidas) + '" style="margin-bottom:6px" oninput="instPiezaActualizar(\'' + p.id + '\',\'medidas\',this.value)">'
+      + '<select class="form-select" style="margin-bottom:6px" onchange="instPiezaActualizar(\'' + p.id + '\',\'estado\',this.value)">'
+      + '<option value="instalada"' + (estado==='instalada'?' selected':'') + '>&#9989; Instalada</option>'
+      + '<option value="pendiente_material"' + (estado==='pendiente_material'?' selected':'') + '>&#128230; Pendiente &mdash; falt\u00f3 material</option>'
+      + '<option value="a_reponer"' + (estado==='a_reponer'?' selected':'') + '>&#128260; A reponer &mdash; medida incorrecta / da\u00f1ada</option>'
+      + '</select>'
       + '<input type="text" class="form-input" placeholder="Notas de esta pieza (opcional)" value="' + esc(p.notas) + '" oninput="instPiezaActualizar(\'' + p.id + '\',\'notas\',this.value)">'
       + '</div>';
   }).join('');
@@ -3647,20 +3721,26 @@ async function entGenerarReporteInstalacion() {
 
     var piezasValidas = ENT_MODO_INST === 'completo' ? INST_PIEZAS.filter(function(p) { return (p.tipo || '').trim() !== ''; }) : [];
     var piezasHtml = '';
+    var ESTADO_LABEL = { instalada: '\u2705 Instalada', pendiente_material: '\u{1F4E6} Pendiente (falt\u00f3 material)', a_reponer: '\u{1F504} A reponer' };
+    var ESTADO_COLOR = { instalada: '#27AE60', pendiente_material: '#E67E22', a_reponer: '#C0392B' };
     if (piezasValidas.length) {
+      var hayPendientes = piezasValidas.some(function(p) { return (p.estado || 'instalada') !== 'instalada'; });
       var piezasRows = piezasValidas.map(function(p, i) {
+        var est = p.estado || 'instalada';
         return '<tr style="border-bottom:1px solid #f0f0f0">'
           + '<td style="padding:6px 8px;width:26px;text-align:center;color:#9CA3AF;font-size:11px">' + (i + 1) + '</td>'
           + '<td style="padding:6px 8px;font-weight:600;color:#1B3A5C;font-size:12px">' + esc(p.tipo) + '</td>'
           + '<td style="padding:6px 8px;color:#6B7280;font-size:11px">' + esc(p.medidas || '') + '</td>'
+          + '<td style="padding:6px 8px;font-size:11px;font-weight:700;color:' + ESTADO_COLOR[est] + '">' + ESTADO_LABEL[est] + '</td>'
           + '<td style="padding:6px 8px;color:#9CA3AF;font-size:11px;font-style:italic">' + esc(p.notas || '') + '</td>'
           + '</tr>';
       }).join('');
-      piezasHtml = '<h2>&#128295; Piezas Instaladas (' + piezasValidas.length + ')</h2>'
+      piezasHtml = '<h2>&#128295; Piezas Instaladas (' + piezasValidas.length + ')' + (hayPendientes ? ' <span style="font-size:10px;color:#E67E22;font-weight:400">&mdash; obra en progreso, hay piezas pendientes</span>' : '') + '</h2>'
         + '<table><thead><tr>'
         + '<th style="padding:6px 8px;font-size:10px;color:#9CA3AF;text-align:left">#</th>'
         + '<th style="padding:6px 8px;font-size:10px;color:#9CA3AF;text-align:left">Tipo / Descripción</th>'
         + '<th style="padding:6px 8px;font-size:10px;color:#9CA3AF;text-align:left">Medidas</th>'
+        + '<th style="padding:6px 8px;font-size:10px;color:#9CA3AF;text-align:left">Estado</th>'
         + '<th style="padding:6px 8px;font-size:10px;color:#9CA3AF;text-align:left">Notas</th>'
         + '</tr></thead><tbody>' + piezasRows + '</tbody></table>';
     }
@@ -3706,6 +3786,9 @@ async function entGenerarReporteInstalacion() {
           + (firmaCli ? '<img src="' + firmaCli + '" style="max-width:100%;height:60px;object-fit:contain">' : '<div style="height:60px;border:1px dashed #ccc;border-radius:4px"></div>')
           + '<div style="font-size:11px;font-weight:600;margin-top:4px;border-top:1px solid #ccc;padding-top:4px">' + cliente + '</div></div>')
       + '</div>'
+      + '<div style="margin-top:14px;padding:8px 10px;background:#FFF8ED;border-radius:6px;font-size:10px;color:#8A6D3B">'
+      + '&#128230; Checklist de salida: ' + ENT_CHECKLIST_SALIDA_ITEMS.filter(function(it){return ENT_CHECKS_SALIDA[it.id];}).length + '/' + ENT_CHECKLIST_SALIDA_ITEMS.length + ' verificado'
+      + '</div>'
       + '<div style="margin-top:20px;padding:10px;background:#F8F9FA;border-radius:6px;font-size:11px;color:#9CA3AF;text-align:center">Generado por BarrCan PWA &bull; ' + new Date().toLocaleString('es-MX') + '</div>'
       + '</div></body></html>';
 
@@ -3726,7 +3809,7 @@ async function entGenerarReporteInstalacion() {
       direccion: direccion, monto: monto,
       checklist: ENT_CHECKS, piezas: piezasValidas, evidencia: ENT_EVIDENCIA,
       fotosComp: ENT_FOTOS_COMP, fotosEmp: ENT_FOTOS_EMP,
-      modoCaptura: ENT_MODO_INST, sinEncargado: ENT_SIN_ENCARGADO,
+      modoCaptura: ENT_MODO_INST, sinEncargado: ENT_SIN_ENCARGADO, checklistSalida: ENT_CHECKS_SALIDA,
       firmaTec: firmaTec, firmaCli: firmaCli
     };
     var datosJsonStr = JSON.stringify(datosCompletos);
@@ -3778,6 +3861,7 @@ async function entGenerarReporteInstalacion() {
       piezas: piezasValidas,
       modo_captura: ENT_MODO_INST,
       sin_encargado: ENT_SIN_ENCARGADO,
+      checklist_salida: ENT_CHECKS_SALIDA,
       synced: false
     };
 
