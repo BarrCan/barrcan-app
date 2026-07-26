@@ -5,7 +5,20 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Cotizador Nacional</title>
 <!--
-  BARRCAN COTIZADOR NACIONAL v3.0
+  BARRCAN COTIZADOR NACIONAL v3.1.0
+  v3.1.0 - GA, IVA de venta e IVA de compra + control de rol:
+    - Se agregó GA (Gastos de Administración) al mismo nivel que GIF,
+      IVA de venta aplicado una sola vez al final del precio, y
+      netificación del costo de materiales (el IVA que ya traen las
+      listas de proveedor se descuenta antes de calcular márgenes, no
+      se margina sobre un costo inflado).
+    - Fix real: cargarDesdeStorage() (que carga la config) nunca se
+      invocaba desde el arranque -- el módulo llevaba tiempo cotizando
+      con GIF/Utilidad fijos del HTML, sin tocar Supabase.
+    - Vista cliente ahora depende del rol real (esSupremo(), igual
+      criterio que barrcan_brain.html: únicamente MAU): supremo ve el
+      desglose completo, cualquier otra sesión solo ve Aluminio,
+      Herrajes, Vidrio + IVA. Vista taller sin cambios, para todos.
   v3.0 - Presupuesto multi-pieza con cliente vinculado:
     - Selector de cliente existente (jala de la tabla "clientes") con
       opción "+ Cliente nuevo" que limpia los campos para captura manual.
@@ -4989,7 +5002,17 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
+const APP_VERSION = 'v3.1.0';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
+// "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
+// Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
+// más seguro ocultar el margen que exponerlo por accidente.
+function esSupremo() {
+  try {
+    const u = JSON.parse(localStorage.getItem('barrcan_usuario_activo') || '{}');
+    return u.id === 'MAU';
+  } catch(e) { return false; }
+}
 function fmt(n) {
   return parseFloat(n).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -5513,8 +5536,9 @@ let snArchivoAdjFile=null;
 
 function snDetectar(){
   const d=document.getElementById('conn-dot'),t=document.getElementById('conn-status');
-  if(d)d.style.background='#27AE60';
-  if(t)t.textContent='Online';
+  const online = navigator.onLine;
+  if(d)d.style.background = online ? '#27AE60' : '#C0392B';
+  if(t)t.textContent = (online ? 'Online' : 'Offline') + ' · ' + APP_VERSION;
 }
 
 function snBuildUI(){
@@ -6059,6 +6083,7 @@ function renderVista(r) {
       <!-- Resumen costos cliente -->
       <div class=desglose-card fade-in>
         <div class=desglose-header>💰 Desglose de Precio</div>
+        ${esSupremo() ? `
         ${renderFilaCosto('Materiales (aluminio + herrajes)', r.costoAluminio + r.costoHerrajes)}
         ${renderFilaCosto('Vidrio ' + r.vidTipo, r.costoVidrio)}
         ${renderFilaCosto('Mano de obra', r.mdoTotal)}
@@ -6067,6 +6092,11 @@ function renderVista(r) {
         ${renderFilaCosto('Logística de campo', r.costoLogistica)}
         ${r.costoVisita > 0 ? renderFilaCosto('Visita técnica previa', r.costoVisita) : ''}
         ${renderFilaCosto('Utilidad', r.utilidad, false, true)}
+        ` : `
+        ${renderFilaCosto('Aluminio', r.costoAluminio)}
+        ${renderFilaCosto('Herrajes', r.costoHerrajes)}
+        ${renderFilaCosto('Vidrio ' + r.vidTipo, r.costoVidrio)}
+        `}
         ${r.descuentoMonto > 0 ? `
         <div style="height:1px;background:var(--gray-100)"></div>
         <div class="costo-row" style="background:rgba(192,57,43,0.04)">
