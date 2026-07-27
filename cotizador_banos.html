@@ -6,6 +6,15 @@
 <title>BarrCan · Cotizador Baños</title>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v1.3
+  FECHA   : 2026-07-26
+  v1.3 - FIX CRÍTICO: pérdida de presupuestos cuando fallaba con conexión:
+    - Ya guardaba offline si NO había señal, pero si Supabase fallaba
+      CON conexión (error de red a medio guardar), el dato se perdía
+      sin ningún respaldo -- ahora también se resguarda ahí.
+    - Se agregó cola real de reintento (barrcan_presupuestos_pendientes,
+      misma llave que historial.html) -- antes no existía ningún
+      mecanismo que reintentara los guardados offline.
   VERSION : v1.2
   FECHA   : 2026-07-26
   v1.2 - GA, IVA de venta e IVA de compra:
@@ -450,7 +459,7 @@ function sb() {
 }
 
 var SYNC = { online: true };
-window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
+window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
 var APP_VERSION = 'v1.2';
 function detectar() {
@@ -833,7 +842,7 @@ async function cbGuardarPresupuesto(tipo) {
     var local = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]');
     local.unshift(Object.assign({}, payload, { _pendiente: true }));
     localStorage.setItem('barrcan_presupuestos_cache', JSON.stringify(local));
-    toast('Guardado offline · Folio: ' + folio);
+    cbGuardarOffline(payload);
     cbCargarHistorial();
     return;
   }
@@ -854,7 +863,48 @@ async function cbGuardarPresupuesto(tipo) {
     document.getElementById(telId).value = '';
   } catch(e) {
     SYNC.online = false; detectar();
-    toast('Error: ' + e.message);
+    var localErr = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]');
+    localErr.unshift(Object.assign({}, payload, { _pendiente: true }));
+    localStorage.setItem('barrcan_presupuestos_cache', JSON.stringify(localErr));
+    cbGuardarOffline(payload);
+    cbCargarHistorial();
+  }
+}
+
+// ── Respaldo local si falla el guardado — antes, si el insert de
+// Supabase fallaba con conexión (no solo estando offline), el
+// presupuesto se perdía por completo. Ahora se guarda en la misma cola
+// que usa historial.html (barrcan_presupuestos_pendientes) y se
+// reintenta solo al reconectar. ──
+function cbGuardarOffline(payload) {
+  try {
+    var cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes') || '[]');
+    cola.push({ tipo: 'nuevo', datos: payload, ts: new Date().toISOString() });
+    localStorage.setItem('barrcan_presupuestos_pendientes', JSON.stringify(cola));
+    toast('Guardado sin conexión · Folio: ' + payload.folio + ' · se sincronizará después');
+  } catch(e) {
+    toast('⚠️ No se pudo guardar ni localmente — anota el folio a mano: ' + payload.folio);
+  }
+}
+
+async function cbReintentarPendientes() {
+  if (!sb()) return;
+  var cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes') || '[]');
+  if (!cola.length) return;
+  var ok = [];
+  for (var i = 0; i < cola.length; i++) {
+    var item = cola[i];
+    try {
+      var r = await sb().from('presupuestos_atrasados').insert([item.datos]);
+      if (r.error) throw r.error;
+      ok.push(item);
+    } catch(e) { console.warn('[BarrCan] reintento de presupuesto pendiente falló:', e.message); }
+  }
+  if (ok.length) {
+    var rest = cola.filter(function(i2) { return ok.indexOf(i2) < 0; });
+    localStorage.setItem('barrcan_presupuestos_pendientes', JSON.stringify(rest));
+    toast('✅ ' + ok.length + ' presupuesto(s) pendiente(s) sincronizado(s)');
+    cbCargarHistorial();
   }
 }
 
@@ -928,6 +978,7 @@ document.addEventListener('DOMContentLoaded', function() {
   detectar();
   cbCargarHistorial();
   cbCargarConfigPrecios();
+  if (navigator.onLine) cbReintentarPendientes();
 });
 </script>
 </html>
