@@ -5,7 +5,22 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Servicios y Accesorios</title>
 <!--
-  BARRCAN SERVICIOS Y ACCESORIOS v1.3.0
+  BARRCAN SERVICIOS Y ACCESORIOS v1.4.0
+  v1.4.0 - Fix crítico de visibilidad + fórmula real de mano de obra + combo desde inicio:
+    - FIX: los 6 ítems nuevos de Mantenimiento (Broches, Calce, Chapa x2,
+      Pivote, Vidrio Roto) se habían agregado al catálogo pero nunca a la
+      lista que arma la cuadrícula visible -- no aparecían en pantalla.
+    - Fórmula de Servicio reestructurada: ahora es Material (con margen
+      GIF+GA+Utilidad) + Mano de obra ($500 tarifa plana, editable, SIN
+      margen encima) + Traslado (plano) + IVA al final sobre todo --
+      antes la mano de obra estaba mezclada dentro del precio de
+      catálogo sin separar, y sin utilidad real aplicada.
+    - Precios de Carretillas y Broches actualizados con datos reales
+      (por línea/peso: económica, 3", española/eurovent, grande).
+    - "🎁 Combo de Mantenimiento" ahora es una tarjeta visible desde el
+      inicio (antes vivía escondida como botón dentro de un servicio ya
+      elegido) -- flujo: Inicio → Combo → agregar servicios → calcular.
+  VERSION : v1.3.0
   v1.3.0 - GA/IVA/rol en motor principal + Espejos/Servicio, y Combo de Mantenimiento:
     - Motor principal (Baños con marco): mismo cambio que Nacional v3.1.0.
     - Espejos y Servicio/Mantenimiento: antes solo aplicaban GIF 15% fijo
@@ -1788,6 +1803,14 @@ body{background:var(--off-white)}
         </select>
       </div>
       <div class="form-group">
+        <label class="form-label">Mano de obra <span style="font-weight:400;color:var(--gray-400)">(tarifa plana, sin margen encima)</span></label>
+        <div class="input-unit">
+          <input type="number" id="serv-mo-base" class="form-input" min="0" value="500" inputmode="numeric" oninput="servActualizarAjustes()">
+          <span class="input-unit-label">$</span>
+        </div>
+        <div style="font-size:10px;color:var(--gray-400);margin-top:3px">~1 hora de trabajo. Súbelo si el trabajo se alarga.</div>
+      </div>
+      <div class="form-group">
         <label class="form-label">Cargo por traslado (distancia de la obra)</label>
         <div class="input-unit">
           <input type="number" id="serv-cargo-traslado" class="form-input" min="0" value="500" inputmode="numeric" oninput="servActualizarAjustes()">
@@ -1837,6 +1860,7 @@ body{background:var(--off-white)}
       <div class="costo-row"><span id="serv-label-sub">Servicio × 1</span><span class="costo-monto" id="serv-c-sub"></span></div>
       <div class="costo-row" id="serv-row-complejidad" style="display:none"><span id="serv-label-complejidad">Ajuste por complejidad</span><span class="costo-monto" id="serv-c-complejidad"></span></div>
       <div class="costo-row" id="serv-row-traslado" style="display:none"><span>Traslado</span><span class="costo-monto" id="serv-c-traslado"></span></div>
+      <div class="costo-row" id="serv-row-mo" style="display:none"><span>Mano de obra</span><span class="costo-monto" id="serv-c-mo"></span></div>
       <div class="costo-row"><span id="serv-label-gif">GIF</span><span class="costo-monto" id="serv-c-gif"></span></div>
       <div class="costo-row"><span id="serv-label-ga">GA</span><span class="costo-monto" id="serv-c-ga"></span></div>
       <div class="costo-row"><span id="serv-label-util">Utilidad</span><span class="costo-monto" id="serv-c-util"></span></div>
@@ -2036,15 +2060,15 @@ const DB = {
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
-      id:"MANT_CAMBIO_FELPA", nombre:"Cambio de Felpa / Burlete", serie:"Mantenimiento", emoji:"🔧",
-      tipo:"Servicio", esServicio:true, precioBase:180, unidad:'ml',
-      desc:'Cambio de felpa de sellado perimetral. Precio por metro lineal instalado.',
+      id:"MANT_CAMBIO_FELPA", nombre:"Cambio de Felpa / Vinil", serie:"Mantenimiento", emoji:"🔧",
+      tipo:"Servicio", esServicio:true, precioBase:4.5, unidad:'ml',
+      desc:'Material: vinil cuña (~$4.26/m) o pata (~$4.73/m), promedio $4.50/m. Cantidad = metros lineales perimetrales del vidrio. La mano de obra se agrega aparte (campo "Mano de obra").',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
       id:"MANT_CAMBIO_CARRETILLA", nombre:"Cambio de Carretillas", serie:"Mantenimiento", emoji:"⚙️",
-      tipo:"Servicio", esServicio:true, precioBase:280, unidad:'par',
-      desc:'Reemplazo de carretillas. Precio por par instalado. Material incluido.',
+      tipo:"Servicio", esServicio:true, precioBase:126, unidad:'par',
+      desc:'Material varía MUCHO por peso/línea (precio por PAR, 2 piezas): Económica $34-50 · 3" $114-140 · Línea Española/Eurovent $360-700 · Grande (hasta 100kg) hasta $1,800/par. Precargado con la línea 3" como punto medio ($126/par) — AJUSTA según la que realmente uses. Mano de obra aparte.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
@@ -2061,8 +2085,8 @@ const DB = {
     },
     {
       id:"MANT_CANCEL_HULES", nombre:"Cambio de Hules y Sellos Cancel", serie:"Mantenimiento", emoji:"🔄",
-      tipo:"Servicio", esServicio:true, precioBase:380, unidad:'pieza',
-      desc:'Reemplazo de hules de sello perimetral y tapones. Material e instalación incluidos.',
+      tipo:"Servicio", esServicio:true, precioBase:60, unidad:'pieza',
+      desc:'Material estimado (no tengo factura real de este insumo todavía, ajústalo si conoces el precio exacto). Mano de obra aparte.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
@@ -2073,26 +2097,32 @@ const DB = {
     },
     {
       id:"MANT_CAMBIO_BROCHES", nombre:"Cambio de Broches", serie:"Mantenimiento", emoji:"🔒",
-      tipo:"Servicio", esServicio:true, precioBase:250, unidad:'par',
-      desc:'Reemplazo de broches/cierres de ventana corrediza. Precio por par instalado.',
+      tipo:"Servicio", esServicio:true, precioBase:150, unidad:'par',
+      desc:'Material por línea (precio por par): Estándar $150 · Línea Española/Eurovent $250-400. Precargado con el estándar — AJUSTA si es línea española/eurovent. Mano de obra aparte.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
       id:"MANT_PUERTA_CALCE", nombre:"Calce de Puerta", serie:"Mantenimiento", emoji:"🚪",
-      tipo:"Servicio", esServicio:true, precioBase:350, unidad:'pieza',
-      desc:'Ajuste/nivelación de puerta que roza, cierra mal o quedó desnivelada.',
+      tipo:"Servicio", esServicio:true, precioBase:0, unidad:'pieza',
+      desc:'Ajuste/nivelación — es 100% mano de obra, sin material. El precio sale del campo "Mano de obra" + traslado.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
-      id:"MANT_PUERTA_CHAPA", nombre:"Cambio de Chapa", serie:"Mantenimiento", emoji:"🔑",
-      tipo:"Servicio", esServicio:true, precioBase:450, unidad:'pieza',
-      desc:'Reemplazo de chapa de puerta. Material estándar incluido (chapa especial se cotiza aparte).',
+      id:"MANT_PUERTA_CHAPA_PESADA", nombre:"Cambio de Chapa (puerta pesada, Phillips 550/549)", serie:"Mantenimiento", emoji:"🔑",
+      tipo:"Servicio", esServicio:true, precioBase:505, unidad:'pieza',
+      desc:'Material: chapa Phillips 550/549, $480-530 (promedio $505) — verifica precio vigente con proveedor. Mano de obra aparte.',
+      holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
+      id:"MANT_PUERTA_CHAPA_LIGERA", nombre:"Cambio de Chapa (puerta ligera, gancho/paleta)", serie:"Mantenimiento", emoji:"🔑",
+      tipo:"Servicio", esServicio:true, precioBase:230, unidad:'pieza',
+      desc:'Material: chapa de gancho/paleta, $180-280 (promedio $230). Mano de obra aparte.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
       id:"MANT_PUERTA_PIVOTE", nombre:"Cambio de Pivote", serie:"Mantenimiento", emoji:"🔩",
-      tipo:"Servicio", esServicio:true, precioBase:380, unidad:'pieza',
-      desc:'Reemplazo de pivote superior/inferior de puerta de aluminio.',
+      tipo:"Servicio", esServicio:true, precioBase:300, unidad:'pieza',
+      desc:'Material: pivote, $250-350 según color (promedio $300) — ajústalo al color real. Mano de obra aparte.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
@@ -3272,7 +3302,9 @@ const FAMILIAS_NACIONAL = [
     emoji: '🔧',
     desc: 'Limpieza, ajustes y refacciones para ventanas y canceles',
     ids: ['MANT_LIMPIEZA_VEN','MANT_AJUSTE_HER','MANT_CAMBIO_FELPA','MANT_CAMBIO_CARRETILLA',
-          'MANT_CANCEL_LIMPIEZA','MANT_CANCEL_SELLADO','MANT_CANCEL_HULES','MANT_CANCEL_BISAGRAS']
+          'MANT_CANCEL_LIMPIEZA','MANT_CANCEL_SELLADO','MANT_CANCEL_HULES','MANT_CANCEL_BISAGRAS',
+          'MANT_CAMBIO_BROCHES','MANT_PUERTA_CALCE','MANT_PUERTA_CHAPA_PESADA','MANT_PUERTA_CHAPA_LIGERA',
+          'MANT_PUERTA_PIVOTE','MANT_VIDRIO_ROTO']
   },
   {
     id: 'garantia',
@@ -3307,7 +3339,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.3.0';
+const APP_VERSION = 'v1.4.0';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -3521,6 +3553,7 @@ function renderResultado(r) {
           }).join('') + (s.comboDescuentoPct > 0 ? '<div class="desglose-row" style="color:#27AE60"><span>🎁 Descuento por combo (' + Math.round(s.comboDescuentoPct*100) + '%)</span><span>−$' + fmt(s.subtotal * s.comboDescuentoPct) + '</span></div>' : '')
           : `<div class="desglose-row"><span>${s.sistemaNombre} × ${s.servCantidad} ${s.servUnidad}</span><span>$${fmt(s.subtotalBase != null ? s.subtotalBase : s.subtotal)}</span></div>`}
           ${!s.esSinMargen && s.complejidad > 1 ? `<div class="desglose-row"><span>Ajuste por complejidad (×${s.complejidad})</span><span>$${fmt((s.esCombo ? s.subtotal*(1-s.comboDescuentoPct) : s.subtotalBase) * (s.complejidad - 1))}</span></div>` : ''}
+          ${!s.esSinMargen && s.moBase > 0 ? `<div class="desglose-row"><span>Mano de obra</span><span>$${fmt(s.moBase)}</span></div>` : ''}
           ${!s.esSinMargen && s.cargoTraslado > 0 ? `<div class="desglose-row"><span>Traslado</span><span>$${fmt(s.cargoTraslado)}</span></div>` : ''}
           ${!s.esSinMargen && esSupremo() ? `
           <div class="desglose-row"><span>GIF +${document.getElementById('cfg-gif').value}%</span><span>$${fmt(s.gif||0)}</span></div>
@@ -3886,12 +3919,18 @@ function snSelFamilia(fam,btnEl){
 const SN_PRECIO_TARJETA = {
   MANT_LIMPIEZA_VEN:      '$350/pieza',
   MANT_AJUSTE_HER:        '$200/pieza',
-  MANT_CAMBIO_FELPA:      '$180/ml',
-  MANT_CAMBIO_CARRETILLA: '$280/par',
+  MANT_CAMBIO_FELPA:      '$4.50/m mat.',
+  MANT_CAMBIO_CARRETILLA: '$17-900 mat.',
   MANT_CANCEL_LIMPIEZA:   '$600/pieza',
   MANT_CANCEL_SELLADO:    '$450/pieza',
   MANT_CANCEL_HULES:      '$380/pieza',
   MANT_CANCEL_BISAGRAS:   '$520/juego',
+  MANT_CAMBIO_BROCHES:    '$150-400 mat.',
+  MANT_PUERTA_CALCE:      'Solo M.O.',
+  MANT_PUERTA_CHAPA_PESADA: '$480-530 mat.',
+  MANT_PUERTA_CHAPA_LIGERA: '$180-280 mat.',
+  MANT_PUERTA_PIVOTE:     '$250-350 mat.',
+  MANT_VIDRIO_ROTO:       'Cotizar',
   GTIA_ESTANDAR:          '20% · Ded.$1,100',
   GTIA_PREMIUM:           '35% · Ded.$1,400'
 };
@@ -3899,6 +3938,19 @@ const SN_PRECIO_TARJETA = {
 function snRenderGrid(fam){
   const grid=document.getElementById('sis-grid');
   grid.innerHTML='';
+
+  if (fam.id === 'mantenimiento') {
+    const comboCard=document.createElement('div');
+    comboCard.className='sis-card';
+    comboCard.style.cssText='border-color:#8E44AD;background:rgba(142,68,173,.05)';
+    comboCard.innerHTML=`<div style="width:100%;height:88px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px">
+        <div style="font-size:32px;line-height:1">🎁</div>
+        <div style="font-size:10px;color:#8E44AD;font-weight:700">2-3 en 1 visita</div>
+      </div>
+      <div class="sis-card-label" style="color:#8E44AD">Combo de Mantenimiento</div>`;
+    comboCard.onclick=()=>snIniciarCombo(comboCard);
+    grid.appendChild(comboCard);
+  }
 
   fam.ids.forEach(id=>{
     const sis=DB.sistemas.find(s=>s.id===id);
@@ -3934,6 +3986,39 @@ function snSelVar(btnEl){
   const panelFijo=document.getElementById('panel-alto-fijo');
   if(panelFijo) panelFijo.style.display = snFijoVar!=='base' ? 'block' : 'none';
   snActualizarResumenFijo();
+}
+
+// ── Combo desde el inicio: tarjeta especial que abre directo el modo
+// combo, sin necesidad de elegir primero un servicio individual ──
+function snIniciarCombo(cardEl) {
+  document.querySelectorAll('.sis-card').forEach(c=>c.classList.remove('active'));
+  cardEl?.classList.add('active');
+  const tr=document.getElementById('tab-resultado'); if(tr)tr.style.display='none';
+  const hc=document.getElementById('sn-historial-card'); if(hc)hc.style.display='none';
+  document.getElementById('wizard-inputs').style.display  = 'none';
+  document.getElementById('wizard-espejo').style.display  = 'none';
+  document.getElementById('wizard-garantia').style.display = 'none';
+  document.getElementById('wizard-servicio').style.display = 'block';
+
+  SERV_SISTEMA = null;
+  document.getElementById('serv-titulo').textContent = '🎁 Combo de Mantenimiento';
+  document.getElementById('serv-desc').textContent   = 'Selecciona 2 o más servicios de la misma visita — abajo eliges cuáles.';
+  document.getElementById('serv-notas').value    = '';
+  document.getElementById('serv-complejidad').value = '1';
+  document.getElementById('serv-mo-base').value = 500;
+  document.getElementById('serv-cargo-traslado').value = cfg('cfg-cargo-campo') || 500;
+  document.getElementById('serv-aviso-riesgo').checked = false;
+  document.getElementById('serv-resultado').style.display = 'none';
+
+  SERV_MODO = 'combo';
+  SERV_COMBO_SEL = {};
+  document.getElementById('serv-modo-normal').style.display = 'none';
+  document.getElementById('serv-modo-combo').style.display  = 'block';
+  document.getElementById('serv-btn-combo').textContent = '✕ Cancelar combo';
+  servRenderComboLista();
+
+  const destino = document.getElementById('wizard-servicio');
+  setTimeout(()=>destino?.scrollIntoView({behavior:'smooth',block:'start'}),120);
 }
 
 function snSelSistema(sis,cardEl){
@@ -4136,6 +4221,7 @@ function servicioReset(sistema) {
   document.getElementById('serv-precio').value   = sistema.precioBase || '';
   document.getElementById('serv-notas').value    = '';
   document.getElementById('serv-complejidad').value = '1';
+  document.getElementById('serv-mo-base').value = 500;
   document.getElementById('serv-cargo-traslado').value = cfg('cfg-cargo-campo') || 500;
   document.getElementById('serv-aviso-riesgo').checked = false;
   document.getElementById('serv-resultado').style.display = 'none';
@@ -4146,6 +4232,14 @@ var SERV_MODO = 'normal'; // 'normal' | 'combo'
 var SERV_COMBO_SEL = {};  // { sistemaId: { sistema, cantidad } }
 
 function servToggleCombo() {
+  // Si se entró por la tarjeta "🎁 Combo" (sin servicio individual elegido),
+  // cancelar regresa a la cuadrícula en vez de a un modo "normal" vacío.
+  if (SERV_MODO === 'combo' && !SERV_SISTEMA) {
+    document.getElementById('wizard-servicio').style.display = 'none';
+    document.querySelectorAll('.sis-card').forEach(c=>c.classList.remove('active'));
+    document.getElementById('sis-grid')?.scrollIntoView({behavior:'smooth',block:'start'});
+    return;
+  }
   SERV_MODO = (SERV_MODO === 'combo') ? 'normal' : 'combo';
   document.getElementById('serv-modo-normal').style.display = SERV_MODO === 'combo' ? 'none' : 'block';
   document.getElementById('serv-modo-combo').style.display  = SERV_MODO === 'combo' ? 'block' : 'none';
@@ -4230,8 +4324,9 @@ function servicioCalcPreview(cant, precio, nombreOverride) {
   const esGarantia = (SERV_SISTEMA?.factorGIF === 1.0) && SERV_MODO !== 'combo';
   const complejidad = parseFloat(document.getElementById('serv-complejidad')?.value) || 1;
   const cargoTraslado = parseFloat(document.getElementById('serv-cargo-traslado')?.value) || 0;
-  const subtotalBase = cant * precio;
-  const subtotal = esGarantia ? subtotalBase : (subtotalBase * complejidad + cargoTraslado);
+  const moBase = parseFloat(document.getElementById('serv-mo-base')?.value) || 0;
+  const subtotalBase = cant * precio; // costo de MATERIAL puro
+  const subtotalMaterial = subtotalBase * complejidad;
   const unidad   = SERV_SISTEMA?.unidad || 'pza';
   const res = document.getElementById('serv-resultado');
   res.style.display = 'block';
@@ -4239,11 +4334,16 @@ function servicioCalcPreview(cant, precio, nombreOverride) {
   document.getElementById('serv-c-sub').textContent   = fmt(subtotalBase);
   const rowComp = document.getElementById('serv-row-complejidad');
   const rowTras = document.getElementById('serv-row-traslado');
+  const rowMo   = document.getElementById('serv-row-mo');
   if (!esGarantia && complejidad > 1) {
     rowComp.style.display = 'flex';
     document.getElementById('serv-label-complejidad').textContent = 'Ajuste por complejidad (×' + complejidad + ')';
     document.getElementById('serv-c-complejidad').textContent = fmt(subtotalBase * (complejidad - 1));
   } else { rowComp.style.display = 'none'; }
+  if (!esGarantia && moBase > 0) {
+    rowMo.style.display = 'flex';
+    document.getElementById('serv-c-mo').textContent = fmt(moBase);
+  } else { rowMo.style.display = 'none'; }
   if (!esGarantia && cargoTraslado > 0) {
     rowTras.style.display = 'flex';
     document.getElementById('serv-c-traslado').textContent = fmt(cargoTraslado);
@@ -4253,18 +4353,19 @@ function servicioCalcPreview(cant, precio, nombreOverride) {
     if (row) row.style.display = (esGarantia || (k !== 'iva' && !esSupremo())) ? 'none' : 'flex';
   });
   if (esGarantia) {
-    document.getElementById('serv-c-total').textContent = fmt(subtotal);
+    document.getElementById('serv-c-total').textContent = fmt(subtotalBase);
     return;
   }
   const gifPct = cfg('cfg-gif') / 100;
   const gaPct = cfg('cfg-ga') / 100;
   const utilidadPct = cfg('cfg-utilidad') / 100;
   const ivaPct = cfg('cfg-iva') / 100;
-  const gif = subtotal * gifPct;
-  const ga = subtotal * gaPct;
-  const costoReal = subtotal + gif + ga;
-  const utilidad = costoReal * utilidadPct;
-  const precioAntesIva = costoReal + utilidad;
+  const gif = subtotalMaterial * gifPct;
+  const ga = subtotalMaterial * gaPct;
+  const costoRealMaterial = subtotalMaterial + gif + ga;
+  const utilidad = costoRealMaterial * utilidadPct;
+  const materialConMargen = costoRealMaterial + utilidad;
+  const precioAntesIva = materialConMargen + moBase + cargoTraslado;
   const ivaMonto = precioAntesIva * ivaPct;
   const total = precioAntesIva + ivaMonto;
   document.getElementById('serv-label-gif').textContent = 'GIF +' + document.getElementById('cfg-gif').value + '%';
@@ -4289,12 +4390,13 @@ function servicioCalcular() {
     var descPct = servComboDescuentoPct();
     var complejidadC = parseFloat(document.getElementById('serv-complejidad').value) || 1;
     var cargoTrasladoC = parseFloat(document.getElementById('serv-cargo-traslado').value) || 0;
-    var subtotalCombo = subtotalBruto * (1 - descPct) * complejidadC + cargoTrasladoC;
+    var moBaseC = parseFloat(document.getElementById('serv-mo-base').value) || 0;
+    var subtotalMaterialC = subtotalBruto * (1 - descPct) * complejidadC;
     var gifPctC = cfg('cfg-gif') / 100, gaPctC = cfg('cfg-ga') / 100, utilidadPctC = cfg('cfg-utilidad') / 100, ivaPctC = cfg('cfg-iva') / 100;
-    var gifC = subtotalCombo * gifPctC, gaC = subtotalCombo * gaPctC;
-    var costoRealC = subtotalCombo + gifC + gaC;
+    var gifC = subtotalMaterialC * gifPctC, gaC = subtotalMaterialC * gaPctC;
+    var costoRealC = subtotalMaterialC + gifC + gaC;
     var utilidadC = costoRealC * utilidadPctC;
-    var precioAntesIvaC = costoRealC + utilidadC;
+    var precioAntesIvaC = costoRealC + utilidadC + moBaseC + cargoTrasladoC;
     var ivaMontoC = precioAntesIvaC * ivaPctC;
     var totalC = precioAntesIvaC + ivaMontoC;
     var detalleCombo = ids.map(function(id) {
@@ -4306,8 +4408,8 @@ function servicioCalcular() {
     STATE.ultimoResultado = {
       sistemaId: 'COMBO', sistemaNombre: '🎁 Combo: ' + nombreCombo, serie: 'Mantenimiento', tipo: 'Servicio',
       esServicio: true, esCombo: true, comboDetalle: detalleCombo, comboDescuentoPct: descPct,
-      complejidad: complejidadC, cargoTraslado: cargoTrasladoC,
-      servCantidad: 1, servUnidad: 'combo', servPrecio: subtotalCombo,
+      complejidad: complejidadC, cargoTraslado: cargoTrasladoC, moBase: moBaseC,
+      servCantidad: 1, servUnidad: 'combo', servPrecio: subtotalMaterialC,
       servNotas: document.getElementById('serv-notas').value.trim(),
       avisoRiesgo: document.getElementById('serv-aviso-riesgo').checked,
       subtotal: subtotalBruto, gif: gifC, ga: gaC, utilidad: utilidadC, ivaPct: ivaPctC, ivaMonto: ivaMontoC, precioFinal: totalC, esSinMargen: false
@@ -4321,23 +4423,26 @@ function servicioCalcular() {
   if (!SERV_SISTEMA) return;
   const cant   = parseFloat(document.getElementById('serv-cantidad').value) || 0;
   const precio = parseFloat(document.getElementById('serv-precio').value)   || 0;
-  if (!cant || !precio) { toast('⚠️ Ingresa cantidad y precio'); return; }
+  if (!cant) { toast('⚠️ Ingresa cantidad'); return; }
   const esGarantia = (SERV_SISTEMA.factorGIF === 1.0);
   const complejidad = parseFloat(document.getElementById('serv-complejidad').value) || 1;
   const cargoTraslado = parseFloat(document.getElementById('serv-cargo-traslado').value) || 0;
-  const subtotalBase = cant * precio;
-  const subtotal = esGarantia ? subtotalBase : (subtotalBase * complejidad + cargoTraslado);
-  let gif = 0, ga = 0, utilidad = 0, ivaMonto = 0, total = subtotal, ivaPct = 0;
+  const moBase = parseFloat(document.getElementById('serv-mo-base').value) || 0;
+  const subtotalBase = cant * precio; // costo de material puro
+  const subtotalMaterial = subtotalBase * complejidad;
+  let gif = 0, ga = 0, utilidad = 0, ivaMonto = 0, ivaPct = 0;
+  let total = subtotalBase;
   if (!esGarantia) {
     const gifPct = cfg('cfg-gif') / 100;
     const gaPct = cfg('cfg-ga') / 100;
     const utilidadPct = cfg('cfg-utilidad') / 100;
     ivaPct = cfg('cfg-iva') / 100;
-    gif = subtotal * gifPct;
-    ga = subtotal * gaPct;
-    const costoReal = subtotal + gif + ga;
-    utilidad = costoReal * utilidadPct;
-    const precioAntesIva = costoReal + utilidad;
+    gif = subtotalMaterial * gifPct;
+    ga = subtotalMaterial * gaPct;
+    const costoRealMaterial = subtotalMaterial + gif + ga;
+    utilidad = costoRealMaterial * utilidadPct;
+    const materialConMargen = costoRealMaterial + utilidad;
+    const precioAntesIva = materialConMargen + moBase + cargoTraslado;
     ivaMonto = precioAntesIva * ivaPct;
     total = precioAntesIva + ivaMonto;
   }
@@ -4348,8 +4453,8 @@ function servicioCalcular() {
     esServicio: true, servCantidad: cant, servUnidad: unidad, servPrecio: precio,
     servNotas: document.getElementById('serv-notas').value.trim(),
     avisoRiesgo: document.getElementById('serv-aviso-riesgo').checked,
-    subtotalBase, complejidad, cargoTraslado,
-    subtotal, gif, ga, utilidad, ivaPct, ivaMonto, precioFinal: total, esSinMargen: esGarantia
+    subtotalBase, complejidad, cargoTraslado, moBase,
+    subtotal: subtotalBase, gif, ga, utilidad, ivaPct, ivaMonto, precioFinal: total, esSinMargen: esGarantia
   };
   toast('✅ Servicio calculado');
   renderResultado();
