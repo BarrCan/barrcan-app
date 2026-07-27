@@ -6,6 +6,15 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v2.2
+  FECHA   : 2026-07-26
+  v2.2 — Restaurado estado "Declinado":
+    - El archivo subido era una versión anterior a la sesión del 21-jul
+      donde se agregó el estado "Declinado — cliente no aceptó" (select,
+      etiquetas y color). Se restauró en los 3 lugares. Nota: esa misma
+      sesión también agregó ocultar Entregado/Declinado por default con
+      un checkbox para mostrarlos -- eso NO se reactivó porque no se
+      pidió esta vez; avisar si también se quiere de vuelta.
   VERSIÓN : v2.1
   FECHA   : 2026-07-26
   v2.1 — Progreso por Obra + ajustes de orden:
@@ -1193,6 +1202,7 @@ body{min-height:100vh}
         <option value="en_produccion">En produccion</option>
         <option value="pendiente_entrega">Pendiente de entrega</option>
         <option value="entregado">Entregado &mdash; pendiente liquidar</option>
+        <option value="declinado">Declinado &mdash; cliente no acept&oacute;</option>
       </select>
     </div>
 
@@ -1242,7 +1252,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v2.1';
+var APP_VERSION = 'v2.2';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1286,14 +1296,16 @@ var ESTADO_LABELS = {
   aprobado: 'Aprobado',
   en_produccion: 'En producci\u00f3n',
   pendiente_entrega: 'Pend. entrega',
-  entregado: 'Entregado'
+  entregado: 'Entregado',
+  declinado: 'Declinado'
 };
 var ESTADO_COLORS = {
   activo: 'var(--blue)',
   aprobado: 'var(--green)',
   en_produccion: 'var(--gold)',
   pendiente_entrega: '#E67E22',
-  entregado: 'var(--gray-400)'
+  entregado: 'var(--gray-400)',
+  declinado: 'var(--red)'
 };
 
 // ── Cache local ───────────────────────────────────────────────────
