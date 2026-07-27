@@ -5,7 +5,16 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Cotizador Nacional</title>
 <!--
-  BARRCAN COTIZADOR NACIONAL v3.1.0
+  BARRCAN COTIZADOR NACIONAL v3.2.0
+  v3.2.0 - FIX CRÍTICO: pérdida total de cotizaciones al fallar el guardado:
+    - Antes, si Supabase fallaba (offline, error de red, timeout) al
+      guardar un presupuesto, el dato se perdía por completo -- no
+      había ninguna cola de reintento como sí tienen historial.html/
+      entregas.html/ordenes.html. Solo quedaba la ventana impresa (si
+      no se cerraba sin guardar/imprimir).
+    - Ahora se guarda en localStorage (misma llave que usa
+      historial.html: barrcan_presupuestos_pendientes) y se reintenta
+      solo al reconectar, o al abrir la app si ya hay señal.
   v3.1.0 - GA, IVA de venta e IVA de compra + control de rol:
     - Se agregó GA (Gastos de Administración) al mismo nivel que GIF,
       IVA de venta aplicado una sola vez al final del precio, y
@@ -5539,7 +5548,9 @@ function snDetectar(){
   const online = navigator.onLine;
   if(d)d.style.background = online ? '#27AE60' : '#C0392B';
   if(t)t.textContent = (online ? 'Online' : 'Offline') + ' · ' + APP_VERSION;
+  if (online) snReintentarPendientes();
 }
+window.addEventListener('online', snReintentarPendientes);
 
 function snBuildUI(){
   const tabsEl=document.getElementById('familia-tabs');
@@ -5739,6 +5750,45 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha) {
 }
 
 // ── Guardar presupuesto completo (todas las piezas incluidas) ──
+
+// ── Respaldo local si falla el guardado (offline o error de Supabase) ──
+// Antes, si esto fallaba, la cotización se perdía por completo salvo que
+// se hubiera impreso/guardado la ventana a mano. Ahora se guarda en cola
+// local (misma llave que usa historial.html, así que también se puede
+// reintentar desde ahí) y se reintenta solo al reconectar.
+function snGuardarOffline(payload) {
+  try {
+    var cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes') || '[]');
+    cola.push({ tipo: 'nuevo', datos: payload, ts: new Date().toISOString() });
+    localStorage.setItem('barrcan_presupuestos_pendientes', JSON.stringify(cola));
+    toast('Guardado sin conexión · Folio: ' + payload.folio + ' · se sincronizará después');
+  } catch(e) {
+    toast('⚠️ No se pudo guardar ni localmente — anota el folio a mano: ' + payload.folio);
+  }
+}
+
+async function snReintentarPendientes() {
+  if (!sb()) return;
+  var cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes') || '[]');
+  if (!cola.length) return;
+  var ok = [];
+  for (var i = 0; i < cola.length; i++) {
+    var item = cola[i];
+    try {
+      var r = item.tipo === 'update'
+        ? await sb().from('presupuestos_atrasados').update((function(d){var c=Object.assign({},d);delete c.id;return c;})(item.datos)).eq('id', item.datos.id)
+        : await sb().from('presupuestos_atrasados').insert([item.datos]);
+      if (r.error) throw r.error;
+      ok.push(item);
+    } catch(e) { console.warn('[BarrCan] reintento de presupuesto pendiente falló:', e.message); }
+  }
+  if (ok.length) {
+    var rest = cola.filter(function(i2) { return ok.indexOf(i2) < 0; });
+    localStorage.setItem('barrcan_presupuestos_pendientes', JSON.stringify(rest));
+    toast('✅ ' + ok.length + ' presupuesto(s) pendiente(s) sincronizado(s)');
+  }
+}
+
 async function snGuardarPresupuesto(){
   const incluidos = STATE.carrito.filter(function(it){ return it.incluido !== false; });
   if (!incluidos.length) { toast('Selecciona al menos una pieza'); return; }
@@ -5778,14 +5828,14 @@ async function snGuardarPresupuesto(){
       const res = await sb().from('presupuestos_atrasados').insert([payload]);
       if (res.error) throw res.error;
       toast('Guardado \u00b7 ' + folio);
-    } catch(e) { toast('Error al guardar: ' + e.message); }
+    } catch(e) { snGuardarOffline(payload); }
     // Si fue "+ Cliente nuevo" (no vino del selector), lo damos de alta para la próxima vez
     const selCli = document.getElementById('sn-cli-select');
     if (selCli && !selCli.value) {
       try { await sb().from('clientes').insert([{ nombre: cliente, telefono: tel || null, dir_obra: dir || null }]); snCargarClientes(); } catch(e) {}
     }
   } else {
-    toast('Sin conexi\u00f3n \u00b7 Folio: ' + folio);
+    snGuardarOffline(payload);
   }
 
   const w = window.open('', '_blank');
