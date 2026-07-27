@@ -5,7 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Cotizador Española</title>
 <!--
-  BARRCAN COTIZADOR ESPAÑOLA v1.1.0
+  BARRCAN COTIZADOR ESPAÑOLA v1.2.0
+  v1.2.0 - FIX CRÍTICO: pérdida total de cotizaciones al fallar el guardado:
+    - Mismo fix que Nacional v3.2.0: se guarda en localStorage
+      (barrcan_presupuestos_pendientes) si Supabase falla, con
+      reintento automático al reconectar.
   v1.1.0 - GA, IVA de venta e IVA de compra + control de rol:
     - Mismo cambio que Nacional v3.1.0: GA agregado, IVA de venta al
       final, netificación de materiales antes de márgenes, fix del
@@ -5575,7 +5579,9 @@ function snDetectar(){
   const online = navigator.onLine;
   if(d)d.style.background = online ? '#27AE60' : '#C0392B';
   if(t)t.textContent = (online ? 'Online' : 'Offline') + ' · ' + APP_VERSION;
+  if (online) snReintentarPendientes();
 }
+window.addEventListener('online', snReintentarPendientes);
 
 function snBuildUI(){
   const tabsEl=document.getElementById('familia-tabs');
@@ -5677,6 +5683,44 @@ function snArchivoAdj(input){
   if(txt)txt.textContent='✅ '+file.name.slice(0,40);
 }
 
+// ── Respaldo local si falla el guardado (offline o error de Supabase) ──
+// Antes, si esto fallaba, la cotización se perdía por completo salvo que
+// se hubiera impreso/guardado la ventana a mano. Ahora se guarda en cola
+// local (misma llave que usa historial.html, así que también se puede
+// reintentar desde ahí) y se reintenta solo al reconectar.
+function snGuardarOffline(payload) {
+  try {
+    var cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes') || '[]');
+    cola.push({ tipo: 'nuevo', datos: payload, ts: new Date().toISOString() });
+    localStorage.setItem('barrcan_presupuestos_pendientes', JSON.stringify(cola));
+    toast('Guardado sin conexión · Folio: ' + payload.folio + ' · se sincronizará después');
+  } catch(e) {
+    toast('⚠️ No se pudo guardar ni localmente — anota el folio a mano: ' + payload.folio);
+  }
+}
+
+async function snReintentarPendientes() {
+  if (!sb()) return;
+  var cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes') || '[]');
+  if (!cola.length) return;
+  var ok = [];
+  for (var i = 0; i < cola.length; i++) {
+    var item = cola[i];
+    try {
+      var r = item.tipo === 'update'
+        ? await sb().from('presupuestos_atrasados').update((function(d){var c=Object.assign({},d);delete c.id;return c;})(item.datos)).eq('id', item.datos.id)
+        : await sb().from('presupuestos_atrasados').insert([item.datos]);
+      if (r.error) throw r.error;
+      ok.push(item);
+    } catch(e) { console.warn('[BarrCan] reintento de presupuesto pendiente falló:', e.message); }
+  }
+  if (ok.length) {
+    var rest = cola.filter(function(i2) { return ok.indexOf(i2) < 0; });
+    localStorage.setItem('barrcan_presupuestos_pendientes', JSON.stringify(rest));
+    toast('✅ ' + ok.length + ' presupuesto(s) pendiente(s) sincronizado(s)');
+  }
+}
+
 // ── Guardar ───────────────────────────────────────────────
 async function snGuardar(){
   const r=STATE.ultimoResultado;
@@ -5695,7 +5739,16 @@ async function snGuardar(){
   const folio=`CACN-${Math.floor(Math.random()*900)+100}C-${yy}${mm}${dd}-RC${Math.floor(Math.random()*900)+100}${ini}`;
   const varTxt=snFijoVar==='ftop'?' Fijo↑':snFijoVar==='fbot'?' Fijo↓':'';
   const desc=`${r.sistema||''}${varTxt} ${r.L&&r.H?r.L+'x'+r.H+'mm':''} ${r.vidTipo||''} ${dir?'· '+dir:''}`.trim().slice(0,200);
-  if(!sb()){toast('Sin conexión · Folio: '+folio);return;}
+  const payloadBase={folio,cliente,tel:tel||null,descripcion:desc,notas:notas||null,
+    monto:Math.round(r.precioFinal||0),saldo:Math.round(r.precioFinal||0),
+    estado:'activo',fecha:hoy.toISOString().split('T')[0],archivo_url:null,archivo_nombre:null,
+    notas_internas:JSON.stringify({
+      sistema:r.sistema,L:r.L,H:r.H,vidTipo:r.vidTipo,
+      costoAluminio:r.costoAluminio,costoVidrio:r.costoVidrio,
+      costoHerrajes:r.costoHerrajes,mdoTotal:r.mdoTotal
+    })
+  };
+  if(!sb()){snGuardarOffline(payloadBase);return;}
   let archivo_url=null,archivo_nombre=null;
   if(snArchivoAdjFile){
     try{
@@ -5705,15 +5758,7 @@ async function snGuardar(){
       if(!up.error){archivo_url=path;archivo_nombre=snArchivoAdjFile.name;}
     }catch(e){}
   }
-  const payload={folio,cliente,tel:tel||null,descripcion:desc,notas:notas||null,
-    monto:Math.round(r.precioFinal||0),saldo:Math.round(r.precioFinal||0),
-    estado:'activo',fecha:hoy.toISOString().split('T')[0],archivo_url,archivo_nombre,
-    notas_internas:JSON.stringify({
-      sistema:r.sistema,L:r.L,H:r.H,vidTipo:r.vidTipo,
-      costoAluminio:r.costoAluminio,costoVidrio:r.costoVidrio,
-      costoHerrajes:r.costoHerrajes,mdoTotal:r.mdoTotal
-    })
-  };
+  const payload=Object.assign({},payloadBase,{archivo_url,archivo_nombre});
   try{
     const res=await sb().from('presupuestos_atrasados').insert([payload]);
     if(res.error)throw res.error;
@@ -5725,7 +5770,7 @@ async function snGuardar(){
     if(zona)zona.style.borderColor='var(--gray-200)';
     if(txt)txt.textContent='📎 Adjuntar plano o croquis';
     snHistorial();
-  }catch(e){toast('Error: '+e.message);}
+  }catch(e){snGuardarOffline(payload);}
 }
 
 // ── Historial ─────────────────────────────────────────────
