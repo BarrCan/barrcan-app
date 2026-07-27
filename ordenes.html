@@ -6,6 +6,16 @@
 <title>BarrCan &middot; Ordenes</title>
 <!--
   BARRCAN - MODULO: ORDENES DE TRABAJO
+  VERSION : v2.4
+  FECHA   : 2026-07-26
+  v2.4 - FIX CRÍTICO: pérdida de órdenes sin sincronizar al actualizar:
+    - otCargar() reemplazaba OT_CACHE completo con lo que traía de
+      Supabase, sin combinar las órdenes que seguían pendientes de
+      sincronizar (guardadas offline, con _pendiente=true). Si una
+      orden nunca llegó a Supabase y se le daba "Actualizar", la
+      orden desaparecía de la vista -- aunque seguía en la cola de
+      reintento (barrcan_ordenes_pendientes) sin mostrarse.
+    - Ahora se combinan igual que en historial.html/entregas.html.
   VERSION : v2.3
   FECHA   : 2026-07-18
   v2.3 - Candado fino: técnicos solo ven/avanzan, no crean ni editan:
@@ -1397,7 +1407,8 @@ function sb(){
 var SYNC={online:navigator.onLine};
 window.addEventListener('online', function(){SYNC.online=true;detectarConexion();otCargar();otCargarTecnicosDinamico();var c=JSON.parse(localStorage.getItem('barrcan_ordenes_pendientes')||'[]');if(c.length)otReintentarPendientes();});
 window.addEventListener('offline',function(){SYNC.online=false;detectarConexion();});
-function detectarConexion(){var b=document.getElementById('conn-status');if(b)b.textContent=navigator.onLine?'Online':'Offline-First';}
+var APP_VERSION='v2.4';
+function detectarConexion(){var b=document.getElementById('conn-status');if(b)b.textContent=(navigator.onLine?'Online':'Offline-First')+' \u00b7 '+APP_VERSION;}
 
 // ── Lista de técnicos dinámica (desde tabla tecnicos, módulo tecnicos.html) ──
 // Si falla (sin conexión, o el SQL de tecnicos.html aún no se corrió),
@@ -1502,7 +1513,8 @@ async function otCargar(){
       .order('fecha_instalacion',{ascending:false}).range(0,200);
     if(res.error)throw res.error;
     SYNC.online=true;detectarConexion();
-    OT_CACHE=res.data||[];otGuardarCache(OT_CACHE);otRender();
+    var pend=local.filter(function(o){return o._pendiente;});
+    OT_CACHE=pend.concat(res.data||[]);otGuardarCache(OT_CACHE);otRender();
   }catch(e){
     var esRed=/failed to fetch|network|fetch/i.test(e.message||'');
     if(esRed){SYNC.online=false;detectarConexion();}
