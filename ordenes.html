@@ -6,6 +6,13 @@
 <title>BarrCan &middot; Ordenes</title>
 <!--
   BARRCAN - MODULO: ORDENES DE TRABAJO
+  VERSION : v2.6
+  FECHA   : 2026-07-28
+  v2.6 - Renombrado "Hoja" a "Info" (o "Ver informacion de la
+    instalacion" en el modal): el objetivo es eliminar el papel, asi
+    que se presenta como informacion en pantalla primero -- sigue
+    pudiendose imprimir/PDF si hace falta, pero ya no se vende como
+    "la hoja".
   VERSION : v2.5
   FECHA   : 2026-07-28
   v2.5 - FIX: el reintento automático nunca se disparaba si la app ya
@@ -1374,7 +1381,7 @@ body{min-height:100vh}
       background:rgba(39,174,96,0.08);border:1.5px solid var(--green);
       border-radius:var(--radius);color:var(--green);font-family:'DM Sans',sans-serif;
       font-size:14px;font-weight:600;cursor:pointer" onclick="otGenerarHoja()">
-      Ver / imprimir hoja de trabajo
+      Ver información de la instalación
     </button>
     <button id="ot-btn-eliminar" style="display:none;width:100%;padding:13px;
       background:rgba(192,57,43,0.06);border:1.5px solid rgba(192,57,43,0.2);
@@ -1416,7 +1423,7 @@ function sb(){
 var SYNC={online:navigator.onLine};
 window.addEventListener('online', function(){SYNC.online=true;detectarConexion();otCargar();otCargarTecnicosDinamico();var c=JSON.parse(localStorage.getItem('barrcan_ordenes_pendientes')||'[]');if(c.length)otReintentarPendientes();});
 window.addEventListener('offline',function(){SYNC.online=false;detectarConexion();});
-var APP_VERSION='v2.5';
+var APP_VERSION='v2.6';
 function detectarConexion(){var b=document.getElementById('conn-status');if(b)b.textContent=(navigator.onLine?'Online':'Offline-First')+' \u00b7 '+APP_VERSION;}
 
 // ── Lista de técnicos dinámica (desde tabla tecnicos, módulo tecnicos.html) ──
@@ -1593,7 +1600,7 @@ function otRender(){
       +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-bottom:5px">'
       +(esAdmin()?'<button onclick="otAbrir(\''+idStr+'\')" style="padding:7px 3px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:10px;font-weight:700;cursor:pointer">Editar</button>':'<div></div>')
       +'<button onclick="otCambiarEstado(\''+idStr+'\')" style="padding:7px 3px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:10px;font-weight:700;cursor:pointer">Estado</button>'
-      +'<button onclick="otVerHoja(\''+idStr+'\')" style="padding:7px 3px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.3);border-radius:8px;color:var(--green);font-size:10px;font-weight:700;cursor:pointer">Hoja</button>'
+      +'<button onclick="otVerHoja(\''+idStr+'\')" style="padding:7px 3px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.3);border-radius:8px;color:var(--green);font-size:10px;font-weight:700;cursor:pointer">Info</button>'
       +'</div>'
       +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">'
       +'<button onclick="otProgramarRecordatorio(\''+idStr+'\')" style="padding:7px 3px;background:rgba(142,68,173,0.08);border:1.5px solid rgba(142,68,173,0.3);border-radius:8px;color:#8E44AD;font-size:10px;font-weight:700;cursor:pointer">&#128276; Avisar</button>'
