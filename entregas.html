@@ -6,6 +6,13 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.32.0
+  FECHA   : 2026-07-28
+  v3.32.0 - Navegación de regreso (no existía ninguna):
+    - "← Volver a la orden" visible cuando se llega desde ordenes.html
+      (?orden_id=...), y enlace fijo a Menú principal (barrcan_brain.html)
+      siempre visible en el header. Antes no había forma de regresar
+      salvo el botón atrás del navegador.
   VERSION : v3.31.0
   FECHA   : 2026-07-28
   v3.31.0 - FIX: reintento de instalación no se disparaba a tiempo + fotos:
@@ -1378,6 +1385,12 @@ body{min-height:100vh}
       <span style="font-size:9px;color:rgba(255,255,255,0.3);margin-left:4px">Historial</span>
     </div>
   </div>
+  <div id="ent-nav-regreso" style="display:none;background:#F8F9FA;border-bottom:1px solid var(--gray-100);padding:8px 16px">
+    <a id="ent-nav-regreso-link" href="ordenes.html" style="display:inline-flex;align-items:center;gap:6px;color:var(--blue);font-size:12px;font-weight:700;text-decoration:none">&larr; Volver a la orden</a>
+  </div>
+  <div style="background:var(--navy);padding:4px 16px;text-align:right">
+    <a href="barrcan_brain.html" style="color:rgba(255,255,255,0.6);font-size:10px;text-decoration:none">&#8962; Men&uacute; principal</a>
+  </div>
 
   <div class="content">
     <p class="section-title">Entregas de Producto</p>
@@ -1933,7 +1946,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.31.0';
+var APP_VERSION = 'v3.32.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -3264,7 +3277,10 @@ async function entReintentarPendientes() {
 async function entPrecargarDesdeOrden() {
   var params = new URLSearchParams(window.location.search);
   var ordenId = params.get('orden_id');
-  if (!ordenId || !sb()) return;
+  if (!ordenId) return;
+  var nav = document.getElementById('ent-nav-regreso');
+  if (nav) nav.style.display = 'block';
+  if (!sb()) return;
   try {
     var res = await sb().from('ordenes_trabajo').select('*').eq('id', ordenId).single();
     if (res.error || !res.data) { toast('No se encontró esa orden'); return; }
