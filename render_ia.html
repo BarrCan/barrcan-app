@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="theme-color" content="#1B3A5C">
+<title>BarrCan · Render IA</title>
+<!--
+  BARRCAN · MÓDULO: RENDER IA (standalone)
+  VERSIÓN : v1.1.0
+  FECHA   : 2026-07-31
+  v1.1.0 — Ajuste a estructura real de Supabase
+    - FIX: cotizaciones no tiene columnas sueltas de specs — vienen dentro de
+           `partidas_json` (array, una cotización puede tener varias piezas)
+    - NEW: selector de partida cuando el folio tiene más de una pieza cotizada
+    - NEW: campo manual de acabado/color (Natural, Natural Brillante, Blanco,
+           Champagne, Negro) — no existe como columna estructurada en DB
+    - NEW: join con `clientes` vía id_cliente para mostrar nombre del cliente
+    - NEW: bucket `renders` creado en Supabase Storage (público, mismo patrón
+           que bucket `reportes`)
+  v1.0.0 — Primera versión
+    - NEW: Modo Real — vincula a un folio de cotización existente (tabla `cotizaciones`),
+           usa las specs reales (sistema, medidas, acabado) para construir el prompt
+    - NEW: Modo Inspiración — libre, sin folio, para exploración de estilos/acabados
+    - NEW: Integración con Gemini API (modelo gemini-3.1-flash-image / "Nano Banana")
+           edición de imagen real del cliente, no generación desde cero
+    - NEW: API key de Gemini se guarda localmente (localStorage), configurable desde
+           el módulo — pendiente evolucionar a proxy server-side (Supabase Edge Function)
+           cuando el volumen de uso lo justifique
+    - NEW: Guardado del resultado en Supabase Storage (bucket `renders`) vinculado a folio
+    - NEW: Compartir por WhatsApp
+    - Sigue patrón exacto de conexión/badge/versión de barrcan_app.html
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --navy: #1B3A5C;
+  --blue: #2E6DA4;
+  --gold: #C8923A;
+  --gold-light: #E8B96A;
+  --orange: #FF6600;
+  --white: #FFFFFF;
+  --off-white: #F7F5F0;
+  --gray-100: #F0EDE8;
+  --gray-200: #DDD9D2;
+  --gray-400: #9A9590;
+  --gray-600: #5A5652;
+  --green: #2D7D46;
+  --red: #C0392B;
+  --amber: #E67E22;
+  --shadow-sm: 0 2px 8px rgba(27,58,92,0.08);
+  --shadow-md: 0 8px 32px rgba(27,58,92,0.14);
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--off-white); color:var(--navy); overscroll-behavior:none; }
+#app { min-height:100vh; display:flex; flex-direction:column; }
+
+.header { background:var(--navy); padding:0 20px; height:56px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; box-shadow:0 2px 12px rgba(0,0,0,0.3); position:sticky; top:0; z-index:100; }
+.header-logo { display:flex; align-items:center; gap:10px; }
+.logo-mark { width:32px; height:32px; background:linear-gradient(135deg,var(--gold),var(--gold-light)); border-radius:6px; display:flex; align-items:center; justify-content:center; font-family:'Playfair Display',serif; font-weight:900; font-size:16px; color:var(--navy); }
+.logo-text { font-family:'Playfair Display',serif; font-weight:700; font-size:17px; color:var(--white); }
+.logo-sub { font-size:9px; color:var(--gold-light); letter-spacing:1.5px; text-transform:uppercase; display:block; margin-top:-2px; }
+.header-right { display:flex; align-items:center; gap:8px; }
+#conn-status { font-size:10px; font-weight:600; color:var(--gold-light); background:rgba(200,146,58,0.15); border:1px solid rgba(200,146,58,0.3); border-radius:20px; padding:4px 10px; white-space:nowrap; }
+.btn-config { width:32px; height:32px; border-radius:50%; border:none; background:rgba(255,255,255,0.1); color:var(--white); font-size:15px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.back-btn { width:32px; height:32px; border-radius:50%; border:none; background:rgba(255,255,255,0.1); color:var(--white); font-size:16px; cursor:pointer; }
+
+.content { flex:1; padding:16px; padding-bottom:100px; max-width:520px; margin:0 auto; width:100%; }
+
+.mode-toggle { display:flex; background:var(--white); border-radius:var(--radius); padding:4px; box-shadow:var(--shadow-sm); margin-bottom:16px; }
+.mode-btn { flex:1; padding:12px 8px; border:none; background:none; border-radius:var(--radius-sm); font-family:'DM Sans',sans-serif; font-size:13px; font-weight:700; color:var(--gray-400); cursor:pointer; transition:.2s; }
+.mode-btn.active-real { background:var(--navy); color:var(--white); }
+.mode-btn.active-insp { background:linear-gradient(135deg,var(--gold),var(--gold-light)); color:var(--navy); }
+
+.card { background:var(--white); border-radius:var(--radius); padding:16px; box-shadow:var(--shadow-sm); margin-bottom:14px; }
+.card-title { font-size:13px; font-weight:700; color:var(--navy); margin-bottom:12px; display:flex; align-items:center; gap:6px; }
+.badge-mode { font-size:10px; font-weight:700; padding:3px 9px; border-radius:10px; text-transform:uppercase; letter-spacing:0.5px; }
+.badge-real { background:rgba(46,109,164,0.1); color:var(--blue); }
+.badge-insp { background:rgba(200,146,58,0.12); color:var(--gold); }
+
+.form-label { display:block; font-size:11px; font-weight:600; color:var(--gray-600); margin-bottom:5px; margin-top:10px; text-transform:uppercase; letter-spacing:0.4px; }
+.form-input, .form-select, textarea.form-input { width:100%; padding:11px 13px; border:1.5px solid var(--gray-200); border-radius:var(--radius-sm); font-family:'DM Sans',sans-serif; font-size:14px; background:var(--white); }
+textarea.form-input { resize:none; }
+
+.folio-search-wrap { display:flex; gap:8px; }
+.folio-search-wrap .form-input { flex:1; }
+.btn-buscar-folio { padding:0 16px; background:var(--navy); color:#fff; border:none; border-radius:var(--radius-sm); font-size:13px; font-weight:700; cursor:pointer; }
+
+.specs-preview { background:rgba(46,109,164,0.05); border-left:3px solid var(--blue); border-radius:var(--radius-sm); padding:10px 12px; margin-top:10px; font-size:12px; color:var(--navy); line-height:1.6; display:none; }
+.specs-preview.visible { display:block; }
+.specs-preview b { color:var(--blue); }
+
+.upload-zone { border:2px dashed var(--gray-200); border-radius:var(--radius); padding:28px 16px; text-align:center; cursor:pointer; transition:.2s; background:var(--off-white); }
+.upload-zone.has-image { padding:0; border-style:solid; overflow:hidden; }
+.upload-zone img { width:100%; display:block; max-height:320px; object-fit:cover; }
+.upload-icon { font-size:32px; margin-bottom:8px; }
+.upload-text { font-size:13px; color:var(--gray-600); font-weight:600; }
+.upload-sub { font-size:11px; color:var(--gray-400); margin-top:4px; }
+input[type=file] { display:none; }
+
+.style-chips { display:flex; flex-wrap:wrap; gap:7px; margin-top:8px; }
+.chip { padding:7px 13px; border-radius:16px; border:1.5px solid var(--gray-200); background:var(--white); font-size:12px; font-weight:600; color:var(--gray-600); cursor:pointer; }
+.chip.active { background:var(--gold); border-color:var(--gold); color:var(--navy); }
+
+.btn-generar { width:100%; padding:15px; background:linear-gradient(135deg,var(--navy),#2A4F7A); color:#fff; border:none; border-radius:var(--radius); font-size:14px; font-weight:700; cursor:pointer; box-shadow:var(--shadow-md); margin-top:6px; }
+.btn-generar:disabled { opacity:0.5; cursor:not-allowed; }
+.btn-generar.insp { background:linear-gradient(135deg,var(--gold),var(--gold-light)); color:var(--navy); }
+
+.result-wrap { display:none; }
+.result-wrap.visible { display:block; }
+.result-img-box { position:relative; border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow-md); }
+.result-img-box img { width:100%; display:block; }
+.result-tag { position:absolute; top:10px; left:10px; padding:5px 12px; border-radius:14px; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; backdrop-filter:blur(4px); }
+.tag-real { background:rgba(46,109,164,0.85); color:#fff; }
+.tag-insp { background:rgba(200,146,58,0.9); color:var(--navy); }
+.result-actions { display:flex; gap:8px; margin-top:12px; }
+.result-actions button { flex:1; padding:12px; border-radius:var(--radius-sm); border:none; font-size:12px; font-weight:700; cursor:pointer; }
+.btn-wa { background:#25D366; color:#fff; }
+.btn-save { background:var(--navy); color:#fff; }
+.btn-retry { background:var(--gray-100); color:var(--gray-600); }
+
+.disclaimer { font-size:11px; color:var(--gray-400); text-align:center; margin-top:10px; padding:0 10px; line-height:1.5; }
+.disclaimer.insp-warn { color:var(--gold); font-weight:600; }
+
+.loading-overlay { display:none; position:fixed; inset:0; background:rgba(27,58,92,0.85); z-index:500; align-items:center; justify-content:center; flex-direction:column; gap:14px; }
+.loading-overlay.visible { display:flex; }
+.spinner { width:40px; height:40px; border:3px solid rgba(255,255,255,0.2); border-top-color:var(--gold); border-radius:50%; animation:spin 0.8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.loading-text { color:#fff; font-size:13px; font-weight:600; }
+
+.config-ov { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:600; align-items:flex-end; }
+.config-ov.visible { display:flex; }
+.config-card { background:#fff; width:100%; border-radius:20px 20px 0 0; padding:20px; }
+.config-card .form-input { margin-top:6px; }
+.config-close { width:100%; padding:13px; margin-top:14px; background:var(--navy); color:#fff; border:none; border-radius:var(--radius); font-weight:700; cursor:pointer; }
+.config-help { font-size:11px; color:var(--gray-400); margin-top:8px; line-height:1.5; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div class="header">
+    <div class="header-logo">
+      <button class="back-btn" onclick="history.back()">←</button>
+      <div>
+        <div class="logo-text">Render IA</div>
+        <span class="logo-sub">BarrCan</span>
+      </div>
+    </div>
+    <div class="header-right">
+      <span id="conn-status">●</span>
+      <button class="btn-config" onclick="abrirConfig()">⚙️</button>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <div class="mode-toggle">
+      <button id="btn-modo-real" class="mode-btn active-real" onclick="cambiarModo('real')">🔧 Modo Real</button>
+      <button id="btn-modo-insp" class="mode-btn" onclick="cambiarModo('inspiracion')">✨ Inspiración</button>
+    </div>
+
+    <!-- ═══ MODO REAL ═══ -->
+    <div id="panel-real">
+      <div class="card">
+        <div class="card-title"><span class="badge-mode badge-real">Vinculado a folio</span></div>
+        <div class="form-label">Folio de cotización</div>
+        <div class="folio-search-wrap">
+          <input type="text" id="real-folio" class="form-input" placeholder="Ej: 1782178907222" autocapitalize="none">
+          <button class="btn-buscar-folio" onclick="buscarFolio()">Buscar</button>
+        </div>
+        <div id="real-specs" class="specs-preview"></div>
+
+        <div id="real-partida-wrap" style="display:none">
+          <div class="form-label">Pieza cotizada (este folio tiene varias)</div>
+          <select id="real-partida-select" class="form-select" onchange="seleccionarPartida(this.value)"></select>
+        </div>
+
+        <div id="real-acabado-wrap" style="display:none">
+          <div class="form-label">Acabado del perfil (no viene en la cotización — selecciónalo)</div>
+          <select id="real-acabado" class="form-select">
+            <option value="Natural">Natural</option>
+            <option value="Natural Brillante">Natural Brillante</option>
+            <option value="Blanco">Blanco</option>
+            <option value="Champagne">Champagne</option>
+            <option value="Negro">Negro</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ MODO INSPIRACIÓN ═══ -->
+    <div id="panel-insp" style="display:none">
+      <div class="card">
+        <div class="card-title"><span class="badge-mode badge-insp">Exploración libre</span></div>
+        <div class="form-label">Tipo de producto</div>
+        <select id="insp-tipo" class="form-select">
+          <option value="cancel de baño">Cancel de baño</option>
+          <option value="ventana corrediza de aluminio">Ventana corrediza</option>
+          <option value="puerta de aluminio">Puerta de aluminio</option>
+          <option value="cancel frameless">Cancel frameless</option>
+        </select>
+        <div class="form-label">Estilo / acabado a explorar</div>
+        <div class="style-chips" id="insp-chips">
+          <div class="chip active" data-v="perfil champagne, vidrio templado transparente">Champagne</div>
+          <div class="chip" data-v="perfil negro mate, vidrio templado transparente">Negro mate</div>
+          <div class="chip" data-v="perfil natural aluminio, vidrio esmerilado">Natural + esmerilado</div>
+          <div class="chip" data-v="perfil blanco, vidrio templado transparente">Blanco</div>
+        </div>
+        <div class="form-label">Notas adicionales (opcional)</div>
+        <textarea id="insp-notas" class="form-input" rows="2" placeholder="Ej: estilo minimalista, jaladera tipo C..."></textarea>
+      </div>
+    </div>
+
+    <!-- ═══ FOTO (compartida) ═══ -->
+    <div class="card">
+      <div class="card-title">📷 Foto del espacio</div>
+      <div class="upload-zone" id="upload-zone" onclick="document.getElementById('foto-input').click()">
+        <div id="upload-placeholder">
+          <div class="upload-icon">📸</div>
+          <div class="upload-text">Toca para subir o tomar foto</div>
+          <div class="upload-sub">De frente, buena luz, hueco completo visible</div>
+        </div>
+        <img id="upload-preview" style="display:none">
+      </div>
+      <input type="file" id="foto-input" accept="image/*" capture="environment" onchange="onFotoSeleccionada(this)">
+    </div>
+
+    <button id="btn-generar" class="btn-generar" onclick="generarRender()" disabled>
+      🪄 Generar Render Real
+    </button>
+    <div class="disclaimer" id="disclaimer-text">
+      La imagen se ajusta a las medidas y specs de la cotización — así vas a quedar.
+    </div>
+
+    <!-- ═══ RESULTADO ═══ -->
+    <div class="result-wrap" id="result-wrap">
+      <div class="result-img-box">
+        <span class="result-tag" id="result-tag">Modo Real</span>
+        <img id="result-img">
+      </div>
+      <div class="result-actions">
+        <button class="btn-wa" onclick="compartirWA()">💬 WhatsApp</button>
+        <button class="btn-save" onclick="guardarRender()">💾 Guardar</button>
+        <button class="btn-retry" onclick="reintentarRender()">🔄 Ajustar</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="loading-overlay" id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loading-text">Generando render...</div>
+</div>
+
+<!-- Config API key -->
+<div class="config-ov" id="config-ov">
+  <div class="config-card">
+    <div style="font-weight:700;font-size:15px;margin-bottom:4px">Configuración · API Gemini</div>
+    <div class="form-label">API Key</div>
+    <input type="password" id="cfg-apikey" class="form-input" placeholder="AIza...">
+    <div class="config-help">
+      Se guarda solo en este dispositivo (localStorage), no se sube a ningún servidor de BarrCan.
+      Consíguela gratis en aistudio.google.com/apikey. Ojo: es visible en el código del navegador —
+      cuando el uso crezca, conviene moverla a una función proxy (Supabase Edge Function).
+    </div>
+    <button class="config-close" onclick="guardarConfig()">Guardar</button>
+  </div>
+</div>
+
+<script>
+// ── Supabase ─────────────────────────────────────────────────────
+var SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co';
+var SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
+var _sbClient = null;
+function sb() {
+  if (!_sbClient && window.supabase) {
+    _sbClient = window.supabase.createClient(SB_URL, SB_KEY, {
+      db: { schema: 'barrcan' },
+      auth: { persistSession: true, storageKey: 'barrcan_auth' }
+    });
+  }
+  return _sbClient;
+}
+
+var APP_VERSION = 'v1.1.0';
+
+// ── Conexión ─────────────────────────────────────────────────────
+var SYNC = { online: navigator.onLine };
+window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); });
+window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
+function detectarConexion() {
+  var badge = document.getElementById('conn-status');
+  if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline') + ' · ' + APP_VERSION;
+}
+
+function toast(msg, dur) {
+  dur = dur || 2800;
+  var el = document.getElementById('_toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = '_toast';
+    el.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);'
+      + 'background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;'
+      + 'z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;'
+      + 'max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.style.opacity = '1';
+  clearTimeout(el._t);
+  el._t = setTimeout(function() { el.style.opacity = '0'; }, dur);
+}
+
+// ── Estado ───────────────────────────────────────────────────────
+var MODO = 'real';           // 'real' | 'inspiracion'
+var FOTO_BASE64 = null;      // sin prefijo data:
+var FOTO_MIME = null;
+var FOLIO_DATA = null;       // specs cargadas de Supabase en modo real
+var ULTIMO_RESULT_B64 = null;
+
+// ── Config API key ───────────────────────────────────────────────
+function abrirConfig() {
+  document.getElementById('cfg-apikey').value = localStorage.getItem('barrcan_gemini_key') || '';
+  document.getElementById('config-ov').classList.add('visible');
+}
+function guardarConfig() {
+  var k = document.getElementById('cfg-apikey').value.trim();
+  if (k) localStorage.setItem('barrcan_gemini_key', k);
+  document.getElementById('config-ov').classList.remove('visible');
+  toast('✓ Configuración guardada');
+}
+
+// ── Modo ─────────────────────────────────────────────────────────
+function cambiarModo(m) {
+  MODO = m;
+  document.getElementById('btn-modo-real').classList.toggle('active-real', m === 'real');
+  document.getElementById('btn-modo-insp').classList.toggle('active-insp', m === 'inspiracion');
+  document.getElementById('panel-real').style.display = m === 'real' ? 'block' : 'none';
+  document.getElementById('panel-insp').style.display = m === 'inspiracion' ? 'block' : 'none';
+  var btn = document.getElementById('btn-generar');
+  btn.classList.toggle('insp', m === 'inspiracion');
+  btn.textContent = m === 'real' ? '🪄 Generar Render Real' : '✨ Generar Inspiración';
+  document.getElementById('disclaimer-text').textContent = m === 'real'
+    ? 'La imagen se ajusta a las medidas y specs de la cotización — así vas a quedar.'
+    : 'Render conceptual de exploración. No sustituye medidas ni cotización formal.';
+  document.getElementById('disclaimer-text').classList.toggle('insp-warn', m === 'inspiracion');
+  actualizarBotonGenerar();
+}
+
+// ── Chips de estilo (modo inspiración) ──────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  var chips = document.querySelectorAll('#insp-chips .chip');
+  for (var i = 0; i < chips.length; i++) {
+    chips[i].addEventListener('click', function() {
+      var all = document.querySelectorAll('#insp-chips .chip');
+      for (var j = 0; j < all.length; j++) all[j].classList.remove('active');
+      this.classList.add('active');
+    });
+  }
+  detectarConexion();
+});
+
+// ── Buscar folio (Modo Real) ─────────────────────────────────────
+// Estructura real: cotizaciones.partidas_json es un ARRAY de piezas.
+// Cada partida trae: sistema, serie, L (ancho mm), H (alto mm), vidTipo, etc.
+var PARTIDAS_ACTUALES = [];
+var CLIENTE_NOMBRE = '';
+
+async function buscarFolio() {
+  var folio = document.getElementById('real-folio').value.trim();
+  if (!folio) { toast('Escribe un folio'); return; }
+  if (!sb()) { toast('Sin conexión a Supabase'); return; }
+
+  var preview = document.getElementById('real-specs');
+  document.getElementById('real-partida-wrap').style.display = 'none';
+  document.getElementById('real-acabado-wrap').style.display = 'none';
+  preview.classList.remove('visible');
+  preview.innerHTML = 'Buscando…';
+  preview.classList.add('visible');
+
+  try {
+    var res = await sb().from('cotizaciones')
+      .select('folio,total,notas,partidas_json,clientes(nombre)')
+      .eq('folio', folio)
+      .limit(1)
+      .maybeSingle();
+
+    if (res.error) throw res.error;
+    if (!res.data) {
+      preview.innerHTML = '⚠ No se encontró el folio ' + folio + '. Verifica en Historial.';
+      FOLIO_DATA = null;
+      actualizarBotonGenerar();
+      return;
+    }
+
+    PARTIDAS_ACTUALES = res.data.partidas_json || [];
+    CLIENTE_NOMBRE = (res.data.clientes && res.data.clientes.nombre) || '';
+
+    if (!PARTIDAS_ACTUALES.length) {
+      preview.innerHTML = '⚠ Este folio no tiene partidas registradas.';
+      FOLIO_DATA = null;
+      actualizarBotonGenerar();
+      return;
+    }
+
+    if (PARTIDAS_ACTUALES.length > 1) {
+      var sel = document.getElementById('real-partida-select');
+      sel.innerHTML = '';
+      for (var i = 0; i < PARTIDAS_ACTUALES.length; i++) {
+        var p = PARTIDAS_ACTUALES[i];
+        var opt = document.createElement('option');
+        opt.value = i;
+        opt.textContent = (i + 1) + '. ' + (p.sistema || 'Pieza') + ' — ' + (p.L || '?') + '×' + (p.H || '?') + 'mm';
+        sel.appendChild(opt);
+      }
+      document.getElementById('real-partida-wrap').style.display = 'block';
+    }
+
+    document.getElementById('real-acabado-wrap').style.display = 'block';
+    seleccionarPartida(0);
+    toast('✓ Folio cargado');
+
+  } catch (e) {
+    preview.innerHTML = '⚠ Error al buscar: ' + e.message;
+    console.warn('buscarFolio:', e.message);
+  }
+}
+
+function seleccionarPartida(idx) {
+  idx = parseInt(idx, 10) || 0;
+  var p = PARTIDAS_ACTUALES[idx];
+  if (!p) return;
+
+  FOLIO_DATA = {
+    folio: document.getElementById('real-folio').value.trim(),
+    cliente: CLIENTE_NOMBRE,
+    sistema: p.sistema,
+    serie: p.serie,
+    ancho: p.L,
+    alto: p.H,
+    vidTipo: p.vidTipo,
+    notas: ''
+  };
+
+  var preview = document.getElementById('real-specs');
+  preview.innerHTML =
+    '<b>Cliente:</b> ' + (FOLIO_DATA.cliente || '— (sin registrar)') + '<br>' +
+    '<b>Sistema:</b> ' + (FOLIO_DATA.sistema || '—') + ' (' + (FOLIO_DATA.serie || '—') + ')<br>' +
+    '<b>Medidas:</b> ' + (FOLIO_DATA.ancho || '?') + ' × ' + (FOLIO_DATA.alto || '?') + ' mm<br>' +
+    '<b>Vidrio:</b> ' + (FOLIO_DATA.vidTipo || '—');
+  preview.classList.add('visible');
+  actualizarBotonGenerar();
+}
+
+// ── Foto ─────────────────────────────────────────────────────────
+function onFotoSeleccionada(input) {
+  var file = input.files[0];
+  if (!file) return;
+  FOTO_MIME = file.type || 'image/jpeg';
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var dataUrl = e.target.result;
+    FOTO_BASE64 = dataUrl.split(',')[1];
+    var img = document.getElementById('upload-preview');
+    img.src = dataUrl;
+    img.style.display = 'block';
+    document.getElementById('upload-placeholder').style.display = 'none';
+    document.getElementById('upload-zone').classList.add('has-image');
+    actualizarBotonGenerar();
+  };
+  reader.readAsDataURL(file);
+}
+
+function actualizarBotonGenerar() {
+  var btn = document.getElementById('btn-generar');
+  var listo = !!FOTO_BASE64 && (MODO === 'inspiracion' || !!FOLIO_DATA);
+  btn.disabled = !listo;
+}
+
+// ── Construcción del prompt ──────────────────────────────────────
+function construirPrompt() {
+  if (MODO === 'real' && FOLIO_DATA) {
+    var d = FOLIO_DATA;
+    var acabado = document.getElementById('real-acabado').value;
+    return 'Edita esta fotografía real de un espacio para instalar un producto de aluminio y vidrio de la marca BarrCan, '
+      + 'manteniendo exactamente la perspectiva, iluminación, sombras, muros, piso y proporciones originales de la foto. '
+      + 'No inventes ni modifiques nada fuera del hueco/área donde debe ir el producto. '
+      + 'Producto a insertar: ' + (d.sistema || 'sistema de aluminio') + ', serie ' + (d.serie || '') + '. '
+      + 'Medidas: ' + (d.ancho || '?') + 'mm de ancho por ' + (d.alto || '?') + 'mm de alto. '
+      + 'Acabado de perfil de aluminio: ' + acabado + '. Vidrio: ' + (d.vidTipo || 'templado transparente') + '. '
+      + 'El resultado debe verse fotorrealista, como si el producto ya estuviera instalado en esa foto exacta, '
+      + 'sin cambiar el encuadre ni agregar elementos decorativos que no se pidieron.'
+      + (d.notas ? (' Notas adicionales: ' + d.notas) : '');
+  } else {
+    var tipo = document.getElementById('insp-tipo').value;
+    var chipActivo = document.querySelector('#insp-chips .chip.active');
+    var estilo = chipActivo ? chipActivo.getAttribute('data-v') : '';
+    var notas = document.getElementById('insp-notas').value.trim();
+    return 'Edita esta fotografía real de un espacio para mostrar, a modo de exploración conceptual, '
+      + 'cómo se vería un ' + tipo + ' de la marca BarrCan instalado en ese espacio, con ' + estilo + '. '
+      + 'Mantén la perspectiva e iluminación de la foto original, pero tienes libertad creativa razonable '
+      + 'en el diseño del producto (líneas, jaladeras, distribución de paneles) siempre dentro de un estilo realista y fabricable en aluminio y vidrio.'
+      + (notas ? (' Detalles adicionales: ' + notas) : '');
+  }
+}
+
+// ── Llamada a Gemini (Nano Banana) ───────────────────────────────
+async function generarRender() {
+  var apiKey = localStorage.getItem('barrcan_gemini_key');
+  if (!apiKey) { toast('⚠ Configura tu API key primero (⚙️)'); abrirConfig(); return; }
+  if (!FOTO_BASE64) { toast('Sube una foto primero'); return; }
+  if (MODO === 'real' && !FOLIO_DATA) { toast('Busca un folio válido primero'); return; }
+  if (!navigator.onLine) { toast('📵 Necesitas conexión a internet para generar el render'); return; }
+
+  var prompt = construirPrompt();
+  var overlay = document.getElementById('loading-overlay');
+  document.getElementById('loading-text').textContent = MODO === 'real' ? 'Generando render real…' : 'Explorando estilos…';
+  overlay.classList.add('visible');
+
+  try {
+    var model = 'gemini-3.1-flash-image';
+    var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey;
+
+    var body = {
+      contents: [{
+        parts: [
+          { text: prompt },
+          { inline_data: { mime_type: FOTO_MIME, data: FOTO_BASE64 } }
+        ]
+      }]
+    };
+
+    var resp = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    var data = await resp.json();
+    if (!resp.ok) throw new Error((data.error && data.error.message) || 'Error de la API');
+
+    var parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
+    var imgPart = null;
+    if (parts) {
+      for (var i = 0; i < parts.length; i++) {
+        if (parts[i].inline_data || parts[i].inlineData) {
+          imgPart = parts[i].inline_data || parts[i].inlineData;
+          break;
+        }
+      }
+    }
+    if (!imgPart) throw new Error('La API no regresó una imagen. Intenta de nuevo o ajusta el prompt.');
+
+    ULTIMO_RESULT_B64 = imgPart.data;
+    document.getElementById('result-img').src = 'data:' + (imgPart.mime_type || imgPart.mimeType || 'image/png') + ';base64,' + ULTIMO_RESULT_B64;
+    document.getElementById('result-tag').textContent = MODO === 'real' ? '🔧 Modo Real' : '✨ Inspiración';
+    document.getElementById('result-tag').className = 'result-tag ' + (MODO === 'real' ? 'tag-real' : 'tag-insp');
+    document.getElementById('result-wrap').classList.add('visible');
+    document.getElementById('result-wrap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    toast('✓ Render generado');
+
+  } catch (e) {
+    console.warn('generarRender:', e.message);
+    toast('⚠ ' + e.message, 4000);
+  } finally {
+    overlay.classList.remove('visible');
+  }
+}
+
+function reintentarRender() {
+  document.getElementById('result-wrap').classList.remove('visible');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ── Compartir / Guardar ──────────────────────────────────────────
+function compartirWA() {
+  if (!ULTIMO_RESULT_B64) return;
+  var texto = MODO === 'real'
+    ? 'Así se vería tu ' + (FOLIO_DATA ? FOLIO_DATA.sistema : 'producto') + ' instalado (folio ' + (FOLIO_DATA ? FOLIO_DATA.folio : '') + ') — BarrCan'
+    : 'Una idea de cómo podría verse tu espacio con BarrCan ✨';
+  window.open('https://wa.me/?text=' + encodeURIComponent(texto), '_blank');
+  toast('Descarga la imagen y adjúntala en WhatsApp');
+}
+
+async function guardarRender() {
+  if (!ULTIMO_RESULT_B64) return;
+  if (!sb()) { toast('Sin conexión a Supabase'); return; }
+  try {
+    var byteChars = atob(ULTIMO_RESULT_B64);
+    var byteNumbers = new Array(byteChars.length);
+    for (var i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+    var blob = new Blob([new Uint8Array(byteNumbers)], { type: 'image/png' });
+    var nombre = (MODO === 'real' && FOLIO_DATA ? FOLIO_DATA.folio : 'inspiracion') + '_' + Date.now() + '.png';
+
+    var up = await sb().storage.from('renders').upload(nombre, blob, { contentType: 'image/png' });
+    if (up.error) throw up.error;
+
+    toast('✓ Guardado en Supabase Storage');
+  } catch (e) {
+    console.warn('guardarRender:', e.message);
+    toast('⚠ No se pudo guardar: ' + e.message + ' (verifica que exista el bucket "renders")', 4000);
+  }
+}
+
+detectarConexion();
+</script>
+</body>
+</html>
