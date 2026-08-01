@@ -7,8 +7,15 @@
 <title>BarrCan · Render IA</title>
 <!--
   BARRCAN · MÓDULO: RENDER IA (standalone)
-  VERSIÓN : v1.1.0
-  FECHA   : 2026-07-31
+  VERSIÓN : v1.2.0
+  FECHA   : 2026-08-01
+  v1.2.0 — Fix: modelo de pago sin cuota gratis
+    - FIX: gemini-3.1-flash-image quedó fuera del nivel gratuito de Google
+           (cuota 0 confirmada por error real en pruebas) — se cambia a
+           gemini-2.5-flash-image ("Nano Banana" original), que sí tiene
+           cuota gratuita (hasta ~500 solicitudes/día)
+    - Nota: cuando actives facturación en tu cuenta de Google, puedes volver
+           a gemini-3.1-flash-image (mejor calidad) cambiando esta constante
   v1.1.0 — Ajuste a estructura real de Supabase
     - FIX: cotizaciones no tiene columnas sueltas de specs — vienen dentro de
            `partidas_json` (array, una cotización puede tener varias piezas)
@@ -288,7 +295,7 @@ function sb() {
   return _sbClient;
 }
 
-var APP_VERSION = 'v1.1.0';
+var APP_VERSION = 'v1.2.0';
 
 // ── Conexión ─────────────────────────────────────────────────────
 var SYNC = { online: navigator.onLine };
@@ -524,7 +531,7 @@ async function generarRender() {
   overlay.classList.add('visible');
 
   try {
-    var model = 'gemini-3.1-flash-image';
+    var model = 'gemini-2.5-flash-image'; // Nano Banana original — sí tiene cuota gratis (hasta 500/día)
     var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey;
 
     var body = {
