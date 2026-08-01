@@ -7,8 +7,13 @@
 <title>BarrCan · Render IA</title>
 <!--
   BARRCAN · MÓDULO: RENDER IA (standalone)
-  VERSIÓN : v1.2.0
+  VERSIÓN : v1.2.1
   FECHA   : 2026-08-01
+  v1.2.1 — Fix selector de foto
+    - FIX: el input de foto tenía capture="environment", lo que en Android
+           forzaba la cámara directo y no dejaba elegir de galería. Se quita
+           el atributo para que el navegador muestre el selector nativo
+           (cámara o galería) tal como se anuncia en el texto de ayuda.
   v1.2.0 — Fix: modelo de pago sin cuota gratis
     - FIX: gemini-3.1-flash-image quedó fuera del nivel gratuito de Google
            (cuota 0 confirmada por error real en pruebas) — se cambia a
@@ -234,7 +239,7 @@ input[type=file] { display:none; }
         </div>
         <img id="upload-preview" style="display:none">
       </div>
-      <input type="file" id="foto-input" accept="image/*" capture="environment" onchange="onFotoSeleccionada(this)">
+      <input type="file" id="foto-input" accept="image/*" onchange="onFotoSeleccionada(this)">
     </div>
 
     <button id="btn-generar" class="btn-generar" onclick="generarRender()" disabled>
@@ -295,7 +300,7 @@ function sb() {
   return _sbClient;
 }
 
-var APP_VERSION = 'v1.2.0';
+var APP_VERSION = 'v1.2.1';
 
 // ── Conexión ─────────────────────────────────────────────────────
 var SYNC = { online: navigator.onLine };
