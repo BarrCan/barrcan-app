@@ -6,8 +6,13 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
-  VERSION : v1.8
-  FECHA   : 2026-07-22
+  VERSION : v1.9
+  FECHA   : 2026-07-31
+  v1.9 - Agregada la tarjeta del módulo Render IA (render_ia.html) al
+    grupo "Ventas & Cotizadores" (supremo+admin, mismo permiso que el
+    resto del grupo) — visualización de productos sobre foto real del
+    cliente usando IA (Gemini/Nano Banana), con Modo Real (vinculado a
+    folio de cotización) y Modo Inspiración (exploración libre).
   v1.8 - centrado de teclado   
   v1.7 - Agregado el módulo de Garantías al portal (supremo+admin).
   v1.6 - Permisos por rol en el portal:
@@ -169,7 +174,8 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
         <div class="portal-rol" id="portal-rol"></div>
       </div>
     </div>
-    <div style="display:flex;gap:6px">
+    <div style="display:flex;gap:6px;align-items:center">
+      <span id="conn-status" style="font-size:10px;color:rgba(255,255,255,.4)"></span>
       <button class="portal-salir" id="btn-admin-usuarios" onclick="abrirAdminUsuarios()" style="display:none">&#9881;&#65039; Usuarios</button>
       <button class="portal-salir" onclick="cerrarSesion()">Salir</button>
     </div>
@@ -184,6 +190,7 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
       <a class="modulo-card" href="cotizador_eurovent.html"><div class="modulo-icono">🌐</div><div class="modulo-nombre">Eurovent</div><div class="modulo-desc">Línea europea</div></a>
       <a class="modulo-card" href="cotizador_banos.html"><div class="modulo-icono">🚿</div><div class="modulo-nombre">Baños</div><div class="modulo-desc">Canceles</div></a>
       <a class="modulo-card" href="cotizador_servicios.html"><div class="modulo-icono">🪞</div><div class="modulo-nombre">Servicios</div><div class="modulo-desc">Espejos y garantía</div></a>
+      <a class="modulo-card" href="render_ia.html"><div class="modulo-icono">✨</div><div class="modulo-nombre">Render IA</div><div class="modulo-desc">Visualización con foto real</div></a>
       <a class="modulo-card" href="clientes.html"><div class="modulo-icono">👥</div><div class="modulo-nombre">Clientes</div><div class="modulo-desc">Directorio</div></a>
     </div>
 
@@ -295,6 +302,7 @@ function sb(){
 }
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
+var APP_VERSION = 'v1.9';
 var USUARIOS = [];
 var USUARIO_SEL = null;   // el que se está tratando de loguear
 var PIN_BUFFER = '';
@@ -431,6 +439,8 @@ function entrarAlPortal() {
   document.getElementById('portal-nombre').textContent = USUARIO_SEL.apodo || USUARIO_SEL.nombre;
   document.getElementById('portal-rol').textContent = USUARIO_SEL.rol === 'admin' ? 'Administrador' : USUARIO_SEL.rol === 'taller' ? 'Taller' : 'Técnico';
   document.getElementById('pantalla-portal').style.display = 'block';
+  var connEl = document.getElementById('conn-status');
+  if (connEl) connEl.textContent = APP_VERSION;
   var btnAdmin = document.getElementById('btn-admin-usuarios');
   if (btnAdmin) btnAdmin.style.display = nivelAcceso(USUARIO_SEL) === 'supremo' ? 'inline-block' : 'none';
   filtrarModulosPorRol();
