@@ -7,8 +7,12 @@
 <title>BarrCan · Render IA</title>
 <!--
   BARRCAN · MÓDULO: RENDER IA (standalone)
-  VERSIÓN : v1.2.1
-  FECHA   : 2026-08-01
+  VERSIÓN : v1.3.0
+  FECHA   : 2026-08-02
+  v1.3.0 — Facturación activada
+    - Mau activó facturación prepago en Google Cloud ($500 MXN de saldo)
+    - Se regresa al modelo gemini-3.1-flash-image (mejor calidad que 2.5),
+      ya que ambos requieren facturación de todos modos
   v1.2.1 — Fix selector de foto
     - FIX: el input de foto tenía capture="environment", lo que en Android
            forzaba la cámara directo y no dejaba elegir de galería. Se quita
@@ -300,7 +304,7 @@ function sb() {
   return _sbClient;
 }
 
-var APP_VERSION = 'v1.2.1';
+var APP_VERSION = 'v1.3.0';
 
 // ── Conexión ─────────────────────────────────────────────────────
 var SYNC = { online: navigator.onLine };
@@ -536,7 +540,7 @@ async function generarRender() {
   overlay.classList.add('visible');
 
   try {
-    var model = 'gemini-2.5-flash-image'; // Nano Banana original — sí tiene cuota gratis (hasta 500/día)
+    var model = 'gemini-3.1-flash-image'; // facturación activa (prepago) — mejor calidad
     var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + apiKey;
 
     var body = {
