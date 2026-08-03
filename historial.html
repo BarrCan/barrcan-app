@@ -6,6 +6,26 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v2.4
+  FECHA   : 2026-07-29
+  v2.4 — Reconciliación de versión + orden por folio recuperado:
+    - El archivo base usado para editar se había quedado en v2.0
+      (v2.1-v2.5 de otra sesión nunca llegaron a esta copia). Se
+      recuperó lo confirmado en chats: orden de la lista por FOLIO
+      ascendente (.order('folio', {ascending:true})) en vez de por
+      fecha de creación descendente -- se había perdido con la base
+      vieja. El resto (Declinado, ocultar cerrados) ya se había
+      reconstruido en v2.1-v2.3 y quedó equivalente o mejor que el
+      original (revisa saldo real, no solo el estado).
+  VERSIÓN : v2.3
+  FECHA   : 2026-07-26
+  v2.3 — Ocultar declinados y pagados de la lista:
+    - Checkbox "Mostrar declinados y ya pagados" (oculto por default,
+      igual que se había armado el 21-jul, pero ahora también oculta
+      por SALDO REAL <= 0, no solo por estado="entregado" -- un
+      presupuesto puede estar "aprobado"/"en_produccion" y ya estar
+      pagado igual). Siempre se muestran todos si hay una búsqueda
+      activa. El contador indica cuántos quedaron ocultos.
   VERSIÓN : v2.2
   FECHA   : 2026-07-26
   v2.2 — Restaurado estado "Declinado":
@@ -1100,7 +1120,11 @@ body{min-height:100vh}
         <button onclick="presCargar()" style="padding:6px 10px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:11px;font-weight:700;cursor:pointer">Actualizar</button>
       </div>
       <input type="text" id="pres-buscar" placeholder="Buscar por folio o cliente..." oninput="presFiltrar()"
-        style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;margin-bottom:10px;box-sizing:border-box">
+        style="width:100%;padding:9px 12px;border:1.5px solid var(--gray-200);border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-size:13px;margin-bottom:8px;box-sizing:border-box">
+      <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--gray-400);margin-bottom:10px;cursor:pointer">
+        <input type="checkbox" id="pres-ver-cerrados" onchange="presFiltrar()" style="width:15px;height:15px">
+        Mostrar declinados y ya pagados
+      </label>
       <div id="pres-contador" style="font-size:11px;color:var(--gray-400);margin-bottom:8px"></div>
       <div id="pres-lista">
         <div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">Cargando...</div>
@@ -1252,7 +1276,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v2.2';
+var APP_VERSION = 'v2.4';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1343,7 +1367,7 @@ async function presCargar() {
   try {
     var result = await sb().from('presupuestos_atrasados')
       .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,fecha,estado,created_at')
-      .order('created_at', { ascending: false })
+      .order('folio', { ascending: true })
       .range(0, 499);
 
     if (result.error) throw result.error;
@@ -1378,20 +1402,36 @@ async function presCargar() {
 // ── Render lista ──────────────────────────────────────────────────
 function presFiltrar() {
   var q = (document.getElementById('pres-buscar').value || '').toLowerCase().trim();
+  var verCerrados = document.getElementById('pres-ver-cerrados').checked;
   var datos = q ? PRES_CACHE.filter(function(p) {
     return (p.folio || '').toLowerCase().indexOf(q) >= 0
       || (p.cliente || '').toLowerCase().indexOf(q) >= 0;
   }) : PRES_CACHE;
+  // Por default se ocultan los declinados y los ya liquidados (saldo real
+  // <= 0) para no saturar la vista -- se pueden ver con el checkbox de
+  // arriba, y siempre se muestran si hay una búsqueda activa.
+  var ocultos = 0;
+  if (!q && !verCerrados) {
+    var antes = datos.length;
+    datos = datos.filter(function(p) {
+      var pagado = (parseFloat(p.saldo) || 0) <= 0;
+      return p.estado !== 'declinado' && !pagado;
+    });
+    ocultos = antes - datos.length;
+  }
   presRenderLista(datos);
-  presActualizarContador();
+  presActualizarContador(ocultos);
 }
 
-function presActualizarContador() {
+function presActualizarContador(ocultos) {
   var pendientes = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes') || '[]');
   var el = document.getElementById('pres-contador');
   var txt = PRES_CACHE.length
     ? PRES_CACHE.length + ' presupuesto' + (PRES_CACHE.length > 1 ? 's' : '')
     : '';
+  if (ocultos) {
+    txt += ' &middot; ' + ocultos + ' oculto' + (ocultos > 1 ? 's' : '') + ' (declinado/pagado)';
+  }
   if (pendientes.length) {
     txt += ' &middot; <span onclick="presReintentarPendientes()" '
       + 'style="color:var(--gold);font-weight:700;cursor:pointer;text-decoration:underline">'
