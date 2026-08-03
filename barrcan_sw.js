@@ -1,25 +1,34 @@
 // ══════════════════════════════════════════════
-// BarrCan Service Worker v4 — Offline First
+// BarrCan Service Worker v8 — Offline First
 // Estrategia: Cache First para app shell
 // Supabase y APIs externas: Network Only
 // ══════════════════════════════════════════════
 
-const CACHE_VERSION = 'barrcan-v7'; // incrementar version fuerza re-cache en todos los dispositivos
+const CACHE_VERSION = 'barrcan-v8'; // subir este número fuerza que TODOS los
+// dispositivos descarten su caché vieja y vuelvan a bajar todo de GitHub —
+// úsalo cada vez que subas cambios importantes y quieras que se reflejen
+// de inmediato, no solo hasta la segunda recarga.
 
 const RECURSOS_CORE = [
   './barrcan_app.html',
   './garantia_publica.html',
+  './barrcan_brain.html',
   './historial.html',
   './pagos.html',
   './entregas.html',
   './ordenes.html',
+  './compras.html',
+  './cotizador_nacional.html',
+  './cotizador_espanol.html',
+  './cotizador_eurovent.html',
+  './cotizador_servicios.html',
+  './cotizador_banos.html',
 ];
 
 const DOMINIOS_CACHEABLE = [
   'fonts.googleapis.com',
   'fonts.gstatic.com',
   'cdn.jsdelivr.net',
-  'cdnjs.cloudflare.com',
 ];
 
 // Dominios que NUNCA se cachean (siempre network)
@@ -75,24 +84,9 @@ self.addEventListener('fetch', event => {
 
 async function cachePrimero(request) {
   const cache  = await caches.open(CACHE_VERSION);
-
-  // Network First para archivos HTML — siempre intenta traer la version mas nueva
-  // Si falla la red, cae al cache (offline-first real)
-  if (request.url.endsWith('.html')) {
-    try {
-      const response = await fetch(request);
-      if (response && response.status === 200) {
-        cache.put(request, response.clone());
-      }
-      return response;
-    } catch(e) {
-      const cached = await cache.match(request);
-      return cached || new Response('Sin conexion', { status: 503 });
-    }
-  }
-
-  // Cache First para fuentes, CSS, JS de terceros (no cambian)
   const cached = await cache.match(request);
+
+  // Actualizar en background
   const fetchPromise = fetch(request)
     .then(response => {
       if (response && response.status === 200) {
@@ -104,8 +98,3 @@ async function cachePrimero(request) {
 
   return cached || fetchPromise;
 }
-
-// Activar nueva versión inmediatamente cuando la app lo pida
-self.addEventListener('message', e => {
-  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
-});
