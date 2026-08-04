@@ -5,7 +5,56 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Servicios y Accesorios</title>
 <!--
-  BARRCAN SERVICIOS Y ACCESORIOS v1.5.0
+  BARRCAN SERVICIOS Y ACCESORIOS v1.9.0
+  v1.9.0 - FIX RAÍZ de 3 bugs reportados (pestañas, combo, mano de obra):
+    - Causa real encontrada: TODO el script vive dentro de un IIFE
+      (function(){...})(); -- cualquier función llamada desde onclick/
+      onchange en el HTML necesita exponerse a window explícitamente,
+      o la llamada falla en silencio (ReferenceError atrapado por el
+      navegador, sin mensaje visible). Las funciones agregadas hoy
+      (snSelSubcat, servComboToggle, servComboCant, servToggleCombo,
+      servActualizarAjustes) nunca se agregaron a esa lista de
+      exposición -- por eso: las pestañas Ventanas/Puertas/Baños no
+      hacían nada al tocarlas, las casillas del combo se veían marcadas
+      pero nunca se guardaban de verdad (de ahí "selecciona al menos 1"
+      con casillas ya marcadas), y cambiar Personas en Mano de obra no
+      recalculaba el total.
+    - Se agregó una verificación automática (script de comparación
+      onclick/onchange vs. window.expuestas) para detectar esto antes
+      de publicar, no solo revisando a ojo.
+  VERSION : v1.8.0
+  v1.8.0 - Fórmula simplificada y más barata para Mantenimiento:
+    - Se reemplazó GIF+GA+Utilidad apilados (~89% efectivo sobre
+      material) por un solo "Margen Mantenimiento" (default 35%,
+      config_precios.margen_mant_pct) -- más simple de explicar y más
+      barato para el cliente. Solo aplica a Servicio/Mantenimiento;
+      instalaciones completas y Espejos siguen con GIF+GA+Utilidad
+      igual que antes, sin cambios.
+    - Nota honesta: con mano de obra real (2 personas x 1.5h x $400/h
+      = $1,200) + IVA, el piso matemático de un trabajo así ya es
+      ~$1,740 SIN margen. No hay forma de bajar de ahí sin cobrar en
+      pérdida en casos de 2 técnicos -- el margen del 35% es sobre lo
+      poco que se puede ajustar (el material), no sobre la mano de obra.
+  VERSION : v1.7.0
+  v1.7.0 - Mano de obra recalibrada con dato real:
+    - Tarifa default $400/h por persona (era $500) y traslado default
+      $0 (era $500) -- el traslado local ya se considera absorbido en
+      las 1.5h de mano de obra por default; el campo de traslado queda
+      solo para obras genuinamente lejanas.
+  VERSION : v1.6.0
+  v1.6.0 - Mantenimiento organizado por categoría + mano de obra real:
+    - Catálogo de Mantenimiento ahora clasificado por Ventanas / Puertas
+      / Baños (pestañas dentro de la línea Mantenimiento), con pestañas
+      para filtrar. Se agregaron los ítems que faltaban: Limpieza de
+      Puerta, Chapa de ventana corrediza, Junquillos (puerta), Lámina
+      de polietileno y Gomas de seguridad (baño).
+    - Mano de obra reestructurada: antes era un monto fijo editable
+      (~1 hora) -- ahora se calcula como Horas × Personas × Tarifa/hora
+      (default 1.5h × 1 persona × $500/h), para reflejar casos que
+      necesitan 2+ técnicos (ej. puertas pesadas). Validado contra un
+      caso real: pivote de puerta 120x213cm, 2 personas, 1.5h a
+      $500/h c/u = $1,500 de mano de obra.
+  VERSION : v1.5.0
   v1.5.0 - FIX CRÍTICO: pérdida total de cotizaciones al fallar el guardado:
     - Mismo fix que Nacional v3.2.0: se guarda en localStorage
       (barrcan_presupuestos_pendientes) si Supabase falla, con
@@ -1423,6 +1472,7 @@ body{background:var(--off-white)}
     <div class="wizard-title">1. Selecciona la línea</div>
     <div class="familia-tabs" id="familia-tabs"></div>
     <div class="wizard-title" style="margin-top:8px">2. Tipo de apertura</div>
+    <div class="familia-tabs" id="mant-subcat-tabs" style="display:none;margin-bottom:8px"></div>
     <div class="sis-grid" id="sis-grid">
       <div style="color:var(--gray-400);font-size:12px;padding:8px;grid-column:1/-1">Selecciona una línea primero</div>
     </div>
@@ -1678,6 +1728,7 @@ body{background:var(--off-white)}
     <input type="hidden" id="cfg-ga"          value="25">
     <input type="hidden" id="cfg-iva"         value="16">
     <input type="hidden" id="cfg-iva-compras" value="16">
+    <input type="hidden" id="cfg-margen-mant" value="35">
     <input type="hidden" id="cfg-merma"       value="10">
     <input type="hidden" id="cfg-precio-al"   value="120">
     <input type="hidden" id="cfg-cargo-piso"  value="150">
@@ -1808,19 +1859,37 @@ body{background:var(--off-white)}
       </div>
       <div class="form-group">
         <label class="form-label">Mano de obra <span style="font-weight:400;color:var(--gray-400)">(tarifa plana, sin margen encima)</span></label>
-        <div class="input-unit">
-          <input type="number" id="serv-mo-base" class="form-input" min="0" value="500" inputmode="numeric" oninput="servActualizarAjustes()">
-          <span class="input-unit-label">$</span>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">
+          <div>
+            <label class="form-label" style="font-size:10px">Horas</label>
+            <input type="number" id="serv-mo-horas" class="form-input" min="0.5" step="0.5" value="1.5" inputmode="decimal" oninput="servActualizarAjustes()">
+          </div>
+          <div>
+            <label class="form-label" style="font-size:10px">Personas</label>
+            <select id="serv-mo-personas" class="form-select" onchange="servActualizarAjustes()">
+              <option value="1">1</option>
+              <option value="2">2</option>
+              <option value="3">3</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label" style="font-size:10px">$/hora c/u</label>
+            <input type="number" id="serv-mo-tarifa" class="form-input" min="0" value="400" inputmode="numeric" oninput="servActualizarAjustes()">
+          </div>
         </div>
-        <div style="font-size:10px;color:var(--gray-400);margin-top:3px">~1 hora de trabajo. Súbelo si el trabajo se alarga.</div>
+        <input type="hidden" id="serv-mo-base" value="600">
+        <div style="background:#F8F9FA;border-radius:6px;padding:6px 10px;font-size:12px;color:var(--navy);font-weight:700;display:flex;justify-content:space-between">
+          <span>Total mano de obra</span><span id="serv-mo-total-display">$600</span>
+        </div>
+        <div style="font-size:10px;color:var(--gray-400);margin-top:3px">Ej. puerta pesada con 2 personas, 1.5h (incluye traslado local) a $400/h c/u = $1,200. Súbelo si el trabajo se alarga, necesita más gente, o la obra está lejos.</div>
       </div>
       <div class="form-group">
-        <label class="form-label">Cargo por traslado (distancia de la obra)</label>
+        <label class="form-label">Cargo por traslado extra <span style="font-weight:400;color:var(--gray-400)">(solo obras genuinamente lejanas)</span></label>
         <div class="input-unit">
-          <input type="number" id="serv-cargo-traslado" class="form-input" min="0" value="500" inputmode="numeric" oninput="servActualizarAjustes()">
+          <input type="number" id="serv-cargo-traslado" class="form-input" min="0" value="0" inputmode="numeric" oninput="servActualizarAjustes()">
           <span class="input-unit-label">$</span>
         </div>
-        <div style="font-size:10px;color:var(--gray-400);margin-top:3px">Precargado de Config — ajústalo según qué tan lejos está</div>
+        <div style="font-size:10px;color:var(--gray-400);margin-top:3px">$0 por default — el traslado a un lugar cercano ya está cubierto en las 1.5h de mano de obra de arriba.</div>
       </div>
 
       <!-- MODO NORMAL: un solo servicio -->
@@ -2053,84 +2122,133 @@ const DB = {
     // ══════════════════════════════════════
     {
       id:"MANT_LIMPIEZA_VEN", nombre:"Limpieza Profunda Ventanas", serie:"Mantenimiento", emoji:"🪟",
+      categorias:['ventana'],
       tipo:"Servicio", esServicio:true, precioBase:350, unidad:'pieza',
       desc:'Limpieza profunda de perfiles, vidrios y rieles. Lubricación de carretillas y revisión general.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
+      id:"MANT_LIMPIEZA_PUERTA", nombre:"Limpieza Profunda de Puerta", serie:"Mantenimiento", emoji:"🚪",
+      categorias:['puerta'],
+      tipo:"Servicio", esServicio:true, precioBase:250, unidad:'pieza',
+      desc:'Limpieza de perfiles, vidrio (si aplica) y herrajes, lubricación de bisagras/pivote y revisión general.',
+      holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
       id:"MANT_AJUSTE_HER", nombre:"Ajuste de Herrajes y Carretillas", serie:"Mantenimiento", emoji:"🔧",
+      categorias:['ventana'],
       tipo:"Servicio", esServicio:true, precioBase:200, unidad:'pieza',
       desc:'Ajuste y lubricación de carretillas, cierres y broches. No incluye reemplazo.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
       id:"MANT_CAMBIO_FELPA", nombre:"Cambio de Felpa / Vinil", serie:"Mantenimiento", emoji:"🔧",
+      categorias:['ventana','puerta','bano'],
       tipo:"Servicio", esServicio:true, precioBase:4.5, unidad:'ml',
-      desc:'Material: vinil cuña (~$4.26/m) o pata (~$4.73/m), promedio $4.50/m. Cantidad = metros lineales perimetrales del vidrio. La mano de obra se agrega aparte (campo "Mano de obra").',
+      desc:'Material: vinil cuña (~$4.26/m) o pata (~$4.73/m), promedio $4.50/m. Cantidad = metros lineales perimetrales del vidrio/marco. La mano de obra se agrega aparte.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
       id:"MANT_CAMBIO_CARRETILLA", nombre:"Cambio de Carretillas", serie:"Mantenimiento", emoji:"⚙️",
+      categorias:['ventana','bano'],
       tipo:"Servicio", esServicio:true, precioBase:126, unidad:'par',
       desc:'Material varía MUCHO por peso/línea (precio por PAR, 2 piezas): Económica $34-50 · 3" $114-140 · Línea Española/Eurovent $360-700 · Grande (hasta 100kg) hasta $1,800/par. Precargado con la línea 3" como punto medio ($126/par) — AJUSTA según la que realmente uses. Mano de obra aparte.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
       id:"MANT_CANCEL_LIMPIEZA", nombre:"Limpieza Profunda Cancel Baño", serie:"Mantenimiento", emoji:"🚿",
+      categorias:['bano'],
       tipo:"Servicio", esServicio:true, precioBase:600, unidad:'pieza',
       desc:'Limpieza profunda de vidrio templado, perfiles y herrajes con desmantelado parcial.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
       id:"MANT_CANCEL_SELLADO", nombre:"Sellado y Silicón Cancel Baño", serie:"Mantenimiento", emoji:"🔒",
+      categorias:['bano'],
       tipo:"Servicio", esServicio:true, precioBase:450, unidad:'pieza',
       desc:'Retiro de silicón viejo y aplicación de silicón neutro perimetral. Garantía de impermeabilidad 1 año.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
       id:"MANT_CANCEL_HULES", nombre:"Cambio de Hules y Sellos Cancel", serie:"Mantenimiento", emoji:"🔄",
+      categorias:['bano'],
       tipo:"Servicio", esServicio:true, precioBase:60, unidad:'pieza',
       desc:'Material estimado (no tengo factura real de este insumo todavía, ajústalo si conoces el precio exacto). Mano de obra aparte.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
       id:"MANT_CANCEL_BISAGRAS", nombre:"Cambio/Ajuste Bisagras Cancel", serie:"Mantenimiento", emoji:"🔩",
+      categorias:['bano'],
       tipo:"Servicio", esServicio:true, precioBase:520, unidad:'juego',
       desc:'Reemplazo o ajuste de bisagras de cancel de baño. Material incluido.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
+      id:"MANT_BANO_LAMINA_POLIETILENO", nombre:"Cambio de Lámina de Polietileno", serie:"Mantenimiento", emoji:"🧴",
+      categorias:['bano'],
+      tipo:"Servicio", esServicio:true, precioBase:120, unidad:'pieza',
+      desc:'Lámina protectora/burlete de polietileno para cancel de baño. Material estimado — no tengo factura real todavía, ajústalo si conoces el precio exacto.',
+      holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
+      id:"MANT_BANO_GOMA_SEGURIDAD", nombre:"Cambio de Gomas de Seguridad", serie:"Mantenimiento", emoji:"🛡️",
+      categorias:['bano'],
+      tipo:"Servicio", esServicio:true, precioBase:70, unidad:'par',
+      desc:'Gomas/topes de seguridad de cancel de baño. Material estimado — no tengo factura real todavía, ajústalo si conoces el precio exacto.',
+      holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
       id:"MANT_CAMBIO_BROCHES", nombre:"Cambio de Broches", serie:"Mantenimiento", emoji:"🔒",
+      categorias:['ventana'],
       tipo:"Servicio", esServicio:true, precioBase:150, unidad:'par',
       desc:'Material por línea (precio por par): Estándar $150 · Línea Española/Eurovent $250-400. Precargado con el estándar — AJUSTA si es línea española/eurovent. Mano de obra aparte.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
+      id:"MANT_VENTANA_CHAPA", nombre:"Cambio de Chapa de Ventana Corrediza", serie:"Mantenimiento", emoji:"🔑",
+      categorias:['ventana'],
+      tipo:"Servicio", esServicio:true, precioBase:150, unidad:'pieza',
+      desc:'Chapa/cerradura de ventana corrediza (no todas las ventanas la llevan). Material estimado — ajústalo al modelo real.',
+      holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
       id:"MANT_PUERTA_CALCE", nombre:"Calce de Puerta", serie:"Mantenimiento", emoji:"🚪",
+      categorias:['puerta'],
       tipo:"Servicio", esServicio:true, precioBase:0, unidad:'pieza',
       desc:'Ajuste/nivelación — es 100% mano de obra, sin material. El precio sale del campo "Mano de obra" + traslado.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
       id:"MANT_PUERTA_CHAPA_PESADA", nombre:"Cambio de Chapa (puerta pesada, Phillips 550/549)", serie:"Mantenimiento", emoji:"🔑",
+      categorias:['puerta'],
       tipo:"Servicio", esServicio:true, precioBase:505, unidad:'pieza',
       desc:'Material: chapa Phillips 550/549, $480-530 (promedio $505) — verifica precio vigente con proveedor. Mano de obra aparte.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
       id:"MANT_PUERTA_CHAPA_LIGERA", nombre:"Cambio de Chapa (puerta ligera, gancho/paleta)", serie:"Mantenimiento", emoji:"🔑",
+      categorias:['puerta'],
       tipo:"Servicio", esServicio:true, precioBase:230, unidad:'pieza',
       desc:'Material: chapa de gancho/paleta, $180-280 (promedio $230). Mano de obra aparte.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
       id:"MANT_PUERTA_PIVOTE", nombre:"Cambio de Pivote", serie:"Mantenimiento", emoji:"🔩",
+      categorias:['puerta'],
       tipo:"Servicio", esServicio:true, precioBase:300, unidad:'pieza',
-      desc:'Material: pivote, $250-350 según color (promedio $300) — ajústalo al color real. Mano de obra aparte.',
+      desc:'Material: pivote, $250-350 según color (promedio $300) — ajústalo al color real. Puertas grandes/pesadas (como 120x213cm) suelen necesitar 2 personas -- usa el selector de personas en Mano de obra.',
+      holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
+      id:"MANT_PUERTA_JUNQUILLO", nombre:"Cambio de Junquillos", serie:"Mantenimiento", emoji:"📏",
+      categorias:['puerta'],
+      tipo:"Servicio", esServicio:true, precioBase:35, unidad:'ml',
+      desc:'Junquillo (moldura que detiene el vidrio en el marco). Precio por metro lineal, material estimado — ajústalo al perfil real.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
       id:"MANT_VIDRIO_ROTO", nombre:"Cambio de Vidrio Roto", serie:"Mantenimiento", emoji:"🪟",
+      categorias:['ventana','puerta'],
       tipo:"Servicio", esServicio:true, precioBase:500, unidad:'pieza',
       desc:'Precio de referencia por pieza — el costo final depende de medidas y tipo de cristal (se ajusta el precio unitario al cotizar).',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
@@ -2262,6 +2380,7 @@ const SB_CONFIG_MAPA = {
   'gif_pct':       'cfg-gif',        'utilidad_pct':  'cfg-utilidad',
   'ga_pct':        'cfg-ga',         'iva_pct':       'cfg-iva',
   'iva_compras_pct': 'cfg-iva-compras',
+  'margen_mant_pct': 'cfg-margen-mant',
   'merma_pct':     'cfg-merma',      'precio_al_kg':  'cfg-precio-al',
   'cargo_piso':    'cfg-cargo-piso', 'cargo_campo':   'cfg-cargo-campo',
   'vid_6mm':       'cfg-vid-6',      'vid_8mm':       'cfg-vid-8',
@@ -3305,10 +3424,11 @@ const FAMILIAS_NACIONAL = [
     nombre: 'Mantenimiento',
     emoji: '🔧',
     desc: 'Limpieza, ajustes y refacciones para ventanas y canceles',
-    ids: ['MANT_LIMPIEZA_VEN','MANT_AJUSTE_HER','MANT_CAMBIO_FELPA','MANT_CAMBIO_CARRETILLA',
+    ids: ['MANT_LIMPIEZA_VEN','MANT_LIMPIEZA_PUERTA','MANT_AJUSTE_HER','MANT_CAMBIO_FELPA','MANT_CAMBIO_CARRETILLA',
           'MANT_CANCEL_LIMPIEZA','MANT_CANCEL_SELLADO','MANT_CANCEL_HULES','MANT_CANCEL_BISAGRAS',
-          'MANT_CAMBIO_BROCHES','MANT_PUERTA_CALCE','MANT_PUERTA_CHAPA_PESADA','MANT_PUERTA_CHAPA_LIGERA',
-          'MANT_PUERTA_PIVOTE','MANT_VIDRIO_ROTO']
+          'MANT_BANO_LAMINA_POLIETILENO','MANT_BANO_GOMA_SEGURIDAD',
+          'MANT_CAMBIO_BROCHES','MANT_VENTANA_CHAPA','MANT_PUERTA_CALCE','MANT_PUERTA_CHAPA_PESADA','MANT_PUERTA_CHAPA_LIGERA',
+          'MANT_PUERTA_PIVOTE','MANT_PUERTA_JUNQUILLO','MANT_VIDRIO_ROTO']
   },
   {
     id: 'garantia',
@@ -3343,7 +3463,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.4.0';
+const APP_VERSION = 'v1.9.0';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -3560,9 +3680,7 @@ function renderResultado(r) {
           ${!s.esSinMargen && s.moBase > 0 ? `<div class="desglose-row"><span>Mano de obra</span><span>$${fmt(s.moBase)}</span></div>` : ''}
           ${!s.esSinMargen && s.cargoTraslado > 0 ? `<div class="desglose-row"><span>Traslado</span><span>$${fmt(s.cargoTraslado)}</span></div>` : ''}
           ${!s.esSinMargen && esSupremo() ? `
-          <div class="desglose-row"><span>GIF +${document.getElementById('cfg-gif').value}%</span><span>$${fmt(s.gif||0)}</span></div>
-          <div class="desglose-row"><span>GA +${document.getElementById('cfg-ga').value}%</span><span>$${fmt(s.ga||0)}</span></div>
-          <div class="desglose-row"><span>Utilidad +${document.getElementById('cfg-utilidad').value}%</span><span>$${fmt(s.utilidad||0)}</span></div>` : ''}
+          <div class="desglose-row"><span>Margen Mantenimiento +${document.getElementById('cfg-margen-mant').value}%</span><span>$${fmt(s.gif||0)}</span></div>` : ''}
           ${!s.esSinMargen ? `<div class="desglose-row"><span>IVA +${document.getElementById('cfg-iva').value}%</span><span>$${fmt(s.ivaMonto||0)}</span></div>` :
           `<div class="desglose-row"><span style="color:var(--green)">🛡️ Servicio de garantía — sin cargo adicional</span><span>$0</span></div>`}
           <div class="desglose-row total-row"><span>PRECIO FINAL</span><span>$${fmt(s.precioFinal)}</span></div>
@@ -3924,6 +4042,7 @@ function snSelFamilia(fam,btnEl){
 // tal cual aparece en barrcan_app.html (Mantenimiento y Garantías).
 const SN_PRECIO_TARJETA = {
   MANT_LIMPIEZA_VEN:      '$350/pieza',
+  MANT_LIMPIEZA_PUERTA:   '$250/pieza',
   MANT_AJUSTE_HER:        '$200/pieza',
   MANT_CAMBIO_FELPA:      '$4.50/m mat.',
   MANT_CAMBIO_CARRETILLA: '$17-900 mat.',
@@ -3931,21 +4050,49 @@ const SN_PRECIO_TARJETA = {
   MANT_CANCEL_SELLADO:    '$450/pieza',
   MANT_CANCEL_HULES:      '$380/pieza',
   MANT_CANCEL_BISAGRAS:   '$520/juego',
+  MANT_BANO_LAMINA_POLIETILENO: '$120/pieza',
+  MANT_BANO_GOMA_SEGURIDAD:     '$70/par',
   MANT_CAMBIO_BROCHES:    '$150-400 mat.',
+  MANT_VENTANA_CHAPA:     '$150/pieza',
   MANT_PUERTA_CALCE:      'Solo M.O.',
   MANT_PUERTA_CHAPA_PESADA: '$480-530 mat.',
   MANT_PUERTA_CHAPA_LIGERA: '$180-280 mat.',
   MANT_PUERTA_PIVOTE:     '$250-350 mat.',
+  MANT_PUERTA_JUNQUILLO:  '$35/m mat.',
   MANT_VIDRIO_ROTO:       'Cotizar',
   GTIA_ESTANDAR:          '20% · Ded.$1,100',
   GTIA_PREMIUM:           '35% · Ded.$1,400'
 };
 
+var MANT_SUBCAT = 'todos'; // 'todos' | 'ventana' | 'puerta' | 'bano'
+
+function snSelSubcat(cat, btnEl) {
+  MANT_SUBCAT = cat;
+  document.querySelectorAll('#mant-subcat-tabs .ftab').forEach(function(b) { b.classList.remove('active'); });
+  if (btnEl) btnEl.classList.add('active');
+  var fam = FAMILIAS_NACIONAL.filter(function(f) { return f.id === 'mantenimiento'; })[0];
+  if (fam) snRenderGrid(fam);
+}
+
 function snRenderGrid(fam){
   const grid=document.getElementById('sis-grid');
   grid.innerHTML='';
 
+  const subcatTabs = document.getElementById('mant-subcat-tabs');
   if (fam.id === 'mantenimiento') {
+    subcatTabs.style.display = 'flex';
+    if (!subcatTabs.dataset.built) {
+      var cats = [['todos','Todos'],['ventana','🪟 Ventanas'],['puerta','🚪 Puertas'],['bano','🚿 Baños']];
+      subcatTabs.innerHTML = cats.map(function(c) {
+        return '<button class="ftab' + (c[0]==='todos'?' active':'') + '" onclick="snSelSubcat(\'' + c[0] + '\',this)">' + c[1] + '</button>';
+      }).join('');
+      subcatTabs.dataset.built = '1';
+    }
+  } else {
+    subcatTabs.style.display = 'none';
+  }
+
+  if (fam.id === 'mantenimiento' && (MANT_SUBCAT === 'todos')) {
     const comboCard=document.createElement('div');
     comboCard.className='sis-card';
     comboCard.style.cssText='border-color:#8E44AD;background:rgba(142,68,173,.05)';
@@ -3958,7 +4105,15 @@ function snRenderGrid(fam){
     grid.appendChild(comboCard);
   }
 
-  fam.ids.forEach(id=>{
+  var idsFiltrados = fam.ids;
+  if (fam.id === 'mantenimiento' && MANT_SUBCAT !== 'todos') {
+    idsFiltrados = fam.ids.filter(function(id) {
+      var sis = DB.sistemas.find(function(s) { return s.id === id; });
+      return sis && sis.categorias && sis.categorias.indexOf(MANT_SUBCAT) >= 0;
+    });
+  }
+
+  idsFiltrados.forEach(id=>{
     const sis=DB.sistemas.find(s=>s.id===id);
     if(!sis)return;
     const precio=SN_PRECIO_TARJETA[id];
@@ -4011,8 +4166,11 @@ function snIniciarCombo(cardEl) {
   document.getElementById('serv-desc').textContent   = 'Selecciona 2 o más servicios de la misma visita — abajo eliges cuáles.';
   document.getElementById('serv-notas').value    = '';
   document.getElementById('serv-complejidad').value = '1';
-  document.getElementById('serv-mo-base').value = 500;
-  document.getElementById('serv-cargo-traslado').value = cfg('cfg-cargo-campo') || 500;
+  document.getElementById('serv-mo-horas').value = 1.5;
+  document.getElementById('serv-mo-personas').value = '1';
+  document.getElementById('serv-mo-tarifa').value = 400;
+  servCalcularMO();
+  document.getElementById('serv-cargo-traslado').value = 0; // el traslado local ya va absorbido en las 1.5h de MO por default
   document.getElementById('serv-aviso-riesgo').checked = false;
   document.getElementById('serv-resultado').style.display = 'none';
 
@@ -4227,8 +4385,11 @@ function servicioReset(sistema) {
   document.getElementById('serv-precio').value   = sistema.precioBase || '';
   document.getElementById('serv-notas').value    = '';
   document.getElementById('serv-complejidad').value = '1';
-  document.getElementById('serv-mo-base').value = 500;
-  document.getElementById('serv-cargo-traslado').value = cfg('cfg-cargo-campo') || 500;
+  document.getElementById('serv-mo-horas').value = 1.5;
+  document.getElementById('serv-mo-personas').value = '1';
+  document.getElementById('serv-mo-tarifa').value = 400;
+  servCalcularMO();
+  document.getElementById('serv-cargo-traslado').value = 0; // el traslado local ya va absorbido en las 1.5h de MO por default
   document.getElementById('serv-aviso-riesgo').checked = false;
   document.getElementById('serv-resultado').style.display = 'none';
 }
@@ -4321,7 +4482,20 @@ function servicioActualizar() {
   if (cant > 0 && precio > 0) servicioCalcPreview(cant, precio);
 }
 
+function servCalcularMO() {
+  var horas = parseFloat(document.getElementById('serv-mo-horas')?.value) || 0;
+  var personas = parseFloat(document.getElementById('serv-mo-personas')?.value) || 1;
+  var tarifa = parseFloat(document.getElementById('serv-mo-tarifa')?.value) || 0;
+  var total = horas * personas * tarifa;
+  var hidden = document.getElementById('serv-mo-base');
+  if (hidden) hidden.value = total;
+  var display = document.getElementById('serv-mo-total-display');
+  if (display) display.textContent = '$' + fmt(total);
+  return total;
+}
+
 function servActualizarAjustes() {
+  servCalcularMO();
   if (SERV_MODO === 'combo') servComboCalcular();
   else servicioActualizar();
 }
@@ -4354,32 +4528,30 @@ function servicioCalcPreview(cant, precio, nombreOverride) {
     rowTras.style.display = 'flex';
     document.getElementById('serv-c-traslado').textContent = fmt(cargoTraslado);
   } else { rowTras.style.display = 'none'; }
-  ['gif','ga','util','iva'].forEach(function(k){
+  ['ga','util'].forEach(function(k){
     var row = document.getElementById('serv-c-'+k).closest('.costo-row');
-    if (row) row.style.display = (esGarantia || (k !== 'iva' && !esSupremo())) ? 'none' : 'flex';
+    if (row) row.style.display = 'none'; // Mantenimiento ya no usa GA/Utilidad por separado
   });
+  var rowGif = document.getElementById('serv-c-gif').closest('.costo-row');
+  if (rowGif) rowGif.style.display = (esGarantia || !esSupremo()) ? 'none' : 'flex';
+  var rowIva = document.getElementById('serv-c-iva').closest('.costo-row');
+  if (rowIva) rowIva.style.display = esGarantia ? 'none' : 'flex';
   if (esGarantia) {
     document.getElementById('serv-c-total').textContent = fmt(subtotalBase);
     return;
   }
-  const gifPct = cfg('cfg-gif') / 100;
-  const gaPct = cfg('cfg-ga') / 100;
-  const utilidadPct = cfg('cfg-utilidad') / 100;
+  // Mantenimiento usa UN solo margen (más simple y más bajo que GIF+GA+
+  // Utilidad apiladas de las instalaciones completas) para no espantar
+  // al cliente con un precio que se siente inflado.
+  const margenPct = cfg('cfg-margen-mant') / 100;
   const ivaPct = cfg('cfg-iva') / 100;
-  const gif = subtotalMaterial * gifPct;
-  const ga = subtotalMaterial * gaPct;
-  const costoRealMaterial = subtotalMaterial + gif + ga;
-  const utilidad = costoRealMaterial * utilidadPct;
-  const materialConMargen = costoRealMaterial + utilidad;
+  const margen = subtotalMaterial * margenPct;
+  const materialConMargen = subtotalMaterial + margen;
   const precioAntesIva = materialConMargen + moBase + cargoTraslado;
   const ivaMonto = precioAntesIva * ivaPct;
   const total = precioAntesIva + ivaMonto;
-  document.getElementById('serv-label-gif').textContent = 'GIF +' + document.getElementById('cfg-gif').value + '%';
-  document.getElementById('serv-c-gif').textContent   = fmt(gif);
-  document.getElementById('serv-label-ga').textContent = 'GA +' + document.getElementById('cfg-ga').value + '%';
-  document.getElementById('serv-c-ga').textContent   = fmt(ga);
-  document.getElementById('serv-label-util').textContent = 'Utilidad +' + document.getElementById('cfg-utilidad').value + '%';
-  document.getElementById('serv-c-util').textContent   = fmt(utilidad);
+  document.getElementById('serv-label-gif').textContent = 'Margen Mantenimiento +' + document.getElementById('cfg-margen-mant').value + '%';
+  document.getElementById('serv-c-gif').textContent   = fmt(margen);
   document.getElementById('serv-label-iva').textContent = 'IVA +' + document.getElementById('cfg-iva').value + '%';
   document.getElementById('serv-c-iva').textContent   = fmt(ivaMonto);
   document.getElementById('serv-c-total').textContent = fmt(total);
@@ -4398,11 +4570,10 @@ function servicioCalcular() {
     var cargoTrasladoC = parseFloat(document.getElementById('serv-cargo-traslado').value) || 0;
     var moBaseC = parseFloat(document.getElementById('serv-mo-base').value) || 0;
     var subtotalMaterialC = subtotalBruto * (1 - descPct) * complejidadC;
-    var gifPctC = cfg('cfg-gif') / 100, gaPctC = cfg('cfg-ga') / 100, utilidadPctC = cfg('cfg-utilidad') / 100, ivaPctC = cfg('cfg-iva') / 100;
-    var gifC = subtotalMaterialC * gifPctC, gaC = subtotalMaterialC * gaPctC;
-    var costoRealC = subtotalMaterialC + gifC + gaC;
-    var utilidadC = costoRealC * utilidadPctC;
-    var precioAntesIvaC = costoRealC + utilidadC + moBaseC + cargoTrasladoC;
+    var margenPctC = cfg('cfg-margen-mant') / 100, ivaPctC = cfg('cfg-iva') / 100;
+    var margenC = subtotalMaterialC * margenPctC;
+    var materialConMargenC = subtotalMaterialC + margenC;
+    var precioAntesIvaC = materialConMargenC + moBaseC + cargoTrasladoC;
     var ivaMontoC = precioAntesIvaC * ivaPctC;
     var totalC = precioAntesIvaC + ivaMontoC;
     var detalleCombo = ids.map(function(id) {
@@ -4418,7 +4589,7 @@ function servicioCalcular() {
       servCantidad: 1, servUnidad: 'combo', servPrecio: subtotalMaterialC,
       servNotas: document.getElementById('serv-notas').value.trim(),
       avisoRiesgo: document.getElementById('serv-aviso-riesgo').checked,
-      subtotal: subtotalBruto, gif: gifC, ga: gaC, utilidad: utilidadC, ivaPct: ivaPctC, ivaMonto: ivaMontoC, precioFinal: totalC, esSinMargen: false
+      subtotal: subtotalBruto, gif: margenC, ga: 0, utilidad: 0, ivaPct: ivaPctC, ivaMonto: ivaMontoC, precioFinal: totalC, esSinMargen: false
     };
     toast('✅ Combo calculado');
     renderResultado();
@@ -4439,15 +4610,10 @@ function servicioCalcular() {
   let gif = 0, ga = 0, utilidad = 0, ivaMonto = 0, ivaPct = 0;
   let total = subtotalBase;
   if (!esGarantia) {
-    const gifPct = cfg('cfg-gif') / 100;
-    const gaPct = cfg('cfg-ga') / 100;
-    const utilidadPct = cfg('cfg-utilidad') / 100;
+    const margenPct = cfg('cfg-margen-mant') / 100;
     ivaPct = cfg('cfg-iva') / 100;
-    gif = subtotalMaterial * gifPct;
-    ga = subtotalMaterial * gaPct;
-    const costoRealMaterial = subtotalMaterial + gif + ga;
-    utilidad = costoRealMaterial * utilidadPct;
-    const materialConMargen = costoRealMaterial + utilidad;
+    gif = subtotalMaterial * margenPct; // "gif" aquí = margen único de mantenimiento (nombre de variable reutilizado por compatibilidad)
+    const materialConMargen = subtotalMaterial + gif;
     const precioAntesIva = materialConMargen + moBase + cargoTraslado;
     ivaMonto = precioAntesIva * ivaPct;
     total = precioAntesIva + ivaMonto;
@@ -5227,6 +5393,11 @@ window.abrirModalContrato = abrirModalContrato;
 window.guardarCotizacion = guardarCotizacion;
 window.snActualizarResumenFijo = snActualizarResumenFijo;
 window.snAdjuntarArch = snAdjuntarArch;
+window.snSelSubcat = snSelSubcat;
+window.servComboToggle = servComboToggle;
+window.servComboCant = servComboCant;
+window.servToggleCombo = servToggleCombo;
+window.servActualizarAjustes = servActualizarAjustes;
 
 })();
 </script>
