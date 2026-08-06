@@ -6,6 +6,20 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.36.0
+  FECHA   : 2026-08-04
+  v3.36.0 - Instalación/Express copia el modelo de guardado de Puerta (que
+    sí funciona al 100%):
+    - Se encontró la diferencia real: "Entrega en puerta" reintenta el
+      guardado directo hasta 3 veces (con espera creciente: 1s, 2s) antes
+      de rendirse y mandar todo a la cola de emergencia. Instalación
+      solo lo intentaba UNA vez y se iba derecho a la cola -- si el
+      intento único chocaba con un bache pasajero de red (que puerta sí
+      absorbe con sus reintentos), quedaba pendiente sin necesidad real.
+    - Ahora Instalación (Completo y Express) usa exactamente el mismo
+      patrón de reintento con backoff que puerta, guardando en
+      entregas_instalacion. El aviso de error, cuando de plano falla
+      tras los 3 intentos, ahora también incluye el motivo real.
   VERSION : v3.35.0
   FECHA   : 2026-08-03
   v3.35.0 - Reporte compacto para Puerta/Envío/Mantenimiento + firma de técnico:
@@ -1998,7 +2012,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.35.0';
+var APP_VERSION = 'v3.36.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -4073,28 +4087,36 @@ async function entGenerarReporteInstalacion() {
       toast(subidaOkInst === false && SYNC.online ? '⏳ Fotos pesadas, se reintentará automáticamente · ' + folio + ' (revisa el Historial en un momento)' : '💾 Guardado sin conexión, se sincronizará al reconectar · ' + folio, 5000);
       if (SYNC.online) setTimeout(offReintentarTodo, 4000);
     } else {
-      // AHORA SÍ SE ESPERA el resultado real antes de decir que quedó
-      // listo -- antes se disparaba sin esperar (fire-and-forget), así
-      // que se podía abrir la vista de impresión y creer que ya había
-      // quedado guardado aunque el guardado real fallara unos
-      // milisegundos después, con el único aviso siendo un toast fácil
-      // de perder.
-      try {
-        var opInst = esEdicion
-          ? await sb().from('entregas_instalacion').update(payload).eq('id', editandoId)
-          : await sb().from('entregas_instalacion').insert([payload]);
-        if (opInst.error) throw opInst.error;
-        guardadoOk = true;
-        await entCargarHistorial();
-      } catch(eGuardar) {
-        console.warn('[BarrCan] No se pudo guardar la instalación en Supabase, se reencola completa:', eGuardar);
-        offEncolarReporte('entregas_instalacion', payload, htmlReporte, nombreArchInst, datosJsonStr, nombreDatosInst, esEdicion ? editandoId : null);
-        toast('⚠️ NO se guardó todavía (se reintentará solo) · ' + folio + ' — revisa el Historial en un momento', 5000);
-        // No esperar al próximo reload o al evento "online" (que no se
-        // dispara si la señal nunca se cayó de verdad) -- reintentar
-        // pronto por si fue un bache pasajero de la red.
-        setTimeout(offReintentarTodo, 4000);
-      }
+      // MISMO MODELO que ya funciona al 100% en Entrega en puerta: hasta
+      // 3 intentos directos con espera creciente entre cada uno, antes
+      // de rendirse y mandar todo a la cola de emergencia (IndexedDB).
+      // Antes Instalación solo lo intentaba UNA vez y se iba derecho a
+      // la cola -- si el intento único chocaba con un bache pasajero de
+      // red (lo que "puerta" sí absorbe con sus reintentos), se quedaba
+      // pendiente sin necesidad real.
+      guardadoOk = await (async function intentarInst(i) {
+        i = i || 1;
+        try {
+          var opInst = esEdicion
+            ? await sb().from('entregas_instalacion').update(payload).eq('id', editandoId)
+            : await sb().from('entregas_instalacion').insert([payload]);
+          if (opInst.error) throw opInst.error;
+          SYNC.online = true; detectarConexion();
+          await entCargarHistorial();
+          return true;
+        } catch(eGuardar) {
+          var esRed = /failed to fetch|network|timeout/i.test(eGuardar.message || '');
+          if (esRed && i < 3) {
+            await new Promise(function(resolve) { setTimeout(resolve, 1000 * i); });
+            return intentarInst(i + 1);
+          }
+          console.warn('[BarrCan] No se pudo guardar la instalación en Supabase, se reencola completa:', eGuardar);
+          offEncolarReporte('entregas_instalacion', payload, htmlReporte, nombreArchInst, datosJsonStr, nombreDatosInst, esEdicion ? editandoId : null);
+          toast('⚠️ NO se guardó todavía (se reintentará solo) · ' + folio + ' — revisa el Historial en un momento · Motivo: ' + (eGuardar.message || 'desconocido'), 6000);
+          setTimeout(offReintentarTodo, 4000);
+          return false;
+        }
+      })();
     }
 
     entSalirModoEdicion();
