@@ -2282,6 +2282,29 @@ const STATE = {
   historial: []
 };
 
+// ── FIX: precio de vidrio, sugerido vs. editado por el usuario ──
+// Antes se detectaba "el usuario no tocó el campo" comparando su valor
+// contra el default fijo 480 -- eso rompía el cálculo en 2 casos:
+// 1) si el usuario cambiaba el espesor de vidrio, el campo seguía
+//    mostrando el precio viejo pero el cálculo usaba el de Config para
+//    el nuevo espesor (el número visible no coincidía con el cobrado).
+// 2) si el precio real del cliente coincidía por casualidad con 480,
+//    se sobreescribía silenciosamente con el de Config.
+// Ahora se usa una bandera explícita en vez de adivinar por el valor.
+let VIDRIO_PRECIO_MANUAL = false;
+function actualizarPrecioVidrioSugerido() {
+  const sel = document.getElementById('inp-vidrio');
+  const inp = document.getElementById('inp-precio-vidrio');
+  if (!sel || !inp) return;
+  const esp = sel.value.split('|')[0];
+  const espKeyMap = { '4':'cfg-vid-4','6':'cfg-vid-6','8':'cfg-vid-8',
+                       '9':'cfg-vid-9','10':'cfg-vid-10','12':'cfg-vid-12','24':'cfg-vid-24' };
+  const cfgId = espKeyMap[esp];
+  if (!cfgId) return;
+  inp.value = parseFloat(document.getElementById(cfgId)?.value) || 480;
+  VIDRIO_PRECIO_MANUAL = false; // fue autollenado por el sistema, no editado por el usuario
+}
+
 // Modalidad de película/vinilo: 'completa' o 'franja'.
 // Se declara aquí (y no solo dentro de setPelModalidad) porque el botón
 // "Completa" ya aparece activo por defecto en el HTML (pel-mod-completa),
@@ -3854,8 +3877,9 @@ function calcular() {
   const cfgVidId = espKey[String(espVidrio)];
   const precioVidrioCfg = cfgVidId ? (parseFloat(document.getElementById(cfgVidId)?.value) || 480) : 480;
   const precioVidrioWizard = cfg('inp-precio-vidrio');
-  // Si el campo del wizard tiene el valor por defecto (480) usamos el de Config para ese espesor
-  const precioVidrioBase = (precioVidrioWizard === 480 && cfgVidId) ? precioVidrioCfg : precioVidrioWizard;
+  // Si el usuario no editó el campo a mano, usamos el precio de Config para ese
+  // espesor (ver VIDRIO_PRECIO_MANUAL arriba); si lo editó, respetamos su valor.
+  const precioVidrioBase = (!VIDRIO_PRECIO_MANUAL && cfgVidId) ? precioVidrioCfg : precioVidrioWizard;
   const precioVidrio   = precioVidrioBase * factorVidrio;
   const mdo = cfg('inp-mdo');
   const gifPct = cfg('cfg-gif') / 100;
@@ -4360,7 +4384,7 @@ function espCalcular() {
     m2, costoMat: matBase, cargoForma, costoMO: mo, subtotal, gif, ga, utilidad, ivaPct, ivaMonto, precioFinal: total
   };
   toast('✅ Espejo calculado');
-  renderResultado();
+  renderResultado(STATE.ultimoResultado);
   switchTab('resultado');
 }
 
@@ -4592,7 +4616,7 @@ function servicioCalcular() {
       subtotal: subtotalBruto, gif: margenC, ga: 0, utilidad: 0, ivaPct: ivaPctC, ivaMonto: ivaMontoC, precioFinal: totalC, esSinMargen: false
     };
     toast('✅ Combo calculado');
-    renderResultado();
+    renderResultado(STATE.ultimoResultado);
     switchTab('resultado');
     return;
   }
@@ -4629,7 +4653,7 @@ function servicioCalcular() {
     subtotal: subtotalBase, gif, ga, utilidad, ivaPct, ivaMonto, precioFinal: total, esSinMargen: esGarantia
   };
   toast('✅ Servicio calculado');
-  renderResultado();
+  renderResultado(STATE.ultimoResultado);
   switchTab('resultado');
 }
 
@@ -4685,7 +4709,7 @@ function garantiaWizCalcular() {
     gtiaInicio: inicio, gtiaFin: fin, subtotal: prima, gif: 0, precioFinal: prima
   };
   toast('✅ Garantía calculada');
-  renderResultado();
+  renderResultado(STATE.ultimoResultado);
   switchTab('resultado');
 }
 
@@ -5139,6 +5163,12 @@ document.addEventListener('DOMContentLoaded',()=>{
   snCargarCarritoLocal();
   // Inicializar película oculta
   actualizarPelicula();
+  // FIX precio de vidrio: sincronizar campo con Config al cargar y al
+  // cambiar espesor; marcar como "manual" solo si el usuario escribe.
+  const _selVid = document.getElementById('inp-vidrio');
+  const _inpPrecioVid = document.getElementById('inp-precio-vidrio');
+  if (_selVid) { _selVid.addEventListener('change', actualizarPrecioVidrioSugerido); actualizarPrecioVidrioSugerido(); }
+  if (_inpPrecioVid) _inpPrecioVid.addEventListener('input', () => { VIDRIO_PRECIO_MANUAL = true; });
 });
 
 
