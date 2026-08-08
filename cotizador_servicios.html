@@ -5,7 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Servicios y Accesorios</title>
 <!--
-  BARRCAN SERVICIOS Y ACCESORIOS v1.10.1
+  BARRCAN SERVICIOS Y ACCESORIOS v1.10.2
+  v1.10.2 - Panel "Sin sincronizar todavía": cuando un guardado falla
+    (sin señal, error de Supabase, etc.) y se pone en la cola local,
+    el carrito de piezas se vaciaba igual y no había forma de ver ni
+    tocar ese presupuesto -- quedaba atrapado en localStorage, sin
+    ninguna pantalla. Ahora aparece en un panel con 3 botones:
+    Editar (recarga sus piezas al carrito para corregir y re-guardar),
+    Reintentar (sincroniza solo ese, sin esperar a que se detecte
+    conexión), Eliminar (descartarlo si ya no aplica).
   v1.10.1 - FIX: el Historial de este módulo mostraba presupuestos de
     Nacional (serie B) en vez de los propios de Servicios -- filtro
     de folio copiado y nunca actualizado (%B-% en vez de %S-%).
@@ -2026,6 +2034,12 @@ body{background:var(--off-white)}
 
 
 
+  <!-- PENDIENTES DE SINCRONIZAR -->
+  <div id="sn-pendientes-card" style="margin-top:8px;display:none">
+    <div style="font-size:16px;font-weight:800;color:var(--navy);margin-bottom:10px">⏳ Sin sincronizar todavía</div>
+    <div id="sn-pendientes-items"></div>
+  </div>
+
   <!-- HISTORIAL -->
   <div id="sn-historial-card" style="margin-top:8px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
@@ -3609,7 +3623,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.10.1';
+const APP_VERSION = 'v1.10.2';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -4992,6 +5006,116 @@ function snGuardarOffline(payload, esActualizacion) {
   }
 }
 
+// ══════════════════════════════════════════════
+// PENDIENTES DE SINCRONIZAR — ver, editar, reintentar, eliminar
+// ══════════════════════════════════════════════
+// Antes de esto, cuando un guardado fallaba y se ponía en la cola
+// offline (barrcan_presupuestos_pendientes), el carrito de piezas se
+// vaciaba de todos modos y no había ninguna pantalla donde ver, tocar
+// o reintentar ese presupuesto -- quedaba "atrapado" en localStorage,
+// invisible. Este panel lo muestra y permite editarlo (recarga sus
+// piezas al carrito), reintentar sincronizarlo, o descartarlo.
+// La cola es compartida entre los 5 cotizadores (misma llave de
+// localStorage), así que aquí solo se muestran los que son de este
+// módulo (folio con la letra de serie 'S').
+
+function snObtenerColaPropia() {
+  var cola = [];
+  try { cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes') || '[]'); } catch(e) {}
+  return cola.filter(function(item) {
+    return item && item.datos && snLetraSerieDeFolio(item.datos.folio) === SERIE_LETRA_MODULO;
+  });
+}
+
+function snRenderPendientes() {
+  var propios = snObtenerColaPropia();
+  var cont = document.getElementById('sn-pendientes-card');
+  var div = document.getElementById('sn-pendientes-items');
+  if (!cont || !div) return;
+  if (!propios.length) { cont.style.display = 'none'; return; }
+  cont.style.display = 'block';
+  div.innerHTML = propios.map(function(item) {
+    var d = item.datos;
+    return '<div style="background:#fff;border-radius:10px;padding:10px 12px;margin-bottom:8px;border:1.5px solid rgba(200,146,58,.35)">'
+      + '<div style="font-size:12px;font-weight:700;font-family:monospace;color:var(--navy)">' + esc(d.folio || '') + '</div>'
+      + '<div style="font-size:13px;font-weight:600;color:var(--navy)">' + esc(d.cliente || '') + '</div>'
+      + '<div style="font-size:11px;color:var(--gray-400);margin-bottom:8px">$' + fmt(d.monto || 0) + ' · sin sincronizar' + (item.tipo === 'update' ? ' · actualización de folio' : '') + '</div>'
+      + '<div style="display:flex;gap:6px">'
+      + '<button onclick="snPendienteEditar(\'' + esc(item.ts) + '\')" style="flex:1;padding:7px;background:var(--navy);color:#fff;border:none;border-radius:6px;font-family:\'DM Sans\',sans-serif;font-size:11px;font-weight:700;cursor:pointer">Editar</button>'
+      + '<button onclick="snPendienteReintentar(\'' + esc(item.ts) + '\')" style="flex:1;padding:7px;background:rgba(39,174,96,.1);border:1.5px solid rgba(39,174,96,.3);color:var(--green);border-radius:6px;font-family:\'DM Sans\',sans-serif;font-size:11px;font-weight:700;cursor:pointer">Reintentar</button>'
+      + '<button onclick="snPendienteEliminar(\'' + esc(item.ts) + '\')" style="padding:7px 10px;background:rgba(192,57,43,.08);border:1.5px solid rgba(192,57,43,.3);color:#C0392B;border-radius:6px;font-family:\'DM Sans\',sans-serif;font-size:11px;font-weight:700;cursor:pointer">✕</button>'
+      + '</div></div>';
+  }).join('');
+}
+
+function snPendienteEditar(ts) {
+  var cola = [];
+  try { cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes') || '[]'); } catch(e) {}
+  var idx = -1;
+  for (var i = 0; i < cola.length; i++) { if (cola[i].ts === ts) { idx = i; break; } }
+  if (idx === -1) return;
+  var d = cola[idx].datos;
+
+  // Se saca de la cola: al guardar de nuevo se vuelve a intentar desde
+  // cero, para no dejar un duplicado ahí mientras se edita.
+  cola.splice(idx, 1);
+  localStorage.setItem('barrcan_presupuestos_pendientes', JSON.stringify(cola));
+
+  var piezas = [];
+  try { piezas = JSON.parse(d.notas_internas || '[]'); } catch(e) {}
+  STATE.carrito = piezas.map(function(p, i) {
+    return { id: 'pend-' + i, label: p.label, cantidad: p.cantidad || 1, precioUnitario: p.precioUnitario, precio: p.precio, resultado: p.resultado, incluido: true };
+  });
+  snGuardarCarritoLocal();
+
+  var setVal = function(id, val) { var el = document.getElementById(id); if (el) el.value = val || ''; };
+  setVal('sn-cliente', d.cliente);
+  setVal('sn-tel', d.tel);
+  setVal('sn-dir', d.dir_obra);
+
+  var sub = document.getElementById('sn-presupuesto-subtitulo');
+  if (sub) sub.textContent = 'Editando presupuesto pendiente (' + (d.folio || 'sin folio') + ') — revisa y guarda de nuevo';
+  toast('Piezas cargadas para editar');
+  snRenderPresupuesto();
+  snRenderPendientes();
+}
+
+async function snPendienteReintentar(ts) {
+  if (!sb()) { toast('Sigues sin conexión'); return; }
+  var cola = [];
+  try { cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes') || '[]'); } catch(e) {}
+  var idx = -1;
+  for (var i = 0; i < cola.length; i++) { if (cola[i].ts === ts) { idx = i; break; } }
+  if (idx === -1) return;
+  var item = cola[idx];
+  try {
+    var d = Object.assign({}, item.datos);
+    var esUpdate = item.tipo === 'update';
+    var id = d.id; delete d.id;
+    var res = esUpdate
+      ? await sb().from('presupuestos_atrasados').update(d).eq('id', id)
+      : await sb().from('presupuestos_atrasados').insert([d]);
+    if (res.error) throw res.error;
+    cola.splice(idx, 1);
+    localStorage.setItem('barrcan_presupuestos_pendientes', JSON.stringify(cola));
+    toast('✅ Sincronizado · ' + d.folio);
+    snRenderPendientes();
+    snHistorial();
+  } catch(e) {
+    toast('Sigue sin poder sincronizar: ' + e.message);
+  }
+}
+
+function snPendienteEliminar(ts) {
+  if (!confirm('¿Eliminar este presupuesto pendiente? No se va a poder recuperar después.')) return;
+  var cola = [];
+  try { cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes') || '[]'); } catch(e) {}
+  cola = cola.filter(function(item) { return item.ts !== ts; });
+  localStorage.setItem('barrcan_presupuestos_pendientes', JSON.stringify(cola));
+  toast('Eliminado');
+  snRenderPendientes();
+}
+
 async function snReintentarPendientes() {
   if (!sb()) return;
   var cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes') || '[]');
@@ -5012,6 +5136,7 @@ async function snReintentarPendientes() {
     localStorage.setItem('barrcan_presupuestos_pendientes', JSON.stringify(rest));
     toast('✅ ' + ok.length + ' presupuesto(s) pendiente(s) sincronizado(s)');
   }
+  snRenderPendientes();
 }
 
 async function snGuardarPresupuesto(){
@@ -5111,6 +5236,7 @@ async function snGuardarPresupuesto(){
   if (zona) zona.style.borderColor = 'var(--gray-200)';
   if (txt) txt.textContent = '📎 Adjuntar plano o croquis (PDF o imagen)';
   snHistorial();
+  snRenderPendientes();
 }
 
 // ── Carrito multi-pieza (presupuesto con varias piezas) ────────
@@ -5348,6 +5474,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   // Si se llegó aquí desde historial.html con "+ Agregar piezas", carga
   // el folio existente y muestra sus piezas ya guardadas.
   snCargarContinuarFolio();
+  snRenderPendientes();
 });
 
 
