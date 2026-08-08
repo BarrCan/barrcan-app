@@ -5,7 +5,21 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Servicios y Accesorios</title>
 <!--
-  BARRCAN SERVICIOS Y ACCESORIOS v1.10.2
+  BARRCAN SERVICIOS Y ACCESORIOS v1.11.0
+  v1.11.0 - FIX de raíz: nomenclatura real del folio corregida.
+    Formato correcto: CACN-{núm.presupuesto}{letra revisión}-{fecha}-
+    {núm.cliente}. La letra es una revisión real (empieza en A, sube
+    con cada "+ Agregar piezas") -- antes cada cotizador traía una
+    letra FIJA distinta (Nacional=B, Español=C, Eurovent=E,
+    Servicios=S, Baños=A) fingiendo ser esto, sin ser una revisión de
+    verdad. El módulo que generó cada presupuesto ahora se guarda
+    aparte en la columna `modulo` de Supabase (para que +Piezas siga
+    sabiendo a dónde mandar, sin depender de la letra).
+    También se corrigió el número de cliente: antes era un código
+    inventado al azar (RC + número + inicial); ahora usa el
+    num_cliente real de su ficha, y si un cliente nuevo todavía no
+    tiene uno, se le asigna un consecutivo automático (AUTO-001,
+    AUTO-002...) que queda guardado en su ficha para la próxima vez.
   v1.10.2 - Panel "Sin sincronizar todavía": cuando un guardado falla
     (sin señal, error de Supabase, etc.) y se pone en la cola local,
     el carrito de piezas se vaciaba igual y no había forma de ver ni
@@ -2318,13 +2332,26 @@ const STATE = {
 // se muestran bloqueadas (no se pueden quitar/editar desde aquí) y lo
 // que se agregue en esta sesión se suma al presupuesto original en vez
 // de crear uno nuevo.
-const SERIE_LETRA_MODULO = 'S';
-let CONTINUANDO_FOLIO = null; // { id, folio, cliente, tel, dir_obra, monto, saldo, notas_internas }
+//
+// NOMENCLATURA REAL DEL FOLIO (corregida):
+//   CACN-{núm. presupuesto, 3 dígitos}{letra de revisión}-{fecha yymmdd}-{núm. cliente}
+// La letra es una REVISIÓN real: empieza en A y solo sube (B, C...) si
+// el presupuesto se vuelve a tocar con "+ Agregar piezas" -- por eso
+// la mayoría se queda en A, es lo normal, no un error. Antes cada
+// cotizador traía una letra fija fingiendo ser esto (B=Nacional,
+// C=Español, E=Eurovent, S=Servicios, A=Baños), lo cual no era una
+// revisión real. Ahora el módulo se guarda aparte, en la columna
+// `modulo` de Supabase, para que "+Piezas"/"Editar" sepan a qué
+// cotizador mandar sin depender de la letra.
+const MODULO_ACTUAL = 'servicios';
+let CONTINUANDO_FOLIO = null; // { id, folio, cliente, tel, dir_obra, monto, saldo, notas_internas, modulo }
+let SN_CLIENTE_NUM = null;    // num_cliente del cliente seleccionado (o null si aún no tiene)
+let SN_CLIENTE_ID  = null;    // id del cliente seleccionado (o null si es "+ Cliente nuevo")
 
 // ── Número de folio: antes era 100% aleatorio (100-999), lo que
 // hacía que no llevara ninguna secuencia real y obligaba a corregirlo
 // a mano después. Ahora se consulta el máximo folio existente en
-// Supabase (de cualquier serie -- así se maneja como una sola
+// Supabase (de cualquier módulo -- así se maneja como una sola
 // numeración consecutiva, igual que en papel) y se pregunta,
 // sugiriendo el siguiente número; el usuario puede aceptarlo o
 // escribir otro.
@@ -2355,31 +2382,54 @@ async function snPedirNumeroFolio() {
   return String(num).padStart(3, '0');
 }
 
-function snLetraSerieDeFolio(folio) {
-  const m = /^CACN-\d+([A-Z])/.exec(folio || '');
-  return m ? m[1] : null;
-}
-
 function snSiguienteLetra(letra) {
   const cod = letra.charCodeAt(0);
   return cod >= 90 ? 'Z' : String.fromCharCode(cod + 1);
 }
 
-// Sube la revisión del folio (agrega/incrementa -REVx, sin tocar la
-// letra de serie que identifica el módulo) y refresca la fecha del
-// folio al día de hoy -- incluyendo el año, para que un folio de años
-// pasados que se retome hoy quede con fecha de hoy.
+// Sube la letra de revisión (A→B→C...) y refresca la fecha del folio
+// al día de hoy -- incluyendo el año, para que un folio de años
+// pasados que se retome hoy quede con fecha de hoy. El número de
+// presupuesto y el número de cliente NO cambian entre revisiones.
 function snBumpRevisionFolio(folioOriginal) {
   const hoy = new Date();
   const yy = String(hoy.getFullYear()).slice(-2);
   const mm = String(hoy.getMonth() + 1).padStart(2, '0');
   const dd = String(hoy.getDate()).padStart(2, '0');
   const fechaNueva = yy + mm + dd;
-  const m = /^(CACN-\d+[A-Z])(?:-REV([A-Z]))?-(\d{6})-(.+)$/.exec(folioOriginal || '');
-  if (!m) return (folioOriginal || 'CACN-000') + '-REVB-' + fechaNueva; // formato inesperado: respaldo
-  const prefijo = m[1], revActual = m[2], resto = m[4];
-  const revNueva = revActual ? snSiguienteLetra(revActual) : 'B';
-  return prefijo + '-REV' + revNueva + '-' + fechaNueva + '-' + resto;
+  const m = /^(CACN-\d+)([A-Z])-\d{6}-(.+)$/.exec(folioOriginal || '');
+  if (!m) return (folioOriginal || 'CACN-000A') + '-' + fechaNueva; // formato inesperado: respaldo
+  const base = m[1], letraActual = m[2], numCliente = m[3];
+  const letraNueva = snSiguienteLetra(letraActual);
+  return base + letraNueva + '-' + fechaNueva + '-' + numCliente;
+}
+
+// Obtiene el número de cliente real (num_cliente) del cliente ya
+// guardado; si no tiene uno todavía, genera un consecutivo automático
+// (AUTO-001, AUTO-002...) y lo deja asignado en su ficha para la
+// próxima vez -- así solo se genera una vez por cliente, no en cada
+// presupuesto.
+async function snObtenerNumCliente() {
+  if (SN_CLIENTE_NUM) return SN_CLIENTE_NUM;
+  var siguiente = 'AUTO-001';
+  try {
+    if (sb()) {
+      var res = await sb().from('clientes').select('num_cliente').ilike('num_cliente', 'AUTO-%');
+      if (!res.error && res.data) {
+        var max = 0;
+        res.data.forEach(function(c) {
+          var m = /^AUTO-(\d+)$/.exec(c.num_cliente || '');
+          if (m) { var n = parseInt(m[1], 10); if (n > max) max = n; }
+        });
+        siguiente = 'AUTO-' + String(max + 1).padStart(3, '0');
+      }
+    }
+  } catch(e) {}
+  if (sb() && SN_CLIENTE_ID) {
+    try { await sb().from('clientes').update({ num_cliente: siguiente }).eq('id', SN_CLIENTE_ID); } catch(e) {}
+  }
+  SN_CLIENTE_NUM = siguiente; // si era cliente nuevo (sin id todavía), se guarda al insertarlo más abajo
+  return siguiente;
 }
 
 // Carga (si existe) el presupuesto a continuar desde localStorage,
@@ -2391,7 +2441,7 @@ function snCargarContinuarFolio() {
   let datos = null;
   try { datos = JSON.parse(raw); } catch(e) {}
   if (!datos || !datos.folio) return;
-  if (snLetraSerieDeFolio(datos.folio) !== SERIE_LETRA_MODULO) return; // no es de este módulo
+  if (datos.modulo && datos.modulo !== MODULO_ACTUAL) return; // no es de este módulo
   try { localStorage.removeItem('barrcan_continuar_folio'); } catch(e) {}
 
   CONTINUANDO_FOLIO = datos;
@@ -3623,7 +3673,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.10.2';
+const APP_VERSION = 'v1.11.0';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -4881,6 +4931,8 @@ function snSelCliente(){
   if (!sel.value) {
     // "+ Cliente nuevo": limpiar para captura manual
     ['sn-cliente','sn-tel','sn-dir'].forEach(function(id){ var el = document.getElementById(id); if (el) el.value = ''; });
+    SN_CLIENTE_ID = null;
+    SN_CLIENTE_NUM = null;
     return;
   }
   var opt = sel.options[sel.selectedIndex];
@@ -4890,6 +4942,8 @@ function snSelCliente(){
   document.getElementById('sn-tel').value = c.telefono || '';
   var dirC = c.dir_obra || c.direccion || c.domicilio || '';
   document.getElementById('sn-dir').value = dirC;
+  SN_CLIENTE_ID = c.id != null ? c.id : null;
+  SN_CLIENTE_NUM = c.num_cliente || null;
 }
 
 // ── Pantalla de Presupuesto (carrito) ──────────────────────────
@@ -5023,7 +5077,16 @@ function snObtenerColaPropia() {
   var cola = [];
   try { cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes') || '[]'); } catch(e) {}
   return cola.filter(function(item) {
-    return item && item.datos && snLetraSerieDeFolio(item.datos.folio) === SERIE_LETRA_MODULO;
+    if (!item || !item.datos) return false;
+    if (item.datos.modulo) return item.datos.modulo === MODULO_ACTUAL;
+    // Compatibilidad con pendientes que quedaron en cola ANTES de que
+    // existiera la columna `modulo` -- se reconocen por la vieja letra
+    // fija que cada cotizador usaba (ya no se genera así, pero los que
+    // ya estaban esperando en el celular siguen con ese formato).
+    var m = /^CACN-\d+([A-Z])/.exec(item.datos.folio || '');
+    var letraVieja = m ? m[1] : null;
+    var letraViejaEsperada = 'S'; // este módulo (servicios) usaba 'S' fija
+    return letraVieja === letraViejaEsperada;
   });
 }
 
@@ -5152,25 +5215,40 @@ async function snGuardarPresupuesto(){
   const yy = String(hoy.getFullYear()).slice(-2);
   const mm = String(hoy.getMonth() + 1).padStart(2, '0');
   const dd = String(hoy.getDate()).padStart(2, '0');
-  const ini = (cliente.replace(/ /g, '').toUpperCase()[0]) || 'X';
   const totalNuevas = nuevas.reduce(function(a, it){ return a + (it.precio || 0); }, 0);
 
-  let folio, incluidos, montoFinal, saldoFinal;
   const esActualizacion = !!CONTINUANDO_FOLIO;
   const idActualizar = esActualizacion ? CONTINUANDO_FOLIO.id : null;
+  const selCli = document.getElementById('sn-cli-select');
+  const esClienteNuevo = !esActualizacion && selCli && !selCli.value;
+
+  // Si es cliente nuevo, darlo de alta ANTES de armar el folio, para
+  // tener su id real y poder asignarle num_cliente si le hace falta.
+  if (esClienteNuevo && sb()) {
+    try {
+      const ins = await sb().from('clientes').insert([{ nombre: cliente, telefono: tel || null, dir_obra: dir || null }]).select().single();
+      if (!ins.error && ins.data) { SN_CLIENTE_ID = ins.data.id; SN_CLIENTE_NUM = ins.data.num_cliente || null; }
+      snCargarClientes();
+    } catch(e) {}
+  }
+
   let numFolio = null;
   if (!esActualizacion) {
     numFolio = await snPedirNumeroFolio();
     if (numFolio === null) { toast('Guardado cancelado'); return; }
   }
 
+  let folio, incluidos, montoFinal, saldoFinal;
   if (esActualizacion) {
     folio = snBumpRevisionFolio(CONTINUANDO_FOLIO.folio);
     incluidos = STATE.carrito.filter(function(it){ return it.existente; }).concat(nuevas);
     montoFinal = Math.round((CONTINUANDO_FOLIO.monto || 0) + totalNuevas);
     saldoFinal = Math.round((CONTINUANDO_FOLIO.saldo || 0) + totalNuevas);
   } else {
-    folio = `CACN-${numFolio}S-${yy}${mm}${dd}-RC${Math.floor(Math.random() * 900) + 100}${ini}`;
+    const numCliente = await snObtenerNumCliente();
+    // Letra de revisión: siempre A en un folio nuevo -- solo sube con
+    // "+ Agregar piezas" más adelante.
+    folio = `CACN-${numFolio}A-${yy}${mm}${dd}-${numCliente}`;
     incluidos = nuevas;
     montoFinal = Math.round(totalNuevas);
     saldoFinal = Math.round(totalNuevas);
@@ -5185,6 +5263,7 @@ async function snGuardarPresupuesto(){
     folio, cliente, tel: tel || null, descripcion: desc, dir_obra: dir || null, notas: notas || null,
     monto: montoFinal, saldo: saldoFinal,
     estado: 'activo', fecha: hoy.toISOString().split('T')[0],
+    modulo: MODULO_ACTUAL,
     notas_internas: JSON.stringify(incluidos.map(function(it){ return { label: it.label, cantidad: it.cantidad || 1, precioUnitario: it.precioUnitario != null ? it.precioUnitario : it.precio, precio: it.precio, resultado: it.resultado }; }))
   };
 
@@ -5210,11 +5289,6 @@ async function snGuardarPresupuesto(){
       if (esActualizacion) payload.id = idActualizar;
       snGuardarOffline(payload, esActualizacion);
     }
-    // Si fue "+ Cliente nuevo" (no vino del selector), lo damos de alta para la próxima vez
-    const selCli = document.getElementById('sn-cli-select');
-    if (!esActualizacion && selCli && !selCli.value) {
-      try { await sb().from('clientes').insert([{ nombre: cliente, telefono: tel || null, dir_obra: dir || null }]); snCargarClientes(); } catch(e) {}
-    }
   } else {
     if (esActualizacion) payload.id = idActualizar;
     snGuardarOffline(payload, esActualizacion);
@@ -5224,6 +5298,8 @@ async function snGuardarPresupuesto(){
   if (w) { w.document.write(htmlDoc); w.document.close(); }
 
   CONTINUANDO_FOLIO = null;
+  SN_CLIENTE_ID = null;
+  SN_CLIENTE_NUM = null;
   STATE.carrito = [];
   snGuardarCarritoLocal();
   const sub = document.getElementById('sn-presupuesto-subtitulo');
@@ -5730,6 +5806,9 @@ window.guardarCotizacion = guardarCotizacion;
 window.snActualizarResumenFijo = snActualizarResumenFijo;
 window.snAdjuntarArch = snAdjuntarArch;
 window.snSelSubcat = snSelSubcat;
+window.snPendienteEditar = snPendienteEditar;
+window.snPendienteReintentar = snPendienteReintentar;
+window.snPendienteEliminar = snPendienteEliminar;
 window.servComboToggle = servComboToggle;
 window.servComboCant = servComboCant;
 window.servToggleCombo = servToggleCombo;
