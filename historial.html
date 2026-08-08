@@ -6,6 +6,14 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v2.5
+  FECHA   : 2026-08-07
+  v2.5 - Nuevo botón "+ Agregar piezas" en cada presupuesto: manda al
+    cotizador correcto (según la letra de serie del folio) con el
+    presupuesto ya cargado, para sumar piezas nuevas al mismo folio
+    en vez de crear uno aparte. También se agregó notas_internas a
+    la consulta de presupuestos (antes no viajaba, y sin eso el
+    cotizador no podía mostrar qué piezas ya tenía el folio).
   VERSIÓN : v2.4
   FECHA   : 2026-07-29
   v2.4 — Reconciliación de versión + orden por folio recuperado:
@@ -1276,7 +1284,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v2.4';
+var APP_VERSION = 'v2.5';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1366,7 +1374,7 @@ async function presCargar() {
 
   try {
     var result = await sb().from('presupuestos_atrasados')
-      .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,fecha,estado,created_at')
+      .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,fecha,estado,notas_internas,created_at')
       .order('folio', { ascending: true })
       .range(0, 499);
 
@@ -1480,11 +1488,12 @@ function presRenderLista(datos) {
       + saldoStr + montoStr
       + '</div>'
       + '</div>'
-      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px">'
-      + '<button onclick="presAccionPago(\'' + idStr + '\')" style="padding:7px 3px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.3);border-radius:8px;color:var(--green);font-size:10px;font-weight:700;cursor:pointer">Pago</button>'
-      + '<button onclick="presEditar(\'' + idStr + '\')" style="padding:7px 3px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:10px;font-weight:700;cursor:pointer">Editar</button>'
-      + '<button onclick="presCrearOT(\'' + idStr + '\')" style="padding:7px 3px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:10px;font-weight:700;cursor:pointer">OT</button>'
-      + '<button onclick="presVerProgreso(\'' + idStr + '\')" style="padding:7px 3px;background:rgba(142,68,173,0.08);border:1.5px solid rgba(142,68,173,0.3);border-radius:8px;color:#8E44AD;font-size:10px;font-weight:700;cursor:pointer">Progreso</button>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:5px">'
+      + '<button onclick="presAccionPago(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.3);border-radius:8px;color:var(--green);font-size:9.5px;font-weight:700;cursor:pointer">Pago</button>'
+      + '<button onclick="presEditar(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:9.5px;font-weight:700;cursor:pointer">Editar</button>'
+      + '<button onclick="presAgregarPiezas(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:9.5px;font-weight:700;cursor:pointer">+Piezas</button>'
+      + '<button onclick="presCrearOT(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:9.5px;font-weight:700;cursor:pointer">OT</button>'
+      + '<button onclick="presVerProgreso(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(142,68,173,0.08);border:1.5px solid rgba(142,68,173,0.3);border-radius:8px;color:#8E44AD;font-size:9.5px;font-weight:700;cursor:pointer">Progreso</button>'
       + '</div>'
       + '</div>';
   }
@@ -1600,6 +1609,33 @@ function presAbrirNuevo() {
   document.getElementById('pres-modal').style.display        = 'block';
   // Cargar clientes en background, no bloquea el modal
   setTimeout(presCargarClientesDropdown, 50);
+}
+
+// ── Agregar piezas a un folio ya guardado ──────────────────────────
+// Manda al cotizador correcto según la letra de serie del folio
+// (B=Nacional, C=Español, E=Eurovent, S=Servicios, A=Baños), dejando
+// el presupuesto actual en localStorage para que ese módulo lo
+// recoja, precargue sus piezas ya guardadas y sume lo nuevo al mismo
+// folio (subiendo la revisión) en vez de crear uno aparte.
+var PRES_SERIE_A_MODULO = { B: 'cotizador_nacional.html', C: 'cotizador_espanol.html', E: 'cotizador_eurovent.html', S: 'cotizador_servicios.html', A: 'cotizador_banos.html' };
+
+function presAgregarPiezas(id) {
+  var p = null;
+  for (var i = 0; i < PRES_CACHE.length; i++) {
+    if (PRES_CACHE[i].id === id) { p = PRES_CACHE[i]; break; }
+  }
+  if (!p) return;
+  var m = /^CACN-\d+([A-Z])/.exec(p.folio || '');
+  var letra = m ? m[1] : null;
+  var destino = letra ? PRES_SERIE_A_MODULO[letra] : null;
+  if (!destino) { toast('No se reconoce el módulo de este folio' + (letra ? ' (letra "' + letra + '")' : '')); return; }
+  try {
+    localStorage.setItem('barrcan_continuar_folio', JSON.stringify({
+      id: p.id, folio: p.folio, cliente: p.cliente, tel: p.tel, dir: p.dir, dir_obra: p.dir,
+      monto: p.monto, saldo: p.saldo, descripcion: p.descripcion, notas_internas: p.notas_internas
+    }));
+  } catch(e) { toast('No se pudo preparar el folio para continuar'); return; }
+  location.href = destino;
 }
 
 function presEditar(id) {
