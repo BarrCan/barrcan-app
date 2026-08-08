@@ -6,6 +6,21 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v2.0
+  FECHA   : 2026-08-08
+  v2.0 - Huella/Face ID como atajo local sobre el PIN:
+    - No reemplaza el PIN -- lo guardado en Supabase sigue siendo la
+      credencial real. La huella se registra vía WebAuthn únicamente
+      en el celular donde se activa (no hay nada que verificar en el
+      servidor), así que solo evita teclear el PIN en ESE aparato.
+    - Al elegir tu usuario, si ya tienes huella activada en ese
+      celular, se intenta entrar directo con ella; si falla, se
+      cancela, o no está disponible, cae de vuelta al PIN normal sin
+      ningún problema.
+    - Tras el primer PIN exitoso se ofrece activarla una sola vez
+      (no vuelve a insistir aunque digas que no). También hay un
+      botón 🔒/🔓 en el portal para activarla o quitarla cuando
+      quieras.
   VERSION : v1.9
   FECHA   : 2026-07-31
   v1.9 - Agregada la tarjeta del módulo Render IA (render_ia.html) al
@@ -177,6 +192,7 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
     <div style="display:flex;gap:6px;align-items:center">
       <span id="conn-status" style="font-size:10px;color:rgba(255,255,255,.4)"></span>
       <button class="portal-salir" id="btn-admin-usuarios" onclick="abrirAdminUsuarios()" style="display:none">&#9881;&#65039; Usuarios</button>
+      <button class="portal-salir" id="btn-huella-toggle" onclick="huellaToggleUI()" style="display:none">&#128274;</button>
       <button class="portal-salir" onclick="cerrarSesion()">Salir</button>
     </div>
   </div>
@@ -302,12 +318,127 @@ function sb(){
 }
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
-var APP_VERSION = 'v1.9';
+var APP_VERSION = 'v2.0';
 var USUARIOS = [];
 var USUARIO_SEL = null;   // el que se está tratando de loguear
 var PIN_BUFFER = '';
 var MODO_CONFIGURAR = false; // true = está creando su PIN por primera vez
 var PIN_TEMP_PRIMERO = ''; // guarda el primer PIN mientras pide confirmación
+
+// ══════════════════════════════════════════════
+// HUELLA / FACE ID — atajo local sobre el mismo PIN
+// ══════════════════════════════════════════════
+// Esto NO reemplaza el PIN: solo permite que, en ESTE celular
+// específico, tu huella o Face ID abran la sesión sin tener que
+// teclear tu PIN cada vez (útil, por ejemplo, en toma de medidas,
+// donde sacar el celular y teclear 8 dígitos en una posición
+// incómoda es un fastidio). El PIN sigue siendo la credencial real
+// guardada en Supabase; la huella queda registrada únicamente en
+// este dispositivo -- no hay nada que verificar en el servidor, así
+// que si cambias de celular o borras datos del navegador hay que
+// volver a activarla, y el PIN normal siempre sigue funcionando
+// como respaldo si la huella falla o no está disponible.
+
+function _huellaDisponible() {
+  return !!(window.PublicKeyCredential && navigator.credentials);
+}
+function _ab2b64(buf) {
+  var bytes = new Uint8Array(buf), bin = '';
+  for (var i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+function _b642ab(b64) {
+  var bin = atob(b64), bytes = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
+function _huellaClave(userId) { return 'barrcan_huella_' + userId; }
+function _huellaTieneRegistrada(userId) { return !!localStorage.getItem(_huellaClave(userId)); }
+
+async function huellaRegistrar(usuario) {
+  if (!_huellaDisponible()) { toast('Este celular/navegador no soporta huella o Face ID'); return false; }
+  try {
+    if (PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable) {
+      var disponible = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+      if (!disponible) { toast('No se detectó huella/Face ID configurada en este celular'); return false; }
+    }
+    var challenge = crypto.getRandomValues(new Uint8Array(32));
+    var cred = await navigator.credentials.create({
+      publicKey: {
+        challenge: challenge,
+        rp: { name: 'BarrCan' },
+        user: {
+          id: new TextEncoder().encode(String(usuario.id)),
+          name: usuario.nombre || String(usuario.id),
+          displayName: usuario.apodo || usuario.nombre || String(usuario.id)
+        },
+        pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+        authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required' },
+        timeout: 60000
+      }
+    });
+    if (!cred) return false;
+    localStorage.setItem(_huellaClave(usuario.id), _ab2b64(cred.rawId));
+    toast('✅ Huella activada en este celular');
+    return true;
+  } catch(e) {
+    console.log('[BarrCan] No se pudo registrar huella:', e.message);
+    toast('No se pudo activar la huella: ' + e.message);
+    return false;
+  }
+}
+
+async function huellaIntentarLogin(usuario) {
+  if (!_huellaDisponible()) return false;
+  var credB64 = localStorage.getItem(_huellaClave(usuario.id));
+  if (!credB64) return false;
+  try {
+    var cred = await navigator.credentials.get({
+      publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        allowCredentials: [{ type: 'public-key', id: _b642ab(credB64) }],
+        userVerification: 'required',
+        timeout: 15000
+      }
+    });
+    return !!cred;
+  } catch(e) {
+    // Falló, la canceló, o no coincidió el dedo -- no es un error grave,
+    // simplemente se sigue con el PIN normal.
+    console.log('[BarrCan] Huella no usada:', e.message);
+    return false;
+  }
+}
+
+function huellaOlvidar(userId) {
+  localStorage.removeItem(_huellaClave(userId));
+  toast('Huella desactivada en este celular');
+}
+
+// Botón 🔒/🔓 en el header del portal, para activar/quitar la huella
+// del usuario que ya inició sesión, sin tener que esperar el aviso
+// automático de la primera vez.
+function actualizarBotonHuella() {
+  var btn = document.getElementById('btn-huella-toggle');
+  if (!btn || !USUARIO_SEL) return;
+  if (!_huellaDisponible()) { btn.style.display = 'none'; return; }
+  btn.style.display = 'inline-block';
+  var activa = _huellaTieneRegistrada(USUARIO_SEL.id);
+  btn.innerHTML = activa ? '&#128275;' : '&#128274;'; // desbloqueado = activa, candado = inactiva
+  btn.title = activa ? 'Huella activada — toca para quitarla de este celular' : 'Activar huella en este celular';
+}
+async function huellaToggleUI() {
+  if (!USUARIO_SEL) return;
+  if (_huellaTieneRegistrada(USUARIO_SEL.id)) {
+    if (confirm('¿Quitar la huella de este celular? Tendrás que usar tu PIN la próxima vez.')) {
+      huellaOlvidar(USUARIO_SEL.id);
+      actualizarBotonHuella();
+    }
+  } else {
+    await huellaRegistrar(USUARIO_SEL);
+    actualizarBotonHuella();
+  }
+}
 
 // ── Cargar usuarios ──
 async function cargarUsuarios() {
@@ -333,9 +464,19 @@ async function cargarUsuarios() {
 function esc(s){return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
 // ── Selección de usuario → pantalla de PIN ──
-function seleccionarUsuario(id) {
+async function seleccionarUsuario(id) {
   USUARIO_SEL = USUARIOS.filter(function(u){ return u.id === id; })[0];
   if (!USUARIO_SEL) return;
+
+  // Si ya tiene huella activada en este celular (y ya tiene PIN
+  // configurado, o sea no es su primera vez), intenta entrar directo
+  // con ella antes de mostrar el teclado de PIN.
+  if (USUARIO_SEL.pin && _huellaTieneRegistrada(USUARIO_SEL.id)) {
+    var okHuella = await huellaIntentarLogin(USUARIO_SEL);
+    if (okHuella) { entrarAlPortal(); return; }
+    // Si falla, se cancela o no coincide: sigue normal con el PIN, sin drama.
+  }
+
   PIN_BUFFER = '';
   MODO_CONFIGURAR = !USUARIO_SEL.pin;
   PIN_TEMP_PRIMERO = '';
@@ -444,6 +585,22 @@ function entrarAlPortal() {
   var btnAdmin = document.getElementById('btn-admin-usuarios');
   if (btnAdmin) btnAdmin.style.display = nivelAcceso(USUARIO_SEL) === 'supremo' ? 'inline-block' : 'none';
   filtrarModulosPorRol();
+  actualizarBotonHuella();
+
+  // Ofrecer activar huella una sola vez (si el celular la soporta y
+  // este usuario todavía no la tiene en este dispositivo). Se marca
+  // como "ya preguntado" aunque diga que no, para no insistir cada
+  // sesión.
+  var yaPreguntado = localStorage.getItem('barrcan_huella_preguntado_' + USUARIO_SEL.id);
+  if (!_huellaTieneRegistrada(USUARIO_SEL.id) && !yaPreguntado && _huellaDisponible()) {
+    localStorage.setItem('barrcan_huella_preguntado_' + USUARIO_SEL.id, '1');
+    var usuarioParaHuella = USUARIO_SEL;
+    setTimeout(function() {
+      if (confirm('¿Activar huella o Face ID en este celular? Así no tienes que escribir tu PIN cada vez (útil en toma de medidas). Tu PIN sigue funcionando siempre como respaldo.')) {
+        huellaRegistrar(usuarioParaHuella).then(actualizarBotonHuella);
+      }
+    }, 500);
+  }
 }
 
 // Nivel de acceso real: "supremo" es únicamente MAU (aunque su rol en
@@ -473,6 +630,8 @@ function filtrarModulosPorRol() {
 function cerrarSesion() {
   localStorage.removeItem('barrcan_usuario_activo');
   document.getElementById('pantalla-portal').style.display = 'none';
+  var btnHuella = document.getElementById('btn-huella-toggle');
+  if (btnHuella) btnHuella.style.display = 'none';
   volverALogin();
 }
 
@@ -590,6 +749,31 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   } catch(e) {}
 });
+
+// ══════════════════════════════════════════════
+// SERVICE WORKER — habilita caché offline y auto-actualización
+// ══════════════════════════════════════════════
+// Antes SOLO barrcan_app.html (el prototipo, fuera de producción)
+// registraba el Service Worker -- ningún módulo real lo hacía, así
+// que probablemente nunca se instaló en los celulares del equipo:
+// todo el trabajo de caché offline (v9/v10) estaba inactivo. Se
+// agrega aquí para que este módulo también quede disponible sin
+// señal y se actualice solo en cuanto haya conexión.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const registros = await navigator.serviceWorker.getRegistrations();
+      for (const reg of registros) {
+        const swUrl = reg.active?.scriptURL || '';
+        if (swUrl && !swUrl.includes('barrcan_sw.js')) {
+          await reg.unregister();
+        }
+      }
+      const reg = await navigator.serviceWorker.register('./barrcan_sw.js', { scope: './' });
+      if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+    } catch(e) { console.log('[BarrCan] SW no disponible:', e.message); }
+  });
+}
 </script>
 </body>
 </html>
