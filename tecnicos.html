@@ -1945,6 +1945,31 @@ document.addEventListener('DOMContentLoaded', function() {
   detectarConexion();
   tecCargar();
 });
+
+// ══════════════════════════════════════════════
+// SERVICE WORKER — habilita caché offline y auto-actualización
+// ══════════════════════════════════════════════
+// Antes SOLO barrcan_app.html (el prototipo, fuera de producción)
+// registraba el Service Worker -- ningún módulo real lo hacía, así
+// que probablemente nunca se instaló en los celulares del equipo:
+// todo el trabajo de caché offline (v9/v10) estaba inactivo. Se
+// agrega aquí para que este módulo también quede disponible sin
+// señal y se actualice solo en cuanto haya conexión.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const registros = await navigator.serviceWorker.getRegistrations();
+      for (const reg of registros) {
+        const swUrl = reg.active?.scriptURL || '';
+        if (swUrl && !swUrl.includes('barrcan_sw.js')) {
+          await reg.unregister();
+        }
+      }
+      const reg = await navigator.serviceWorker.register('./barrcan_sw.js', { scope: './' });
+      if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+    } catch(e) { console.log('[BarrCan] SW no disponible:', e.message); }
+  });
+}
 </script>
 </body>
 </html>
