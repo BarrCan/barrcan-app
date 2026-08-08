@@ -5,7 +5,17 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Servicios y Accesorios</title>
 <!--
-  BARRCAN SERVICIOS Y ACCESORIOS v1.9.0
+  BARRCAN SERVICIOS Y ACCESORIOS v1.10.0
+  v1.10.0 - Agregar piezas a un folio ya guardado:
+    - Nuevo botón "+ Agregar piezas" en historial.html que manda a
+      este cotizador con el presupuesto ya cargado (piezas existentes
+      bloqueadas + lo que se agregue en la sesión).
+    - Al guardar, en vez de crear un folio nuevo se ACTUALIZA el
+      original: sube la letra de revisión (-REVB, -REVC...) sin
+      tocar la letra de serie del módulo, la fecha del folio se
+      refresca al día de hoy (incluye año, para folios de años
+      pasados), y el monto/saldo se suman sin perder lo ya abonado.
+  v1.9.0 - (ver historial debajo)
   v1.9.0 - FIX RAÍZ de 3 bugs reportados (pestañas, combo, mano de obra):
     - Causa real encontrada: TODO el script vive dentro de un IIFE
       (function(){...})(); -- cualquier función llamada desde onclick/
@@ -1990,7 +2000,7 @@ body{background:var(--off-white)}
         <div class="wizard-title" style="margin:0">🧾 Presupuesto</div>
         <button onclick="snIrCatalogo()" style="padding:5px 12px;border:1.5px solid var(--gray-200);border-radius:16px;background:#fff;font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;color:var(--gray-600);cursor:pointer">+ Agregar pieza</button>
       </div>
-      <div style="font-size:12px;color:var(--gray-400)">Selecciona las piezas que van en este presupuesto</div>
+      <div style="font-size:12px;color:var(--gray-400)" id="sn-presupuesto-subtitulo">Selecciona las piezas que van en este presupuesto</div>
     </div>
     <div id="sn-presupuesto-items"></div>
     <div class="wizard-card" style="margin-top:12px">
@@ -2281,6 +2291,82 @@ const STATE = {
   carrito: [],
   historial: []
 };
+
+// ══════════════════════════════════════════════
+// AGREGAR PIEZAS A UN FOLIO YA GUARDADO
+// ══════════════════════════════════════════════
+// Cuando se abre este cotizador desde historial.html con la opción
+// "+ Agregar piezas", llega aquí un presupuesto ya guardado (folio,
+// cliente, piezas existentes) vía localStorage. Las piezas existentes
+// se muestran bloqueadas (no se pueden quitar/editar desde aquí) y lo
+// que se agregue en esta sesión se suma al presupuesto original en vez
+// de crear uno nuevo.
+const SERIE_LETRA_MODULO = 'S';
+let CONTINUANDO_FOLIO = null; // { id, folio, cliente, tel, dir_obra, monto, saldo, notas_internas }
+
+function snLetraSerieDeFolio(folio) {
+  const m = /^CACN-\d+([A-Z])/.exec(folio || '');
+  return m ? m[1] : null;
+}
+
+function snSiguienteLetra(letra) {
+  const cod = letra.charCodeAt(0);
+  return cod >= 90 ? 'Z' : String.fromCharCode(cod + 1);
+}
+
+// Sube la revisión del folio (agrega/incrementa -REVx, sin tocar la
+// letra de serie que identifica el módulo) y refresca la fecha del
+// folio al día de hoy -- incluyendo el año, para que un folio de años
+// pasados que se retome hoy quede con fecha de hoy.
+function snBumpRevisionFolio(folioOriginal) {
+  const hoy = new Date();
+  const yy = String(hoy.getFullYear()).slice(-2);
+  const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+  const dd = String(hoy.getDate()).padStart(2, '0');
+  const fechaNueva = yy + mm + dd;
+  const m = /^(CACN-\d+[A-Z])(?:-REV([A-Z]))?-(\d{6})-(.+)$/.exec(folioOriginal || '');
+  if (!m) return (folioOriginal || 'CACN-000') + '-REVB-' + fechaNueva; // formato inesperado: respaldo
+  const prefijo = m[1], revActual = m[2], resto = m[4];
+  const revNueva = revActual ? snSiguienteLetra(revActual) : 'B';
+  return prefijo + '-REV' + revNueva + '-' + fechaNueva + '-' + resto;
+}
+
+// Carga (si existe) el presupuesto a continuar desde localStorage,
+// dejado ahí por historial.html al presionar "+ Agregar piezas".
+function snCargarContinuarFolio() {
+  let raw = null;
+  try { raw = localStorage.getItem('barrcan_continuar_folio'); } catch(e) {}
+  if (!raw) return;
+  let datos = null;
+  try { datos = JSON.parse(raw); } catch(e) {}
+  if (!datos || !datos.folio) return;
+  if (snLetraSerieDeFolio(datos.folio) !== SERIE_LETRA_MODULO) return; // no es de este módulo
+  try { localStorage.removeItem('barrcan_continuar_folio'); } catch(e) {}
+
+  CONTINUANDO_FOLIO = datos;
+  let piezas = [];
+  try { piezas = JSON.parse(datos.notas_internas || '[]'); } catch(e) {}
+  STATE.carrito = piezas.map(function(p, idx) {
+    return {
+      id: 'existente-' + idx,
+      label: p.label, cantidad: p.cantidad || 1,
+      precioUnitario: p.precioUnitario, precio: p.precio,
+      resultado: p.resultado, incluido: true, existente: true
+    };
+  });
+  snGuardarCarritoLocal();
+
+  const setVal = function(id, val) { const el = document.getElementById(id); if (el) el.value = val || ''; };
+  setVal('sn-cliente', datos.cliente);
+  setVal('sn-tel', datos.tel);
+  setVal('sn-dir', datos.dir_obra || datos.dir);
+
+  const sub = document.getElementById('sn-presupuesto-subtitulo');
+  if (sub) sub.innerHTML = '➕ Agregando piezas al folio <strong>' + esc(datos.folio) + '</strong> — el total y el saldo se suman al presupuesto original.';
+  toast('Agregando piezas al folio ' + datos.folio);
+  snRenderPresupuesto();
+}
+
 
 // ── FIX: precio de vidrio, sugerido vs. editado por el usuario ──
 // Antes se detectaba "el usuario no tocó el campo" comparando su valor
@@ -3486,7 +3572,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.9.0';
+const APP_VERSION = 'v1.10.0';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -4767,7 +4853,25 @@ function snRenderPresupuesto() {
       cont.innerHTML = '<div class="wizard-card" style="text-align:center;color:var(--gray-400);font-size:13px;padding:20px">Sin piezas todav\u00eda. Ve al cat\u00e1logo y calcula al menos una.</div>';
     } else {
       var html = '<div class="wizard-card">';
-      STATE.carrito.forEach(function(it, idx) {
+      if (CONTINUANDO_FOLIO) {
+        var existentes = STATE.carrito.filter(function(it){ return it.existente; });
+        var nuevas = STATE.carrito.filter(function(it){ return !it.existente; });
+        if (existentes.length) {
+          html += '<div style="font-size:11px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Ya en el folio (no editable aquí)</div>';
+          existentes.forEach(function(it, idx) {
+            var cant = it.cantidad || 1;
+            html += '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;opacity:0.6;' + (idx > 0 ? 'border-top:1px solid var(--gray-200)' : '') + '">'
+              + '<span style="width:18px;text-align:center;flex-shrink:0">🔒</span>'
+              + '<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:var(--navy)">' + esc(it.label) + (cant > 1 ? ' x' + cant : '') + '</div></div>'
+              + '<div style="width:80px;text-align:right;font-size:13px;font-weight:800;color:var(--navy)">$' + fmt(it.precio) + '</div>'
+              + '</div>';
+          });
+          html += '<div style="font-size:11px;font-weight:700;color:var(--gray-400);text-transform:uppercase;letter-spacing:0.5px;margin:12px 0 4px">Piezas nuevas que se van a agregar</div>';
+          if (!nuevas.length) html += '<div style="font-size:12px;color:var(--gray-400);padding:6px 0">Ninguna todavía — usa "+ Agregar pieza".</div>';
+        }
+      }
+      var listaRender = CONTINUANDO_FOLIO ? STATE.carrito.filter(function(it){ return !it.existente; }) : STATE.carrito;
+      listaRender.forEach(function(it, idx) {
         var checked = it.incluido !== false;
         var cant = it.cantidad || 1;
         html += '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;' + (idx > 0 ? 'border-top:1px solid var(--gray-200)' : '') + '">'
@@ -4840,10 +4944,10 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha) {
 // se hubiera impreso/guardado la ventana a mano. Ahora se guarda en cola
 // local (misma llave que usa historial.html, así que también se puede
 // reintentar desde ahí) y se reintenta solo al reconectar.
-function snGuardarOffline(payload) {
+function snGuardarOffline(payload, esActualizacion) {
   try {
     var cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes') || '[]');
-    cola.push({ tipo: 'nuevo', datos: payload, ts: new Date().toISOString() });
+    cola.push({ tipo: esActualizacion ? 'update' : 'nuevo', datos: payload, ts: new Date().toISOString() });
     localStorage.setItem('barrcan_presupuestos_pendientes', JSON.stringify(cola));
     toast('Guardado sin conexión · Folio: ' + payload.folio + ' · se sincronizará después');
   } catch(e) {
@@ -4874,23 +4978,48 @@ async function snReintentarPendientes() {
 }
 
 async function snGuardarPresupuesto(){
-  const incluidos = STATE.carrito.filter(function(it){ return it.incluido !== false; });
-  if (!incluidos.length) { toast('Selecciona al menos una pieza'); return; }
+  const nuevas = STATE.carrito.filter(function(it){ return it.incluido !== false && !it.existente; });
+  if (!nuevas.length) { toast(CONTINUANDO_FOLIO ? 'Agrega al menos una pieza nueva' : 'Selecciona al menos una pieza'); return; }
   const cliente = document.getElementById('sn-cliente').value.trim();
   const tel = document.getElementById('sn-tel').value.trim();
   const dir = document.getElementById('sn-dir').value.trim();
   const notas = document.getElementById('sn-notas').value.trim();
   if (!cliente) { toast('Ingresa el nombre del cliente'); return; }
-  const total = incluidos.reduce(function(a, it){ return a + (it.precio || 0); }, 0);
+
   const hoy = new Date();
   const yy = String(hoy.getFullYear()).slice(-2);
   const mm = String(hoy.getMonth() + 1).padStart(2, '0');
   const dd = String(hoy.getDate()).padStart(2, '0');
   const ini = (cliente.replace(/ /g, '').toUpperCase()[0]) || 'X';
-  const folio = `CACN-${Math.floor(Math.random() * 900) + 100}S-${yy}${mm}${dd}-RC${Math.floor(Math.random() * 900) + 100}${ini}`;
-  const desc = incluidos.map(function(it){ return it.label + ((it.cantidad || 1) > 1 ? ' x' + it.cantidad : ''); }).join(' + ').slice(0, 200);
+  const totalNuevas = nuevas.reduce(function(a, it){ return a + (it.precio || 0); }, 0);
+
+  let folio, incluidos, montoFinal, saldoFinal;
+  const esActualizacion = !!CONTINUANDO_FOLIO;
+  const idActualizar = esActualizacion ? CONTINUANDO_FOLIO.id : null;
+
+  if (esActualizacion) {
+    folio = snBumpRevisionFolio(CONTINUANDO_FOLIO.folio);
+    incluidos = STATE.carrito.filter(function(it){ return it.existente; }).concat(nuevas);
+    montoFinal = Math.round((CONTINUANDO_FOLIO.monto || 0) + totalNuevas);
+    saldoFinal = Math.round((CONTINUANDO_FOLIO.saldo || 0) + totalNuevas);
+  } else {
+    folio = `CACN-${Math.floor(Math.random() * 900) + 100}S-${yy}${mm}${dd}-RC${Math.floor(Math.random() * 900) + 100}${ini}`;
+    incluidos = nuevas;
+    montoFinal = Math.round(totalNuevas);
+    saldoFinal = Math.round(totalNuevas);
+  }
+
+  const descNuevas = nuevas.map(function(it){ return it.label + ((it.cantidad || 1) > 1 ? ' x' + it.cantidad : ''); }).join(' + ');
+  const desc = esActualizacion ? ((CONTINUANDO_FOLIO.descripcion || '') + ' + ' + descNuevas).slice(0, 200) : descNuevas.slice(0, 200);
 
   const htmlDoc = snGenerarDocumentoPresupuesto(incluidos, folio, cliente, dir, hoy);
+
+  const payload = {
+    folio, cliente, tel: tel || null, descripcion: desc, dir_obra: dir || null, notas: notas || null,
+    monto: montoFinal, saldo: saldoFinal,
+    estado: 'activo', fecha: hoy.toISOString().split('T')[0],
+    notas_internas: JSON.stringify(incluidos.map(function(it){ return { label: it.label, cantidad: it.cantidad || 1, precioUnitario: it.precioUnitario != null ? it.precioUnitario : it.precio, precio: it.precio, resultado: it.resultado }; }))
+  };
 
   if (sb()) {
     let archivo_url = null, archivo_nombre = null;
@@ -4902,31 +5031,36 @@ async function snGuardarPresupuesto(){
         if (!up.error) { archivo_url = path; archivo_nombre = snArchivoAdjFile.name; }
       } catch(e) {}
     }
-    const payload = {
-      folio, cliente, tel: tel || null, descripcion: desc, dir_obra: dir || null, notas: notas || null,
-      monto: Math.round(total), saldo: Math.round(total),
-      estado: 'activo', fecha: hoy.toISOString().split('T')[0], archivo_url, archivo_nombre,
-      notas_internas: JSON.stringify(incluidos.map(function(it){ return { label: it.label, cantidad: it.cantidad || 1, precioUnitario: it.precioUnitario != null ? it.precioUnitario : it.precio, precio: it.precio, resultado: it.resultado }; }))
-    };
+    payload.archivo_url = archivo_url;
+    payload.archivo_nombre = archivo_nombre;
     try {
-      const res = await sb().from('presupuestos_atrasados').insert([payload]);
+      const res = esActualizacion
+        ? await sb().from('presupuestos_atrasados').update(payload).eq('id', idActualizar)
+        : await sb().from('presupuestos_atrasados').insert([payload]);
       if (res.error) throw res.error;
-      toast('Guardado \u00b7 ' + folio);
-    } catch(e) { snGuardarOffline(payload); }
+      toast(esActualizacion ? ('✅ Folio actualizado \u00b7 ' + folio) : ('Guardado \u00b7 ' + folio));
+    } catch(e) {
+      if (esActualizacion) payload.id = idActualizar;
+      snGuardarOffline(payload, esActualizacion);
+    }
     // Si fue "+ Cliente nuevo" (no vino del selector), lo damos de alta para la próxima vez
     const selCli = document.getElementById('sn-cli-select');
-    if (selCli && !selCli.value) {
+    if (!esActualizacion && selCli && !selCli.value) {
       try { await sb().from('clientes').insert([{ nombre: cliente, telefono: tel || null, dir_obra: dir || null }]); snCargarClientes(); } catch(e) {}
     }
   } else {
-    snGuardarOffline(payload);
+    if (esActualizacion) payload.id = idActualizar;
+    snGuardarOffline(payload, esActualizacion);
   }
 
   const w = window.open('', '_blank');
   if (w) { w.document.write(htmlDoc); w.document.close(); }
 
+  CONTINUANDO_FOLIO = null;
   STATE.carrito = [];
   snGuardarCarritoLocal();
+  const sub = document.getElementById('sn-presupuesto-subtitulo');
+  if (sub) sub.textContent = 'Selecciona las piezas que van en este presupuesto';
   ['sn-cliente','sn-tel','sn-dir','sn-notas'].forEach(function(id){ const el = document.getElementById(id); if (el) el.value = ''; });
   const selCliReset = document.getElementById('sn-cli-select'); if (selCliReset) selCliReset.value = '';
   snArchivoAdjFile = null;
@@ -5169,6 +5303,9 @@ document.addEventListener('DOMContentLoaded',()=>{
   const _inpPrecioVid = document.getElementById('inp-precio-vidrio');
   if (_selVid) { _selVid.addEventListener('change', actualizarPrecioVidrioSugerido); actualizarPrecioVidrioSugerido(); }
   if (_inpPrecioVid) _inpPrecioVid.addEventListener('input', () => { VIDRIO_PRECIO_MANUAL = true; });
+  // Si se llegó aquí desde historial.html con "+ Agregar piezas", carga
+  // el folio existente y muestra sus piezas ya guardadas.
+  snCargarContinuarFolio();
 });
 
 
