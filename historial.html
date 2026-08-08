@@ -6,6 +6,17 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v2.6
+  FECHA   : 2026-08-08
+  v2.6 - FIX: "X sin sincronizar" en el contador de arriba leía la cola
+    real de los cotizadores (barrcan_presupuestos_pendientes), pero la
+    lista de tarjetas de abajo leía una caché completamente distinta
+    (barrcan_presupuestos_cache) que nunca se enteraba de esos items --
+    el número aparecía pero la tarjeta nunca. Ahora esos pendientes
+    también se muestran como tarjeta (con la etiqueta roja SIN
+    SINCRONIZAR de siempre), con 3 botones propios: Editar (manda al
+    cotizador correcto, donde ya existe su propio panel para cargar
+    esas piezas), Reintentar (sincroniza solo ese) y Eliminar.
   VERSIÓN : v2.5
   FECHA   : 2026-08-07
   v2.5 - Nuevo botón "+ Agregar piezas" en cada presupuesto: manda al
@@ -1284,7 +1295,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v2.5';
+var APP_VERSION = 'v2.6';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1408,13 +1419,31 @@ async function presCargar() {
 }
 
 // ── Render lista ──────────────────────────────────────────────────
+function presColaComoTarjetas() {
+  var cola = [];
+  try { cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes') || '[]'); } catch(e) {}
+  return cola.map(function(item) {
+    var d = item.datos || {};
+    return Object.assign({}, d, {
+      _pendiente: true, _cola: true, _cola_ts: item.ts, _cola_tipo: item.tipo,
+      id: d.id || ('cola-' + item.ts)
+    });
+  });
+}
+
 function presFiltrar() {
   var q = (document.getElementById('pres-buscar').value || '').toLowerCase().trim();
   var verCerrados = document.getElementById('pres-ver-cerrados').checked;
-  var datos = q ? PRES_CACHE.filter(function(p) {
+  // Los que están en la cola de sincronización (guardados en algún
+  // cotizador pero que Supabase nunca recibió) antes no aparecían en
+  // esta lista -- solo se contaban arriba en "X sin sincronizar", sin
+  // ninguna tarjeta que mostrara cuál era. Se agregan primero, siempre
+  // visibles, para que no queden "perdidos".
+  var conCola = presColaComoTarjetas().concat(PRES_CACHE);
+  var datos = q ? conCola.filter(function(p) {
     return (p.folio || '').toLowerCase().indexOf(q) >= 0
       || (p.cliente || '').toLowerCase().indexOf(q) >= 0;
-  }) : PRES_CACHE;
+  }) : conCola;
   // Por default se ocultan los declinados y los ya liquidados (saldo real
   // <= 0) para no saturar la vista -- se pueden ver con el checkbox de
   // arriba, y siempre se muestran si hay una búsqueda activa.
@@ -1488,13 +1517,7 @@ function presRenderLista(datos) {
       + saldoStr + montoStr
       + '</div>'
       + '</div>'
-      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:5px">'
-      + '<button onclick="presAccionPago(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.3);border-radius:8px;color:var(--green);font-size:9.5px;font-weight:700;cursor:pointer">Pago</button>'
-      + '<button onclick="presEditar(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:9.5px;font-weight:700;cursor:pointer">Editar</button>'
-      + '<button onclick="presAgregarPiezas(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:9.5px;font-weight:700;cursor:pointer">+Piezas</button>'
-      + '<button onclick="presCrearOT(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:9.5px;font-weight:700;cursor:pointer">OT</button>'
-      + '<button onclick="presVerProgreso(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(142,68,173,0.08);border:1.5px solid rgba(142,68,173,0.3);border-radius:8px;color:#8E44AD;font-size:9.5px;font-weight:700;cursor:pointer">Progreso</button>'
-      + '</div>'
+      + (p._cola ? presBotonesCola(p) : presBotonesNormales(idStr))
       + '</div>';
   }
   div.innerHTML = html;
@@ -1636,6 +1659,79 @@ function presAgregarPiezas(id) {
     }));
   } catch(e) { toast('No se pudo preparar el folio para continuar'); return; }
   location.href = destino;
+}
+
+// ── Tarjetas normales vs. tarjetas de la cola de sincronización ────
+function presBotonesNormales(idStr) {
+  return '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:5px">'
+    + '<button onclick="presAccionPago(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.3);border-radius:8px;color:var(--green);font-size:9.5px;font-weight:700;cursor:pointer">Pago</button>'
+    + '<button onclick="presEditar(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:9.5px;font-weight:700;cursor:pointer">Editar</button>'
+    + '<button onclick="presAgregarPiezas(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:9.5px;font-weight:700;cursor:pointer">+Piezas</button>'
+    + '<button onclick="presCrearOT(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:9.5px;font-weight:700;cursor:pointer">OT</button>'
+    + '<button onclick="presVerProgreso(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(142,68,173,0.08);border:1.5px solid rgba(142,68,173,0.3);border-radius:8px;color:#8E44AD;font-size:9.5px;font-weight:700;cursor:pointer">Progreso</button>'
+    + '</div>';
+}
+
+function presBotonesCola(p) {
+  var tsStr = String(p._cola_ts || '').replace(/'/g, '');
+  return '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px">'
+    + '<button onclick="presColaEditar(\'' + tsStr + '\')" style="padding:7px 2px;background:rgba(46,109,164,0.08);border:1.5px solid rgba(46,109,164,0.25);border-radius:8px;color:var(--blue);font-size:9.5px;font-weight:700;cursor:pointer">Editar</button>'
+    + '<button onclick="presColaReintentar(\'' + tsStr + '\')" style="padding:7px 2px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.3);border-radius:8px;color:var(--green);font-size:9.5px;font-weight:700;cursor:pointer">Reintentar</button>'
+    + '<button onclick="presColaEliminar(\'' + tsStr + '\')" style="padding:7px 2px;background:rgba(192,57,43,0.08);border:1.5px solid rgba(192,57,43,0.3);border-radius:8px;color:#C0392B;font-size:9.5px;font-weight:700;cursor:pointer">Eliminar</button>'
+    + '</div>';
+}
+
+// "Editar" para un pendiente de cola: manda al cotizador correcto para
+// que ahí lo tome desde SU PROPIO panel "Sin sincronizar todavía" --
+// ahí sí sabe distinguir si es un folio nuevo o una actualización de
+// uno existente, cosa que aquí no se puede resolver de forma segura
+// (un "nuevo" sin id real no se puede actualizar por id).
+function presColaEditar(ts) {
+  var cola = [];
+  try { cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes') || '[]'); } catch(e) {}
+  var item = null;
+  for (var i = 0; i < cola.length; i++) { if (String(cola[i].ts) === ts) { item = cola[i]; break; } }
+  if (!item) return;
+  var letra = (/^CACN-\d+([A-Z])/.exec((item.datos && item.datos.folio) || '') || [])[1];
+  var destino = letra ? PRES_SERIE_A_MODULO[letra] : null;
+  if (!destino) { toast('No se reconoce el módulo de este folio pendiente'); return; }
+  toast('Ábrelo en ' + destino.replace('.html', '') + ' → panel "Sin sincronizar todavía"');
+  location.href = destino;
+}
+
+async function presColaReintentar(ts) {
+  if (!sb()) { toast('Sigues sin conexión'); return; }
+  var cola = [];
+  try { cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes') || '[]'); } catch(e) {}
+  var idx = -1;
+  for (var i = 0; i < cola.length; i++) { if (String(cola[i].ts) === ts) { idx = i; break; } }
+  if (idx === -1) return;
+  var item = cola[idx];
+  try {
+    var d = Object.assign({}, item.datos);
+    var esUpdate = item.tipo === 'update';
+    var idReal = d.id; delete d.id;
+    var res = esUpdate
+      ? await sb().from('presupuestos_atrasados').update(d).eq('id', idReal)
+      : await sb().from('presupuestos_atrasados').insert([d]);
+    if (res.error) throw res.error;
+    cola.splice(idx, 1);
+    localStorage.setItem('barrcan_presupuestos_pendientes', JSON.stringify(cola));
+    toast('✅ Sincronizado · ' + d.folio);
+    presCargar();
+  } catch(e) {
+    toast('Sigue sin poder sincronizar: ' + e.message);
+  }
+}
+
+function presColaEliminar(ts) {
+  if (!confirm('¿Eliminar este presupuesto pendiente? No se va a poder recuperar después.')) return;
+  var cola = [];
+  try { cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes') || '[]'); } catch(e) {}
+  cola = cola.filter(function(item) { return String(item.ts) !== ts; });
+  localStorage.setItem('barrcan_presupuestos_pendientes', JSON.stringify(cola));
+  toast('Eliminado');
+  presFiltrar();
 }
 
 function presEditar(id) {
