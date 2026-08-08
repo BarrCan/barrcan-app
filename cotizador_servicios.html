@@ -2304,6 +2304,40 @@ const STATE = {
 const SERIE_LETRA_MODULO = 'S';
 let CONTINUANDO_FOLIO = null; // { id, folio, cliente, tel, dir_obra, monto, saldo, notas_internas }
 
+// ── Número de folio: antes era 100% aleatorio (100-999), lo que
+// hacía que no llevara ninguna secuencia real y obligaba a corregirlo
+// a mano después. Ahora se consulta el máximo folio existente en
+// Supabase (de cualquier serie -- así se maneja como una sola
+// numeración consecutiva, igual que en papel) y se pregunta,
+// sugiriendo el siguiente número; el usuario puede aceptarlo o
+// escribir otro.
+async function snPedirNumeroFolio() {
+  var sugerido = null;
+  try {
+    if (sb()) {
+      var res = await sb().from('presupuestos_atrasados').select('folio').limit(1000);
+      if (!res.error && res.data) {
+        var max = 0;
+        res.data.forEach(function(r) {
+          var m = /^CACN-(\d{3})[A-Z]-/.exec(r.folio || '');
+          if (m) { var n = parseInt(m[1], 10); if (n > max && n < 900) max = n; }
+        });
+        if (max > 0) sugerido = max + 1;
+      }
+    }
+  } catch(e) {}
+  var defecto = sugerido ? String(sugerido) : '';
+  var texto = window.prompt(
+    'N\u00famero de presupuesto (folio)' + (sugerido ? ' \u2014 siguiente sugerido: ' + sugerido : ' (sin conexi\u00f3n para sugerir; escribe el n\u00famero)'),
+    defecto
+  );
+  if (texto === null) return null; // canceló
+  var num = parseInt(texto, 10);
+  if (!num || num < 1) num = sugerido || (Math.floor(Math.random() * 900) + 100);
+  if (num > 999) num = num % 1000;
+  return String(num).padStart(3, '0');
+}
+
 function snLetraSerieDeFolio(folio) {
   const m = /^CACN-\d+([A-Z])/.exec(folio || '');
   return m ? m[1] : null;
@@ -4996,6 +5030,11 @@ async function snGuardarPresupuesto(){
   let folio, incluidos, montoFinal, saldoFinal;
   const esActualizacion = !!CONTINUANDO_FOLIO;
   const idActualizar = esActualizacion ? CONTINUANDO_FOLIO.id : null;
+  let numFolio = null;
+  if (!esActualizacion) {
+    numFolio = await snPedirNumeroFolio();
+    if (numFolio === null) { toast('Guardado cancelado'); return; }
+  }
 
   if (esActualizacion) {
     folio = snBumpRevisionFolio(CONTINUANDO_FOLIO.folio);
@@ -5003,7 +5042,7 @@ async function snGuardarPresupuesto(){
     montoFinal = Math.round((CONTINUANDO_FOLIO.monto || 0) + totalNuevas);
     saldoFinal = Math.round((CONTINUANDO_FOLIO.saldo || 0) + totalNuevas);
   } else {
-    folio = `CACN-${Math.floor(Math.random() * 900) + 100}S-${yy}${mm}${dd}-RC${Math.floor(Math.random() * 900) + 100}${ini}`;
+    folio = `CACN-${numFolio}S-${yy}${mm}${dd}-RC${Math.floor(Math.random() * 900) + 100}${ini}`;
     incluidos = nuevas;
     montoFinal = Math.round(totalNuevas);
     saldoFinal = Math.round(totalNuevas);
@@ -5567,6 +5606,31 @@ window.servToggleCombo = servToggleCombo;
 window.servActualizarAjustes = servActualizarAjustes;
 
 })();
+
+// ══════════════════════════════════════════════
+// SERVICE WORKER — habilita caché offline y auto-actualización
+// ══════════════════════════════════════════════
+// Antes SOLO barrcan_app.html (el prototipo, fuera de producción)
+// registraba el Service Worker -- ningún módulo real lo hacía, así
+// que probablemente nunca se instaló en los celulares del equipo:
+// todo el trabajo de caché offline (v9/v10) estaba inactivo. Se
+// agrega aquí para que este módulo también quede disponible sin
+// señal y se actualice solo en cuanto haya conexión.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const registros = await navigator.serviceWorker.getRegistrations();
+      for (const reg of registros) {
+        const swUrl = reg.active?.scriptURL || '';
+        if (swUrl && !swUrl.includes('barrcan_sw.js')) {
+          await reg.unregister();
+        }
+      }
+      const reg = await navigator.serviceWorker.register('./barrcan_sw.js', { scope: './' });
+      if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+    } catch(e) { console.log('[BarrCan] SW no disponible:', e.message); }
+  });
+}
 </script>
 
 <!-- Export bar (mismo que app base) -->
