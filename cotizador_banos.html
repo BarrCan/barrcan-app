@@ -6,6 +6,15 @@
 <title>BarrCan · Cotizador Baños</title>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v1.4
+  FECHA   : 2026-08-07
+  v1.4 - Agregar piezas a un folio ya guardado:
+    - Nuevo botón "+ Agregar piezas" en historial.html que manda a
+      este cotizador con el presupuesto ya cargado como referencia.
+    - Al guardar la pieza calculada, en vez de crear un folio nuevo
+      se ACTUALIZA el original: sube la letra de revisión (-REVB,
+      -REVC...) sin tocar la letra de serie, la fecha se refresca al
+      día de hoy, y el monto/saldo se suman sin perder lo ya abonado.
   VERSION : v1.3
   FECHA   : 2026-07-26
   v1.3 - FIX CRÍTICO: pérdida de presupuestos cuando fallaba con conexión:
@@ -461,7 +470,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v1.2';
+var APP_VERSION = 'v1.4';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -483,6 +492,101 @@ var FL_SIS    = null;   // sistema frameless seleccionado
 var BC_SIS    = null;   // sistema bacalar seleccionado
 var ESC_COLOR = 'NATURAL';
 var CB_RESULTADO = null; // último resultado calculado para guardar
+
+// ══════════════════════════════════════════════
+// AGREGAR PIEZAS A UN FOLIO YA GUARDADO
+// ══════════════════════════════════════════════
+// Este módulo tampoco tiene carrito (una pieza calculada = un
+// presupuesto). Cuando se llega desde historial.html con
+// "+ Agregar piezas", la pieza nueva que se calcule se suma al
+// presupuesto original en vez de crear uno nuevo.
+var SERIE_LETRA_MODULO = 'A';
+var CONTINUANDO_FOLIO = null; // { id, folio, cliente, tel, monto, saldo, descripcion, notas_internas }
+
+// ── Número de folio: antes era 100% aleatorio (100-999). Ahora se
+// consulta el máximo folio existente en Supabase (de cualquier serie)
+// y se pregunta, sugiriendo el siguiente número.
+async function snPedirNumeroFolio() {
+  var sugerido = null;
+  try {
+    if (sb()) {
+      var res = await sb().from('presupuestos_atrasados').select('folio').limit(1000);
+      if (!res.error && res.data) {
+        var max = 0;
+        res.data.forEach(function(r) {
+          var m = /^CACN-(\d{3})[A-Z]-/.exec(r.folio || '');
+          if (m) { var n = parseInt(m[1], 10); if (n > max && n < 900) max = n; }
+        });
+        if (max > 0) sugerido = max + 1;
+      }
+    }
+  } catch(e) {}
+  var defecto = sugerido ? String(sugerido) : '';
+  var texto = window.prompt(
+    'N\u00famero de presupuesto (folio)' + (sugerido ? ' \u2014 siguiente sugerido: ' + sugerido : ' (sin conexi\u00f3n para sugerir; escribe el n\u00famero)'),
+    defecto
+  );
+  if (texto === null) return null;
+  var num = parseInt(texto, 10);
+  if (!num || num < 1) num = sugerido || (Math.floor(Math.random() * 900) + 100);
+  if (num > 999) num = num % 1000;
+  return String(num).padStart(3, '0');
+}
+
+function snLetraSerieDeFolio(folio) {
+  var m = /^CACN-\d+([A-Z])/.exec(folio || '');
+  return m ? m[1] : null;
+}
+
+function snSiguienteLetra(letra) {
+  var cod = letra.charCodeAt(0);
+  return cod >= 90 ? 'Z' : String.fromCharCode(cod + 1);
+}
+
+function snBumpRevisionFolio(folioOriginal) {
+  var hoy = new Date();
+  var yy = String(hoy.getFullYear()).slice(-2);
+  var mm = String(hoy.getMonth() + 1).padStart(2, '0');
+  var dd = String(hoy.getDate()).padStart(2, '0');
+  var fechaNueva = yy + mm + dd;
+  var m = /^(CACN-\d+[A-Z])(?:-REV([A-Z]))?-(\d{6})-(.+)$/.exec(folioOriginal || '');
+  if (!m) return (folioOriginal || 'CACN-000') + '-REVB-' + fechaNueva;
+  var prefijo = m[1], revActual = m[2], resto = m[4];
+  var revNueva = revActual ? snSiguienteLetra(revActual) : 'B';
+  return prefijo + '-REV' + revNueva + '-' + fechaNueva + '-' + resto;
+}
+
+// Normaliza la(s) pieza(s) ya guardadas del folio a un arreglo -- los
+// presupuestos viejos de este módulo no guardaban notas_internas
+// estructuradas, solo descripción de texto libre.
+function snPiezasExistentesNormalizadas(datos) {
+  var n = null;
+  try { n = JSON.parse(datos.notas_internas || 'null'); } catch(e) {}
+  if (Array.isArray(n)) return n;
+  return [{ label: datos.descripcion || 'Pieza', cantidad: 1, precioUnitario: datos.monto, precio: datos.monto, resultado: null }];
+}
+
+function snCargarContinuarFolio() {
+  var raw = null;
+  try { raw = localStorage.getItem('barrcan_continuar_folio'); } catch(e) {}
+  if (!raw) return;
+  var datos = null;
+  try { datos = JSON.parse(raw); } catch(e) {}
+  if (!datos || !datos.folio) return;
+  if (snLetraSerieDeFolio(datos.folio) !== SERIE_LETRA_MODULO) return;
+  try { localStorage.removeItem('barrcan_continuar_folio'); } catch(e) {}
+
+  CONTINUANDO_FOLIO = datos;
+  // No se sabe todavía qué pestaña (frameless/bacalar/escuadra) se va
+  // a usar para la pieza nueva, así que se precargan las 3.
+  ['fl-cliente','bc-cliente','esc-cliente'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.value = datos.cliente || '';
+  });
+  ['fl-tel','bc-tel','esc-tel'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.value = datos.tel || '';
+  });
+  toast('➕ Agregando piezas al folio ' + datos.folio + ' (ya tiene ' + fmt(datos.monto || 0) + ')');
+}
 
 // ── Precios base herrajes ETC (factor 2026) ───────────────────
 var FL_FACTOR = 1.19;
@@ -812,7 +916,6 @@ async function cbGuardarPresupuesto(tipo) {
   var tel     = document.getElementById(telId).value.trim();
   if (!cliente) { toast('Ingresa el nombre del cliente'); return; }
 
-  // Generar folio CACN
   var hoy   = new Date();
   var yy    = String(hoy.getFullYear()).slice(-2);
   var mm    = String(hoy.getMonth()+1).padStart(2,'0');
@@ -820,45 +923,71 @@ async function cbGuardarPresupuesto(tipo) {
   var ini   = cliente.replace(/\s/g,'').toUpperCase().slice(0,1);
   var rc    = 'RC' + String(Math.floor(Math.random()*900)+100);
   var num   = String(Math.floor(Math.random()*900)+100);
-  var folio = 'CACN-' + num + 'A-' + yy + mm + dd + '-' + rc + ini;
 
-  var desc = CB_RESULTADO.sistema + ' ' +
+  var descNueva = CB_RESULTADO.sistema + ' ' +
     (CB_RESULTADO.L ? CB_RESULTADO.L + 'x' + CB_RESULTADO.H + 'mm' : '') +
     (CB_RESULTADO.m2Vidrio ? ' · ' + CB_RESULTADO.m2Vidrio + ' m²' : '');
+  var precioNueva = Math.round(CB_RESULTADO.precioFinal);
+
+  var esActualizacion = !!CONTINUANDO_FOLIO;
+  var idActualizar = esActualizacion ? CONTINUANDO_FOLIO.id : null;
+  var numFolio = null;
+  if (!esActualizacion) {
+    numFolio = await snPedirNumeroFolio();
+    if (numFolio === null) { toast('Guardado cancelado'); return; }
+  }
+  var folio, piezas, montoFinal, saldoFinal, desc;
+
+  if (esActualizacion) {
+    folio = snBumpRevisionFolio(CONTINUANDO_FOLIO.folio);
+    var existentes = snPiezasExistentesNormalizadas(CONTINUANDO_FOLIO);
+    piezas = existentes.concat([{ label: descNueva, cantidad: 1, precioUnitario: precioNueva, precio: precioNueva, resultado: CB_RESULTADO }]);
+    montoFinal = Math.round((CONTINUANDO_FOLIO.monto || 0) + precioNueva);
+    saldoFinal = Math.round((CONTINUANDO_FOLIO.saldo || 0) + precioNueva);
+    desc = ((CONTINUANDO_FOLIO.descripcion || '') + ' + ' + descNueva).slice(0, 200);
+  } else {
+    folio = 'CACN-' + numFolio + 'A-' + yy + mm + dd + '-' + rc + ini;
+    piezas = [{ label: descNueva, cantidad: 1, precioUnitario: precioNueva, precio: precioNueva, resultado: CB_RESULTADO }];
+    montoFinal = precioNueva;
+    saldoFinal = precioNueva;
+    desc = descNueva;
+  }
 
   var payload = {
     folio:       folio,
     cliente:     cliente,
     tel:         tel || null,
     descripcion: desc,
-    monto:       Math.round(CB_RESULTADO.precioFinal),
-    saldo:       Math.round(CB_RESULTADO.precioFinal),
+    monto:       montoFinal,
+    saldo:       saldoFinal,
     estado:      'activo',
-    fecha:       hoy.toISOString().split('T')[0]
+    fecha:       hoy.toISOString().split('T')[0],
+    notas_internas: JSON.stringify(piezas)
   };
 
   if (!sb()) {
-    // Guardar offline
     var local = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]');
     local.unshift(Object.assign({}, payload, { _pendiente: true }));
     localStorage.setItem('barrcan_presupuestos_cache', JSON.stringify(local));
-    cbGuardarOffline(payload);
+    if (esActualizacion) payload.id = idActualizar;
+    cbGuardarOffline(payload, esActualizacion);
     cbCargarHistorial();
     return;
   }
 
   try {
-    var res = await sb().from('presupuestos_atrasados').insert([payload]);
+    var res = esActualizacion
+      ? await sb().from('presupuestos_atrasados').update(payload).eq('id', idActualizar)
+      : await sb().from('presupuestos_atrasados').insert([payload]);
     if (res.error) throw res.error;
     SYNC.online = true; detectar();
-    toast('Presupuesto guardado · Folio: ' + folio);
-    // Actualizar cache compartido
+    toast(esActualizacion ? ('✅ Folio actualizado · ' + folio) : ('Presupuesto guardado · Folio: ' + folio));
+    CONTINUANDO_FOLIO = null;
     var local = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]');
     local.unshift(payload);
     if (local.length > 100) local.pop();
     localStorage.setItem('barrcan_presupuestos_cache', JSON.stringify(local));
     cbCargarHistorial();
-    // Limpiar cliente
     document.getElementById(clienteId).value = '';
     document.getElementById(telId).value = '';
   } catch(e) {
@@ -866,7 +995,8 @@ async function cbGuardarPresupuesto(tipo) {
     var localErr = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]');
     localErr.unshift(Object.assign({}, payload, { _pendiente: true }));
     localStorage.setItem('barrcan_presupuestos_cache', JSON.stringify(localErr));
-    cbGuardarOffline(payload);
+    if (esActualizacion) payload.id = idActualizar;
+    cbGuardarOffline(payload, esActualizacion);
     cbCargarHistorial();
   }
 }
@@ -876,10 +1006,10 @@ async function cbGuardarPresupuesto(tipo) {
 // presupuesto se perdía por completo. Ahora se guarda en la misma cola
 // que usa historial.html (barrcan_presupuestos_pendientes) y se
 // reintenta solo al reconectar. ──
-function cbGuardarOffline(payload) {
+function cbGuardarOffline(payload, esActualizacion) {
   try {
     var cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes') || '[]');
-    cola.push({ tipo: 'nuevo', datos: payload, ts: new Date().toISOString() });
+    cola.push({ tipo: esActualizacion ? 'update' : 'nuevo', datos: payload, ts: new Date().toISOString() });
     localStorage.setItem('barrcan_presupuestos_pendientes', JSON.stringify(cola));
     toast('Guardado sin conexión · Folio: ' + payload.folio + ' · se sincronizará después');
   } catch(e) {
@@ -979,6 +1109,34 @@ document.addEventListener('DOMContentLoaded', function() {
   cbCargarHistorial();
   cbCargarConfigPrecios();
   if (navigator.onLine) cbReintentarPendientes();
+  // Si se llegó aquí desde historial.html con "+ Agregar piezas", carga
+  // el folio existente para sumarle la próxima pieza que se calcule.
+  snCargarContinuarFolio();
 });
+
+// ══════════════════════════════════════════════
+// SERVICE WORKER — habilita caché offline y auto-actualización
+// ══════════════════════════════════════════════
+// Antes SOLO barrcan_app.html (el prototipo, fuera de producción)
+// registraba el Service Worker -- ningún módulo real lo hacía, así
+// que probablemente nunca se instaló en los celulares del equipo:
+// todo el trabajo de caché offline (v9/v10) estaba inactivo. Se
+// agrega aquí para que este módulo también quede disponible sin
+// señal y se actualice solo en cuanto haya conexión.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const registros = await navigator.serviceWorker.getRegistrations();
+      for (const reg of registros) {
+        const swUrl = reg.active?.scriptURL || '';
+        if (swUrl && !swUrl.includes('barrcan_sw.js')) {
+          await reg.unregister();
+        }
+      }
+      const reg = await navigator.serviceWorker.register('./barrcan_sw.js', { scope: './' });
+      if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+    } catch(e) { console.log('[BarrCan] SW no disponible:', e.message); }
+  });
+}
 </script>
 </html>
