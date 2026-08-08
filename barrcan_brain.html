@@ -6,6 +6,17 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v2.0.1
+  FECHA   : 2026-08-08
+  v2.0.1 - FIX: la huella activaba/entraba pero la pantalla se
+    quedaba trabada en "¿Quién eres?": entrarAlPortal() ocultaba
+    pantalla-pin pero nunca pantalla-login. En el flujo normal (PIN)
+    no se notaba porque seleccionarUsuario() ya la ocultaba antes de
+    mostrar el teclado -- pero el atajo de huella salta directo a
+    entrarAlPortal() sin pasar por ahí, así que pantalla-login se
+    quedaba encima, tapando el portal aunque el login sí funcionara.
+    Ahora entrarAlPortal() la oculta siempre, sin importar qué
+    camino se usó para entrar.
   VERSION : v2.0
   FECHA   : 2026-08-08
   v2.0 - Huella/Face ID como atajo local sobre el PIN:
@@ -318,7 +329,7 @@ function sb(){
 }
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
-var APP_VERSION = 'v2.0';
+var APP_VERSION = 'v2.0.1';
 var USUARIOS = [];
 var USUARIO_SEL = null;   // el que se está tratando de loguear
 var PIN_BUFFER = '';
@@ -573,6 +584,7 @@ async function procesarPinCompleto() {
 
 function entrarAlPortal() {
   localStorage.setItem('barrcan_usuario_activo', JSON.stringify({ id: USUARIO_SEL.id, nombre: USUARIO_SEL.apodo || USUARIO_SEL.nombre, rol: USUARIO_SEL.rol }));
+  document.getElementById('pantalla-login').style.display = 'none';
   document.getElementById('pantalla-pin').style.display = 'none';
   document.getElementById('portal-avatar').style.background = (USUARIO_SEL.color || '#2E6DA4') + '33';
   document.getElementById('portal-avatar').style.color = USUARIO_SEL.color || '#2E6DA4';
