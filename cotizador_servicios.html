@@ -5,7 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Servicios y Accesorios</title>
 <!--
-  BARRCAN SERVICIOS Y ACCESORIOS v1.10.0
+  BARRCAN SERVICIOS Y ACCESORIOS v1.10.1
+  v1.10.1 - FIX: el Historial de este módulo mostraba presupuestos de
+    Nacional (serie B) en vez de los propios de Servicios -- filtro
+    de folio copiado y nunca actualizado (%B-% en vez de %S-%).
   v1.10.0 - Agregar piezas a un folio ya guardado:
     - Nuevo botón "+ Agregar piezas" en historial.html que manda a
       este cotizador con el presupuesto ya cargado (piezas existentes
@@ -3606,7 +3609,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.10.0';
+const APP_VERSION = 'v1.10.1';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -5237,7 +5240,7 @@ async function snHistorial(){
   try{
     const res=await sb().from('presupuestos_atrasados')
       .select('id,folio,cliente,descripcion,monto,saldo,estado,fecha,archivo_url,archivo_nombre,notas_internas')
-      .ilike('folio', '%B-%')
+      .ilike('folio', '%S-%')
       .in('estado',['activo','aprobado','en_produccion','pendiente_entrega'])
       .order('fecha',{ascending:false}).limit(10);
     if(res.error)throw res.error;
