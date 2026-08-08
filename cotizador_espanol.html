@@ -5,7 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Cotizador Española</title>
 <!--
-  BARRCAN COTIZADOR ESPAÑOLA v1.2.0
+  BARRCAN COTIZADOR ESPAÑOLA v1.3.0
+  v1.3.0 - Agregar piezas a un folio ya guardado:
+    - Nuevo botón "+ Agregar piezas" en historial.html que manda a
+      este cotizador con el presupuesto ya cargado como referencia.
+    - Al guardar la pieza calculada, en vez de crear un folio nuevo
+      se ACTUALIZA el original: sube la letra de revisión (-REVB,
+      -REVC...) sin tocar la letra de serie, la fecha se refresca al
+      día de hoy, y el monto/saldo se suman sin perder lo ya abonado.
+  v1.2.0 - (ver historial debajo)
   v1.2.0 - FIX CRÍTICO: pérdida total de cotizaciones al fallar el guardado:
     - Mismo fix que Nacional v3.2.0: se guarda en localStorage
       (barrcan_presupuestos_pendientes) si Supabase falla, con
@@ -1480,7 +1488,7 @@ body{background:var(--off-white)}
   <div id="tab-resultado" style="display:none">
     <div id="resultado-contenido"></div>
     <div class="guardar-card" id="sn-guardar-card">
-      <div class="wizard-title">💾 Guardar presupuesto</div>
+      <div class="wizard-title" id="sn-guardar-titulo">💾 Guardar presupuesto</div>
       <input type="text" class="form-input" id="sn-cliente" placeholder="Nombre del cliente *" style="margin-bottom:8px">
       <input type="text" class="form-input" id="sn-tel" placeholder="Teléfono" style="margin-bottom:8px">
       <input type="text" class="form-input" id="sn-dir" placeholder="Dirección de obra" style="margin-bottom:8px">
@@ -3662,6 +3670,112 @@ const STATE = {
   historial: []
 };
 
+// ══════════════════════════════════════════════
+// AGREGAR PIEZAS A UN FOLIO YA GUARDADO
+// ══════════════════════════════════════════════
+// A diferencia de Nacional/Eurovent/Servicios, aquí se calcula UNA
+// sola pieza a la vez (sin carrito). Cuando se llega desde
+// historial.html con "+ Agregar piezas", la pieza ya guardada se
+// muestra como referencia y la que se calcule en esta sesión se suma
+// al presupuesto original en vez de crear uno nuevo.
+const SERIE_LETRA_MODULO = 'C';
+let CONTINUANDO_FOLIO = null; // { id, folio, cliente, tel, dir_obra, monto, saldo, descripcion, notas_internas }
+
+// ── Número de folio: antes era 100% aleatorio (100-999), lo que
+// hacía que no llevara ninguna secuencia real y obligaba a corregirlo
+// a mano después. Ahora se consulta el máximo folio existente en
+// Supabase (de cualquier serie -- así se maneja como una sola
+// numeración consecutiva, igual que en papel) y se pregunta,
+// sugiriendo el siguiente número; el usuario puede aceptarlo o
+// escribir otro.
+async function snPedirNumeroFolio() {
+  let sugerido = null;
+  try {
+    if (sb()) {
+      const res = await sb().from('presupuestos_atrasados').select('folio').limit(1000);
+      if (!res.error && res.data) {
+        let max = 0;
+        res.data.forEach(function(r) {
+          const m = /^CACN-(\d{3})[A-Z]-/.exec(r.folio || '');
+          if (m) { const n = parseInt(m[1], 10); if (n > max && n < 900) max = n; }
+        });
+        if (max > 0) sugerido = max + 1;
+      }
+    }
+  } catch(e) {}
+  const defecto = sugerido ? String(sugerido) : '';
+  const texto = window.prompt(
+    'N\u00famero de presupuesto (folio)' + (sugerido ? ' \u2014 siguiente sugerido: ' + sugerido : ' (sin conexi\u00f3n para sugerir; escribe el n\u00famero)'),
+    defecto
+  );
+  if (texto === null) return null;
+  let num = parseInt(texto, 10);
+  if (!num || num < 1) num = sugerido || (Math.floor(Math.random() * 900) + 100);
+  if (num > 999) num = num % 1000;
+  return String(num).padStart(3, '0');
+}
+
+function snLetraSerieDeFolio(folio) {
+  const m = /^CACN-\d+([A-Z])/.exec(folio || '');
+  return m ? m[1] : null;
+}
+
+function snSiguienteLetra(letra) {
+  const cod = letra.charCodeAt(0);
+  return cod >= 90 ? 'Z' : String.fromCharCode(cod + 1);
+}
+
+function snBumpRevisionFolio(folioOriginal) {
+  const hoy = new Date();
+  const yy = String(hoy.getFullYear()).slice(-2);
+  const mm = String(hoy.getMonth() + 1).padStart(2, '0');
+  const dd = String(hoy.getDate()).padStart(2, '0');
+  const fechaNueva = yy + mm + dd;
+  const m = /^(CACN-\d+[A-Z])(?:-REV([A-Z]))?-(\d{6})-(.+)$/.exec(folioOriginal || '');
+  if (!m) return (folioOriginal || 'CACN-000') + '-REVB-' + fechaNueva;
+  const prefijo = m[1], revActual = m[2], resto = m[4];
+  const revNueva = revActual ? snSiguienteLetra(revActual) : 'B';
+  return prefijo + '-REV' + revNueva + '-' + fechaNueva + '-' + resto;
+}
+
+// Normaliza la(s) pieza(s) ya guardadas del folio a un arreglo -- el
+// formato viejo de este módulo guardaba un solo objeto en
+// notas_internas (una pieza por presupuesto), así que se envuelve en
+// un arreglo de 1 elemento con un label armado a partir de la
+// descripción guardada.
+function snPiezasExistentesNormalizadas(datos) {
+  let n = null;
+  try { n = JSON.parse(datos.notas_internas || 'null'); } catch(e) {}
+  if (!n) return [];
+  if (Array.isArray(n)) return n;
+  return [{
+    label: datos.descripcion || (n.sistema || 'Pieza') + (n.L && n.H ? ' ' + n.L + 'x' + n.H + 'mm' : ''),
+    cantidad: 1, precioUnitario: datos.monto, precio: datos.monto, resultado: n
+  }];
+}
+
+function snCargarContinuarFolio() {
+  let raw = null;
+  try { raw = localStorage.getItem('barrcan_continuar_folio'); } catch(e) {}
+  if (!raw) return;
+  let datos = null;
+  try { datos = JSON.parse(raw); } catch(e) {}
+  if (!datos || !datos.folio) return;
+  if (snLetraSerieDeFolio(datos.folio) !== SERIE_LETRA_MODULO) return;
+  try { localStorage.removeItem('barrcan_continuar_folio'); } catch(e) {}
+
+  CONTINUANDO_FOLIO = datos;
+  const setVal = function(id, val) { const el = document.getElementById(id); if (el) el.value = val || ''; };
+  setVal('sn-cliente', datos.cliente);
+  setVal('sn-tel', datos.tel);
+  setVal('sn-dir', datos.dir_obra || datos.dir);
+
+  const tit = document.getElementById('sn-guardar-titulo');
+  if (tit) tit.textContent = '➕ Agregando pieza al folio ' + datos.folio + ' (ya tiene $' + fmt(datos.monto || 0) + ' MXN)';
+  toast('Agregando piezas al folio ' + datos.folio);
+}
+
+
 // ── FIX: precio de vidrio, sugerido vs. editado por el usuario ──
 // Antes se detectaba "el usuario no tocó el campo" comparando su valor
 // contra el default fijo 480 -- eso rompía el cálculo en 2 casos:
@@ -4903,7 +5017,7 @@ function sb(){
 }
 
 // ── Auxiliares del app base ────────────────────────────────
-const APP_VERSION = 'v1.1.0';
+const APP_VERSION = 'v1.3.0';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -5712,10 +5826,10 @@ function snArchivoAdj(input){
 // se hubiera impreso/guardado la ventana a mano. Ahora se guarda en cola
 // local (misma llave que usa historial.html, así que también se puede
 // reintentar desde ahí) y se reintenta solo al reconectar.
-function snGuardarOffline(payload) {
+function snGuardarOffline(payload, esActualizacion) {
   try {
     var cola = JSON.parse(localStorage.getItem('barrcan_presupuestos_pendientes') || '[]');
-    cola.push({ tipo: 'nuevo', datos: payload, ts: new Date().toISOString() });
+    cola.push({ tipo: esActualizacion ? 'update' : 'nuevo', datos: payload, ts: new Date().toISOString() });
     localStorage.setItem('barrcan_presupuestos_pendientes', JSON.stringify(cola));
     toast('Guardado sin conexión · Folio: ' + payload.folio + ' · se sincronizará después');
   } catch(e) {
@@ -5759,20 +5873,41 @@ async function snGuardar(){
   const mm=String(hoy.getMonth()+1).padStart(2,'0');
   const dd=String(hoy.getDate()).padStart(2,'0');
   const ini=(cliente.replace(/ /g,'').toUpperCase()[0])||'X';
-  // Folio serie C para española
-  const folio=`CACN-${Math.floor(Math.random()*900)+100}C-${yy}${mm}${dd}-RC${Math.floor(Math.random()*900)+100}${ini}`;
   const varTxt=snFijoVar==='ftop'?' Fijo↑':snFijoVar==='fbot'?' Fijo↓':'';
-  const desc=`${r.sistema||''}${varTxt} ${r.L&&r.H?r.L+'x'+r.H+'mm':''} ${r.vidTipo||''} ${dir?'· '+dir:''}`.trim().slice(0,200);
+  const descNueva=`${r.sistema||''}${varTxt} ${r.L&&r.H?r.L+'x'+r.H+'mm':''} ${r.vidTipo||''} ${dir?'· '+dir:''}`.trim();
+  const precioNueva=Math.round(r.precioFinal||0);
+
+  const esActualizacion=!!CONTINUANDO_FOLIO;
+  const idActualizar=esActualizacion?CONTINUANDO_FOLIO.id:null;
+  let numFolio = null;
+  if (!esActualizacion) {
+    numFolio = await snPedirNumeroFolio();
+    if (numFolio === null) { toast('Guardado cancelado'); return; }
+  }
+  let folio, piezas, montoFinal, saldoFinal, desc;
+
+  if(esActualizacion){
+    folio=snBumpRevisionFolio(CONTINUANDO_FOLIO.folio);
+    const existentes=snPiezasExistentesNormalizadas(CONTINUANDO_FOLIO);
+    piezas=existentes.concat([{ label:descNueva, cantidad:1, precioUnitario:precioNueva, precio:precioNueva, resultado:{sistema:r.sistema,L:r.L,H:r.H,vidTipo:r.vidTipo,costoAluminio:r.costoAluminio,costoVidrio:r.costoVidrio,costoHerrajes:r.costoHerrajes,mdoTotal:r.mdoTotal} }]);
+    montoFinal=Math.round((CONTINUANDO_FOLIO.monto||0)+precioNueva);
+    saldoFinal=Math.round((CONTINUANDO_FOLIO.saldo||0)+precioNueva);
+    desc=((CONTINUANDO_FOLIO.descripcion||'')+' + '+descNueva).slice(0,200);
+  } else {
+    // Folio serie C para española
+    folio=`CACN-${numFolio}C-${yy}${mm}${dd}-RC${Math.floor(Math.random()*900)+100}${ini}`;
+    piezas=[{ label:descNueva, cantidad:1, precioUnitario:precioNueva, precio:precioNueva, resultado:{sistema:r.sistema,L:r.L,H:r.H,vidTipo:r.vidTipo,costoAluminio:r.costoAluminio,costoVidrio:r.costoVidrio,costoHerrajes:r.costoHerrajes,mdoTotal:r.mdoTotal} }];
+    montoFinal=precioNueva;
+    saldoFinal=precioNueva;
+    desc=descNueva.slice(0,200);
+  }
+
   const payloadBase={folio,cliente,tel:tel||null,descripcion:desc,notas:notas||null,
-    monto:Math.round(r.precioFinal||0),saldo:Math.round(r.precioFinal||0),
+    monto:montoFinal,saldo:saldoFinal,
     estado:'activo',fecha:hoy.toISOString().split('T')[0],archivo_url:null,archivo_nombre:null,
-    notas_internas:JSON.stringify({
-      sistema:r.sistema,L:r.L,H:r.H,vidTipo:r.vidTipo,
-      costoAluminio:r.costoAluminio,costoVidrio:r.costoVidrio,
-      costoHerrajes:r.costoHerrajes,mdoTotal:r.mdoTotal
-    })
+    notas_internas:JSON.stringify(piezas)
   };
-  if(!sb()){snGuardarOffline(payloadBase);return;}
+  if(!sb()){ if(esActualizacion)payloadBase.id=idActualizar; snGuardarOffline(payloadBase,esActualizacion); return; }
   let archivo_url=null,archivo_nombre=null;
   if(snArchivoAdjFile){
     try{
@@ -5784,9 +5919,13 @@ async function snGuardar(){
   }
   const payload=Object.assign({},payloadBase,{archivo_url,archivo_nombre});
   try{
-    const res=await sb().from('presupuestos_atrasados').insert([payload]);
+    const res=esActualizacion
+      ? await sb().from('presupuestos_atrasados').update(payload).eq('id',idActualizar)
+      : await sb().from('presupuestos_atrasados').insert([payload]);
     if(res.error)throw res.error;
-    toast('Guardado · '+folio);
+    toast(esActualizacion?('✅ Folio actualizado · '+folio):('Guardado · '+folio));
+    CONTINUANDO_FOLIO=null;
+    const tit=document.getElementById('sn-guardar-titulo'); if(tit) tit.textContent='💾 Guardar presupuesto';
     ['sn-cliente','sn-tel','sn-dir','sn-notas'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
     snArchivoAdjFile=null;
     const zona=document.getElementById('sn-adjunto-zone');
@@ -5794,7 +5933,7 @@ async function snGuardar(){
     if(zona)zona.style.borderColor='var(--gray-200)';
     if(txt)txt.textContent='📎 Adjuntar plano o croquis';
     snHistorial();
-  }catch(e){snGuardarOffline(payload);}
+  }catch(e){ if(esActualizacion)payload.id=idActualizar; snGuardarOffline(payload,esActualizacion); }
 }
 
 // ── Historial ─────────────────────────────────────────────
@@ -5900,9 +6039,37 @@ document.addEventListener('DOMContentLoaded',()=>{
   const _inpPrecioVid = document.getElementById('inp-precio-vidrio');
   if (_selVid) { _selVid.addEventListener('change', actualizarPrecioVidrioSugerido); actualizarPrecioVidrioSugerido(); }
   if (_inpPrecioVid) _inpPrecioVid.addEventListener('input', () => { VIDRIO_PRECIO_MANUAL = true; });
+  // Si se llegó aquí desde historial.html con "+ Agregar piezas", carga
+  // el folio existente para sumarle la próxima pieza que se calcule.
+  snCargarContinuarFolio();
 });
 
 })();
+
+// ══════════════════════════════════════════════
+// SERVICE WORKER — habilita caché offline y auto-actualización
+// ══════════════════════════════════════════════
+// Antes SOLO barrcan_app.html (el prototipo, fuera de producción)
+// registraba el Service Worker -- ningún módulo real lo hacía, así
+// que probablemente nunca se instaló en los celulares del equipo:
+// todo el trabajo de caché offline (v9/v10) estaba inactivo. Se
+// agrega aquí para que este módulo también quede disponible sin
+// señal y se actualice solo en cuanto haya conexión.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const registros = await navigator.serviceWorker.getRegistrations();
+      for (const reg of registros) {
+        const swUrl = reg.active?.scriptURL || '';
+        if (swUrl && !swUrl.includes('barrcan_sw.js')) {
+          await reg.unregister();
+        }
+      }
+      const reg = await navigator.serviceWorker.register('./barrcan_sw.js', { scope: './' });
+      if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+    } catch(e) { console.log('[BarrCan] SW no disponible:', e.message); }
+  });
+}
 </script>
 </body>
 </html>
