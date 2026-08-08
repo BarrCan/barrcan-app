@@ -1,6 +1,6 @@
 // ══════════════════════════════════════════════
-// BarrCan Service Worker v9 — Offline First
-// Estrategia: Network-First para HTML (páginas .html),
+// BarrCan Service Worker v10 — Offline First
+// Estrategia: Network-First con timeout para HTML (páginas .html),
 //             Cache-First para fuentes/CDN,
 //             Supabase y APIs externas: Network Only
 // ══════════════════════════════════════════════
@@ -20,8 +20,21 @@
 // intacto, pero con señal ya no hace falta recargar dos veces.
 // Fuentes/CDN (que casi nunca cambian) se quedan en Cache First porque
 // ahí sí conviene la velocidad sobre la frescura.
+//
+// FIX v10 — señal débil dejaba la app "colgada" en vez de offline:
+// "Network First" sin límite de tiempo funciona bien SIN señal (el
+// fetch falla al toque y cae al caché), pero con señal DÉBIL el fetch
+// no falla -- se queda intentando mucho más de lo que alguien espera
+// parado en campo, y mientras tanto no pasa nada. Ahora hay una
+// carrera contra 3 segundos: si no hay respuesta a tiempo, se usa el
+// caché de inmediato (el fetch real sigue aparte por si actualiza el
+// caché para la próxima vez). También se agregaron a la precarga 10
+// módulos que faltaban (clientes, garantias, visitas, bodega,
+// inventario, costos, reportes, tecnicos, mostrador, render_ia) --
+// si nunca se habían abierto con señal antes, no tenían nada guardado
+// para usar sin conexión.
 
-const CACHE_VERSION = 'barrcan-v9'; // subir este número fuerza que TODOS los
+const CACHE_VERSION = 'barrcan-v10'; // subir este número fuerza que TODOS los
 // dispositivos descarten su caché vieja de una vez -- ya no debería
 // hacer falta subirlo por cada arreglo ahora que HTML es Network First,
 // pero sigue disponible por si algún día conviene un reinicio total.
@@ -40,6 +53,16 @@ const RECURSOS_CORE = [
   './cotizador_eurovent.html',
   './cotizador_servicios.html',
   './cotizador_banos.html',
+  './clientes.html',
+  './garantias.html',
+  './visitas.html',
+  './bodega.html',
+  './inventario.html',
+  './costos.html',
+  './reportes.html',
+  './tecnicos.html',
+  './mostrador.html',
+  './render_ia.html',
 ];
 
 const DOMINIOS_CACHEABLE = [
@@ -109,17 +132,37 @@ self.addEventListener('fetch', event => {
 
 async function redPrimero(request) {
   const cache = await caches.open(CACHE_VERSION);
-  try {
-    const response = await fetch(request);
+
+  // Con señal débil, fetch() no falla rápido -- se queda "colgado"
+  // intentando mucho más tiempo del que alguien va a esperar parado
+  // en campo. Se hace una carrera: si a los 3s no hay respuesta, se
+  // usa el caché de inmediato (y el fetch real sigue en segundo plano
+  // por si acaso llega y conviene actualizar el caché para la próxima).
+  const TIMEOUT_MS = 3000;
+
+  const fetchPromise = fetch(request).then(response => {
     if (response && response.status === 200) {
       cache.put(request, response.clone());
     }
     return response;
+  });
+
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('timeout-señal-débil')), TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([fetchPromise, timeoutPromise]);
   } catch (e) {
-    // Sin señal: usar lo último que se guardó como respaldo offline
+    // Se agotó el tiempo o falló la red: usar lo último guardado.
+    // El fetch real sigue corriendo aparte (fetchPromise no se cancela)
+    // y si llega a tiempo, ya dejó actualizado el caché para la próxima.
+    fetchPromise.catch(() => {}); // evitar "unhandled rejection" si también falla
     const cached = await cache.match(request);
     if (cached) return cached;
-    throw e;
+    // No hay ni red a tiempo ni caché: como último recurso, esperar
+    // la respuesta real aunque tarde (mejor tarde que un error feo).
+    try { return await fetchPromise; } catch (e2) { throw e2; }
   }
 }
 
