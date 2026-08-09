@@ -6,6 +6,21 @@
 <title>BarrCan · Cotizador Baños</title>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v1.5
+  FECHA   : 2026-08-08
+  v1.5 - FIX de raíz: nomenclatura real del folio corregida. Formato
+    correcto: CACN-{núm.presupuesto}{letra revisión}-{fecha}-
+    {núm.cliente}. La letra es una revisión real (empieza en A, sube
+    con cada "+ Agregar piezas") -- antes cada cotizador traía una
+    letra FIJA distinta fingiendo ser esto, sin ser una revisión de
+    verdad. El módulo que generó cada presupuesto ahora se guarda
+    aparte en la columna `modulo` de Supabase (para que +Piezas siga
+    sabiendo a dónde mandar, sin depender de la letra).
+    También se corrigió el número de cliente: antes era un código
+    inventado al azar; ahora usa el num_cliente real de su ficha, y
+    si un cliente nuevo todavía no tiene uno, se le asigna un
+    consecutivo automático (AUTO-001, AUTO-002...) que queda
+    guardado en su ficha para la próxima vez.
   VERSION : v1.4
   FECHA   : 2026-08-07
   v1.4 - Agregar piezas a un folio ya guardado:
@@ -470,7 +485,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v1.4';
+var APP_VERSION = 'v1.5';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -500,12 +515,22 @@ var CB_RESULTADO = null; // último resultado calculado para guardar
 // presupuesto). Cuando se llega desde historial.html con
 // "+ Agregar piezas", la pieza nueva que se calcule se suma al
 // presupuesto original en vez de crear uno nuevo.
-var SERIE_LETRA_MODULO = 'A';
-var CONTINUANDO_FOLIO = null; // { id, folio, cliente, tel, monto, saldo, descripcion, notas_internas }
+// NOMENCLATURA REAL DEL FOLIO (corregida):
+//   CACN-{núm. presupuesto, 3 dígitos}{letra de revisión}-{fecha yymmdd}-{núm. cliente}
+// La letra es una REVISIÓN real: empieza en A y solo sube (B, C...) si
+// el presupuesto se vuelve a tocar con "+ Agregar piezas". El módulo
+// se guarda aparte en la columna `modulo` de Supabase, para que
+// "+Piezas"/"Editar" sepan a qué cotizador mandar sin depender de la
+// letra (antes esa A era una etiqueta fija del módulo, no una
+// revisión real -- por casualidad ya coincidía con "empezar en A").
+var MODULO_ACTUAL = 'banos';
+var CONTINUANDO_FOLIO = null; // { id, folio, cliente, tel, monto, saldo, descripcion, notas_internas, modulo }
+var SN_CLIENTE_NUM = null;
+var SN_CLIENTE_ID  = null;
 
 // ── Número de folio: antes era 100% aleatorio (100-999). Ahora se
-// consulta el máximo folio existente en Supabase (de cualquier serie)
-// y se pregunta, sugiriendo el siguiente número.
+// consulta el máximo folio existente en Supabase (de cualquier
+// módulo) y se pregunta, sugiriendo el siguiente número.
 async function snPedirNumeroFolio() {
   var sugerido = null;
   try {
@@ -533,27 +558,49 @@ async function snPedirNumeroFolio() {
   return String(num).padStart(3, '0');
 }
 
-function snLetraSerieDeFolio(folio) {
-  var m = /^CACN-\d+([A-Z])/.exec(folio || '');
-  return m ? m[1] : null;
-}
-
 function snSiguienteLetra(letra) {
   var cod = letra.charCodeAt(0);
   return cod >= 90 ? 'Z' : String.fromCharCode(cod + 1);
 }
 
+// Sube la letra de revisión (A→B→C...) y refresca la fecha. El número
+// de presupuesto y el número de cliente NO cambian entre revisiones.
 function snBumpRevisionFolio(folioOriginal) {
   var hoy = new Date();
   var yy = String(hoy.getFullYear()).slice(-2);
   var mm = String(hoy.getMonth() + 1).padStart(2, '0');
   var dd = String(hoy.getDate()).padStart(2, '0');
   var fechaNueva = yy + mm + dd;
-  var m = /^(CACN-\d+[A-Z])(?:-REV([A-Z]))?-(\d{6})-(.+)$/.exec(folioOriginal || '');
-  if (!m) return (folioOriginal || 'CACN-000') + '-REVB-' + fechaNueva;
-  var prefijo = m[1], revActual = m[2], resto = m[4];
-  var revNueva = revActual ? snSiguienteLetra(revActual) : 'B';
-  return prefijo + '-REV' + revNueva + '-' + fechaNueva + '-' + resto;
+  var m = /^(CACN-\d+)([A-Z])-\d{6}-(.+)$/.exec(folioOriginal || '');
+  if (!m) return (folioOriginal || 'CACN-000A') + '-' + fechaNueva;
+  var base = m[1], letraActual = m[2], numCliente = m[3];
+  var letraNueva = snSiguienteLetra(letraActual);
+  return base + letraNueva + '-' + fechaNueva + '-' + numCliente;
+}
+
+// Obtiene el número de cliente real (num_cliente); si no tiene, genera
+// un consecutivo automático (AUTO-001...) y lo guarda en su ficha.
+async function snObtenerNumCliente() {
+  if (SN_CLIENTE_NUM) return SN_CLIENTE_NUM;
+  var siguiente = 'AUTO-001';
+  try {
+    if (sb()) {
+      var res = await sb().from('clientes').select('num_cliente').ilike('num_cliente', 'AUTO-%');
+      if (!res.error && res.data) {
+        var max = 0;
+        res.data.forEach(function(c) {
+          var m = /^AUTO-(\d+)$/.exec(c.num_cliente || '');
+          if (m) { var n = parseInt(m[1], 10); if (n > max) max = n; }
+        });
+        siguiente = 'AUTO-' + String(max + 1).padStart(3, '0');
+      }
+    }
+  } catch(e) {}
+  if (sb() && SN_CLIENTE_ID) {
+    try { await sb().from('clientes').update({ num_cliente: siguiente }).eq('id', SN_CLIENTE_ID); } catch(e) {}
+  }
+  SN_CLIENTE_NUM = siguiente;
+  return siguiente;
 }
 
 // Normaliza la(s) pieza(s) ya guardadas del folio a un arreglo -- los
@@ -573,7 +620,7 @@ function snCargarContinuarFolio() {
   var datos = null;
   try { datos = JSON.parse(raw); } catch(e) {}
   if (!datos || !datos.folio) return;
-  if (snLetraSerieDeFolio(datos.folio) !== SERIE_LETRA_MODULO) return;
+  if (datos.modulo && datos.modulo !== MODULO_ACTUAL) return;
   try { localStorage.removeItem('barrcan_continuar_folio'); } catch(e) {}
 
   CONTINUANDO_FOLIO = datos;
@@ -946,7 +993,8 @@ async function cbGuardarPresupuesto(tipo) {
     saldoFinal = Math.round((CONTINUANDO_FOLIO.saldo || 0) + precioNueva);
     desc = ((CONTINUANDO_FOLIO.descripcion || '') + ' + ' + descNueva).slice(0, 200);
   } else {
-    folio = 'CACN-' + numFolio + 'A-' + yy + mm + dd + '-' + rc + ini;
+    var numCliente = await snObtenerNumCliente();
+    folio = 'CACN-' + numFolio + 'A-' + yy + mm + dd + '-' + numCliente;
     piezas = [{ label: descNueva, cantidad: 1, precioUnitario: precioNueva, precio: precioNueva, resultado: CB_RESULTADO }];
     montoFinal = precioNueva;
     saldoFinal = precioNueva;
@@ -962,6 +1010,7 @@ async function cbGuardarPresupuesto(tipo) {
     saldo:       saldoFinal,
     estado:      'activo',
     fecha:       hoy.toISOString().split('T')[0],
+    modulo:      MODULO_ACTUAL,
     notas_internas: JSON.stringify(piezas)
   };
 
