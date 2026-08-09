@@ -6,6 +6,14 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v2.1
+  FECHA   : 2026-08-08
+  v2.1 - Contador de garantías nuevas sin leer sobre la tarjeta de
+    Garantías: el formulario público (garantia_publica.html) no tenía
+    ninguna forma confiable de avisar en el momento -- dependía de que
+    el cliente tocara un botón opcional y encima presionara enviar
+    dentro de WhatsApp. Ahora, al entrar al portal, se consulta cuántas
+    garantías siguen en estado "nuevo" y se muestra como número rojo.
   VERSION : v2.0.1
   FECHA   : 2026-08-08
   v2.0.1 - FIX: la huella activaba/entraba pero la pantalla se
@@ -225,7 +233,7 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
     <div class="modulos-grid">
       <a class="modulo-card" href="visitas.html" data-roles="supremo,admin,tecnico,taller"><div class="modulo-icono">📐</div><div class="modulo-nombre">Visitas</div><div class="modulo-desc">Levantamiento/medición</div></a>
       <a class="modulo-card" href="historial.html" data-roles="supremo,admin"><div class="modulo-icono">📁</div><div class="modulo-nombre">Presupuestos</div><div class="modulo-desc">Historial y estados</div></a>
-      <a class="modulo-card" href="garantias.html" data-roles="supremo,admin"><div class="modulo-icono">🛡️</div><div class="modulo-nombre">Garantías</div><div class="modulo-desc">Tickets de postventa</div></a>
+      <a class="modulo-card" href="garantias.html" data-roles="supremo,admin" id="card-garantias" style="position:relative"><div class="modulo-icono">🛡️</div><div class="modulo-nombre">Garantías</div><div class="modulo-desc">Tickets de postventa</div><div id="badge-garantias" style="display:none;position:absolute;top:8px;right:8px;background:var(--red,#C0392B);color:#fff;font-size:11px;font-weight:800;padding:2px 7px;border-radius:10px;min-width:18px;text-align:center"></div></a>
       <a class="modulo-card" href="ordenes.html" data-roles="supremo,admin,tecnico,taller"><div class="modulo-icono">🛠️</div><div class="modulo-nombre">Órdenes</div><div class="modulo-desc">Asignar instalación</div></a>
       <a class="modulo-card" href="entregas.html" data-roles="supremo,admin,tecnico,taller"><div class="modulo-icono">📦</div><div class="modulo-nombre">Entregas</div><div class="modulo-desc">Comprobantes</div></a>
       <a class="modulo-card" href="tecnicos.html" data-roles="supremo"><div class="modulo-icono">👷</div><div class="modulo-nombre">Técnicos</div><div class="modulo-desc">Equipo y pagos</div></a>
@@ -329,7 +337,7 @@ function sb(){
 }
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
-var APP_VERSION = 'v2.0.1';
+var APP_VERSION = 'v2.1';
 var USUARIOS = [];
 var USUARIO_SEL = null;   // el que se está tratando de loguear
 var PIN_BUFFER = '';
@@ -424,6 +432,25 @@ async function huellaIntentarLogin(usuario) {
 function huellaOlvidar(userId) {
   localStorage.removeItem(_huellaClave(userId));
   toast('Huella desactivada en este celular');
+}
+
+// ── Garantías nuevas sin leer ────────────────────────────────────
+// El formulario público (garantia_publica.html) no tiene ninguna
+// forma confiable de avisar en el momento -- depende de que el
+// cliente, después de ver "reporte enviado", toque un botón opcional
+// y encima presione "enviar" dentro de WhatsApp. Nadie hace eso. Esto
+// es un respaldo que SÍ es confiable: en cuanto entras al portal, se
+// consulta cuántas garantías siguen en estado "nuevo" (sin revisar) y
+// se muestra como número rojo sobre la tarjeta de Garantías.
+async function actualizarBadgeGarantias() {
+  var badge = document.getElementById('badge-garantias');
+  if (!badge || !sb()) return;
+  try {
+    var res = await sb().from('garantias').select('id', { count: 'exact', head: true }).eq('estado', 'nuevo');
+    var n = res.count || 0;
+    if (n > 0) { badge.textContent = n > 99 ? '99+' : String(n); badge.style.display = 'block'; }
+    else { badge.style.display = 'none'; }
+  } catch(e) { console.log('[BarrCan] No se pudo consultar garantías nuevas:', e.message); }
 }
 
 // Botón 🔒/🔓 en el header del portal, para activar/quitar la huella
@@ -598,6 +625,7 @@ function entrarAlPortal() {
   if (btnAdmin) btnAdmin.style.display = nivelAcceso(USUARIO_SEL) === 'supremo' ? 'inline-block' : 'none';
   filtrarModulosPorRol();
   actualizarBotonHuella();
+  actualizarBadgeGarantias();
 
   // Ofrecer activar huella una sola vez (si el celular la soporta y
   // este usuario todavía no la tiene en este dispositivo). Se marca
