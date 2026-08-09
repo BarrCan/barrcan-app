@@ -6,6 +6,12 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v2.1.1
+  FECHA   : 2026-08-09
+  v2.1.1 - FIX: la tarjeta nueva de config.html se llamaba "Costos",
+    igual que otra tarjeta ya existente (costos.html, visible para
+    todos) -- con dos tarjetas iguales era imposible saber cuál era
+    cuál. Renombrada a "⚙️ Config. Precios" para diferenciarla.
   VERSION : v2.1
   FECHA   : 2026-08-08
   v2.1 - Contador de garantías nuevas sin leer sobre la tarjeta de
@@ -237,7 +243,7 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
       <a class="modulo-card" href="ordenes.html" data-roles="supremo,admin,tecnico,taller"><div class="modulo-icono">🛠️</div><div class="modulo-nombre">Órdenes</div><div class="modulo-desc">Asignar instalación</div></a>
       <a class="modulo-card" href="entregas.html" data-roles="supremo,admin,tecnico,taller"><div class="modulo-icono">📦</div><div class="modulo-nombre">Entregas</div><div class="modulo-desc">Comprobantes</div></a>
       <a class="modulo-card" href="tecnicos.html" data-roles="supremo"><div class="modulo-icono">👷</div><div class="modulo-nombre">Técnicos</div><div class="modulo-desc">Equipo y pagos</div></a>
-      <a class="modulo-card" href="config.html" data-roles="supremo"><div class="modulo-icono">💰</div><div class="modulo-nombre">Costos</div><div class="modulo-desc">Precios y márgenes</div></a>
+      <a class="modulo-card" href="config.html" data-roles="supremo"><div class="modulo-icono">⚙️</div><div class="modulo-nombre">Config. Precios</div><div class="modulo-desc">Materiales y márgenes base</div></a>
     </div>
 
     <div class="grupo-titulo" data-grupo-roles="supremo">💰 Finanzas</div>
@@ -338,7 +344,7 @@ function sb(){
 }
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
-var APP_VERSION = 'v2.1';
+var APP_VERSION = 'v2.1.1';
 var USUARIOS = [];
 var USUARIO_SEL = null;   // el que se está tratando de loguear
 var PIN_BUFFER = '';
