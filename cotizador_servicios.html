@@ -5,7 +5,25 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Servicios y Accesorios</title>
 <!--
-  BARRCAN SERVICIOS Y ACCESORIOS v1.11.1
+  BARRCAN SERVICIOS Y ACCESORIOS v1.12.1
+  v1.12.1 - FIX: el campo de concepto que se agregó en la versión anterior
+    era editable pero no se notaba -- sin borde ni fondo hasta que lo
+    tocabas, se veía idéntico a texto fijo. Ahora tiene borde y fondo
+    visibles siempre (como cualquier otro campo del formulario) más
+    un aviso pequeño de "toca para editar", para que sea obvio que
+    se puede cambiar.
+  v1.12.0 - (ver historial debajo)
+  v1.12.0 - Dos fixes:
+    1) El concepto de cada pieza en el carrito ahora es editable
+       directamente (antes solo se podía cambiar cantidad o quitarla,
+       no corregir el texto).
+    2) FIX: al escribir un cliente en modo "+ Cliente nuevo" se creaba
+       un registro duplicado en Supabase con un número AUTO- nuevo,
+       incluso si ese cliente ya existía con un num_cliente real
+       asignado (pasó con Arq. Ignacio: ya tenía 26RC020 y se le creó
+       un segundo registro con AUTO-001). Ahora se busca primero por
+       teléfono y se reutiliza el cliente existente en vez de duplicar.
+  v1.11.1 - (ver historial debajo)
   v1.11.1 - FIX: la fecha guardada se adelantaba un día después de las 6pm
     hora de México. El folio arma su fecha con hora LOCAL del celular
     (correcto), pero el campo `fecha` que se guarda y se muestra en
@@ -3694,7 +3712,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.11.1';
+const APP_VERSION = 'v1.12.1';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -5003,7 +5021,8 @@ function snRenderPresupuesto() {
         html += '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;' + (idx > 0 ? 'border-top:1px solid var(--gray-200)' : '') + '">'
           + '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="snToggleItemCarrito(\'' + it.id + '\')" style="width:18px;height:18px;flex-shrink:0">'
           + '<div style="flex:1;min-width:0">'
-          + '<div style="font-size:13px;font-weight:700;color:var(--navy)">' + esc(it.label) + '</div>'
+          + '<input type="text" value="' + esc(it.label) + '" oninput="snEditarConcepto(\'' + it.id + '\', this.value)" placeholder="Descripci\u00f3n de esta pieza" style="width:100%;border:1.5px solid var(--gray-200);border-radius:6px;padding:5px 8px;margin-bottom:2px;font-family:\'DM Sans\',sans-serif;font-size:13px;font-weight:700;color:var(--navy);background:#FAFAF8" onfocus="this.style.borderColor=\'var(--blue)\';this.style.background=\'#fff\'" onblur="this.style.borderColor=\'var(--gray-200)\';this.style.background=\'#FAFAF8\'">'
+          + '<div style="font-size:9.5px;color:var(--gray-400);margin:-2px 0 4px 2px">\u270f\ufe0f toca para editar el concepto</div>'
           + '<div style="font-size:11px;color:var(--gray-400)">$' + fmt(it.precioUnitario != null ? it.precioUnitario : it.precio) + ' c/u</div>'
           + '</div>'
           + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">'
@@ -5247,8 +5266,27 @@ async function snGuardarPresupuesto(){
   // tener su id real y poder asignarle num_cliente si le hace falta.
   if (esClienteNuevo && sb()) {
     try {
-      const ins = await sb().from('clientes').insert([{ nombre: cliente, telefono: tel || null, dir_obra: dir || null }]).select().single();
-      if (!ins.error && ins.data) { SN_CLIENTE_ID = ins.data.id; SN_CLIENTE_NUM = ins.data.num_cliente || null; }
+      // FIX: antes se insertaba un cliente nuevo sin revisar si ya
+      // existía uno con ese teléfono -- eso generaba duplicados con un
+      // número AUTO- nuevo cada vez, aunque el cliente ya tuviera uno
+      // real asignado (pasó con 'Arq. Ignacio': ya tenía 26RC020 y se
+      // le creó un segundo registro con AUTO-001). Ahora primero se
+      // busca por teléfono y se reutiliza si ya existe.
+      let idExistente = null, numExistente = null;
+      if (tel) {
+        const buscar = await sb().from('clientes').select('id,num_cliente').eq('telefono', tel).limit(1);
+        if (!buscar.error && buscar.data && buscar.data.length) {
+          idExistente = buscar.data[0].id;
+          numExistente = buscar.data[0].num_cliente;
+        }
+      }
+      if (idExistente) {
+        SN_CLIENTE_ID = idExistente;
+        SN_CLIENTE_NUM = numExistente || null;
+      } else {
+        const ins = await sb().from('clientes').insert([{ nombre: cliente, telefono: tel || null, dir_obra: dir || null }]).select().single();
+        if (!ins.error && ins.data) { SN_CLIENTE_ID = ins.data.id; SN_CLIENTE_NUM = ins.data.num_cliente || null; }
+      }
       snCargarClientes();
     } catch(e) {}
   }
@@ -5395,6 +5433,13 @@ function snAgregarAlCarrito(resultado) {
   snGuardarCarritoLocal();
   return item;
 }
+function snEditarConcepto(id, valor) {
+  var it = STATE.carrito.filter(function(x){ return x.id === id; })[0];
+  if (!it) return;
+  it.label = valor;
+  snGuardarCarritoLocal();
+}
+
 function snCambiarCantidad(id, delta) {
   var it = STATE.carrito.find(function(x){ return x.id === id; });
   if (!it) return;
@@ -5813,6 +5858,7 @@ window.snIrCatalogo = snIrCatalogo;
 window.snSelCliente = snSelCliente;
 window.snToggleItemCarrito = snToggleItemCarrito;
 window.snCambiarCantidad = snCambiarCantidad;
+window.snEditarConcepto = snEditarConcepto;
 window.snQuitarDelCarrito = snQuitarDelCarrito;
 window.snHistorial = snHistorial;
 window.snSelVar = snSelVar;
