@@ -5,7 +5,14 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Cotizador Eurovent</title>
 <!--
-  BARRCAN COTIZADOR EUROVENT v1.6.0
+  BARRCAN COTIZADOR EUROVENT v1.6.1
+  v1.6.1 - FIX: el campo de concepto que se agregó en la versión anterior
+    era editable pero no se notaba -- sin borde ni fondo hasta que lo
+    tocabas, se veía idéntico a texto fijo. Ahora tiene borde y fondo
+    visibles siempre (como cualquier otro campo del formulario) más
+    un aviso pequeño de "toca para editar", para que sea obvio que
+    se puede cambiar.
+  v1.6.0 - (ver historial debajo)
   v1.6.0 - Dos fixes:
     1) El concepto de cada pieza en el carrito ahora es editable
        directamente (antes solo se podía cambiar cantidad o quitarla,
@@ -3374,7 +3381,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.6.0';
+const APP_VERSION = 'v1.6.1';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -4079,7 +4086,8 @@ function snRenderPresupuesto() {
         html += '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;' + (idx > 0 ? 'border-top:1px solid var(--gray-200)' : '') + '">'
           + '<input type="checkbox" ' + (checked ? 'checked' : '') + ' onchange="snToggleItemCarrito(\'' + it.id + '\')" style="width:18px;height:18px;flex-shrink:0">'
           + '<div style="flex:1;min-width:0">'
-          + '<input type="text" value="' + esc(it.label) + '" oninput="snEditarConcepto(\'' + it.id + '\', this.value)" style="width:100%;border:1.5px solid transparent;border-radius:6px;padding:3px 5px;margin:-3px -5px 2px;font-family:\'DM Sans\',sans-serif;font-size:13px;font-weight:700;color:var(--navy);background:transparent" onfocus="this.style.borderColor=\'var(--gray-200)\';this.style.background=\'#fff\'" onblur="this.style.borderColor=\'transparent\';this.style.background=\'transparent\'">'
+          + '<input type="text" value="' + esc(it.label) + '" oninput="snEditarConcepto(\'' + it.id + '\', this.value)" placeholder="Descripci\u00f3n de esta pieza" style="width:100%;border:1.5px solid var(--gray-200);border-radius:6px;padding:5px 8px;margin-bottom:2px;font-family:\'DM Sans\',sans-serif;font-size:13px;font-weight:700;color:var(--navy);background:#FAFAF8" onfocus="this.style.borderColor=\'var(--blue)\';this.style.background=\'#fff\'" onblur="this.style.borderColor=\'var(--gray-200)\';this.style.background=\'#FAFAF8\'">'
+          + '<div style="font-size:9.5px;color:var(--gray-400);margin:-2px 0 4px 2px">\u270f\ufe0f toca para editar el concepto</div>'
           + '<div style="font-size:11px;color:var(--gray-400)">$' + fmt(it.precioUnitario != null ? it.precioUnitario : it.precio) + ' c/u</div>'
           + '</div>'
           + '<div style="display:flex;align-items:center;gap:6px;flex-shrink:0">'
