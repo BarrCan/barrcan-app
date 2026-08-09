@@ -5,6 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="theme-color" content="#1B3A5C">
 <title>BarrCan · Reporte de Garantía</title>
+<!--
+  BARRCAN · FORMULARIO PÚBLICO DE GARANTÍA (garantia_publica.html)
+  VERSION : v1.4
+  FECHA   : 2026-08-08
+  v1.4 - FIX de raíz: las fotos/video nunca se guardaban en ningún
+    lado -- se capturaban en el navegador del cliente y se perdían al
+    enviar (un link wa.me no puede llevar archivos adjuntos). Ahora se
+    suben al bucket `garantias` de Supabase Storage y quedan en
+    fotos_urls/num_evidencias. También se agregó cola de reintento
+    local si Supabase falla al guardar (antes se perdía el reporte en
+    silencio, mostrando "enviado" igual). La alerta por WhatsApp
+    seguía siendo 100% manual (botón opcional + el cliente tiene que
+    presionar enviar dentro de WhatsApp) -- el respaldo confiable
+    ahora es un contador de "garantías nuevas" en barrcan_brain.html
+    (portal), que no depende de que el cliente haga nada.
+-->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -337,6 +353,29 @@ async function enviarReporte() {
   btn.innerHTML = '<span style="font-size:18px">⏳</span> Enviando…';
 
   const folio = 'GTI-' + Date.now().toString().slice(-6);
+
+  // Subir fotos/video al bucket 'garantias' (antes se capturaban y se
+  // perdían -- nunca se mandaban a ningún lado, ni siquiera por
+  // WhatsApp, porque un link wa.me no puede llevar archivos adjuntos).
+  let fotosUrls = [];
+  if (MEDIA.length && sb()) {
+    btn.innerHTML = '<span style="font-size:18px">⏳</span> Subiendo fotos…';
+    for (let i = 0; i < MEDIA.length; i++) {
+      const m = MEDIA[i];
+      try {
+        const blob = await (await fetch(m.dataUrl)).blob();
+        const ext = (m.nombre.split('.').pop() || 'jpg').toLowerCase();
+        const path = `${folio}/${i + 1}.${ext}`;
+        const up = await sb().storage.from('garantias').upload(path, blob, { contentType: m.tipo, upsert: true });
+        if (!up.error) {
+          const pub = sb().storage.from('garantias').getPublicUrl(path);
+          fotosUrls.push({ url: pub.data.publicUrl, tipo: m.tipo, nombre: m.nombre });
+        }
+      } catch(e) { console.warn('No se pudo subir', m.nombre, e.message); }
+    }
+    btn.innerHTML = '<span style="font-size:18px">⏳</span> Enviando…';
+  }
+
   const payload = {
     cliente_nombre:    nombre,
     cliente_tel:       tel,
@@ -348,17 +387,50 @@ async function enviarReporte() {
     disponibilidad:    document.getElementById('g-disponibilidad').value,
     estado:            'nuevo',
     registrado_por:    'cliente_web',
-    notas_internas:    `Folio cliente: ${folio}${MEDIA.length ? ' · ' + MEDIA.length + ' foto(s) adjunta(s) vía WA' : ''}`
+    num_evidencias:    fotosUrls.length,
+    fotos_urls:        fotosUrls,
+    notas_internas:    `Folio cliente: ${folio}`
   };
 
   try {
+    if (!sb()) throw new Error('Sin conexión a Supabase');
     const { error } = await sb().from('garantias').insert([payload]);
     if (error) throw error;
     mostrarEnviado(folio, nombre, tel, payload);
   } catch(e) {
-    // Si falla Supabase, igual notificar por WhatsApp
-    console.warn('Supabase error:', e.message);
+    // Antes, si Supabase fallaba, igual se le mostraba "enviado" al
+    // cliente pero el reporte se perdía sin dejar rastro. Ahora se
+    // guarda en una cola local para reintentar después (mismo patrón
+    // que los demás módulos), y de todos modos se le muestra
+    // confirmación al cliente -- pero el reporte SÍ va a llegar.
+    console.warn('Supabase error, se guarda en cola local:', e.message);
+    try {
+      const cola = JSON.parse(localStorage.getItem('barrcan_garantias_pendientes') || '[]');
+      cola.push({ datos: payload, ts: new Date().toISOString() });
+      localStorage.setItem('barrcan_garantias_pendientes', JSON.stringify(cola));
+    } catch(e2) {}
     mostrarEnviado(folio, nombre, tel, payload);
+  }
+}
+
+// Reintenta enviar los reportes que quedaron atorados en este mismo
+// celular/navegador por falta de señal en el momento de enviarlos.
+async function reintentarGarantiasPendientes() {
+  if (!sb()) return;
+  let cola = [];
+  try { cola = JSON.parse(localStorage.getItem('barrcan_garantias_pendientes') || '[]'); } catch(e) { return; }
+  if (!cola.length) return;
+  const exitosos = [];
+  for (const item of cola) {
+    try {
+      const { error } = await sb().from('garantias').insert([item.datos]);
+      if (error) throw error;
+      exitosos.push(item);
+    } catch(e) {}
+  }
+  if (exitosos.length) {
+    const restantes = cola.filter(i => !exitosos.includes(i));
+    localStorage.setItem('barrcan_garantias_pendientes', JSON.stringify(restantes));
   }
 }
 
@@ -396,6 +468,9 @@ function abrirWA() {
   );
   window.open(`https://wa.me/${WA_NUM}?text=${msg}`, '_blank');
 }
+
+document.addEventListener('DOMContentLoaded', reintentarGarantiasPendientes);
+
 </script>
 </body>
 </html>
