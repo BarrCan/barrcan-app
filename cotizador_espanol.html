@@ -5,7 +5,16 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Cotizador Española</title>
 <!--
-  BARRCAN COTIZADOR ESPAÑOLA v1.4.0
+  BARRCAN COTIZADOR ESPAÑOLA v1.4.1
+  v1.4.1 - FIX: la fecha guardada se adelantaba un día después de las 6pm
+    hora de México. El folio arma su fecha con hora LOCAL del celular
+    (correcto), pero el campo `fecha` que se guarda y se muestra en
+    la tarjeta usaba toISOString() -- que siempre da la fecha en UTC.
+    Con México en UTC-6, cualquier presupuesto hecho después de las
+    6pm caía ya en el día siguiente en UTC, así que el folio decía
+    un día y la fecha mostrada decía otro. Se agregó fechaLocalISO()
+    para usar siempre la fecha del calendario local, no UTC.
+  v1.4.0 - (ver historial debajo)
   v1.4.0 - FIX de raíz: nomenclatura real del folio corregida. Formato
     correcto: CACN-{núm.presupuesto}{letra revisión}-{fecha}-
     {núm.cliente}. La letra es una revisión real (empieza en A, sube
@@ -5049,6 +5058,18 @@ const ROLLO_ANCHO_CM = 152;
 
 // ── Supabase ───────────────────────────────────────────────
 const SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
+// Fecha local en formato YYYY-MM-DD -- toISOString() siempre da la
+// fecha en UTC, así que después de las 6pm hora de México (UTC-6)
+// se adelantaba un día (el folio usaba fecha local correctamente,
+// pero el campo `fecha` guardado usaba UTC -- por eso no coincidían).
+function fechaLocalISO(d) {
+  d = d || new Date();
+  const yy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return yy + '-' + mm + '-' + dd;
+}
+
 const SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 let _sb=null;
 function sb(){
@@ -5060,7 +5081,7 @@ function sb(){
 }
 
 // ── Auxiliares del app base ────────────────────────────────
-const APP_VERSION = 'v1.4.0';
+const APP_VERSION = 'v1.4.1';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -5947,7 +5968,7 @@ async function snGuardar(){
 
   const payloadBase={folio,cliente,tel:tel||null,descripcion:desc,notas:notas||null,
     monto:montoFinal,saldo:saldoFinal,
-    estado:'activo',fecha:hoy.toISOString().split('T')[0],archivo_url:null,archivo_nombre:null,
+    estado:'activo',fecha:fechaLocalISO(hoy),archivo_url:null,archivo_nombre:null,
     modulo:MODULO_ACTUAL,
     notas_internas:JSON.stringify(piezas)
   };
