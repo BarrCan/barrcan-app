@@ -6,6 +6,15 @@
 <title>BarrCan &middot; Garant&iacute;as</title>
 <!--
   BARRCAN · MODULO: GARANTÍAS Y POSTVENTA (standalone)
+  VERSION : v1.3
+  FECHA   : 2026-08-09
+  v1.3 - El folio de contrato relacionado ahora es editable en el panel
+    de detalle (antes era de solo lectura) -- para poder vincular
+    manualmente una garantía con su presupuesto original cuando el
+    cliente no lo puso al reportar el problema (los 4 tickets viejos
+    de junio no traen folio guardado). Con ese folio ya se puede filtrar
+    en entregas.html (selector "Folio CACN") y en compras.html (campo
+    "Folio de la obra") para ver todo el gasto/trabajo relacionado.
   VERSION : v1.2
   FECHA   : 2026-08-08
   v1.2 - FIX CRÍTICO: el archivo estaba truncado a media función
@@ -461,7 +470,7 @@ body{min-height:100vh}
       <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--gray-400);margin-bottom:8px">Reporte del cliente</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px">
         <div><span style="color:var(--gray-400)">Tipo: </span><span id="gtia-det-tipo" style="font-weight:600;color:var(--navy)">&mdash;</span></div>
-        <div><span style="color:var(--gray-400)">Folio: </span><span id="gtia-det-folio" style="font-weight:600;color:var(--blue);font-family:monospace">&mdash;</span></div>
+        <div><span style="color:var(--gray-400)">Folio relacionado: </span><input type="text" id="gtia-det-folio" placeholder="Ej: CACN-133A-260728-26RC020" style="font-weight:600;color:var(--blue);font-family:monospace;font-size:12px;border:1.5px solid var(--gray-200);border-radius:6px;padding:4px 6px;width:210px"></div>
         <div><span style="color:var(--gray-400)">Instalaci&oacute;n: </span><span id="gtia-det-fecha-inst" style="font-weight:600;color:var(--navy)">&mdash;</span></div>
         <div><span style="color:var(--gray-400)">Disponibilidad: </span><span id="gtia-det-disp" style="font-weight:600;color:var(--navy)">&mdash;</span></div>
         <div style="grid-column:1/-1"><span style="color:var(--gray-400)">&#128205; Direcci&oacute;n: </span><span id="gtia-det-dir" style="font-weight:600;color:var(--navy)">&mdash;</span></div>
@@ -812,7 +821,7 @@ function gtiaAbrirDetalle(id) {
   priorEl.textContent = st.emoji + ' ' + prior.toUpperCase();
   priorEl.style.color = st.color;
   document.getElementById('gtia-det-tipo').textContent = g.tipo_problema || '\u2014';
-  document.getElementById('gtia-det-folio').textContent = g.folio_contrato || '\u2014';
+  document.getElementById('gtia-det-folio').value = g.folio_contrato || '';
   document.getElementById('gtia-det-fecha-inst').textContent = g.fecha_instalacion || '\u2014';
   document.getElementById('gtia-det-disp').textContent = g.disponibilidad || '\u2014';
   document.getElementById('gtia-det-dir').textContent = g.direccion_obra || '\u2014';
@@ -860,6 +869,7 @@ async function gtiaDetGuardar() {
     tecnico_asignado: document.getElementById('gtia-det-tecnico').value || null,
     fecha_visita_agendada: document.getElementById('gtia-det-fecha-vis').value || null,
     costo_reparacion: costoVal !== '' ? parseFloat(costoVal) : null,
+    folio_contrato: document.getElementById('gtia-det-folio').value.trim() || null,
     notas_internas: document.getElementById('gtia-det-notas').value.trim() || null
   };
   if (!sb()) { toast('Sin conexi\u00f3n \u2014 no se pudo guardar'); return; }
