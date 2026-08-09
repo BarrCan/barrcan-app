@@ -5,7 +5,20 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Cotizador Nacional</title>
 <!--
-  BARRCAN COTIZADOR NACIONAL v3.5.1
+  BARRCAN COTIZADOR NACIONAL v3.6.0
+  v3.6.0 - FIX CRÍTICO: el guardado llevaba tiempo fallando siempre por dos
+    causas de raíz:
+    1) La columna `notas_internas` había desaparecido de la tabla en
+       Supabase (ya se restauró) -- por eso nada se guardaba nunca.
+    2) El payload mandaba los campos `dir_obra` y `notas`, pero la
+       tabla real solo tiene `dir` (y a `notas` le faltaba la columna,
+       ya se agregó) -- cualquiera de los dos también tumbaba el
+       guardado por completo con "column does not exist".
+    Además: la fecha de elaboración ya se puede cambiar (antes solo
+    se preguntaba el número de folio, la fecha siempre forzaba HOY
+    sin poder elegir otra) -- nuevo campo de fecha junto a Notas,
+    con hoy como valor por defecto.
+  v3.5.1 - (ver historial debajo)
   v3.5.1 - FIX: el campo de concepto que se agregó en la versión anterior
     era editable pero no se notaba -- sin borde ni fondo hasta que lo
     tocabas, se veía idéntico a texto fijo. Ahora tiene borde y fondo
@@ -1778,6 +1791,9 @@ body{background:var(--off-white)}
       <input type="text" class="form-input" id="sn-tel" placeholder="Teléfono" style="margin-bottom:8px">
       <input type="text" class="form-input" id="sn-dir" placeholder="Dirección de obra" style="margin-bottom:8px">
       <textarea class="form-input" id="sn-notas" rows="2" placeholder="Notas" style="resize:none;margin-bottom:4px"></textarea>
+
+      <label style="font-size:11px;color:var(--gray-400);display:block;margin-bottom:4px">Fecha de elaboración (hoy por defecto — cámbiala si el trabajo se solicitó otro día)</label>
+      <input type="date" class="form-input" id="sn-fecha" style="margin-bottom:4px">
       <div class="adjunto-zone" id="sn-adjunto-zone" onclick="document.getElementById('sn-file-adj').click()"
         style="border:2px dashed var(--gray-200);border-radius:8px;padding:12px;text-align:center;cursor:pointer;margin-bottom:8px">
         <div style="font-size:13px;color:var(--gray-400)" id="sn-adj-txt">📎 Adjuntar plano o croquis (PDF o imagen)</div>
@@ -3958,8 +3974,8 @@ function snSiguienteLetra(letra) {
 // al día de hoy -- incluyendo el año, para que un folio de años
 // pasados que se retome hoy quede con fecha de hoy. El número de
 // presupuesto y el número de cliente NO cambian entre revisiones.
-function snBumpRevisionFolio(folioOriginal) {
-  const hoy = new Date();
+function snBumpRevisionFolio(folioOriginal, fechaParam) {
+  const hoy = fechaParam || new Date();
   const yy = String(hoy.getFullYear()).slice(-2);
   const mm = String(hoy.getMonth() + 1).padStart(2, '0');
   const dd = String(hoy.getDate()).padStart(2, '0');
@@ -4028,6 +4044,7 @@ function snCargarContinuarFolio() {
   setVal('sn-cliente', datos.cliente);
   setVal('sn-tel', datos.tel);
   setVal('sn-dir', datos.dir_obra || datos.dir);
+  if (datos.fecha) setVal('sn-fecha', datos.fecha);
 
   const sub = document.getElementById('sn-presupuesto-subtitulo');
   if (sub) sub.innerHTML = '➕ Agregando piezas al folio <strong>' + esc(datos.folio) + '</strong> — el total y el saldo se suman al presupuesto original.';
@@ -5250,7 +5267,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v3.5.1';
+const APP_VERSION = 'v3.6.0';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -6061,7 +6078,8 @@ async function snGuardarPresupuesto(){
   const notas = document.getElementById('sn-notas').value.trim();
   if (!cliente) { toast('Ingresa el nombre del cliente'); return; }
 
-  const hoy = new Date();
+  const fechaTexto = document.getElementById('sn-fecha')?.value;
+  const hoy = fechaTexto ? new Date(fechaTexto + 'T12:00:00') : new Date();
   const yy = String(hoy.getFullYear()).slice(-2);
   const mm = String(hoy.getMonth() + 1).padStart(2, '0');
   const dd = String(hoy.getDate()).padStart(2, '0');
@@ -6109,7 +6127,7 @@ async function snGuardarPresupuesto(){
 
   let folio, incluidos, montoFinal, saldoFinal;
   if (esActualizacion) {
-    folio = snBumpRevisionFolio(CONTINUANDO_FOLIO.folio);
+    folio = snBumpRevisionFolio(CONTINUANDO_FOLIO.folio, hoy);
     incluidos = STATE.carrito.filter(function(it){ return it.existente; }).concat(nuevas);
     montoFinal = Math.round((CONTINUANDO_FOLIO.monto || 0) + totalNuevas);
     saldoFinal = Math.round((CONTINUANDO_FOLIO.saldo || 0) + totalNuevas);
@@ -6127,7 +6145,7 @@ async function snGuardarPresupuesto(){
   const htmlDoc = snGenerarDocumentoPresupuesto(incluidos, folio, cliente, dir, hoy);
 
   const payload = {
-    folio, cliente, tel: tel || null, descripcion: desc, dir_obra: dir || null, notas: notas || null,
+    folio, cliente, tel: tel || null, descripcion: desc, dir: dir || null, notas: notas || null,
     monto: montoFinal, saldo: saldoFinal,
     estado: 'activo', fecha: fechaLocalISO(hoy),
     modulo: MODULO_ACTUAL,
@@ -6172,6 +6190,7 @@ async function snGuardarPresupuesto(){
   const sub = document.getElementById('sn-presupuesto-subtitulo');
   if (sub) sub.textContent = 'Selecciona las piezas que van en este presupuesto';
   ['sn-cliente','sn-tel','sn-dir','sn-notas'].forEach(function(id){ const el = document.getElementById(id); if (el) el.value = ''; });
+  const _fechaReset = document.getElementById('sn-fecha'); if (_fechaReset) _fechaReset.value = fechaLocalISO();
   const selCliReset = document.getElementById('sn-cli-select'); if (selCliReset) selCliReset.value = '';
   snArchivoAdjFile = null;
   const zona = document.getElementById('sn-adjunto-zone');
@@ -6423,6 +6442,8 @@ document.addEventListener('DOMContentLoaded',()=>{
   // Si se llegó aquí desde historial.html con "+ Agregar piezas", carga
   // el folio existente y muestra sus piezas ya guardadas.
   snCargarContinuarFolio();
+  const _fechaEl = document.getElementById('sn-fecha');
+  if (_fechaEl && !_fechaEl.value) _fechaEl.value = fechaLocalISO();
 });
 
 
