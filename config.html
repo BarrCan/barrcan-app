@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>BarrCan · Configuración de Costos</title>
+<!--
+  BARRCAN · MÓDULO: CONFIGURACIÓN DE COSTOS (config.html)
+  VERSION : v1.0
+  FECHA   : 2026-08-08
+  v1.0 - Primera versión. Antes esto vivía como una pestaña dentro del
+    prototipo original (barrcan_app.html, hoy fuera de producción) y
+    al modularizar la app en 5 cotizadores separados esa pantalla se
+    quedó atrás -- cada cotizador conservó los campos (ocultos, sin
+    forma de editarlos) y la sincronización con la tabla
+    `config_precios` de Supabase, pero la única forma real de cambiar
+    un precio era por SQL directo. Este módulo es la única pantalla
+    para editarlos: como los 5 cotizadores ya leen esa misma tabla al
+    abrir, un cambio aquí se refleja en todos sin tocar sus archivos.
+    Incluye también ga_pct/iva_compras_pct/margen_mant_pct y los 3
+    domo_* que ya existían en la tabla pero no estaban en la pantalla
+    vieja (se agregaron en sesiones posteriores directo por SQL).
+-->
+<style>
+:root {
+  --navy: #1B3A5C;
+  --blue: #2E6DA4;
+  --gold: #C8923A;
+  --gold-light: #E8B96A;
+  --white: #FFFFFF;
+  --off-white: #F7F5F0;
+  --gray-100: #F0EDE8;
+  --gray-200: #DDD9D2;
+  --gray-400: #9A9590;
+  --gray-600: #5A5652;
+  --green: #2D7D46;
+  --red: #C0392B;
+  --shadow-sm: 0 2px 8px rgba(27,58,92,0.08);
+  --shadow-md: 0 8px 32px rgba(27,58,92,0.14);
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { min-height:100%; font-family:'DM Sans',sans-serif; background:var(--off-white); color:var(--navy); }
+.header { background:var(--navy); color:#fff; padding:16px 18px; display:flex; align-items:center; justify-content:space-between; box-shadow:var(--shadow-sm); position:sticky; top:0; z-index:50; }
+.header-titulo { font-size:16px; font-weight:800; }
+.header-sub { font-size:11px; color:rgba(255,255,255,.55); }
+.btn-volver { background:rgba(255,255,255,.1); border:1.5px solid rgba(255,255,255,.2); color:#fff; padding:7px 12px; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; text-decoration:none; }
+.contenido { max-width:640px; margin:0 auto; padding:16px; }
+.aviso { background:rgba(200,146,58,.1); border:1.5px solid rgba(200,146,58,.3); border-radius:var(--radius-sm); padding:12px 14px; font-size:12px; color:var(--navy); margin-bottom:16px; line-height:1.5; }
+.grupo { background:#fff; border-radius:var(--radius); padding:16px; margin-bottom:14px; box-shadow:var(--shadow-sm); }
+.grupo-titulo { font-size:14px; font-weight:800; color:var(--navy); margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+.campo-row { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:9px 0; border-top:1px solid var(--gray-100); }
+.campo-row:first-of-type { border-top:none; }
+.campo-label { font-size:13px; color:var(--gray-600); flex:1; }
+.campo-input-wrap { display:flex; align-items:center; gap:4px; }
+.campo-input { width:90px; text-align:right; padding:8px 9px; border:1.5px solid var(--gray-200); border-radius:8px; font-family:'DM Sans',sans-serif; font-size:13px; font-weight:700; color:var(--navy); }
+.campo-input:focus { outline:none; border-color:var(--blue); }
+.campo-unidad { font-size:11px; color:var(--gray-400); width:16px; }
+.footer-guardar { position:sticky; bottom:0; background:linear-gradient(to top, var(--off-white) 60%, transparent); padding:14px 0 4px; }
+.btn-guardar { width:100%; padding:15px; background:var(--navy); color:#fff; border:none; border-radius:var(--radius-sm); font-family:'DM Sans',sans-serif; font-size:15px; font-weight:800; cursor:pointer; box-shadow:var(--shadow-md); }
+.btn-guardar:active { opacity:.85; }
+.ultima-act { text-align:center; font-size:11px; color:var(--gray-400); margin-top:8px; }
+.bloqueo { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:70vh; padding:32px; text-align:center; gap:12px; }
+.bloqueo-icono { font-size:48px; }
+.bloqueo-txt { font-size:14px; color:var(--gray-600); max-width:280px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <div class="header-titulo">💰 Configuración de Costos</div>
+    <div class="header-sub" id="conn-status">Online</div>
+  </div>
+  <a class="btn-volver" href="barrcan_brain.html">← Portal</a>
+</div>
+
+<div id="pantalla-bloqueo" style="display:none">
+  <div class="bloqueo">
+    <div class="bloqueo-icono">🔒</div>
+    <div class="bloqueo-txt">Esta pantalla controla los precios y márgenes de todos los cotizadores. Solo administradores pueden entrar.</div>
+    <button class="btn-guardar" style="width:auto;padding:12px 24px" onclick="pedirPinAdmin()">Ingresar PIN de administrador</button>
+  </div>
+</div>
+
+<div id="pantalla-config" style="display:none">
+  <div class="contenido">
+    <div class="aviso">
+      ⚠️ Los cambios aquí se aplican a <b>los 5 cotizadores</b> (Nacional, Español, Eurovent, Servicios, Baños) en cuanto los vuelvan a abrir con señal — no hace falta subir nada a GitHub.
+    </div>
+
+    <div class="grupo">
+      <div class="grupo-titulo">📊 Financieros</div>
+      <div id="grupo-financieros"></div>
+    </div>
+
+    <div class="grupo">
+      <div class="grupo-titulo">🔩 Aluminio y cargos fijos</div>
+      <div id="grupo-aluminio"></div>
+    </div>
+
+    <div class="grupo">
+      <div class="grupo-titulo">🪟 Vidrio — precio base por espesor ($/m²)</div>
+      <div id="grupo-vidrio"></div>
+    </div>
+
+    <div class="grupo">
+      <div class="grupo-titulo">🎨 Vidrio especial — recargo sobre el base (%)</div>
+      <div id="grupo-vidrio-especial"></div>
+    </div>
+
+    <div class="grupo">
+      <div class="grupo-titulo">🎞️ Película / vinilo ($/m²)</div>
+      <div id="grupo-pelicula"></div>
+    </div>
+
+    <div class="grupo">
+      <div class="grupo-titulo">☂️ Domo (Nave Industrial)</div>
+      <div id="grupo-domo"></div>
+    </div>
+
+    <div class="footer-guardar">
+      <button class="btn-guardar" onclick="guardarTodo()">☁️ Guardar y sincronizar</button>
+      <div class="ultima-act" id="ultima-actualizacion">—</div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+const SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co';
+const SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
+let _sb = null;
+function sb() {
+  if (!_sb && window.supabase) _sb = window.supabase.createClient(SB_URL, SB_KEY, { db: { schema: 'barrcan' } });
+  return _sb;
+}
+
+function toast(msg, dur) {
+  dur = dur || 2800;
+  let el = document.getElementById('_toast');
+  if (!el) { el = document.createElement('div'); el.id='_toast'; el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)'; document.body.appendChild(el); }
+  el.textContent = msg; el.style.opacity = '1';
+  clearTimeout(el._t); el._t = setTimeout(() => { el.style.opacity = '0'; }, dur);
+}
+
+// ── Campos: clave en Supabase (config_precios) → definición de UI ──
+// Mismas claves que ya leen/escriben los 5 cotizadores (SB_CONFIG_MAPA
+// en cada uno) más los 3 domo_* que ya vivían en la tabla pero nunca
+// tuvieron pantalla.
+const CAMPOS = [
+  { grupo:'grupo-financieros', clave:'gif_pct',          label:'GIF (gastos indirectos de fabricación)', unidad:'%' },
+  { grupo:'grupo-financieros', clave:'ga_pct',            label:'GA (gastos de administración)',          unidad:'%' },
+  { grupo:'grupo-financieros', clave:'utilidad_pct',      label:'Utilidad',                                unidad:'%' },
+  { grupo:'grupo-financieros', clave:'margen_mant_pct',   label:'Margen — Mantenimiento/Servicios',        unidad:'%' },
+  { grupo:'grupo-financieros', clave:'iva_pct',           label:'IVA de venta',                            unidad:'%' },
+  { grupo:'grupo-financieros', clave:'iva_compras_pct',   label:'IVA de compras (a proveedores)',          unidad:'%' },
+  { grupo:'grupo-financieros', clave:'merma_pct',         label:'Merma de material',                       unidad:'%' },
+
+  { grupo:'grupo-aluminio', clave:'precio_al_kg',   label:'Precio aluminio', unidad:'$/kg' },
+  { grupo:'grupo-aluminio', clave:'cargo_piso',     label:'Cargo por piso (instalación en altura)', unidad:'$' },
+  { grupo:'grupo-aluminio', clave:'cargo_campo',    label:'Cargo por visita/traslado a campo', unidad:'$' },
+
+  { grupo:'grupo-vidrio', clave:'vid_6mm',  label:'Vidrio 6mm',  unidad:'$' },
+  { grupo:'grupo-vidrio', clave:'vid_8mm',  label:'Vidrio 8mm',  unidad:'$' },
+  { grupo:'grupo-vidrio', clave:'vid_9mm',  label:'Vidrio 9mm',  unidad:'$' },
+  { grupo:'grupo-vidrio', clave:'vid_10mm', label:'Vidrio 10mm', unidad:'$' },
+  { grupo:'grupo-vidrio', clave:'vid_12mm', label:'Vidrio 12mm', unidad:'$' },
+  { grupo:'grupo-vidrio', clave:'vid_24mm', label:'Vidrio 24mm (doble acristalamiento)', unidad:'$' },
+
+  { grupo:'grupo-vidrio-especial', clave:'pct_verde',     label:'Verde',     unidad:'%' },
+  { grupo:'grupo-vidrio-especial', clave:'pct_filtrasol', label:'Filtrasol', unidad:'%' },
+  { grupo:'grupo-vidrio-especial', clave:'pct_bronce',    label:'Bronce',    unidad:'%' },
+  { grupo:'grupo-vidrio-especial', clave:'pct_azul',      label:'Azul',      unidad:'%' },
+
+  { grupo:'grupo-pelicula', clave:'pel_esm_venta', label:'Esmerilado — precio de venta', unidad:'$' },
+  { grupo:'grupo-pelicula', clave:'pel_esm_costo', label:'Esmerilado — costo',            unidad:'$' },
+  { grupo:'grupo-pelicula', clave:'pel_fil_venta', label:'Filtro solar — precio de venta', unidad:'$' },
+  { grupo:'grupo-pelicula', clave:'pel_fil_costo', label:'Filtro solar — costo',           unidad:'$' },
+  { grupo:'grupo-pelicula', clave:'pel_vin_venta', label:'Vinil decorativo — precio de venta', unidad:'$' },
+
+  { grupo:'grupo-domo', clave:'domo_norton',   label:'Norton (perfil de cierre)', unidad:'$' },
+  { grupo:'grupo-domo', clave:'domo_masking',  label:'Masking',                    unidad:'$' },
+  { grupo:'grupo-domo', clave:'domo_sellador', label:'Sellador',                   unidad:'$' },
+];
+
+// ── Acceso: mismo patrón que tecnicos.html/entregas.html/historial.html ──
+function esAdmin() {
+  try {
+    const u = JSON.parse(localStorage.getItem('barrcan_usuario_activo') || '{}');
+    return u.rol === 'admin' || u.id === 'MAU' || u.id === 'HER';
+  } catch(e) { return false; }
+}
+
+function pedirPinAdmin() {
+  const pin = prompt('PIN de administrador:');
+  if (pin === null) return;
+  const pinMau = localStorage.getItem('barrcan_pin_MAU');
+  const pinHer = localStorage.getItem('barrcan_pin_HER');
+  if (pin && (pin === pinMau || pin === pinHer)) {
+    localStorage.setItem('barrcan_usuario_activo', JSON.stringify({ id: pin === pinMau ? 'MAU' : 'HER', rol: 'admin' }));
+    iniciar();
+  } else {
+    toast('PIN incorrecto');
+  }
+}
+
+function construirUI() {
+  const porGrupo = {};
+  CAMPOS.forEach(c => { (porGrupo[c.grupo] = porGrupo[c.grupo] || []).push(c); });
+  Object.entries(porGrupo).forEach(([grupoId, campos]) => {
+    const cont = document.getElementById(grupoId);
+    if (!cont) return;
+    cont.innerHTML = campos.map(c =>
+      `<div class="campo-row">
+        <div class="campo-label">${c.label}</div>
+        <div class="campo-input-wrap">
+          <input type="number" step="0.01" class="campo-input" id="cfg-${c.clave}">
+          <div class="campo-unidad">${c.unidad}</div>
+        </div>
+      </div>`
+    ).join('');
+  });
+}
+
+async function cargarValores() {
+  if (!sb()) { toast('Sin conexión — no se pueden cargar los precios actuales'); return; }
+  try {
+    const { data, error } = await sb().from('config_precios').select('clave,valor,updated_at');
+    if (error || !data) { toast('No se pudo leer config_precios: ' + (error?.message || '')); return; }
+    let masReciente = null;
+    data.forEach(row => {
+      const el = document.getElementById('cfg-' + row.clave);
+      if (el) el.value = parseFloat(row.valor);
+      if (!masReciente || row.updated_at > masReciente) masReciente = row.updated_at;
+    });
+    const ultEl = document.getElementById('ultima-actualizacion');
+    if (ultEl && masReciente) {
+      const f = new Date(masReciente);
+      ultEl.textContent = 'Última actualización: ' + f.toLocaleDateString('es-MX') + ' ' + f.toLocaleTimeString('es-MX', { hour:'2-digit', minute:'2-digit' });
+    }
+  } catch(e) { toast('Error cargando precios: ' + e.message); }
+}
+
+async function guardarTodo() {
+  if (!sb()) { toast('Sin conexión — no se puede guardar'); return; }
+  const btn = document.querySelector('.btn-guardar');
+  btn.disabled = true;
+  btn.textContent = '☁️ Guardando…';
+  try {
+    const ahora = new Date().toISOString();
+    const updates = CAMPOS.map(c => ({
+      clave: c.clave,
+      valor: parseFloat(document.getElementById('cfg-' + c.clave)?.value || 0),
+      updated_at: ahora
+    }));
+    const { error } = await sb().from('config_precios').upsert(updates, { onConflict: 'clave' });
+    if (error) throw error;
+    toast('✅ Precios guardados — ya están disponibles para los 5 cotizadores');
+    cargarValores();
+  } catch(e) {
+    toast('⚠️ No se pudo guardar: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '☁️ Guardar y sincronizar';
+  }
+}
+
+function iniciar() {
+  document.getElementById('pantalla-bloqueo').style.display = 'none';
+  document.getElementById('pantalla-config').style.display = 'block';
+  construirUI();
+  cargarValores();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const connEl = document.getElementById('conn-status');
+  if (connEl) connEl.textContent = navigator.onLine ? 'Online' : 'Offline';
+  window.addEventListener('online', () => { if (connEl) connEl.textContent = 'Online'; });
+  window.addEventListener('offline', () => { if (connEl) connEl.textContent = 'Offline'; });
+
+  if (esAdmin()) { iniciar(); }
+  else { document.getElementById('pantalla-bloqueo').style.display = 'block'; }
+
+  // Service Worker: mismo patrón que el resto de los módulos.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', async () => {
+      try {
+        const registros = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registros) {
+          const swUrl = reg.active?.scriptURL || '';
+          if (swUrl && !swUrl.includes('barrcan_sw.js')) await reg.unregister();
+        }
+        const reg = await navigator.serviceWorker.register('./barrcan_sw.js', { scope: './' });
+        if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+      } catch(e) { console.log('[BarrCan] SW no disponible:', e.message); }
+    });
+  }
+});
+</script>
+</body>
+</html>
