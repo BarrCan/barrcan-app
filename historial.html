@@ -6,6 +6,15 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v2.7
+  FECHA   : 2026-08-08
+  v2.7 - El enrutamiento de "+Piezas"/"Editar" (cuál cotizador abrir)
+    ahora usa la columna `modulo` en vez de adivinar por la letra
+    del folio -- esa letra pasó a ser una revisión real (ver v1.11
+    de Servicios y equivalentes en los demás cotizadores), así que
+    ya no identifica el módulo. Se mantiene compatibilidad hacia
+    atrás: si un presupuesto viejo no tiene `modulo` todavía, se
+    adivina por la letra vieja como respaldo.
   VERSIÓN : v2.6
   FECHA   : 2026-08-08
   v2.6 - FIX: "X sin sincronizar" en el contador de arriba leía la cola
@@ -1295,7 +1304,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v2.6';
+var APP_VERSION = 'v2.7';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1385,7 +1394,7 @@ async function presCargar() {
 
   try {
     var result = await sb().from('presupuestos_atrasados')
-      .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,fecha,estado,notas_internas,created_at')
+      .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,fecha,estado,notas_internas,modulo,created_at')
       .order('folio', { ascending: true })
       .range(0, 499);
 
@@ -1635,12 +1644,25 @@ function presAbrirNuevo() {
 }
 
 // ── Agregar piezas a un folio ya guardado ──────────────────────────
-// Manda al cotizador correcto según la letra de serie del folio
-// (B=Nacional, C=Español, E=Eurovent, S=Servicios, A=Baños), dejando
-// el presupuesto actual en localStorage para que ese módulo lo
-// recoja, precargue sus piezas ya guardadas y sume lo nuevo al mismo
-// folio (subiendo la revisión) en vez de crear uno aparte.
-var PRES_SERIE_A_MODULO = { B: 'cotizador_nacional.html', C: 'cotizador_espanol.html', E: 'cotizador_eurovent.html', S: 'cotizador_servicios.html', A: 'cotizador_banos.html' };
+// Manda al cotizador correcto según la columna `modulo` del
+// presupuesto (nacional/espanol/eurovent/servicios/banos), dejando el
+// presupuesto actual en localStorage para que ese módulo lo recoja,
+// precargue sus piezas ya guardadas y sume lo nuevo al mismo folio
+// (subiendo la letra de revisión) en vez de crear uno aparte.
+// NOTA: antes esto se adivinaba por la letra del folio (B=Nacional,
+// C=Español, E=Eurovent, S=Servicios, A=Baños), pero esa letra ahora
+// es una revisión real (empieza en A) y ya no identifica el módulo.
+// Para presupuestos viejos que se guardaron antes de que existiera la
+// columna `modulo`, se cae de vuelta a adivinar por esa letra vieja.
+var PRES_MODULO_A_ARCHIVO = { nacional: 'cotizador_nacional.html', espanol: 'cotizador_espanol.html', eurovent: 'cotizador_eurovent.html', servicios: 'cotizador_servicios.html', banos: 'cotizador_banos.html' };
+var PRES_SERIE_VIEJA_A_MODULO = { B: 'nacional', C: 'espanol', E: 'eurovent', S: 'servicios', A: 'banos' };
+
+function presModuloDe(datos) {
+  if (datos.modulo && PRES_MODULO_A_ARCHIVO[datos.modulo]) return datos.modulo;
+  var m = /^CACN-\d+([A-Z])/.exec(datos.folio || '');
+  var letra = m ? m[1] : null;
+  return letra ? PRES_SERIE_VIEJA_A_MODULO[letra] : null;
+}
 
 function presAgregarPiezas(id) {
   var p = null;
@@ -1648,14 +1670,14 @@ function presAgregarPiezas(id) {
     if (PRES_CACHE[i].id === id) { p = PRES_CACHE[i]; break; }
   }
   if (!p) return;
-  var m = /^CACN-\d+([A-Z])/.exec(p.folio || '');
-  var letra = m ? m[1] : null;
-  var destino = letra ? PRES_SERIE_A_MODULO[letra] : null;
-  if (!destino) { toast('No se reconoce el módulo de este folio' + (letra ? ' (letra "' + letra + '")' : '')); return; }
+  var modulo = presModuloDe(p);
+  var destino = modulo ? PRES_MODULO_A_ARCHIVO[modulo] : null;
+  if (!destino) { toast('No se reconoce el módulo de este folio'); return; }
   try {
     localStorage.setItem('barrcan_continuar_folio', JSON.stringify({
       id: p.id, folio: p.folio, cliente: p.cliente, tel: p.tel, dir: p.dir, dir_obra: p.dir,
-      monto: p.monto, saldo: p.saldo, descripcion: p.descripcion, notas_internas: p.notas_internas
+      monto: p.monto, saldo: p.saldo, descripcion: p.descripcion, notas_internas: p.notas_internas,
+      modulo: modulo
     }));
   } catch(e) { toast('No se pudo preparar el folio para continuar'); return; }
   location.href = destino;
@@ -1692,8 +1714,8 @@ function presColaEditar(ts) {
   var item = null;
   for (var i = 0; i < cola.length; i++) { if (String(cola[i].ts) === ts) { item = cola[i]; break; } }
   if (!item) return;
-  var letra = (/^CACN-\d+([A-Z])/.exec((item.datos && item.datos.folio) || '') || [])[1];
-  var destino = letra ? PRES_SERIE_A_MODULO[letra] : null;
+  var modulo = presModuloDe(item.datos || {});
+  var destino = modulo ? PRES_MODULO_A_ARCHIVO[modulo] : null;
   if (!destino) { toast('No se reconoce el módulo de este folio pendiente'); return; }
   toast('Ábrelo en ' + destino.replace('.html', '') + ' → panel "Sin sincronizar todavía"');
   location.href = destino;
