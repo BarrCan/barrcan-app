@@ -63,6 +63,7 @@ const RECURSOS_CORE = [
   './tecnicos.html',
   './mostrador.html',
   './render_ia.html',
+  './config.html',
 ];
 
 const DOMINIOS_CACHEABLE = [
