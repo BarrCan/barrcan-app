@@ -6,6 +6,16 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v2.8
+  FECHA   : 2026-08-08
+  v2.8 - Conceptos del presupuesto editables dentro del modal "Editar":
+    antes solo se podía tocar la descripción corta (resumen general),
+    pero el texto real que aparece impreso en el documento del cliente
+    es el "label" de cada pieza dentro de notas_internas -- no había
+    ninguna pantalla para corregirlo. Ahora cada concepto se ve como
+    un textarea editable (con cantidad y precio de referencia al
+    lado), se puede quitar uno si sobra, y al guardar se actualiza
+    notas_internas junto con el resto de los campos.
   VERSIÓN : v2.7
   FECHA   : 2026-08-08
   v2.7 - El enrutamiento de "+Piezas"/"Editar" (cuál cotizador abrir)
@@ -1246,6 +1256,15 @@ body{min-height:100vh}
     <label class="form-label">Descripcion del trabajo</label>
     <textarea id="pres-desc" class="form-input" rows="3" placeholder="Ej: 3 ventanas OX, cancel bano frameless..." style="resize:none"></textarea>
 
+    <div style="margin:14px 0 6px">
+      <label class="form-label" style="margin-bottom:2px">Conceptos del presupuesto</label>
+      <div style="font-size:10.5px;color:var(--gray-400);margin-bottom:8px;line-height:1.4">
+        Esto es lo que aparece impreso en el documento que ve el cliente — edítalo si la descripción automática quedó muy simple. El precio se muestra solo de referencia; cambia el Monto/Saldo arriba si el total también cambió.
+      </div>
+      <div id="pres-conceptos-lista"></div>
+      <div id="pres-conceptos-vacio" style="display:none;font-size:12px;color:var(--gray-400);padding:8px 0">Este presupuesto no tiene piezas con concepto guardado individualmente.</div>
+    </div>
+
     <label class="form-label">Estado actual</label>
     <div class="form-select-wrap">
       <select id="pres-estado" class="form-select">
@@ -1304,7 +1323,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v2.7';
+var APP_VERSION = 'v2.8';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1624,6 +1643,7 @@ function presAbrirNuevo() {
   });
   var revEl = document.getElementById('pres-rev');
   if (revEl) revEl.value = 'A';
+  presRenderConceptos(null);
   var fechaEl = document.getElementById('pres-fecha');
   if (fechaEl) fechaEl.value = hoy;
   var fechaFolioEl = document.getElementById('pres-fecha-folio');
@@ -1756,6 +1776,66 @@ function presColaEliminar(ts) {
   presFiltrar();
 }
 
+// ── Conceptos (piezas) editables: lo que aparece en el documento ──
+var PRES_CONCEPTOS = []; // copia de trabajo mientras el modal está abierto
+
+function presRenderConceptos(notasInternasRaw) {
+  var piezas = [];
+  try { piezas = JSON.parse(notasInternasRaw || '[]'); } catch(e) {}
+  if (!Array.isArray(piezas)) piezas = [];
+  PRES_CONCEPTOS = piezas.map(function(p) {
+    return {
+      label: p.label || '',
+      cantidad: p.cantidad || 1,
+      precio: p.precio,
+      precioUnitario: p.precioUnitario != null ? p.precioUnitario : p.precio,
+      resultado: p.resultado
+    };
+  });
+  presDibujarConceptos();
+}
+
+function presDibujarConceptos() {
+  var cont = document.getElementById('pres-conceptos-lista');
+  var vacio = document.getElementById('pres-conceptos-vacio');
+  if (!cont) return;
+  if (!PRES_CONCEPTOS.length) {
+    cont.innerHTML = '';
+    if (vacio) vacio.style.display = 'block';
+    return;
+  }
+  if (vacio) vacio.style.display = 'none';
+  cont.innerHTML = PRES_CONCEPTOS.map(function(p, i) {
+    return '<div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:8px">'
+      + '<textarea class="form-input" rows="2" style="resize:none;font-size:13px" '
+      + 'oninput="presConceptoEditar(' + i + ',\'label\',this.value)" placeholder="Descripción de esta pieza">' + esc(p.label) + '</textarea>'
+      + '<div style="display:flex;flex-direction:column;gap:4px;width:64px;flex-shrink:0">'
+      + '<input type="number" min="1" value="' + (p.cantidad || 1) + '" title="Cantidad" '
+      + 'style="width:100%;padding:6px;border:1.5px solid var(--gray-200);border-radius:6px;font-size:12px;text-align:center" '
+      + 'oninput="presConceptoEditar(' + i + ',\'cantidad\',this.value)">'
+      + '<div style="font-size:10px;color:var(--gray-400);text-align:center">$' + fmt(p.precio || 0) + '</div>'
+      + '</div>'
+      + '<button type="button" onclick="presConceptoQuitar(' + i + ')" title="Quitar" '
+      + 'style="padding:6px 9px;background:rgba(192,57,43,0.08);border:1.5px solid rgba(192,57,43,0.25);border-radius:6px;color:#C0392B;cursor:pointer;flex-shrink:0">✕</button>'
+      + '</div>';
+  }).join('');
+}
+
+function presConceptoEditar(idx, campo, valor) {
+  if (!PRES_CONCEPTOS[idx]) return;
+  if (campo === 'cantidad') {
+    PRES_CONCEPTOS[idx].cantidad = parseInt(valor, 10) || 1;
+  } else {
+    PRES_CONCEPTOS[idx][campo] = valor;
+  }
+}
+
+function presConceptoQuitar(idx) {
+  if (!confirm('¿Quitar este concepto del presupuesto? Recuerda ajustar el Monto/Saldo si hace falta.')) return;
+  PRES_CONCEPTOS.splice(idx, 1);
+  presDibujarConceptos();
+}
+
 function presEditar(id) {
   var p = null;
   for (var i = 0; i < PRES_CACHE.length; i++) {
@@ -1810,6 +1890,7 @@ function presEditar(id) {
   setVal('pres-fecha',   p.fecha);
   setVal('pres-estado',  p.estado || 'activo');
   setVal('pres-notas',   '');
+  presRenderConceptos(p.notas_internas);
 
   document.getElementById('pres-modal-overlay').style.display = 'block';
   document.getElementById('pres-modal').style.display        = 'block';
@@ -1871,6 +1952,11 @@ async function presGuardar() {
     estado:      getVal('pres-estado') || 'activo',
     fecha:       getVal('pres-fecha')  || null
   };
+  if (PRES_CONCEPTOS.length) {
+    datos.notas_internas = JSON.stringify(PRES_CONCEPTOS.map(function(p) {
+      return { label: p.label, cantidad: p.cantidad || 1, precioUnitario: p.precioUnitario, precio: p.precio, resultado: p.resultado };
+    }));
+  }
 
   var esEdicion = !!PRES_EDITANDO_ID;
   if (esEdicion) datos.id = PRES_EDITANDO_ID;
