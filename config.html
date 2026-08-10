@@ -6,6 +6,24 @@
 <title>BarrCan · Configuración de Costos</title>
 <!--
   BARRCAN · MÓDULO: CONFIGURACIÓN DE COSTOS (config.html)
+  VERSION : v1.3
+  FECHA   : 2026-08-09
+  v1.3 - Agregado "Aluminio con vidrio 4mm" ($650) al grupo de Baños --
+    opción básica/económica con marco de aluminio (a diferencia de
+    Frameless, que no lleva marco). Guardado en Config. Precios; falta
+    decidir en qué pestaña de cotizador_banos.html vive esta opción --
+    queda para la sesión de mañana dedicada a revisar los sistemas de
+    Baños completos.
+  VERSION : v1.2
+  FECHA   : 2026-08-09
+  v1.2 - Agregado el grupo "Vidrio Templado / Duo Vent (Baños)":
+    Templado 6/9/12mm y Duo Vent sin templar 18/24mm -- ya conectado
+    con el selector de cristal de cotizador_banos.html.
+  VERSION : v1.1
+  FECHA   : 2026-08-09
+  v1.1 - Agregado el grupo "Espejos" (Canto Pulido, Con Bastidor,
+    Marco Cerco 2", Con Luz LED/Neón) -- vivían fijos en el código
+    de cada cotizador, sin ninguna pantalla para cambiarlos.
   VERSION : v1.0
   FECHA   : 2026-08-08
   v1.0 - Primera versión. Antes esto vivía como una pestaña dentro del
@@ -111,6 +129,16 @@ html, body { min-height:100%; font-family:'DM Sans',sans-serif; background:var(-
     </div>
 
     <div class="grupo">
+      <div class="grupo-titulo">🪞 Espejos — precio por m²</div>
+      <div id="grupo-espejos"></div>
+    </div>
+
+    <div class="grupo">
+      <div class="grupo-titulo">🚿 Vidrio Templado / Duo Vent (Baños)</div>
+      <div id="grupo-templado"></div>
+    </div>
+
+    <div class="grupo">
       <div class="grupo-titulo">🎞️ Película / vinilo ($/m²)</div>
       <div id="grupo-pelicula"></div>
     </div>
@@ -173,6 +201,18 @@ const CAMPOS = [
   { grupo:'grupo-vidrio-especial', clave:'pct_filtrasol', label:'Filtrasol', unidad:'%' },
   { grupo:'grupo-vidrio-especial', clave:'pct_bronce',    label:'Bronce',    unidad:'%' },
   { grupo:'grupo-vidrio-especial', clave:'pct_azul',      label:'Azul',      unidad:'%' },
+
+  { grupo:'grupo-espejos', clave:'esp_canto_pulido', label:'Canto Pulido',        unidad:'$' },
+  { grupo:'grupo-espejos', clave:'esp_bastidor',     label:'Con Bastidor',        unidad:'$' },
+  { grupo:'grupo-espejos', clave:'esp_marco_cerco',  label:'Marco Cerco 2"',      unidad:'$' },
+  { grupo:'grupo-espejos', clave:'esp_led',          label:'Con Luz LED/Neón',    unidad:'$' },
+
+  { grupo:'grupo-templado', clave:'vid_templado_6mm',  label:'Templado 6mm (básico baños)',  unidad:'$' },
+  { grupo:'grupo-templado', clave:'vid_templado_9mm',  label:'Templado 9mm (básico baños)',  unidad:'$' },
+  { grupo:'grupo-templado', clave:'vid_templado_12mm', label:'Templado 12mm (básico baños)', unidad:'$' },
+  { grupo:'grupo-templado', clave:'vid_duovent_18mm',  label:'Duo Vent 18mm sin templar (antiruido)', unidad:'$' },
+  { grupo:'grupo-templado', clave:'vid_duovent_24mm',  label:'Duo Vent 24mm sin templar (antiruido)', unidad:'$' },
+  { grupo:'grupo-templado', clave:'vid_aluminio_4mm',  label:'Aluminio con vidrio 4mm (básico/económico)', unidad:'$' },
 
   { grupo:'grupo-pelicula', clave:'pel_esm_venta', label:'Esmerilado — precio de venta', unidad:'$' },
   { grupo:'grupo-pelicula', clave:'pel_esm_costo', label:'Esmerilado — costo',            unidad:'$' },
