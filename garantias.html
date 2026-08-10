@@ -6,6 +6,18 @@
 <title>BarrCan &middot; Garant&iacute;as</title>
 <!--
   BARRCAN · MODULO: GARANTÍAS Y POSTVENTA (standalone)
+  VERSION : v1.4
+  FECHA   : 2026-08-09
+  v1.4 - Folio REPG para garantías de clientes nuevos (sin presupuesto
+    previo): nuevo botón "🏷️ Generar folio REPG" en el panel de
+    detalle. Misma nomenclatura que los folios CACN (núm-letra-fecha-
+    núm.cliente) pero con prefijo REPG, fecha = cuando se reportó el
+    problema (no hoy), y número de cliente 26WA### consecutivo para
+    quienes llegan por WhatsApp sin ficha previa. Crea un registro real
+    en presupuestos_atrasados (no solo texto) para que aparezca en el
+    selector de entregas.html y el autocompletado de compras.html sin
+    nada especial ahí. Ya se generó y vinculó para los 4 tickets que
+    estaban pendientes (Mayella, Alma, Naye x2).
   VERSION : v1.3
   FECHA   : 2026-08-09
   v1.3 - El folio de contrato relacionado ahora es editable en el panel
@@ -471,6 +483,7 @@ body{min-height:100vh}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px">
         <div><span style="color:var(--gray-400)">Tipo: </span><span id="gtia-det-tipo" style="font-weight:600;color:var(--navy)">&mdash;</span></div>
         <div><span style="color:var(--gray-400)">Folio relacionado: </span><input type="text" id="gtia-det-folio" placeholder="Ej: CACN-133A-260728-26RC020" style="font-weight:600;color:var(--blue);font-family:monospace;font-size:12px;border:1.5px solid var(--gray-200);border-radius:6px;padding:4px 6px;width:210px"></div>
+        <div style="margin-top:4px"><button type="button" onclick="gtiaGenerarFolioREPG()" style="font-size:11px;padding:5px 10px;background:rgba(200,146,58,.1);border:1.5px solid rgba(200,146,58,.3);border-radius:6px;color:var(--gold);cursor:pointer">🏷️ Generar folio REPG (cliente nuevo, sin presupuesto previo)</button></div>
         <div><span style="color:var(--gray-400)">Instalaci&oacute;n: </span><span id="gtia-det-fecha-inst" style="font-weight:600;color:var(--navy)">&mdash;</span></div>
         <div><span style="color:var(--gray-400)">Disponibilidad: </span><span id="gtia-det-disp" style="font-weight:600;color:var(--navy)">&mdash;</span></div>
         <div style="grid-column:1/-1"><span style="color:var(--gray-400)">&#128205; Direcci&oacute;n: </span><span id="gtia-det-dir" style="font-weight:600;color:var(--navy)">&mdash;</span></div>
@@ -856,6 +869,101 @@ function gtiaDetCerrar() {
   document.getElementById('gtia-det-overlay').style.display = 'none';
   document.getElementById('gtia-det-modal').style.display = 'none';
   GTIA_DET_ACTUAL = null;
+}
+
+// ── Folio REPG para garantías de clientes nuevos (sin presupuesto
+// previo en CACN) ────────────────────────────────────────────────
+// Misma nomenclatura que los folios de venta (núm-letra-fecha-
+// núm.cliente) pero con prefijo REPG en vez de CACN, para que se
+// distingan de un vistazo como reparación/garantía y no como venta
+// nueva. La fecha usada es la de cuando se REPORTÓ el problema
+// (garantias.created_at), no la de hoy. Se crea un registro real en
+// presupuestos_atrasados (no solo texto) para que aparezca en el
+// selector "Folio CACN" de entregas.html y en el autocompletado de
+// "Folio de la obra" de compras.html sin necesitar nada especial ahí.
+async function gtiaSiguienteNumClienteWA(anio) {
+  var siguiente = anio + 'WA001';
+  try {
+    var res = await sb().from('clientes').select('num_cliente').ilike('num_cliente', anio + 'WA%');
+    if (!res.error && res.data) {
+      var max = 0;
+      res.data.forEach(function(c) {
+        var m = new RegExp('^' + anio + 'WA(\\d+)$').exec(c.num_cliente || '');
+        if (m) { var n = parseInt(m[1], 10); if (n > max) max = n; }
+      });
+      siguiente = anio + 'WA' + String(max + 1).padStart(3, '0');
+    }
+  } catch(e) {}
+  return siguiente;
+}
+
+async function gtiaSiguienteNumREPG() {
+  var siguiente = 1;
+  try {
+    var res = await sb().from('presupuestos_atrasados').select('folio').ilike('folio', 'REPG-%');
+    if (!res.error && res.data) {
+      var max = 0;
+      res.data.forEach(function(r) {
+        var m = /^REPG-(\d{3})[A-Z]-/.exec(r.folio || '');
+        if (m) { var n = parseInt(m[1], 10); if (n > max) max = n; }
+      });
+      siguiente = max + 1;
+    }
+  } catch(e) {}
+  return String(siguiente).padStart(3, '0');
+}
+
+async function gtiaGenerarFolioREPG() {
+  if (!GTIA_DET_ACTUAL || !sb()) { toast('Sin conexi\u00f3n'); return; }
+  var g = GTIA_DET_ACTUAL;
+  var folioActual = document.getElementById('gtia-det-folio').value.trim();
+  if (folioActual) { toast('Ya hay un folio en el campo -- b\u00f3rralo primero si quieres generar uno REPG'); return; }
+  if (!confirm('\u00bfGenerar un folio REPG nuevo para ' + (g.cliente_nombre || 'este cliente') + '? Esto crea un registro de presupuesto ligero para poder relacionarlo en Entregas y Compras.')) return;
+
+  try {
+    var telLimpio = (g.cliente_tel || '').replace(/\D/g, '');
+    var numCliente = null, clienteId = null;
+    if (telLimpio) {
+      var buscar = await sb().from('clientes').select('id,num_cliente').eq('telefono', telLimpio).limit(1);
+      if (!buscar.error && buscar.data && buscar.data.length) {
+        clienteId = buscar.data[0].id;
+        numCliente = buscar.data[0].num_cliente;
+      }
+    }
+    var fechaReporte = new Date(g.created_at);
+    var anio = String(fechaReporte.getFullYear()).slice(-2);
+    if (!numCliente) {
+      numCliente = await gtiaSiguienteNumClienteWA(anio);
+      if (clienteId) {
+        await sb().from('clientes').update({ num_cliente: numCliente }).eq('id', clienteId);
+      } else {
+        var ins = await sb().from('clientes').insert([{ nombre: g.cliente_nombre, telefono: telLimpio || null, num_cliente: numCliente }]).select().single();
+        if (!ins.error && ins.data) clienteId = ins.data.id;
+      }
+    }
+
+    var numFolio = await gtiaSiguienteNumREPG();
+    var mm = String(fechaReporte.getMonth() + 1).padStart(2, '0');
+    var dd = String(fechaReporte.getDate()).padStart(2, '0');
+    var folio = 'REPG-' + numFolio + 'A-' + anio + mm + dd + '-' + numCliente;
+    var costo = Math.round(g.costo_reparacion || 0);
+
+    var payload = {
+      folio: folio, cliente: g.cliente_nombre, tel: g.cliente_tel || null,
+      descripcion: (g.tipo_problema || 'Garant\u00eda') + ': ' + (g.descripcion || '').slice(0, 150),
+      monto: costo, saldo: costo, estado: 'activo',
+      fecha: anio.length === 2 ? ('20' + anio + '-' + mm + '-' + dd) : (anio + '-' + mm + '-' + dd),
+      modulo: 'garantias',
+      notas_internas: JSON.stringify([{ label: (g.tipo_problema || 'Reparaci\u00f3n de garant\u00eda') + ' \u2014 ' + (g.descripcion || ''), cantidad: 1, precioUnitario: costo, precio: costo, resultado: null }])
+    };
+    var insPres = await sb().from('presupuestos_atrasados').insert([payload]);
+    if (insPres.error) throw insPres.error;
+
+    document.getElementById('gtia-det-folio').value = folio;
+    toast('\u2705 Folio ' + folio + ' generado y vinculado');
+  } catch(e) {
+    toast('No se pudo generar el folio: ' + e.message);
+  }
 }
 
 async function gtiaDetGuardar() {
