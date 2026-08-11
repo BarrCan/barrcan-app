@@ -6,6 +6,14 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v2.9
+  FECHA   : 2026-08-09
+  v2.9 - Soporte para prefijos de folio distintos de CACN (nuevo
+    selector en el modal Editar/Nuevo: CACN/REPG/STAN). Antes el
+    armado y la edición del folio asumían "CACN-" fijo en todos lados
+    -- al editar un folio REPG o STAN se hubiera corrompido a
+    "CACN-REPG-..." o similar. Se agregó también 'stands' al mapeo de
+    módulo→archivo para que +Piezas/Editar enrute bien.
   VERSIÓN : v2.8
   FECHA   : 2026-08-08
   v2.8 - Conceptos del presupuesto editables dentro del modal "Editar":
@@ -1207,6 +1215,11 @@ body{min-height:100vh}
     </select>
 
     <label class="form-label">Folio del presupuesto *</label>
+    <select id="pres-prefijo" class="form-select" onchange="presActualizarFolio()" style="margin-bottom:6px;font-family:'DM Mono',monospace;font-weight:700">
+      <option value="CACN">CACN (venta)</option>
+      <option value="REPG">REPG (garantía, cliente nuevo)</option>
+      <option value="STAN">STAN (stands)</option>
+    </select>
     <div style="display:grid;grid-template-columns:80px 60px 1fr 90px;gap:6px;align-items:center;margin-bottom:6px">
       <input type="number" id="pres-num" class="form-input" placeholder="094" min="1" oninput="presActualizarFolio()" inputmode="numeric">
       <select id="pres-rev" class="form-select" onchange="presActualizarFolio()">
@@ -1323,7 +1336,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v2.8';
+var APP_VERSION = 'v2.9';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1570,7 +1583,9 @@ function presActualizarFolio() {
   if (num && num !== '000') partes.push(num + rev);
   if (fechaStr) partes.push(fechaStr);
   if (nc) partes.push(nc);
-  var folio = partes.length ? 'CACN-' + partes.join('-') : 'CACN-';
+  var prefEl = document.getElementById('pres-prefijo');
+  var pref = prefEl ? prefEl.value : 'CACN';
+  var folio = partes.length ? pref + '-' + partes.join('-') : pref + '-';
   var prev = document.getElementById('pres-folio-preview');
   var hid  = document.getElementById('pres-folio');
   if (prev) prev.textContent = folio;
@@ -1652,6 +1667,8 @@ function presAbrirNuevo() {
   if (estEl) estEl.value = 'activo';
   var prevEl = document.getElementById('pres-folio-preview');
   if (prevEl) prevEl.textContent = 'CACN-';
+  var prefEl2 = document.getElementById('pres-prefijo');
+  if (prefEl2) prefEl2.value = 'CACN';
   var hidEl = document.getElementById('pres-folio');
   if (hidEl) hidEl.value = '';
   var cliSel = document.getElementById('pres-cli-select');
@@ -1674,7 +1691,7 @@ function presAbrirNuevo() {
 // es una revisión real (empieza en A) y ya no identifica el módulo.
 // Para presupuestos viejos que se guardaron antes de que existiera la
 // columna `modulo`, se cae de vuelta a adivinar por esa letra vieja.
-var PRES_MODULO_A_ARCHIVO = { nacional: 'cotizador_nacional.html', espanol: 'cotizador_espanol.html', eurovent: 'cotizador_eurovent.html', servicios: 'cotizador_servicios.html', banos: 'cotizador_banos.html' };
+var PRES_MODULO_A_ARCHIVO = { nacional: 'cotizador_nacional.html', espanol: 'cotizador_espanol.html', eurovent: 'cotizador_eurovent.html', servicios: 'cotizador_servicios.html', banos: 'cotizador_banos.html', stands: 'cotizador_stands.html' };
 var PRES_SERIE_VIEJA_A_MODULO = { B: 'nacional', C: 'espanol', E: 'eurovent', S: 'servicios', A: 'banos' };
 
 function presModuloDe(datos) {
@@ -1851,12 +1868,19 @@ function presEditar(id) {
   if (errEl)  errEl.style.display  = 'none';
 
   // Parsear folio en componentes
-  var folioSinPref = (p.folio || '').replace(/^CACN-/i, '');
+  var mPref = /^([A-Z]+)-/.exec(p.folio || '');
+  var prefDetectado = mPref ? mPref[1] : 'CACN';
+  var folioSinPref = (p.folio || '').replace(/^[A-Z]+-/, '');
   var partesF = folioSinPref.split('-');
   var numrev  = partesF[0] || '';
   var numPart = numrev.replace(/[A-Za-z]$/, '');
   var revPart = /[A-Za-z]$/.test(numrev) ? numrev.slice(-1) : 'A';
 
+  var prefEl3 = document.getElementById('pres-prefijo');
+  if (prefEl3) {
+    var tieneOpcion = Array.from(prefEl3.options).some(function(o){ return o.value === prefDetectado; });
+    prefEl3.value = tieneOpcion ? prefDetectado : 'CACN';
+  }
   var numEl = document.getElementById('pres-num');
   var revEl = document.getElementById('pres-rev');
   var ncEl  = document.getElementById('pres-numcli');
