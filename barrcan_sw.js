@@ -34,7 +34,7 @@
 // si nunca se habían abierto con señal antes, no tenían nada guardado
 // para usar sin conexión.
 
-const CACHE_VERSION = 'barrcan-v10'; // subir este número fuerza que TODOS los
+const CACHE_VERSION = 'barrcan-v11'; // subir este número fuerza que TODOS los
 // dispositivos descarten su caché vieja de una vez -- ya no debería
 // hacer falta subirlo por cada arreglo ahora que HTML es Network First,
 // pero sigue disponible por si algún día conviene un reinicio total.
@@ -64,6 +64,7 @@ const RECURSOS_CORE = [
   './mostrador.html',
   './render_ia.html',
   './config.html',
+  './cotizador_stands.html',
 ];
 
 const DOMINIOS_CACHEABLE = [
