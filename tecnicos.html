@@ -6,6 +6,17 @@
 <title>BarrCan &middot; T&eacute;cnicos</title>
 <!--
   BARRCAN - MODULO: TECNICOS (standalone)
+  VERSION : v1.5
+  FECHA   : 2026-08-10
+  v1.5 - FIX: el Ranking siempre mostraba 0 para todos -- filtraba
+    órdenes con estado 'completada', pero ordenes.html nunca usa ese
+    valor; el estado real de una orden terminada es 'instalado' (así
+    lo marca ordenes.html, incluyendo la fecha_completado). Cambiado
+    el filtro para que coincida con el estado real.
+    De paso se detectó (sin corregir, para que Mau confirme primero)
+    que hay dos registros de técnico duplicados para MAU, creados en
+    el mismo segundo -- una vez corregido este filtro, aparecería
+    duplicado en el ranking hasta que se limpie uno de los dos.
   VERSION : v1.4
   FECHA   : 2026-07-13
   v1.4 - Puesto + técnicos sin vincular en Pago + historial completo:
@@ -1552,7 +1563,7 @@ async function rankCargar() {
   try {
     var resOrdenes = await sb().from('ordenes_trabajo')
       .select('tecnico_id,estado,calificacion,comentario_cliente,fecha_completado')
-      .eq('estado', 'completada');
+      .eq('estado', 'instalado');
     if (resOrdenes.error) throw resOrdenes.error;
     var ordenes = resOrdenes.data || [];
 
