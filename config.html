@@ -6,6 +6,21 @@
 <title>BarrCan · Configuración de Costos</title>
 <!--
   BARRCAN · MÓDULO: CONFIGURACIÓN DE COSTOS (config.html)
+  VERSION : v1.4
+  FECHA   : 2026-08-13
+  v1.4 - Recordatorio de revisión de precios en BarrCan.com.mx (tienda
+    Shopify): no hay sincronización automática entre esos precios y
+    estos costos, así que se agregó un semáforo (verde/amarillo/rojo
+    según hace cuánto se revisó, recomendado cada 2 meses) con botón
+    para marcar "ya lo revisé hoy". Se guarda como un registro más en
+    config_precios (clave _ultima_revision_web) -- ojo: la columna
+    `valor` es numeric(12,4), no cabe un timestamp completo, así que
+    se guarda como fecha AAAAMMDD (ej. 20260813).
+    Revisión inicial (hoy): se detectó que vid_templado_6mm ($800/m²)
+    se agregó apenas el 10-ago, reemplazando el uso del vid_6mm
+    genérico ($480/m²) para vidrio templado -- un salto del 67% que
+    probablemente los precios de Corredizo 6mm, Corredizo Escuadra y
+    Frameless en el sitio todavía no reflejan.
   VERSION : v1.3
   FECHA   : 2026-08-09
   v1.3 - Agregado "Aluminio con vidrio 4mm" ($650) al grupo de Baños --
@@ -108,6 +123,15 @@ html, body { min-height:100%; font-family:'DM Sans',sans-serif; background:var(-
       ⚠️ Los cambios aquí se aplican a <b>los 5 cotizadores</b> (Nacional, Español, Eurovent, Servicios, Baños) en cuanto los vuelvan a abrir con señal — no hace falta subir nada a GitHub.
     </div>
 
+    <div class="grupo" id="tarjeta-recordatorio-web">
+      <div class="grupo-titulo">🌐 Precios en BarrCan.com.mx</div>
+      <div style="font-size:12px;color:var(--gray-600);line-height:1.5;margin-bottom:10px">
+        Los precios del sitio (Shopify) <b>no se actualizan solos</b> cuando cambias algo aquí — hay que revisarlos y ajustarlos a mano. Recomendado cada 2 meses.
+      </div>
+      <div id="recordatorio-estado" style="font-size:12px;font-weight:700;padding:8px 10px;border-radius:8px;margin-bottom:10px"></div>
+      <button style="width:100%;padding:11px;font-size:13px;background:var(--green);color:#fff;border:none;border-radius:var(--radius-sm);font-family:'DM Sans',sans-serif;font-weight:800;cursor:pointer" onclick="marcarRevisionWeb()">✅ Ya lo revisé hoy</button>
+    </div>
+
     <div class="grupo">
       <div class="grupo-titulo">📊 Financieros</div>
       <div id="grupo-financieros"></div>
@@ -149,7 +173,7 @@ html, body { min-height:100%; font-family:'DM Sans',sans-serif; background:var(-
     </div>
 
     <div class="footer-guardar">
-      <button class="btn-guardar" onclick="guardarTodo()">☁️ Guardar y sincronizar</button>
+      <button class="btn-guardar" id="btn-guardar-todo" onclick="guardarTodo()">☁️ Guardar y sincronizar</button>
       <div class="ultima-act" id="ultima-actualizacion">—</div>
     </div>
   </div>
@@ -264,6 +288,63 @@ function construirUI() {
   });
 }
 
+// ── Recordatorio: última revisión de precios en BarrCan.com.mx ────
+// Se guarda como un registro más dentro de config_precios (clave
+// especial, no aparece en los grupos de arriba) para no necesitar
+// una tabla nueva. Cada 2 meses debería revisarse a mano si los
+// precios del sitio (Shopify) siguen cuadrando con estos costos.
+const CLAVE_RECORDATORIO_WEB = '_ultima_revision_web';
+const DIAS_RECOMENDADOS = 60; // ~2 meses
+
+async function cargarRecordatorioWeb() {
+  const el = document.getElementById('recordatorio-estado');
+  if (!el || !sb()) return;
+  try {
+    const { data, error } = await sb().from('config_precios').select('valor').eq('clave', CLAVE_RECORDATORIO_WEB).maybeSingle();
+    if (error) { el.textContent = 'No se pudo consultar la última revisión.'; return; }
+    if (!data || !data.valor) {
+      el.style.background = 'rgba(192,57,43,.1)';
+      el.style.color = '#C0392B';
+      el.textContent = '⚠️ Nunca se ha registrado una revisión — revísalo hoy.';
+      return;
+    }
+    const s = String(Math.round(data.valor));
+    const fecha = new Date(parseInt(s.slice(0,4),10), parseInt(s.slice(4,6),10) - 1, parseInt(s.slice(6,8),10));
+    const dias = Math.floor((Date.now() - fecha.getTime()) / 86400000);
+    const fechaTexto = fecha.toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
+    if (dias >= DIAS_RECOMENDADOS) {
+      el.style.background = 'rgba(192,57,43,.1)';
+      el.style.color = '#C0392B';
+      el.textContent = '⚠️ Última revisión: ' + fechaTexto + ' (hace ' + dias + ' días) — ya toca revisar de nuevo.';
+    } else if (dias >= DIAS_RECOMENDADOS - 14) {
+      el.style.background = 'rgba(200,146,58,.12)';
+      el.style.color = 'var(--gold)';
+      el.textContent = '🟡 Última revisión: ' + fechaTexto + ' (hace ' + dias + ' días) — se acerca la fecha de revisar de nuevo.';
+    } else {
+      el.style.background = 'rgba(39,174,96,.1)';
+      el.style.color = 'var(--green)';
+      el.textContent = '✅ Última revisión: ' + fechaTexto + ' (hace ' + dias + ' días) — al corriente.';
+    }
+  } catch(e) { el.textContent = 'Error consultando la última revisión.'; }
+}
+
+async function marcarRevisionWeb() {
+  if (!sb()) { toast('Sin conexión'); return; }
+  try {
+    const hoy = new Date();
+    const aaaammdd = hoy.getFullYear() * 10000 + (hoy.getMonth() + 1) * 100 + hoy.getDate();
+    const { error } = await sb().from('config_precios').upsert(
+      [{ clave: CLAVE_RECORDATORIO_WEB, valor: aaaammdd, updated_at: hoy.toISOString() }],
+      { onConflict: 'clave' }
+    );
+    if (error) throw error;
+    toast('✅ Registrado — próxima revisión sugerida en ~2 meses');
+    cargarRecordatorioWeb();
+  } catch(e) {
+    toast('No se pudo registrar: ' + e.message);
+  }
+}
+
 async function cargarValores() {
   if (!sb()) { toast('Sin conexión — no se pueden cargar los precios actuales'); return; }
   try {
@@ -285,7 +366,7 @@ async function cargarValores() {
 
 async function guardarTodo() {
   if (!sb()) { toast('Sin conexión — no se puede guardar'); return; }
-  const btn = document.querySelector('.btn-guardar');
+  const btn = document.getElementById('btn-guardar-todo');
   btn.disabled = true;
   btn.textContent = '☁️ Guardando…';
   try {
@@ -312,6 +393,7 @@ function iniciar() {
   document.getElementById('pantalla-config').style.display = 'block';
   construirUI();
   cargarValores();
+  cargarRecordatorioWeb();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
