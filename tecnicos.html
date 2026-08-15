@@ -6,6 +6,16 @@
 <title>BarrCan &middot; T&eacute;cnicos</title>
 <!--
   BARRCAN - MODULO: TECNICOS (standalone)
+  VERSION : v1.6
+  FECHA   : 2026-08-15
+  v1.6 - Nueva pestaña "👷 Eventuales": registro de personal
+    adicional contratado por día para eventos (ej. armado de stands
+    de exhibición) -- se les paga diario por evento, no llevan sueldo
+    semanal ni usuario de acceso, así que no encajaban en el modelo
+    de tecnicos/pagos_tecnicos (ese es semanal). Tabla nueva
+    pagos_eventuales (nombre, fecha, evento/folio relacionado, monto,
+    notas). Misma protección con PIN de administrador que ya tiene
+    "Pago".
   VERSION : v1.5
   FECHA   : 2026-08-10
   v1.5 - FIX: el Ranking siempre mostraba 0 para todos -- filtraba
@@ -1151,6 +1161,9 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     <div class="tab" id="tab-pago" onclick="tecAbrirPagoTab()">
       <span class="tab-icon">&#128274;</span>Pago
     </div>
+    <div class="tab" id="tab-eventual" onclick="eventAbrirTab()">
+      <span class="tab-icon">&#128118;</span>Eventuales
+    </div>
   </div>
 
   <div class="content">
@@ -1205,6 +1218,38 @@ select.form-select { padding-right: 36px; cursor: pointer; }
 
       <div id="pago-lista">
         <div style="text-align:center;padding:30px;color:var(--gray-400);font-size:13px">Cargando...</div>
+      </div>
+    </div>
+
+    <div class="screen" id="screen-eventual">
+      <p class="section-title">Personal Eventual</p>
+      <p class="section-sub">Personas adicionales contratadas por día para eventos (ej. armado de stands) — se les paga diario, no llevan sueldo semanal ni usuario de acceso</p>
+
+      <div style="background:var(--white);border-radius:var(--radius-sm);padding:14px;margin-bottom:14px;box-shadow:var(--shadow-sm)">
+        <label class="form-label">Nombre *</label>
+        <input type="text" class="form-input" id="event-nombre" placeholder="Nombre de la persona">
+
+        <label class="form-label">Fecha trabajada *</label>
+        <input type="date" class="form-input" id="event-fecha">
+
+        <label class="form-label">Evento / Stand</label>
+        <input type="text" class="form-input" id="event-evento" placeholder="Ej: Stand Expo Industrial, folio STAN-...">
+
+        <label class="form-label">Monto pagado *</label>
+        <input type="number" class="form-input" id="event-monto" placeholder="0.00" min="0" step="0.01">
+
+        <label class="form-label">Notas</label>
+        <textarea class="form-input" id="event-notas" rows="2" placeholder="Notas (opcional)" style="resize:none"></textarea>
+
+        <button class="btn btn-primary" style="width:100%" onclick="eventGuardarPago()">Guardar registro</button>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <p class="section-title" style="margin:0;font-size:14px">Registros recientes</p>
+        <button onclick="eventCargarHistorial()" style="padding:5px 10px;background:rgba(46,109,164,.08);border:1.5px solid rgba(46,109,164,.25);border-radius:8px;color:var(--blue);font-size:11px;font-weight:700;cursor:pointer">↻ Actualizar</button>
+      </div>
+      <div id="event-lista">
+        <div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">Sin registros todavía</div>
       </div>
     </div>
 
@@ -1370,17 +1415,101 @@ function tecVerificarSuperAdmin(callback) {
 function tecAbrirPagoTab() {
   tecVerificarSuperAdmin(function() { tecCambiarTab('pago'); });
 }
+function eventAbrirTab() {
+  tecVerificarSuperAdmin(function() { tecCambiarTab('eventual'); });
+}
+
+// ── Personal eventual (pagado por día/evento, no lleva sueldo
+// semanal ni usuario de acceso) ─────────────────────────────────
+function eventInicializar() {
+  var fechaEl = document.getElementById('event-fecha');
+  if (fechaEl && !fechaEl.value) {
+    var hoy = new Date();
+    fechaEl.value = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
+  }
+  eventCargarHistorial();
+}
+
+async function eventGuardarPago() {
+  var nombre = document.getElementById('event-nombre').value.trim();
+  var fecha = document.getElementById('event-fecha').value;
+  var evento = document.getElementById('event-evento').value.trim();
+  var monto = parseFloat(document.getElementById('event-monto').value);
+  var notas = document.getElementById('event-notas').value.trim();
+  if (!nombre) { toast('Falta el nombre'); return; }
+  if (!fecha) { toast('Falta la fecha'); return; }
+  if (!monto || monto <= 0) { toast('Falta el monto pagado'); return; }
+  if (!sb()) { toast('Sin conexión'); return; }
+
+  var usuario = {};
+  try { usuario = JSON.parse(localStorage.getItem('barrcan_usuario_activo') || '{}'); } catch(e) {}
+
+  try {
+    var res = await sb().from('pagos_eventuales').insert([{
+      nombre: nombre, fecha: fecha, evento: evento || null,
+      monto: monto, notas: notas || null, registrado_por: usuario.id || null
+    }]);
+    if (res.error) throw res.error;
+    toast('✅ Registro guardado');
+    document.getElementById('event-nombre').value = '';
+    document.getElementById('event-evento').value = '';
+    document.getElementById('event-monto').value = '';
+    document.getElementById('event-notas').value = '';
+    eventCargarHistorial();
+  } catch(e) {
+    toast('No se pudo guardar: ' + e.message);
+  }
+}
+
+async function eventCargarHistorial() {
+  var div = document.getElementById('event-lista');
+  if (!div || !sb()) return;
+  div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">Cargando...</div>';
+  try {
+    var res = await sb().from('pagos_eventuales').select('*').order('fecha', { ascending: false }).limit(100);
+    if (res.error || !res.data || !res.data.length) {
+      div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">Sin registros todavía</div>';
+      return;
+    }
+    div.innerHTML = res.data.map(function(r) {
+      var fecha = new Date(r.fecha + 'T12:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' });
+      return '<div style="background:var(--white);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:8px;box-shadow:var(--shadow-sm);display:flex;justify-content:space-between;align-items:center">'
+        + '<div>'
+        + '<div style="font-size:13px;font-weight:700;color:var(--navy)">' + esc(r.nombre) + '</div>'
+        + '<div style="font-size:11px;color:var(--gray-400)">' + fecha + (r.evento ? ' · ' + esc(r.evento) : '') + '</div>'
+        + '</div>'
+        + '<div style="display:flex;align-items:center;gap:8px">'
+        + '<div style="font-size:14px;font-weight:800;color:var(--navy)">$' + Number(r.monto).toLocaleString('es-MX', {minimumFractionDigits:2}) + '</div>'
+        + '<button onclick="eventEliminarPago(\'' + r.id + '\')" style="padding:4px 8px;background:rgba(192,57,43,.08);border:1.5px solid rgba(192,57,43,.25);border-radius:6px;color:#C0392B;cursor:pointer;font-size:12px">✕</button>'
+        + '</div></div>';
+    }).join('');
+  } catch(e) {
+    div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--red);font-size:13px">Error al cargar</div>';
+  }
+}
+
+function eventEliminarPago(id) {
+  if (!confirm('¿Eliminar este registro de pago eventual?')) return;
+  sb().from('pagos_eventuales').delete().eq('id', id).then(function(res) {
+    if (res.error) { toast('No se pudo eliminar: ' + res.error.message); return; }
+    toast('Eliminado');
+    eventCargarHistorial();
+  });
+}
 
 // ── Tabs ──
 function tecCambiarTab(nombre) {
   document.getElementById('tab-tecnicos').classList.toggle('active', nombre === 'tecnicos');
   document.getElementById('tab-ranking').classList.toggle('active', nombre === 'ranking');
   document.getElementById('tab-pago').classList.toggle('active', nombre === 'pago');
+  document.getElementById('tab-eventual').classList.toggle('active', nombre === 'eventual');
   document.getElementById('screen-tecnicos').classList.toggle('active', nombre === 'tecnicos');
   document.getElementById('screen-ranking').classList.toggle('active', nombre === 'ranking');
   document.getElementById('screen-pago').classList.toggle('active', nombre === 'pago');
+  document.getElementById('screen-eventual').classList.toggle('active', nombre === 'eventual');
   if (nombre === 'ranking') rankCargar();
   if (nombre === 'pago') pagoCargarSemana();
+  if (nombre === 'eventual') eventInicializar();
 }
 
 // ── Cargar técnicos ──
