@@ -14,6 +14,22 @@
     Config. Precios: Templado 6mm=$800, 9mm=$1100, 12mm=$1600, y
     Duo Vent sin templar 18mm=$1300, 24mm=$1800 (antiruido). El campo
     se puede seguir editando a mano después si hace falta ajustar.
+  VERSION : v1.9
+  FECHA   : 2026-08-14
+  v1.9 - Nueva pestaña "🛠️ Taller": medidas de fabricación de la
+    pieza Frameless (AP = Ancho-15mm, HP = Alto-15mm), con diagrama
+    tipo croquis. Saque de bisagra (BM) y posición del barreno de
+    jaladera (DB) con toggle Estándar/Personalizado -- BM estándar
+    300mm, DB estándar HP/2 (centrado). La distancia horizontal del
+    barreno (B) queda como valor de referencia por ahora, pendiente
+    de conectar con el catálogo completo de herrajes (Económica/
+    Estándar por pieza) una vez que se reciba. Estos datos viajan
+    automáticamente guardados junto con el presupuesto (dentro de
+    CB_RESULTADO.taller) para poder consultarlos después.
+    PENDIENTE: construir taller.html (no existe todavía) para poder
+    consultar estas medidas de presupuestos ya guardados, y ampliar
+    el catálogo de herrajes (Económica/Estándar, PH-01, PH-04, etc.)
+    en cuanto se reciba el catálogo completo.
   VERSION : v1.7
   FECHA   : 2026-08-09
   v1.7 - Documento impreso para el cliente, nuevo (este módulo nunca lo
@@ -167,6 +183,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     <button class="tab-btn active" onclick="cbTab(this,'frameless')">Frameless</button>
     <button class="tab-btn" onclick="cbTab(this,'bacalar')">Bacalar</button>
     <button class="tab-btn" onclick="cbTab(this,'escuadra')">Escuadra</button>
+    <button class="tab-btn" onclick="cbTab(this,'taller')">🛠️ Taller</button>
   </div>
 
   <!-- ══ TAB FRAMELESS ══ -->
@@ -478,6 +495,63 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
         <button class="btn btn-gold" onclick="cbGuardarPresupuesto('escuadra')">Guardar y generar folio CACN</button>
       </div>
     </div>
+
+  <!-- ══ TAB TALLER ══ -->
+  <div id="tab-taller" style="display:none">
+    <div class="card">
+      <div class="card-title">🛠️ Medidas de fabricación (pieza Frameless)</div>
+      <div id="taller-vacio" style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">
+        Primero calcula un Frameless (pestaña "Frameless") para ver aquí las medidas de fabricación de la pieza.
+      </div>
+      <div id="taller-contenido" style="display:none">
+
+        <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+          <div style="flex:1;min-width:140px;background:var(--off-white);border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:11px;color:var(--gray-400)">Ancho de pieza (AP)</div>
+            <div style="font-size:18px;font-weight:800;color:var(--navy)" id="taller-ap">-- mm</div>
+          </div>
+          <div style="flex:1;min-width:140px;background:var(--off-white);border-radius:8px;padding:10px;text-align:center">
+            <div style="font-size:11px;color:var(--gray-400)">Alto de pieza (HP)</div>
+            <div style="font-size:18px;font-weight:800;color:var(--navy)" id="taller-hp">-- mm</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom:14px">
+          <label class="form-label">Saque de bisagra (BM)</label>
+          <div style="display:flex;gap:8px;margin-bottom:6px">
+            <button type="button" id="btn-bm-estandar" class="tab-btn active" style="flex:1" onclick="cbSelModoBM('estandar')">Estándar (300mm)</button>
+            <button type="button" id="btn-bm-personalizado" class="tab-btn" style="flex:1" onclick="cbSelModoBM('personalizado')">Personalizado</button>
+          </div>
+          <input type="number" class="form-input" id="taller-bm-valor" value="300" disabled oninput="cbActualizarTaller()">
+        </div>
+
+        <div style="margin-bottom:14px">
+          <label class="form-label">Posición del barreno de jaladera (DB — altura desde arriba)</label>
+          <div style="display:flex;gap:8px;margin-bottom:6px">
+            <button type="button" id="btn-db-estandar" class="tab-btn active" style="flex:1" onclick="cbSelModoDB('estandar')">Estándar (centrado, HP/2)</button>
+            <button type="button" id="btn-db-personalizado" class="tab-btn" style="flex:1" onclick="cbSelModoDB('personalizado')">Personalizado</button>
+          </div>
+          <input type="number" class="form-input" id="taller-db-valor" disabled oninput="cbActualizarTaller()">
+        </div>
+
+        <div style="margin-bottom:14px">
+          <label class="form-label">Distancia de barreno jaladera (B — desde el canto opuesto a la bisagra)</label>
+          <input type="number" class="form-input" id="taller-b-valor" value="60" oninput="cbActualizarTaller()">
+          <div style="font-size:10.5px;color:var(--gray-400);margin-top:4px">⚠️ Valor de referencia — depende de qué jaladera se use; se afinará cuando se conecte el catálogo completo de herrajes.</div>
+        </div>
+
+        <div style="background:#fff;border:1.5px solid var(--gray-200);border-radius:8px;padding:14px;display:flex;justify-content:center">
+          <svg id="taller-svg" width="260" height="320" viewBox="0 0 260 320"></svg>
+        </div>
+
+        <div style="margin-top:12px;font-size:11px;color:var(--gray-400);line-height:1.6">
+          <div><b>AP</b> = Ancho total − 15mm &nbsp;·&nbsp; <b>HP</b> = Alto total − 15mm</div>
+          <div><b>BM</b> = Saque de bisagra (distancia del barreno a la orilla) &nbsp;·&nbsp; <b>DB</b> = Altura del barreno de jaladera</div>
+          <div><b>B</b> = Distancia horizontal del barreno de jaladera</div>
+        </div>
+      </div>
+    </div>
+  </div>
   </div>
 
   <!-- Historial de presupuestos de baño -->
@@ -580,7 +654,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v1.8';
+var APP_VERSION = 'v1.9';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -810,11 +884,100 @@ var FL_BOM = {
 function cbTab(btn, tab) {
   document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
   btn.classList.add('active');
-  var tabs = ['frameless','bacalar','escuadra'];
+  var tabs = ['frameless','bacalar','escuadra','taller'];
   tabs.forEach(function(t) {
     var el = document.getElementById('tab-' + t);
     if (el) el.style.display = t === tab ? 'block' : 'none';
   });
+}
+
+// ── TALLER: medidas de fabricación (pieza Frameless) ───────────
+// AP = Ancho de pieza = A - 15mm · HP = Alto de pieza = H - 15mm
+// BM = saque de bisagra (300mm estándar, puede variar)
+// DB = altura del barreno de jaladera (HP/2 centrado, puede variar)
+// B  = distancia horizontal del barreno (valor de referencia por
+//      ahora -- depende de la jaladera exacta, pendiente conectar
+//      con el catálogo completo de herrajes).
+var TALLER_MODO_BM = 'estandar';
+var TALLER_MODO_DB = 'estandar';
+
+function cbSelModoBM(modo) {
+  TALLER_MODO_BM = modo;
+  document.getElementById('btn-bm-estandar').classList.toggle('active', modo === 'estandar');
+  document.getElementById('btn-bm-personalizado').classList.toggle('active', modo === 'personalizado');
+  var inp = document.getElementById('taller-bm-valor');
+  inp.disabled = (modo === 'estandar');
+  if (modo === 'estandar') inp.value = 300;
+  cbActualizarTaller();
+}
+
+function cbSelModoDB(modo) {
+  TALLER_MODO_DB = modo;
+  document.getElementById('btn-db-estandar').classList.toggle('active', modo === 'estandar');
+  document.getElementById('btn-db-personalizado').classList.toggle('active', modo === 'personalizado');
+  var inp = document.getElementById('taller-db-valor');
+  inp.disabled = (modo === 'estandar');
+  cbActualizarTaller();
+}
+
+function cbActualizarTaller() {
+  var cont = document.getElementById('taller-contenido');
+  var vacio = document.getElementById('taller-vacio');
+  if (!cont || !vacio) return;
+  if (!CB_RESULTADO || CB_RESULTADO.tipo !== 'frameless') {
+    cont.style.display = 'none';
+    vacio.style.display = 'block';
+    return;
+  }
+  vacio.style.display = 'none';
+  cont.style.display = 'block';
+
+  var A = CB_RESULTADO.L, H = CB_RESULTADO.H;
+  var AP = A - 15, HP = H - 15;
+
+  var BM = TALLER_MODO_BM === 'estandar' ? 300 : (parseFloat(document.getElementById('taller-bm-valor').value) || 300);
+  if (TALLER_MODO_DB === 'estandar') {
+    document.getElementById('taller-db-valor').value = Math.round(HP / 2);
+  }
+  var DB = TALLER_MODO_DB === 'estandar' ? Math.round(HP / 2) : (parseFloat(document.getElementById('taller-db-valor').value) || Math.round(HP / 2));
+  var Bh = parseFloat(document.getElementById('taller-b-valor').value) || 60;
+
+  document.getElementById('taller-ap').textContent = AP + ' mm';
+  document.getElementById('taller-hp').textContent = HP + ' mm';
+
+  // Guardar en el resultado actual para que se pueda mandar a guardar
+  // junto con el presupuesto (para consultarlo después en taller.html).
+  CB_RESULTADO.taller = { AP: AP, HP: HP, BM: BM, DB: DB, B: Bh, modoBM: TALLER_MODO_BM, modoDB: TALLER_MODO_DB };
+
+  cbDibujarTaller(AP, HP, BM, DB, Bh);
+}
+
+function cbDibujarTaller(AP, HP, BM, DB, Bh) {
+  var svg = document.getElementById('taller-svg');
+  if (!svg) return;
+  // Escala para que quepa en el recuadro (máx. 200x260 de dibujo)
+  var escala = Math.min(200 / AP, 260 / HP);
+  var w = AP * escala, h = HP * escala;
+  var ox = (260 - w) / 2, oy = 30;
+
+  var bmY1 = oy + Math.min(BM * escala, h * 0.35);
+  var bmY2 = oy + h - Math.min(BM * escala, h * 0.35);
+  var dbY = oy + Math.min(Math.max(DB * escala, 8), h - 8);
+  var bX = ox + w - Math.min(Math.max(Bh * escala, 8), w - 8);
+
+  svg.innerHTML =
+    '<rect x="' + ox + '" y="' + oy + '" width="' + w + '" height="' + h + '" fill="#F0F4F8" stroke="#1B3A5C" stroke-width="2"/>' +
+    // Marcas de bisagra (lado izquierdo)
+    '<rect x="' + (ox - 6) + '" y="' + (bmY1 - 5) + '" width="10" height="10" fill="none" stroke="#2E6DA4" stroke-width="1.5"/>' +
+    '<rect x="' + (ox - 6) + '" y="' + (bmY2 - 5) + '" width="10" height="10" fill="none" stroke="#2E6DA4" stroke-width="1.5"/>' +
+    '<text x="' + (ox - 10) + '" y="' + (bmY1 - 8) + '" font-size="9" fill="#2E6DA4" text-anchor="end">BM</text>' +
+    '<text x="' + (ox - 10) + '" y="' + (bmY2 + 16) + '" font-size="9" fill="#2E6DA4" text-anchor="end">BM</text>' +
+    // Barreno de jaladera (círculo)
+    '<circle cx="' + bX + '" cy="' + dbY + '" r="5" fill="none" stroke="#C8923A" stroke-width="1.5"/>' +
+    '<text x="' + (bX + 10) + '" y="' + (dbY + 3) + '" font-size="9" fill="#C8923A">B</text>' +
+    // Cotas generales
+    '<text x="' + (ox + w / 2) + '" y="' + (oy - 10) + '" font-size="11" font-weight="700" fill="#1B3A5C" text-anchor="middle">' + AP + ' mm</text>' +
+    '<text x="' + (ox - 24) + '" y="' + (oy + h / 2) + '" font-size="11" font-weight="700" fill="#1B3A5C" text-anchor="middle" transform="rotate(-90 ' + (ox - 24) + ' ' + (oy + h / 2) + ')">' + HP + ' mm</text>';
 }
 
 // ── Selección sistema ─────────────────────────────────────────
@@ -934,6 +1097,7 @@ function cbCalcFrameless() {
   document.getElementById('fl-bom-lista').innerHTML = bomHtml;
   document.getElementById('fl-resultado').style.display = 'block';
   document.getElementById('fl-resultado').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  cbActualizarTaller();
 }
 
 // ── CÁLCULO BACALAR ───────────────────────────────────────────
