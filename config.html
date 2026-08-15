@@ -6,6 +6,12 @@
 <title>BarrCan · Configuración de Costos</title>
 <!--
   BARRCAN · MÓDULO: CONFIGURACIÓN DE COSTOS (config.html)
+  VERSION : v1.5
+  FECHA   : 2026-08-15
+  v1.5 - Agregado "Tipo de cambio USD → MXN" al grupo Financieros --
+    para poder sumar gastos en dólares (Shopify, Anthropic/Claude,
+    etc.) junto con los de pesos en el nuevo reporte de Gastos
+    Internos (reportes.html).
   VERSION : v1.4
   FECHA   : 2026-08-13
   v1.4 - Recordatorio de revisión de precios en BarrCan.com.mx (tienda
@@ -209,6 +215,7 @@ const CAMPOS = [
   { grupo:'grupo-financieros', clave:'iva_pct',           label:'IVA de venta',                            unidad:'%' },
   { grupo:'grupo-financieros', clave:'iva_compras_pct',   label:'IVA de compras (a proveedores)',          unidad:'%' },
   { grupo:'grupo-financieros', clave:'merma_pct',         label:'Merma de material',                       unidad:'%' },
+  { grupo:'grupo-financieros', clave:'tipo_cambio_usd',    label:'Tipo de cambio USD → MXN (para gastos en dólares, ej. Shopify/Anthropic)', unidad:'$' },
 
   { grupo:'grupo-aluminio', clave:'precio_al_kg',   label:'Precio aluminio', unidad:'$/kg' },
   { grupo:'grupo-aluminio', clave:'cargo_piso',     label:'Cargo por piso (instalación en altura)', unidad:'$' },
