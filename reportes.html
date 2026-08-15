@@ -142,6 +142,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     <button class="tab-btn" onclick="rpTab(this,'ganancia')">📈 Ganancia</button>
     <button class="tab-btn" onclick="rpTab(this,'material')">📦 Material</button>
     <button class="tab-btn" onclick="rpTab(this,'clientes')">👥 Clientes</button>
+    <button class="tab-btn" onclick="rpTab(this,'internos')">🏠 Gastos Internos</button>
   </div>
 
   <!-- TAB: FLUJO DE CAJA -->
@@ -230,10 +231,40 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
       <div id="rp-clientes-saldo"></div>
     </div>
   </div>
+
+  <!-- TAB: GASTOS INTERNOS -->
+  <div id="tab-internos" style="display:none">
+    <div style="font-size:11px;color:var(--gray-400);margin:0 0 10px;line-height:1.5">
+      Gastos que no son de un cliente/obra específica — herramienta, administración, software y suscripciones (Shopify, Anthropic/Claude, Supabase, etc.). Se registran en Compras usando el folio interno correspondiente (INT-TALLER, INT-ADMIN, INT-HERR, INT-SOFT) en "Folio de la obra". Los montos en USD se convierten con el tipo de cambio de Config. Precios.
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi"><div class="kpi-num" id="kpi-int-mes" style="font-size:15px">—</div><div class="kpi-lbl">Total este mes</div></div>
+      <div class="kpi"><div class="kpi-num" id="kpi-int-prom" style="font-size:15px">—</div><div class="kpi-lbl">Promedio mensual (6 meses)</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Por categoría (este mes)</div>
+      <div id="rp-int-categoria"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Últimos 6 meses</div>
+      <div id="rp-int-historico"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Movimientos recientes</div>
+      <div id="rp-int-lista"></div>
+    </div>
+  </div>
 </div>
 </body>
 <script>
-// BarrCan Reportes v1.0 — var/function, sin const/let globales
+// BarrCan Reportes v1.1 — var/function, sin const/let globales
+// v1.1 (2026-08-15): Nueva pestaña "Gastos Internos" -- gastos que no
+//   son de un cliente/obra (herramienta, administración, software y
+//   suscripciones como Shopify/Anthropic). Se registran en Compras
+//   con el folio interno correspondiente (INT-TALLER/INT-ADMIN/
+//   INT-HERR/INT-SOFT, ya creados como presupuestos_atrasados con
+//   monto 0 -- son buckets, no ventas). Los montos en USD se
+//   convierten a MXN con el tipo de cambio de Config. Precios.
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb=null;
@@ -271,7 +302,7 @@ var RP_TAB_ACTUAL = 'flujo';
 function rpTab(btn,tab) {
   document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active');});
   btn.classList.add('active');
-  ['flujo','obras','ganancia','material','clientes'].forEach(function(t){
+  ['flujo','obras','ganancia','material','clientes','internos'].forEach(function(t){
     var el=document.getElementById('tab-'+t);
     if(el) el.style.display=t===tab?'block':'none';
   });
@@ -284,6 +315,7 @@ function rpCargarTab(tab) {
   if(tab==='ganancia') rpCargarGanancia();
   if(tab==='material') rpCargarMaterial();
   if(tab==='clientes') rpCargarClientes();
+  if(tab==='internos') rpCargarInternos();
 }
 
 // ── Init periodo ──────────────────────────────────────────────
@@ -609,6 +641,89 @@ async function rpCargarMaterial() {
 }
 
 // ── CLIENTES ──────────────────────────────────────────────────
+// ── GASTOS INTERNOS (Taller/Admin/Herramienta/Software) ─────────
+var INT_FOLIOS = { 'INT-TALLER': 'Taller', 'INT-ADMIN': 'Administración', 'INT-HERR': 'Herramienta', 'INT-SOFT': 'Software y Suscripciones' };
+var INT_COLORES = { 'INT-TALLER': 'var(--blue)', 'INT-ADMIN': 'var(--gold)', 'INT-HERR': 'var(--green)', 'INT-SOFT': '#8E44AD' };
+
+async function rpCargarInternos() {
+  if (!sb()) return;
+  try {
+    var resCfg = await sb().from('config_precios').select('valor').eq('clave', 'tipo_cambio_usd').maybeSingle();
+    var tipoCambio = (!resCfg.error && resCfg.data) ? parseFloat(resCfg.data.valor) : 18.5;
+
+    var res = await sb().from('facturas_recibidas')
+      .select('fecha,proveedor,folio_obra,total,moneda,es_recurrente')
+      .in('folio_obra', Object.keys(INT_FOLIOS))
+      .order('fecha', { ascending: false })
+      .limit(500);
+    if (res.error) throw res.error;
+    var datos = res.data || [];
+
+    function aMXN(f) { return (f.moneda === 'USD' ? parseFloat(f.total) * tipoCambio : parseFloat(f.total)) || 0; }
+
+    var hoy = new Date();
+    var mesActual = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0');
+
+    // Total del mes actual
+    var delMes = datos.filter(function(f) { return (f.fecha || '').slice(0, 7) === mesActual; });
+    var totalMes = delMes.reduce(function(a, f) { return a + aMXN(f); }, 0);
+    document.getElementById('kpi-int-mes').textContent = fmt(totalMes);
+
+    // Promedio de los últimos 6 meses (incluyendo el actual)
+    var meses6 = [];
+    for (var i = 0; i < 6; i++) {
+      var d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1);
+      meses6.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'));
+    }
+    var totalesPorMes = {};
+    meses6.forEach(function(m) { totalesPorMes[m] = 0; });
+    datos.forEach(function(f) {
+      var m = (f.fecha || '').slice(0, 7);
+      if (totalesPorMes[m] !== undefined) totalesPorMes[m] += aMXN(f);
+    });
+    var sumaTotal = meses6.reduce(function(a, m) { return a + totalesPorMes[m]; }, 0);
+    document.getElementById('kpi-int-prom').textContent = fmt(sumaTotal / 6);
+
+    // Por categoría (mes actual)
+    var porCategoria = {};
+    Object.keys(INT_FOLIOS).forEach(function(k) { porCategoria[k] = 0; });
+    delMes.forEach(function(f) { if (porCategoria[f.folio_obra] !== undefined) porCategoria[f.folio_obra] += aMXN(f); });
+    var maxCat = Math.max.apply(null, Object.values(porCategoria).concat([1]));
+    document.getElementById('rp-int-categoria').innerHTML = Object.keys(INT_FOLIOS).map(function(k) {
+      var v = porCategoria[k], pct = Math.round(v / maxCat * 100);
+      return '<div class="bar-row"><div class="bar-label">' + esc(INT_FOLIOS[k]) + '</div>'
+        + '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%;background:' + INT_COLORES[k] + '"></div></div>'
+        + '<div class="bar-val">' + fmt(v) + '</div></div>';
+    }).join('') || 'Sin gastos este mes';
+
+    // Histórico 6 meses
+    var mesesOrdenados = meses6.slice().reverse();
+    var maxMes = Math.max.apply(null, mesesOrdenados.map(function(m) { return totalesPorMes[m]; }).concat([1]));
+    document.getElementById('rp-int-historico').innerHTML = mesesOrdenados.map(function(m) {
+      var v = totalesPorMes[m], pct = Math.round(v / maxMes * 100);
+      var d = new Date(m + '-02');
+      var label = d.toLocaleDateString('es-MX', { month: 'short', year: '2-digit' });
+      return '<div class="bar-row"><div class="bar-label">' + label + '</div>'
+        + '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%;background:var(--navy)"></div></div>'
+        + '<div class="bar-val">' + fmt(v) + '</div></div>';
+    }).join('');
+
+    // Movimientos recientes
+    document.getElementById('rp-int-lista').innerHTML = datos.slice(0, 15).map(function(f) {
+      var montoTxt = f.moneda === 'USD' ? '$' + Number(f.total).toFixed(2) + ' USD (≈' + fmt(aMXN(f)) + ')' : fmt(f.total);
+      return '<div class="reporte-row"><div><strong>' + esc(f.proveedor || '') + '</strong>'
+        + (f.es_recurrente ? ' <span style="color:var(--gold);font-size:10px">↻ recurrente</span>' : '')
+        + '<br><span style="color:var(--gray-600)">' + esc(INT_FOLIOS[f.folio_obra] || f.folio_obra || '') + '</span></div>'
+        + '<div style="text-align:right"><strong>' + montoTxt + '</strong><br>'
+        + '<span style="color:var(--gray-400);font-size:10px">' + esc(f.fecha || '') + '</span></div></div>';
+    }).join('') || '<div style="text-align:center;padding:10px;color:var(--gray-400)">Sin movimientos</div>';
+
+    SYNC.online = true; detectar();
+  } catch(e) {
+    SYNC.online = false; detectar();
+  }
+}
+
 async function rpCargarClientes() {
   if(!sb()) return;
   try {
