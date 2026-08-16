@@ -6,7 +6,49 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
-  VERSION : v3.36.0
+  VERSION : v3.40.1
+  v3.40.1 - FIX: en el flujo de instalación, "Enviar por WhatsApp"
+    mandaba el reporte al número de la propia empresa en vez de al
+    del cliente -- el teléfono sí se capturaba (payload.tel) pero no
+    se pasaba al modal, así que al estar vacío ahí caía al respaldo
+    (WA_BARRCAN). Detectado por Mau al mandárselo a sí mismo.
+  VERSION : v3.40.0
+  v3.40.0 - El botón "Enviar por WhatsApp" ahora sí incluye el link
+    real del comprobante (ya estaba subido a Supabase Storage, solo
+    no se estaba mandando) -- antes el mensaje solo decía "le
+    compartimos el comprobante" sin adjuntar nada, así que la única
+    forma de que el cliente lo viera era imprimir/guardar el PDF
+    localmente. Con el link, el cliente lo abre directo desde
+    WhatsApp -- no hace falta guardar nada en el celular para
+    compartirlo.
+  VERSION : v3.39.0
+  v3.39.0 - Casilla "Requiere una segunda entrega/visita" con notas --
+    alimenta la alerta nueva en el portal. También corregido: el
+    campo "Notas internas" existía en el formulario pero nunca se
+    guardaba (se leía al editar, pero no se capturaba al guardar) --
+    nueva columna notas_internas en reportes_entrega.
+  VERSION : v3.38.0
+  v3.38.0 - Dos cosas:
+    1) Folio propio de la entrega: ENT-{núm. presupuesto}-{consecutivo
+       01/02...}, calculado consultando Supabase (no el celular) --
+       sube cuando la misma obra necesita varios viajes (más piezas
+       de las que caben, o no alcanzó el día). Se guarda en la nueva
+       columna folio_entrega, se muestra como subtítulo en el
+       documento impreso, y ahora es el nombre de archivo en Storage
+       (más preciso que folio+fecha).
+    2) FIX: la primera vez que se imprimía un comprobante con fotos,
+       el PDF salía en blanco -- el botón llamaba a window.print()
+       antes de que las imágenes terminaran de cargar. Ahora espera
+       a que todas las fotos estén listas antes de imprimir.
+  VERSION : v3.37.0
+  v3.37.0 - FIX: los reportes se duplicaban en Storage cada vez que se
+    volvían a guardar -- el nombre de archivo incluía Date.now(),
+    así que aunque el código ya usaba upsert:true, nunca aplicaba
+    (el nombre siempre era distinto). Un solo reporte llegó a
+    duplicarse 29 veces (203 MB) y llenó el plan gratuito de
+    Supabase. Quitado el timestamp del nombre -- ahora si se
+    vuelve a guardar, reemplaza en vez de acumular.
+  v3.36.0 - (ver historial debajo)
   FECHA   : 2026-08-04
   v3.36.0 - Instalación/Express copia el modelo de guardado de Puerta (que
     sí funciona al 100%):
@@ -1787,6 +1829,14 @@ body{min-height:100vh}
     <div class="wizard-card" style="margin-bottom:14px">
       <div class="wizard-title">&#128203; Notas internas</div>
       <input type="text" id="ent-notas" class="form-input" placeholder="Observaciones del tecnico (no aparecen en el comprobante)">
+
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid #eee">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;color:var(--navy)">
+          <input type="checkbox" id="ent-requiere-seguimiento" onchange="entToggleSeguimiento()" style="width:18px;height:18px">
+          &#9888;&#65039; Requiere una segunda entrega/visita
+        </label>
+        <textarea id="ent-notas-seguimiento" class="form-input" rows="2" placeholder="&iquest;Por qu&eacute;? Ej: falt&oacute; una pieza, el cliente pidi&oacute; cambiar el herraje..." style="resize:none;margin-top:8px;display:none"></textarea>
+      </div>
     </div>
 
     <div id="ent-error" style="display:none;color:var(--red);font-size:12px;background:rgba(192,57,43,0.06);padding:8px 12px;border-radius:var(--radius-sm);margin-bottom:10px"></div>
@@ -2012,7 +2062,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.36.0';
+var APP_VERSION = 'v3.40.1';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -2610,6 +2660,8 @@ function entReset() {
   var gridMant = document.getElementById('ent-grid-mant'); if (gridMant) gridMant.innerHTML = '';
   var campos = ['ent-cliente','ent-tel','ent-folio','ent-desc','ent-notas','ent-monto'];
   campos.forEach(function(id) { var el = document.getElementById(id); if (el) el.value = ''; });
+  var chkSeg = document.getElementById('ent-requiere-seguimiento'); if (chkSeg) chkSeg.checked = false;
+  var notasSeg = document.getElementById('ent-notas-seguimiento'); if (notasSeg) { notasSeg.value = ''; notasSeg.style.display = 'none'; }
   var cliSel   = document.getElementById('ent-cli-select'); if (cliSel) cliSel.value = '';
   var folioSel = document.getElementById('ent-folio-select');
   if (folioSel) folioSel.innerHTML = '<option value="">&mdash; Selecciona presupuesto &mdash;</option>';
@@ -2648,6 +2700,33 @@ function entReset() {
   entLimpiarFirma();
 }
 
+// Folio propio de la entrega: ENT-{número del presupuesto}-{consecutivo}
+// Distinto del folio del presupuesto (CACN-...) -- este identifica CADA
+// viaje de entrega. Sube el consecutivo cuando la misma obra necesita
+// varios viajes (más piezas de las que caben en uno, o no alcanzó el
+// día). Se consulta en Supabase (no en el celular) para que el número
+// sea el mismo sin importar qué dispositivo lo genere.
+async function entSiguienteFolioEntrega(folioPresupuesto) {
+  var m = /^[A-Z]+-(\d+)/.exec(folioPresupuesto || '');
+  var numPresupuesto = m ? m[1] : null;
+  if (!numPresupuesto) return null; // entregas sin folio de presupuesto no llevan este identificador
+  var consec = 1;
+  try {
+    if (sb()) {
+      var res = await sb().from('reportes_entrega').select('folio_entrega').like('folio_entrega', 'ENT-' + numPresupuesto + '-%');
+      if (!res.error && res.data) {
+        var max = 0;
+        res.data.forEach(function(r) {
+          var mm = /-(\d+)$/.exec(r.folio_entrega || '');
+          if (mm) { var n = parseInt(mm[1], 10); if (n > max) max = n; }
+        });
+        consec = max + 1;
+      }
+    }
+  } catch(e) { console.warn('[BarrCan] No se pudo consultar el consecutivo de entrega:', e); }
+  return 'ENT-' + numPresupuesto + '-' + String(consec).padStart(2, '0');
+}
+
 async function entGenerarReporte() {
   if (ENT_TIPO === 'instalacion') { entGenerarReporteInstalacion(); return; }
   var cliente = document.getElementById('ent-cliente').value.trim();
@@ -2669,6 +2748,7 @@ async function entGenerarReporte() {
     var paqueteria = document.getElementById('ent-paqueteria') ? document.getElementById('ent-paqueteria').value : '';
     var numGuia    = document.getElementById('ent-guia') ? document.getElementById('ent-guia').value.trim() : '';
     var folioFull  = folio || ('ENT-' + Date.now().toString().slice(-6));
+    var folioEntrega = await entSiguienteFolioEntrega(folio);
     var tipoStr    = ENT_TIPO === 'envio' ? ('Envio por ' + (paqueteria || 'paqueteria')) : ENT_TIPO === 'mantenimiento' ? 'Mantenimiento' : 'Entrega en puerta';
     var canvas     = document.getElementById('ent-canvas-firma');
     var firmaB64   = canvas ? canvas.toDataURL('image/png') : '';
@@ -2704,9 +2784,10 @@ async function entGenerarReporte() {
       + '.bp{padding:9px 20px;background:#C8923A;color:white;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer}'
       + '.bc{padding:9px 12px;background:rgba(255,255,255,.15);color:white;border:none;border-radius:7px;font-size:12px;cursor:pointer}'
       + '@media print{.barra{display:none!important}body{max-width:100%}img{page-break-inside:avoid}}</style></head><body>'
-      + '<div class=barra><button class=bp onclick="window.print()">Imprimir / PDF</button><button class=bc onclick="window.close()">Cerrar</button></div>'
+      + '<div class=barra><button class=bp onclick="imprimirListo(this)">Imprimir / PDF</button><button class=bc onclick="window.close()">Cerrar</button></div>'
       + '<div class=pg>'
       + entHeaderOficial('Comprobante de Entrega', folioFull)
+      + (folioEntrega ? '<div style="text-align:center;font-size:8pt;color:#888;margin:-8px 0 10px;font-family:monospace">Entrega ' + esc(folioEntrega) + '</div>' : '')
       + '<div class=pg-body>'
       + '<h2>Datos de la entrega</h2>'
       + '<table>'
@@ -2746,15 +2827,15 @@ async function entGenerarReporte() {
       + '</div>'
       + '<div style=font-size:7.5pt;color:#aaa;text-align:center;margin-top:14px;border-top:1px solid #eee;padding-top:8px>'
       + esc(folioFull) + ' - BarrCan - ' + fd(fecha)
-      + '</div></div></div></body></html>';
+      + '<script>function imprimirListo(btn){if(btn){btn.disabled=true;btn.textContent=\'Preparando...\';}var imgs=Array.prototype.slice.call(document.images);var pend=imgs.filter(function(im){return !im.complete;});if(!pend.length){if(btn){btn.disabled=false;btn.textContent=\'Imprimir / PDF\';}setTimeout(function(){window.print();},80);return;}var listos=0;pend.forEach(function(im){im.onload=im.onerror=function(){listos++;if(listos>=pend.length){if(btn){btn.disabled=false;btn.textContent=\'Imprimir / PDF\';}setTimeout(function(){window.print();},80);}};});}<\/script></div></div></div></body></html>';
 
     try { sessionStorage.setItem('barrcan_entrega_html', _ENT_HTML); } catch(e) {}
     var win = window.open('', '_blank');
     if (win) { win.document.write(_ENT_HTML); win.document.close(); }
     else { toast('Activa ventanas emergentes para ver el comprobante'); }
 
-    var nombreArch = folioFull + '_' + (fecha || '').replace(/-/g, '') + '_' + Date.now() + '.html';
-    var nombreDatos = folioFull + '_' + (fecha || '').replace(/-/g, '') + '_' + Date.now() + '_datos.json';
+    var nombreArch = (folioEntrega || (folioFull + '_' + (fecha || '').replace(/-/g, ''))) + '.html';
+    var nombreDatos = (folioEntrega || (folioFull + '_' + (fecha || '').replace(/-/g, ''))) + '_datos.json';
     // Datos completos y editables (fotos de empaque/comprobante, firma,
     // piezas, paquetería) — igual que en instalación, se suben aparte como
     // JSON para poder recuperarlos completos al editar, sin engordar la
@@ -2801,13 +2882,16 @@ async function entGenerarReporte() {
     }
 
     var dbPayload = {
-      folio: folioFull, cliente_nombre: cliente, cliente_tel: tel || null,
+      folio: folioFull, folio_entrega: folioEntrega, cliente_nombre: cliente, cliente_tel: tel || null,
       fecha_entrega: fecha, tecnico: 'BarrCan', tel_destino: tel || null,
       registrado_por: 'campo', whatsapp_enviado: false,
       dir_obra: direccion || null, reporte_url: reporteUrl, datos_url: datosUrl,
       descripcion: desc || null, piezas: piezas || null, monto: monto || null,
       paqueteria: paqueteria || null, num_guia: numGuia || null,
-      sin_encargado: ENT_SIN_ENCARGADO_SIMPLE
+      sin_encargado: ENT_SIN_ENCARGADO_SIMPLE,
+      notas_internas: (document.getElementById('ent-notas') ? document.getElementById('ent-notas').value.trim() : '') || null,
+      requiere_seguimiento: document.getElementById('ent-requiere-seguimiento') ? document.getElementById('ent-requiere-seguimiento').checked : false,
+      notas_seguimiento: (document.getElementById('ent-notas-seguimiento') ? document.getElementById('ent-notas-seguimiento').value.trim() : '') || null
     };
 
     var editandoId = ENT_EDIT_ID;
@@ -2824,7 +2908,7 @@ async function entGenerarReporte() {
       localStorage.setItem('barrcan_reportes_historial', JSON.stringify(hist2));
       entRenderHistorial();
       toast(subidaOk === false && SYNC.online ? 'Fotos pesadas, se reintentará automáticamente' : 'Guardado sin conexion - se sincronizara al reconectar');
-      entMostrarPost(folioFull, tel);
+      entMostrarPost(folioFull, tel, reporteUrl);
       entSalirModoEdicion();
       entReset();
       return;
@@ -2841,7 +2925,7 @@ async function entGenerarReporte() {
         toast(esEdicion ? 'Reporte actualizado - ' + folioFull : 'Reporte guardado - ' + folioFull);
         entSalirModoEdicion();
         entCargarHistorial();
-        entMostrarPost(folioFull, tel);
+        entMostrarPost(folioFull, tel, reporteUrl);
         entReset();
       } catch(e) {
         var esRed = /failed to fetch|network|timeout/i.test(e.message || '');
@@ -2850,7 +2934,7 @@ async function entGenerarReporte() {
         }
         offEncolarReporte('reportes_entrega', dbPayload, _ENT_HTML, nombreArch, datosJsonStr, nombreDatos, esEdicion ? editandoId : null);
         entSalirModoEdicion();
-        entMostrarPost(folioFull, tel);
+        entMostrarPost(folioFull, tel, reporteUrl);
         entReset();
       }
     }
@@ -2880,11 +2964,12 @@ function entGuardarOffline(payload) {
 var ENCUESTA_URL = 'https://barrcan.github.io/barrcan-app/garantia_publica.html';
 var WA_BARRCAN   = '525615158415';
 
-function entMostrarPost(folio, tel) {
+function entMostrarPost(folio, tel, url) {
   var ov = document.getElementById('ent-post-ov');
   if (!ov) return;
   ov.dataset.folio = folio || '';
   ov.dataset.tel   = tel   || '';
+  ov.dataset.url   = url   || '';
   document.getElementById('ent-post-folio').textContent = 'Reporte guardado: ' + (folio || '');
   ov.style.display = 'flex';
 }
@@ -2910,7 +2995,10 @@ function entEnviarWA() {
   var ov    = document.getElementById('ent-post-ov');
   var folio = ov ? (ov.dataset.folio || '') : '';
   var tel   = ov ? (ov.dataset.tel   || '').replace(/[^0-9]/g, '') : '';
-  var texto = encodeURIComponent('Hola, le compartimos el comprobante de entrega del pedido ' + folio + '. Por favor confirme de recibido. BarrCan Canceleria - 56-15-15-84-15');
+  var url   = ov ? (ov.dataset.url   || '') : '';
+  var texto = url
+    ? encodeURIComponent('Hola, le compartimos el comprobante de entrega del pedido ' + folio + ': ' + url + ' Por favor confirme de recibido. BarrCan Canceleria - 56-15-15-84-15')
+    : encodeURIComponent('Hola, le compartimos el comprobante de entrega del pedido ' + folio + '. Por favor confirme de recibido. BarrCan Canceleria - 56-15-15-84-15 (el link se enviará en cuanto sincronice, sin conexión ahora)');
   window.open('https://wa.me/' + (tel ? '52' + tel : WA_BARRCAN) + '?text=' + texto, '_blank');
 }
 
@@ -3023,6 +3111,12 @@ function entRenderHistorial() {
   div.innerHTML = html;
 }
 
+function entToggleSeguimiento() {
+  var chk = document.getElementById('ent-requiere-seguimiento');
+  var notas = document.getElementById('ent-notas-seguimiento');
+  if (notas) notas.style.display = chk.checked ? 'block' : 'none';
+}
+
 function entVerReporte(id) {
   var local = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
   var r = null;
@@ -3065,7 +3159,7 @@ function entVerReporteFallback(r) {
     + '.bp{padding:9px 20px;background:#C8923A;color:white;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer}'
     + '.bc{padding:9px 12px;background:rgba(255,255,255,.15);color:white;border:none;border-radius:7px;font-size:12px;cursor:pointer}'
     + '@media print{.barra{display:none!important}}</style></head><body>'
-    + '<div class=barra><button class=bp onclick="window.print()">Imprimir / PDF</button><button class=bc onclick="window.close()">Cerrar</button></div>'
+    + '<div class=barra><button class=bp onclick="imprimirListo(this)">Imprimir / PDF</button><button class=bc onclick="window.close()">Cerrar</button></div>'
     + '<div class=pg>'
     + entHeaderOficial('Comprobante de Entrega', r.folio)
     + '<div class=pg-body>'
@@ -3079,6 +3173,7 @@ function entVerReporteFallback(r) {
     + '</table>'
     + '<div style=font-size:7.5pt;color:#aaa;text-align:center;margin-top:12px;border-top:1px solid #eee;padding-top:8px>'
     + esc(r.folio || '') + ' - BarrCan - ' + new Date().toLocaleDateString('es-MX') + '</div>'
+    + "<script>function imprimirListo(btn){if(btn){btn.disabled=true;btn.textContent='Preparando...';}var imgs=Array.prototype.slice.call(document.images);var pend=imgs.filter(function(im){return !im.complete;});if(!pend.length){if(btn){btn.disabled=false;btn.textContent='Imprimir / PDF';}setTimeout(function(){window.print();},80);return;}var listos=0;pend.forEach(function(im){im.onload=im.onerror=function(){listos++;if(listos>=pend.length){if(btn){btn.disabled=false;btn.textContent='Imprimir / PDF';}setTimeout(function(){window.print();},80);}};});}<\/script>"
     + '</div></div></body></html>';
     
   var win = window.open('', '_blank');
@@ -4006,8 +4101,8 @@ async function entGenerarReporteInstalacion() {
     // base64) se sube a Storage, igual que ya hace la entrega en puerta,
     // en vez de meterlo entero en una columna de la tabla — eso era lo que
     // probablemente rompía el guardado por tamaño del registro.
-    var nombreArchInst = folio + '_' + (fecha || '').replace(/-/g, '') + '_' + Date.now() + '.html';
-    var nombreDatosInst = folio + '_' + (fecha || '').replace(/-/g, '') + '_' + Date.now() + '_datos.json';
+    var nombreArchInst = folio + '_' + (fecha || '').replace(/-/g, '') + '.html';
+    var nombreDatosInst = folio + '_' + (fecha || '').replace(/-/g, '') + '_datos.json';
     // Datos completos y editables (checklist con notas, evidencia con las
     // fotos, piezas, firmas): se suben aparte como JSON a Storage —igual
     // que el HTML, para no engordar la fila de la tabla— y su URL se
@@ -4127,7 +4222,7 @@ async function entGenerarReporteInstalacion() {
     var postOv   = document.getElementById('ent-post-ov');
     var postFol  = document.getElementById('ent-post-folio');
     var postEst  = document.getElementById('ent-post-estado');
-    if (postOv)  postOv.style.display  = 'flex';
+    if (postOv)  { postOv.style.display  = 'flex'; postOv.dataset.folio = folio || ''; postOv.dataset.url = reporteUrl || ''; postOv.dataset.tel = payload.tel || ''; }
     if (postFol) postFol.textContent   = folio;
     if (postEst) {
       postEst.innerHTML = guardadoOk
