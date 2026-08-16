@@ -6,6 +6,19 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.8
+  FECHA   : 2026-08-15
+  v1.8 - Captura manual de facturas con PDF adjunto: hasta ahora la
+    única forma de meter una factura era subiendo el XML/CFDI
+    mexicano -- proveedores extranjeros (Shopify, Anthropic/Claude,
+    etc.) solo mandan PDF, así que era imposible registrarlos. Nuevo
+    botón "+ Factura manual (PDF)" que abre el mismo modal en modo
+    captura libre: proveedor, fecha, folio, total, moneda (MXN/USD,
+    se guarda tal cual, sin conversión automática), casilla de "gasto
+    recurrente", y el PDF se sube a un bucket privado nuevo
+    (facturas) en Supabase Storage. Se agregó también la categoría
+    "Suscripciones / Software". Columnas nuevas en facturas_recibidas:
+    moneda, archivo_url, archivo_nombre, es_recurrente.
   VERSION : v1.7
   FECHA   : 2026-07-26
   v1.7 - Organización por periodo y agrupación por categoría:
@@ -184,6 +197,10 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 <div class="content">
   <p class="section-title">Compras &amp; Stock</p>
   <p class="section-sub">Facturas recibidas &middot; Inventario &middot; Precios hist&oacute;ricos</p>
+
+  <button type="button" onclick="cmpAbrirManual()" style="width:100%;padding:12px;border:1.5px dashed var(--gold);background:rgba(200,146,58,.08);color:var(--gold);border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:14px">
+    &#128196; + Factura manual (PDF) &mdash; para proveedores sin XML/CFDI (Shopify, Anthropic, etc.)
+  </button>
 
   <!-- STATS -->
   <div class="stats-row">
@@ -408,10 +425,47 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     <div style="font-size:12px;color:var(--gray-400);margin-bottom:14px" id="mc-sub"></div>
 
     <input type="file" id="mc-xml-input" accept=".xml,text/xml" style="display:none" onchange="cmpProcesarXML(this)">
-    <button type="button" onclick="document.getElementById('mc-xml-input').click()" style="width:100%;padding:10px;border:1.5px dashed var(--blue);background:rgba(46,109,164,.06);color:var(--blue);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:14px">
+    <button type="button" id="mc-btn-xml" onclick="document.getElementById('mc-xml-input').click()" style="width:100%;padding:10px;border:1.5px dashed var(--blue);background:rgba(46,109,164,.06);color:var(--blue);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:14px">
       &#128196; Subir XML de la factura (auto-llena RFC y artículos)
     </button>
     <div id="mc-xml-status" style="display:none;font-size:11px;color:var(--green);margin:-8px 0 12px"></div>
+
+    <div id="mc-manual-campos" style="display:none">
+      <label style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;display:block">Proveedor *</label>
+      <input type="text" class="form-input" id="mc-man-proveedor" placeholder="Ej: Shopify International Limited" style="margin-bottom:12px">
+
+      <label style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;display:block">Fecha *</label>
+      <input type="date" class="form-input" id="mc-man-fecha" style="margin-bottom:12px">
+
+      <label style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;display:block">Folio / N&uacute;mero de factura</label>
+      <input type="text" class="form-input" id="mc-man-folio" placeholder="Ej: Bill #573926516" style="margin-bottom:12px">
+
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <div style="flex:1">
+          <label style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;display:block">Total *</label>
+          <input type="number" class="form-input" id="mc-man-total" placeholder="0.00" min="0" step="0.01">
+        </div>
+        <div style="width:100px">
+          <label style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;display:block">Moneda</label>
+          <select class="form-select" id="mc-man-moneda">
+            <option value="MXN">MXN</option>
+            <option value="USD">USD</option>
+          </select>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--gray-400);margin:-8px 0 12px">El total se guarda tal cual, en su moneda original — no se convierte a pesos autom&aacute;ticamente.</div>
+
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--navy);margin-bottom:12px;cursor:pointer">
+        <input type="checkbox" id="mc-man-recurrente" style="width:16px;height:16px">
+        Es un gasto recurrente (suscripci&oacute;n mensual, etc.)
+      </label>
+
+      <input type="file" id="mc-man-pdf-input" accept=".pdf" style="display:none" onchange="cmpSeleccionarPDF(this)">
+      <button type="button" onclick="document.getElementById('mc-man-pdf-input').click()" style="width:100%;padding:10px;border:1.5px dashed var(--gray-200);background:var(--off-white);color:var(--gray-600);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:4px" id="mc-man-pdf-btn">
+        &#128206; Adjuntar PDF de la factura
+      </button>
+      <div id="mc-man-pdf-nombre" style="font-size:11px;color:var(--green);margin-bottom:12px"></div>
+    </div>
 
     <label style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;display:block">RFC del emisor</label>
     <input type="text" class="form-input" id="mc-rfc" placeholder="Se llena solo si subes el XML, o escríbelo" style="margin-bottom:12px;text-transform:uppercase">
@@ -428,6 +482,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
       <option value="HERRAMIENTAS">Herramientas</option>
       <option value="COMIDA">Comida</option>
       <option value="COMUNICACIONES">Comunicaciones</option>
+      <option value="SUSCRIPCIONES / SOFTWARE">Suscripciones / Software</option>
       <option value="CASETAS">Casetas</option>
       <option value="PELICULA">Película</option>
       <option value="FARMACIA">Farmacia</option>
@@ -479,7 +534,7 @@ var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
 
-var APP_VERSION = 'v1.7';
+var APP_VERSION = 'v1.8';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -512,6 +567,8 @@ var INV_CACHE  = [];
 var PREC_CACHE = [];
 var PROV_CACHE = [];
 var MC_ID = null;  // ID factura a clasificar
+var MC_MODO_MANUAL = false; // true = capturando una factura nueva a mano (PDF sin XML)
+var MC_PDF_FILE = null;     // archivo PDF seleccionado en modo manual
 
 // ── Tabs ──────────────────────────────────────────────────────
 function cmpTab(btn, tab) {
@@ -837,7 +894,57 @@ function cmpProcesarXML(input) {
   reader.readAsText(input.files[0]);
 }
 
+// Abre el modal en modo captura manual — para facturas que solo
+// llegan en PDF (proveedores extranjeros como Shopify o Anthropic,
+// que no manejan CFDI/XML mexicano). A diferencia de "Clasificar"
+// (que edita una factura ya ingerida por XML), esto crea una fila
+// nueva en facturas_recibidas desde cero.
+function cmpAbrirManual() {
+  MC_ID = null;
+  MC_MODO_MANUAL = true;
+  MC_PDF_FILE = null;
+  MC_TOTAL_FACTURA = 0;
+  MC_ITEMS = [];
+
+  document.getElementById('mc-titulo').textContent = 'Factura manual (PDF)';
+  document.getElementById('mc-sub').textContent = 'Para proveedores que no mandan XML/CFDI';
+  document.getElementById('mc-btn-xml').style.display = 'none';
+  document.getElementById('mc-xml-status').style.display = 'none';
+  document.getElementById('mc-manual-campos').style.display = 'block';
+
+  document.getElementById('mc-man-proveedor').value = '';
+  document.getElementById('mc-man-fecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('mc-man-folio').value = '';
+  document.getElementById('mc-man-total').value = '';
+  document.getElementById('mc-man-moneda').value = 'MXN';
+  document.getElementById('mc-man-recurrente').checked = false;
+  document.getElementById('mc-man-pdf-nombre').textContent = '';
+  document.getElementById('mc-man-pdf-btn').textContent = '📎 Adjuntar PDF de la factura';
+
+  document.getElementById('mc-rfc').value = '';
+  cmpAsegurarOpcionCategoria('SUSCRIPCIONES / SOFTWARE');
+  document.getElementById('mc-cat').value = 'SUSCRIPCIONES / SOFTWARE';
+  document.getElementById('mc-cat-nueva').style.display = 'none';
+  document.getElementById('mc-cat-nueva').value = '';
+  document.getElementById('mc-obra').value = '';
+  document.getElementById('mc-multi-obra').checked = false;
+  cmpToggleDesglose();
+
+  document.getElementById('modal-clasificar').style.display = 'flex';
+}
+
+function cmpSeleccionarPDF(input) {
+  var f = input.files && input.files[0];
+  if (!f) return;
+  MC_PDF_FILE = f;
+  document.getElementById('mc-man-pdf-nombre').textContent = '✓ ' + f.name;
+  document.getElementById('mc-man-pdf-btn').textContent = '📎 Cambiar PDF';
+}
+
 async function cmpAbrirClasificar(id, prov, folio, catActual, obraActual, desglosada, totalFactura, rfcActual) {
+  MC_MODO_MANUAL = false;
+  document.getElementById('mc-btn-xml').style.display = 'block';
+  document.getElementById('mc-manual-campos').style.display = 'none';
   MC_ID = id;
   MC_TOTAL_FACTURA = parseFloat(totalFactura) || 0;
   document.getElementById('mc-titulo').textContent = 'Clasificar: ' + folio;
@@ -989,7 +1096,7 @@ function cmpActualizarTotalDesglose() {
 }
 
 async function cmpGuardarClasificacion() {
-  if (!MC_ID) return;
+  if (!MC_ID && !MC_MODO_MANUAL) return;
   var cat = document.getElementById('mc-cat').value;
   var catEsNueva = cat === '__nueva__';
   if (catEsNueva) cat = document.getElementById('mc-cat-nueva').value.trim().toUpperCase();
@@ -1000,6 +1107,65 @@ async function cmpGuardarClasificacion() {
   if (esDesglose && MC_ITEMS.some(function(it) { return !it.descripcion.trim(); })) {
     toast('Completa la descripción de cada artículo'); return;
   }
+
+  if (MC_MODO_MANUAL) {
+    var proveedor = document.getElementById('mc-man-proveedor').value.trim();
+    var fecha = document.getElementById('mc-man-fecha').value;
+    var folioFactura = document.getElementById('mc-man-folio').value.trim() || null;
+    var total = parseFloat(document.getElementById('mc-man-total').value);
+    var moneda = document.getElementById('mc-man-moneda').value;
+    var recurrente = document.getElementById('mc-man-recurrente').checked;
+    if (!proveedor) { toast('Falta el nombre del proveedor'); return; }
+    if (!fecha) { toast('Falta la fecha'); return; }
+    if (!total || total <= 0) { toast('Falta el total'); return; }
+
+    try {
+      if (catEsNueva) await cmpGuardarCategoriaNueva(cat);
+
+      var archivo_url = null, archivo_nombre = null;
+      if (MC_PDF_FILE) {
+        var ext = MC_PDF_FILE.name.split('.').pop();
+        var path = 'manual/' + Date.now() + '_' + MC_PDF_FILE.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+        var up = await sb().storage.from('facturas').upload(path, MC_PDF_FILE, { contentType: 'application/pdf', upsert: true });
+        if (up.error) { toast('No se pudo subir el PDF, se guarda sin adjunto: ' + up.error.message); }
+        else { archivo_url = path; archivo_nombre = MC_PDF_FILE.name; }
+      }
+
+      var payloadManual = {
+        fecha: fecha, proveedor: proveedor, folio_factura: folioFactura,
+        categoria: cat, rfc_emisor: rfc, folio_obra: obra,
+        total: total, moneda: moneda, es_recurrente: recurrente,
+        desglosada: esDesglose, procesada: true,
+        archivo_url: archivo_url, archivo_nombre: archivo_nombre,
+        origen: 'manual_pdf'
+      };
+      var insRes = await sb().from('facturas_recibidas').insert([payloadManual]).select().single();
+      if (insRes.error) throw insRes.error;
+
+      cmpRecordarProveedor(rfc, proveedor, cat);
+
+      if (esDesglose && insRes.data) {
+        var filasM = MC_ITEMS.map(function(it) {
+          return {
+            factura_id: insRes.data.id, descripcion: it.descripcion.trim(),
+            cantidad: it.cantidad || 1, precio_unitario: it.precio_unitario || 0,
+            importe: (it.cantidad || 0) * (it.precio_unitario || 0),
+            folio_obra: it.folio_obra ? it.folio_obra.trim() : null
+          };
+        });
+        await sb().from('facturas_conceptos').insert(filasM);
+      }
+
+      toast('✅ Factura manual guardada' + (recurrente ? ' (marcada como recurrente)' : ''));
+      document.getElementById('modal-clasificar').style.display = 'none';
+      cmpCargarFacturas();
+    } catch(e) {
+      toast('No se pudo guardar: ' + e.message);
+    }
+    return;
+  }
+
+  if (!MC_ID) return;
   try {
     if (catEsNueva) await cmpGuardarCategoriaNueva(cat);
 
