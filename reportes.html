@@ -6,8 +6,27 @@
 <title>BarrCan · Reportes</title>
 <!--
   BARRCAN · MODULO: REPORTES (standalone)
-  VERSION : v1.3
-  FECHA   : 2026-07-14
+  VERSION : v1.6
+  FECHA   : 2026-08-15
+  v1.6 - Botón "🖨️ Imprimir reporte de gasto" en cada obra (pestaña
+    Ganancia): documento imprimible con el detalle artículo por
+    artículo (facturas simples + conceptos de facturas desglosadas)
+    de todo lo que se compró para ese proyecto específico, con su
+    total. Usa facturas_conceptos.folio_obra a nivel de línea.
+  v1.5 - Bucket "INT-VEH" (Vehículo) agregado a Gastos Internos --
+    gasolina/refacciones/aceites. No se reparte por obra visitada
+    (Mau carga 1-2 veces por semana para varios sitios) -- se trata
+    como costo fijo propio del negocio. Se vincularon retroactivamente
+    9 facturas que ya existían sin folio ($4,748.65 en total).
+  v1.4 - "Gastos Internos" ahora también suma los sueldos de técnicos
+    (pagos_tecnicos, semanal → agrupado por mes) junto con Taller/
+    Admin/Herramienta/Software, en un KPI de "Costos Fijos Totales" --
+    primer dato real hacia el cálculo de punto de equilibrio.
+  v1.3.1 - FIX: este módulo nunca mostró la versión en pantalla como
+    los demás (el badge solo decía "Online", sin número) -- por eso
+    no había forma de confirmar a simple vista si los cambios ya
+    estaban subidos. Se agregó APP_VERSION al badge, igual que el
+    resto de los módulos.
   v1.3 - Nueva pestaña "Ganancia" (por obra):
     - Junta lo que ya existía separado: Contratado (presupuestos_
       atrasados.monto), Material (facturas_recibidas +
@@ -238,11 +257,20 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
       Gastos que no son de un cliente/obra específica — herramienta, administración, software y suscripciones (Shopify, Anthropic/Claude, Supabase, etc.). Se registran en Compras usando el folio interno correspondiente (INT-TALLER, INT-ADMIN, INT-HERR, INT-SOFT) en "Folio de la obra". Los montos en USD se convierten con el tipo de cambio de Config. Precios.
     </div>
     <div class="kpi-grid">
-      <div class="kpi"><div class="kpi-num" id="kpi-int-mes" style="font-size:15px">—</div><div class="kpi-lbl">Total este mes</div></div>
-      <div class="kpi"><div class="kpi-num" id="kpi-int-prom" style="font-size:15px">—</div><div class="kpi-lbl">Promedio mensual (6 meses)</div></div>
+      <div class="kpi"><div class="kpi-num" id="kpi-int-mes" style="font-size:15px">—</div><div class="kpi-lbl">Gastos internos (mes)</div></div>
+      <div class="kpi"><div class="kpi-num" id="kpi-sueldos-mes" style="font-size:15px">—</div><div class="kpi-lbl">Sueldos técnicos (mes)</div></div>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi" style="background:var(--navy)"><div class="kpi-num" id="kpi-fijos-total" style="font-size:16px;color:#fff">—</div><div class="kpi-lbl" style="color:rgba(255,255,255,.7)">💰 Costos Fijos Totales (mes)</div></div>
+      <div class="kpi"><div class="kpi-num" id="kpi-int-prom" style="font-size:15px">—</div><div class="kpi-lbl">Promedio 6 meses (todo)</div></div>
+    </div>
+    <div style="font-size:10px;color:var(--red);margin:-4px 0 10px;line-height:1.4">⚠️ Todavía no incluye: seguros (no está registrado en ningún lado del sistema) ni renta/servicios si aplican — dile a Claude el monto o empieza a capturarlos en Compras para que se sumen aquí.</div>
+    <div class="card">
+      <div class="card-title">Sueldos de técnicos (este mes)</div>
+      <div id="rp-int-sueldos"></div>
     </div>
     <div class="card">
-      <div class="card-title">Por categoría (este mes)</div>
+      <div class="card-title">Por categoría — gastos internos (este mes)</div>
       <div id="rp-int-categoria"></div>
     </div>
     <div class="card">
@@ -257,14 +285,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 </div>
 </body>
 <script>
-// BarrCan Reportes v1.1 — var/function, sin const/let globales
-// v1.1 (2026-08-15): Nueva pestaña "Gastos Internos" -- gastos que no
-//   son de un cliente/obra (herramienta, administración, software y
-//   suscripciones como Shopify/Anthropic). Se registran en Compras
-//   con el folio interno correspondiente (INT-TALLER/INT-ADMIN/
-//   INT-HERR/INT-SOFT, ya creados como presupuestos_atrasados con
-//   monto 0 -- son buckets, no ventas). Los montos en USD se
-//   convierten a MXN con el tipo de cambio de Config. Precios.
+var APP_VERSION = 'v1.6';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb=null;
@@ -279,7 +300,7 @@ window.addEventListener('offline', function(){SYNC.online=false;detectar();});
 function detectar(){
   var d=document.getElementById('conn-dot'),t=document.getElementById('conn-status');
   if(d)d.style.background=SYNC.online?'#27AE60':'#C8923A';
-  if(t)t.textContent=SYNC.online?'Online':'Offline';
+  if(t)t.textContent=(SYNC.online?'Online':'Offline')+' · '+APP_VERSION;
 }
 function fmt(n){return '$'+Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function fmtK(n){
@@ -297,6 +318,7 @@ function toast(msg){
 
 // ── Estado ────────────────────────────────────────────────────
 var RP_TAB_ACTUAL = 'flujo';
+var RP_OBRAS_CACHE = {};
 
 // ── Tabs ─────────────────────────────────────────────────────
 function rpTab(btn,tab) {
@@ -452,6 +474,86 @@ async function rpCargarFlujo() {
 // Contratado (monto del presupuesto) − Material (facturas_recibidas +
 // facturas_conceptos por folio_obra) − Mano de obra (ordenes_trabajo.
 // costo_mano_obra por folio_cotizacion) = Ganancia del proyecto.
+// ── Reporte imprimible de gasto por proyecto ────────────────────
+// Junta las facturas simples (una sola obra) + los conceptos de
+// facturas desglosadas (varias obras) que quedaron ligados a este
+// folio, y arma un documento imprimible con el detalle artículo por
+// artículo -- para saber exactamente en qué se fue el material de
+// un proyecto específico.
+async function rpImprimirReporteObra(folio) {
+  if (!sb()) { toast('Sin conexión'); return; }
+  toast('Generando reporte...');
+  try {
+    var resFact = await sb().from('facturas_recibidas')
+      .select('proveedor,fecha,folio_cfdi,total,moneda')
+      .eq('folio_obra', folio).eq('desglosada', false);
+    var resConc = await sb().from('facturas_conceptos')
+      .select('descripcion,cantidad,precio_unitario,importe,factura_id')
+      .eq('folio_obra', folio);
+    if (resFact.error) throw resFact.error;
+    if (resConc.error) throw resConc.error;
+
+    var idsFacturasConcepto = (resConc.data || []).map(function(c) { return c.factura_id; }).filter(function(v, i, a) { return v && a.indexOf(v) === i; });
+    var mapaFacturas = {};
+    if (idsFacturasConcepto.length) {
+      var resFactDesg = await sb().from('facturas_recibidas').select('id,proveedor,fecha').in('id', idsFacturasConcepto);
+      (resFactDesg.data || []).forEach(function(f) { mapaFacturas[f.id] = f; });
+    }
+
+    var filas = [];
+    (resFact.data || []).forEach(function(f) {
+      filas.push({ fecha: f.fecha, proveedor: f.proveedor, descripcion: '(factura completa)', importe: parseFloat(f.total || 0), moneda: f.moneda });
+    });
+    (resConc.data || []).forEach(function(c) {
+      var f = mapaFacturas[c.factura_id] || {};
+      filas.push({ fecha: f.fecha, proveedor: f.proveedor, descripcion: c.descripcion, cantidad: c.cantidad, precio_unitario: c.precio_unitario, importe: parseFloat(c.importe || 0), moneda: 'MXN' });
+    });
+    filas.sort(function(a, b) { return (a.fecha || '') < (b.fecha || '') ? -1 : 1; });
+
+    var total = filas.reduce(function(a, f) { return a + f.importe; }, 0);
+    var o = RP_OBRAS_CACHE[folio] || {};
+    var hoy = new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
+
+    var filasHtml = filas.length ? filas.map(function(f) {
+      var detalle = f.cantidad ? (f.cantidad + ' \u00d7 $' + Number(f.precio_unitario || 0).toFixed(2)) : '';
+      return '<tr>'
+        + '<td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:9pt">' + esc(f.fecha || '') + '</td>'
+        + '<td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:9pt">' + esc(f.proveedor || '') + '</td>'
+        + '<td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:9pt">' + esc(f.descripcion || '') + '</td>'
+        + '<td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:8pt;color:#888;text-align:center">' + detalle + '</td>'
+        + '<td style="padding:6px 8px;border-bottom:1px solid #eee;font-size:9pt;font-weight:700;text-align:right">$' + f.importe.toLocaleString('es-MX', {minimumFractionDigits:2}) + (f.moneda === 'USD' ? ' USD' : '') + '</td>'
+        + '</tr>';
+    }).join('') : '<tr><td colspan="5" style="padding:20px;text-align:center;color:#999">Sin facturas ligadas a este folio todav\u00eda</td></tr>';
+
+    var htmlDoc = '<!DOCTYPE html><html lang=es><head><meta charset=UTF-8><meta name=viewport content=width=device-width>'
+      + '<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;color:#1B3A5C;background:#fff}'
+      + '.pg{max-width:720px;margin:0 auto;padding:20px 22px 80px}'
+      + 'table{width:100%;border-collapse:collapse;margin-top:10px}th{background:#1B3A5C;color:#fff;padding:8px;font-size:9pt;text-align:left}'
+      + '.barra{position:fixed;bottom:0;left:0;right:0;background:#1B3A5C;padding:8px 14px;display:flex;gap:8px;justify-content:center;z-index:999}'
+      + '.bp{padding:9px 20px;background:#C8923A;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer}'
+      + '.bc{padding:9px 12px;background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:7px;font-size:12px;cursor:pointer}'
+      + '@media print{.barra{display:none!important}}</style></head><body>'
+      + '<div class=barra><button class=bp onclick="window.print()">Imprimir / PDF</button><button class=bc onclick="window.close()">Cerrar</button></div>'
+      + '<div class=pg>'
+      + '<div style="border-bottom:2.5px solid #1B3A5C;padding-bottom:10px;margin-bottom:14px">'
+      + '<div style="font-size:16pt;font-weight:900;color:#1B3A5C">BarrCan \u00b7 Reporte de gasto por proyecto</div>'
+      + '<div style="font-size:11pt;font-weight:700;color:#C8923A;font-family:monospace">' + esc(folio) + '</div>'
+      + '</div>'
+      + '<div style="font-size:10pt;margin-bottom:4px"><strong>Cliente:</strong> ' + esc(o.cliente || '\u2014') + '</div>'
+      + '<div style="font-size:10pt;margin-bottom:4px"><strong>Contratado:</strong> $' + Number(o.contratado || 0).toLocaleString('es-MX', {minimumFractionDigits:2}) + '</div>'
+      + '<div style="font-size:9pt;color:#666;margin-bottom:10px">Generado el ' + hoy + '</div>'
+      + '<table><thead><tr><th>Fecha</th><th>Proveedor</th><th>Concepto</th><th style="text-align:center">Cant. \u00d7 P.U.</th><th style="text-align:right">Importe</th></tr></thead>'
+      + '<tbody>' + filasHtml + '</tbody></table>'
+      + '<div style="display:flex;justify-content:flex-end;padding-top:14px;font-size:13pt;font-weight:900;color:#1B3A5C">TOTAL MATERIAL: $' + total.toLocaleString('es-MX', {minimumFractionDigits:2}) + '</div>'
+      + '</div></body></html>';
+
+    var w = window.open('', '_blank');
+    if (w) { w.document.write(htmlDoc); w.document.close(); }
+  } catch(e) {
+    toast('No se pudo generar el reporte: ' + e.message);
+  }
+}
+
 async function rpCargarGanancia() {
   var div = document.getElementById('rp-ganancia-lista');
   div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">Cargando...</div>';
@@ -520,9 +622,11 @@ async function rpCargarGanancia() {
         + '<div><div style="color:var(--gray-400)">Material</div><div style="font-weight:700">' + fmtK(o.material) + '</div></div>'
         + '<div><div style="color:var(--gray-400)">Mano obra</div><div style="font-weight:700">' + fmtK(o.manoObra) + '</div></div>'
         + '</div>'
+        + '<button onclick="rpImprimirReporteObra(\'' + esc(folio).replace(/'/g, "\\'") + '\')" style="width:100%;margin-top:8px;padding:7px;background:rgba(27,58,92,.06);border:1.5px solid rgba(27,58,92,.15);border-radius:6px;color:var(--navy);font-size:11px;font-weight:700;cursor:pointer">🖨️ Imprimir reporte de gasto</button>'
         + '</div>';
     }).join('');
     div.innerHTML = html;
+    RP_OBRAS_CACHE = obras;
   } catch(e) {
     console.warn('[BarrCan] No se pudo cargar ganancia por obra:', e);
     div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--red)">Error al cargar</div>';
@@ -642,8 +746,8 @@ async function rpCargarMaterial() {
 
 // ── CLIENTES ──────────────────────────────────────────────────
 // ── GASTOS INTERNOS (Taller/Admin/Herramienta/Software) ─────────
-var INT_FOLIOS = { 'INT-TALLER': 'Taller', 'INT-ADMIN': 'Administración', 'INT-HERR': 'Herramienta', 'INT-SOFT': 'Software y Suscripciones' };
-var INT_COLORES = { 'INT-TALLER': 'var(--blue)', 'INT-ADMIN': 'var(--gold)', 'INT-HERR': 'var(--green)', 'INT-SOFT': '#8E44AD' };
+var INT_FOLIOS = { 'INT-TALLER': 'Taller', 'INT-ADMIN': 'Administración', 'INT-HERR': 'Herramienta', 'INT-SOFT': 'Software y Suscripciones', 'INT-VEH': 'Vehículo (gasolina/refacciones/aceites)' };
+var INT_COLORES = { 'INT-TALLER': 'var(--blue)', 'INT-ADMIN': 'var(--gold)', 'INT-HERR': 'var(--green)', 'INT-SOFT': '#8E44AD', 'INT-VEH': '#C0392B' };
 
 async function rpCargarInternos() {
   if (!sb()) return;
@@ -668,6 +772,38 @@ async function rpCargarInternos() {
     var delMes = datos.filter(function(f) { return (f.fecha || '').slice(0, 7) === mesActual; });
     var totalMes = delMes.reduce(function(a, f) { return a + aMXN(f); }, 0);
     document.getElementById('kpi-int-mes').textContent = fmt(totalMes);
+
+    // Sueldos de técnicos del mes actual (pagos_tecnicos es semanal;
+    // se agrupa por el mes de la fecha de inicio de semana)
+    var resTec = await sb().from('tecnicos').select('id,tecnico_id_login,nombre_completo');
+    var nombreTec = {};
+    (resTec.data || []).forEach(function(t) {
+      nombreTec[t.id] = t.nombre_completo;
+      if (t.tecnico_id_login) nombreTec[t.tecnico_id_login] = t.nombre_completo;
+    });
+
+    var resSueldos = await sb().from('pagos_tecnicos')
+      .select('tecnico_id,semana_inicio,monto,pagado')
+      .order('semana_inicio', { ascending: false }).limit(300);
+    var sueldos = (resSueldos.data || []);
+    var sueldosDelMes = sueldos.filter(function(s) { return (s.semana_inicio || '').slice(0, 7) === mesActual; });
+    var totalSueldosMes = sueldosDelMes.reduce(function(a, s) { return a + parseFloat(s.monto || 0); }, 0);
+    document.getElementById('kpi-sueldos-mes').textContent = fmt(totalSueldosMes);
+
+    var porTecnico = {};
+    sueldosDelMes.forEach(function(s) {
+      var nombre = nombreTec[s.tecnico_id] || s.tecnico_id;
+      porTecnico[nombre] = (porTecnico[nombre] || 0) + parseFloat(s.monto || 0);
+    });
+    var maxTec = Math.max.apply(null, Object.values(porTecnico).concat([1]));
+    document.getElementById('rp-int-sueldos').innerHTML = Object.keys(porTecnico).length ? Object.keys(porTecnico).map(function(n) {
+      var v = porTecnico[n], pct = Math.round(v / maxTec * 100);
+      return '<div class="bar-row"><div class="bar-label">' + esc(n) + '</div>'
+        + '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%;background:var(--gold)"></div></div>'
+        + '<div class="bar-val">' + fmt(v) + '</div></div>';
+    }).join('') : '<div style="text-align:center;padding:10px;color:var(--gray-400);font-size:12px">Sin pagos registrados este mes</div>';
+
+    document.getElementById('kpi-fijos-total').textContent = fmt(totalMes + totalSueldosMes);
 
     // Promedio de los últimos 6 meses (incluyendo el actual)
     var meses6 = [];
