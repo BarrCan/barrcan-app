@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>BarrCan · Limpieza de Storage</title>
+<!--
+  BARRCAN · Utilidad de limpieza (uso único, no forma parte del portal)
+  VERSION : v1.0
+  FECHA   : 2026-08-15
+  v1.0 - Página aparte para borrar duplicados del bucket "reportes" en
+    Supabase Storage. Se creó porque el bucket llegó a 1.14 GB (el
+    límite del plan gratuito de Supabase es 1.1 GB) -- causa raíz:
+    entregas.html y visitas.html guardan cada reporte con un nombre
+    que incluye timestamp, así que cada vez que se vuelve a guardar
+    el mismo reporte se crea un archivo nuevo en vez de reemplazar el
+    anterior (aunque usan upsert:true, nunca aplica porque el nombre
+    siempre es distinto). Esta página identifica grupos de archivos
+    con el mismo nombre base y borra todas las copias menos la más
+    reciente. Primero muestra qué va a borrar (revisión), y solo
+    borra después de confirmar. Pensada para usarse una sola vez (o
+    cada que se vuelva a acumular) -- no queda enlazada en el portal.
+-->
+<style>
+  :root{--navy:#1B3A5C;--gold:#C8923A;--green:#27AE60;--red:#C0392B;--gray-400:#94A3B8;--gray-200:#E2E8F0;--off-white:#F8F9FA;}
+  *{box-sizing:border-box}
+  body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);color:var(--navy);margin:0;padding:16px;max-width:640px;margin-left:auto;margin-right:auto}
+  h1{font-size:18px;margin:0 0 4px}
+  .sub{font-size:12px;color:var(--gray-400);margin-bottom:16px}
+  .card{background:#fff;border-radius:12px;padding:16px;margin-bottom:14px;box-shadow:0 1px 4px rgba(27,58,92,.08)}
+  button{padding:12px 18px;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit}
+  .btn-analizar{background:var(--navy);color:#fff;width:100%}
+  .btn-borrar{background:var(--red);color:#fff;width:100%;margin-top:10px}
+  .btn-borrar:disabled{background:var(--gray-200);color:var(--gray-400);cursor:not-allowed}
+  .fila{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #F0F0F0;font-size:12px}
+  .fila:last-child{border-bottom:none}
+  .resumen{background:rgba(200,146,58,.1);border:1.5px solid rgba(200,146,58,.3);border-radius:8px;padding:12px;font-size:13px;margin-bottom:12px}
+  #resultado{margin-top:10px;font-size:13px}
+  .ok{color:var(--green);font-weight:700}
+  .err{color:var(--red);font-weight:700}
+</style>
+</head>
+<body>
+
+<h1>🧹 Limpieza de Storage — bucket "reportes"</h1>
+<div class="sub">Borra copias duplicadas de reportes (conserva siempre la más reciente de cada una). Primero analiza, luego confirma antes de borrar.</div>
+
+<div class="card">
+  <button class="btn-analizar" onclick="limpAnalizar()">🔍 Analizar duplicados</button>
+  <div id="resumen-analisis"></div>
+  <button class="btn-borrar" id="btn-confirmar-borrar" onclick="limpBorrarDuplicados()" disabled style="display:none">🗑️ Borrar duplicados confirmados</button>
+  <div id="resultado"></div>
+</div>
+
+<div class="card" id="detalle-card" style="display:none">
+  <div style="font-weight:700;margin-bottom:8px;font-size:13px">Se van a borrar estos archivos:</div>
+  <div id="lista-detalle" style="max-height:300px;overflow-y:auto"></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+const SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co';
+const SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
+let _sb = null;
+function sb() {
+  if (!_sb && window.supabase) _sb = window.supabase.createClient(SB_URL, SB_KEY, { db: { schema: 'barrcan' } });
+  return _sb;
+}
+function fmtMB(bytes) { return (bytes / 1024 / 1024).toFixed(1) + ' MB'; }
+
+let ARCHIVOS_A_BORRAR = [];
+
+async function limpAnalizar() {
+  const resumen = document.getElementById('resumen-analisis');
+  resumen.innerHTML = '<div style="padding:10px 0;color:var(--gray-400)">Analizando...</div>';
+  try {
+    const { data, error } = await sb().storage.from('reportes').list('', { limit: 1000, sortBy: { column: 'created_at', order: 'desc' } });
+    if (error) throw error;
+
+    const grupos = {};
+    data.forEach(function(f) {
+      const esJson = /_datos\.json$/.test(f.name);
+      const base = f.name.replace(/_\d{13}(_datos)?\.(html|json)$/, '');
+      const clave = base + '||' + (esJson ? 'json' : 'html');
+      if (!grupos[clave]) grupos[clave] = [];
+      grupos[clave].push(f);
+    });
+
+    ARCHIVOS_A_BORRAR = [];
+    Object.keys(grupos).forEach(function(clave) {
+      const archivos = grupos[clave].sort(function(a, b) {
+        return new Date(b.created_at) - new Date(a.created_at);
+      });
+      // El primero (más reciente) se conserva; el resto se marca para borrar
+      archivos.slice(1).forEach(function(f) { ARCHIVOS_A_BORRAR.push(f); });
+    });
+
+    const bytesTotal = ARCHIVOS_A_BORRAR.reduce(function(a, f) { return a + (f.metadata ? f.metadata.size : 0); }, 0);
+
+    resumen.innerHTML = '<div class="resumen">' +
+      '📦 ' + data.length + ' archivos totales en el bucket<br>' +
+      '🗑️ <strong>' + ARCHIVOS_A_BORRAR.length + ' duplicados encontrados</strong> — se liberarían <strong>' + fmtMB(bytesTotal) + '</strong>' +
+      '</div>';
+
+    const detCard = document.getElementById('detalle-card');
+    const detLista = document.getElementById('lista-detalle');
+    if (ARCHIVOS_A_BORRAR.length) {
+      detCard.style.display = 'block';
+      detLista.innerHTML = ARCHIVOS_A_BORRAR.map(function(f) {
+        return '<div class="fila"><span>' + f.name + '</span><span>' + fmtMB(f.metadata ? f.metadata.size : 0) + '</span></div>';
+      }).join('');
+      const btn = document.getElementById('btn-confirmar-borrar');
+      btn.style.display = 'block';
+      btn.disabled = false;
+    } else {
+      detCard.style.display = 'none';
+      document.getElementById('btn-confirmar-borrar').style.display = 'none';
+    }
+  } catch(e) {
+    resumen.innerHTML = '<div class="err">Error al analizar: ' + e.message + '</div>';
+  }
+}
+
+async function limpBorrarDuplicados() {
+  if (!ARCHIVOS_A_BORRAR.length) return;
+  if (!confirm('¿Borrar ' + ARCHIVOS_A_BORRAR.length + ' archivos duplicados? Se conserva siempre la copia más reciente de cada uno. Esto no se puede deshacer.')) return;
+
+  const resultado = document.getElementById('resultado');
+  resultado.innerHTML = '<div style="color:var(--gray-400)">Borrando...</div>';
+  document.getElementById('btn-confirmar-borrar').disabled = true;
+
+  try {
+    const paths = ARCHIVOS_A_BORRAR.map(function(f) { return f.name; });
+    // La API de Storage acepta borrar en lote; se parte en tandas de 50
+    // por si acaso, para no exceder límites de la petición.
+    let borrados = 0;
+    for (let i = 0; i < paths.length; i += 50) {
+      const tanda = paths.slice(i, i + 50);
+      const { error } = await sb().storage.from('reportes').remove(tanda);
+      if (error) throw error;
+      borrados += tanda.length;
+    }
+    resultado.innerHTML = '<div class="ok">✅ ' + borrados + ' archivos duplicados borrados correctamente.</div>';
+    document.getElementById('detalle-card').style.display = 'none';
+    document.getElementById('btn-confirmar-borrar').style.display = 'none';
+    ARCHIVOS_A_BORRAR = [];
+  } catch(e) {
+    resultado.innerHTML = '<div class="err">Error al borrar: ' + e.message + '</div>';
+    document.getElementById('btn-confirmar-borrar').disabled = false;
+  }
+}
+</script>
+</body>
+</html>
