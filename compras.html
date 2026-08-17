@@ -6,6 +6,17 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.9
+  FECHA   : 2026-08-17
+  v1.9 - Nuevo botón "💵 Gasto sin comprobante" -- para compras reales
+    (ferretería chica, sin ticket) que sí cuentan para el control
+    interno y el punto de equilibrio, pero que NO son deducibles
+    fiscalmente al no tener factura/CFDI (regla del SAT, no algo que
+    dependa de cómo se capture). Reutiliza el modal de factura
+    manual, pero sin folio de factura, sin PDF, sin RFC, y proveedor
+    opcional. Se guarda con con_comprobante=false (columna nueva) y
+    se muestra con una etiqueta morada "SIN COMPROBANTE" en la lista
+    para no confundirlo nunca con una factura real.
   VERSION : v1.8
   FECHA   : 2026-08-15
   v1.8 - Captura manual de facturas con PDF adjunto: hasta ahora la
@@ -198,8 +209,11 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
   <p class="section-title">Compras &amp; Stock</p>
   <p class="section-sub">Facturas recibidas &middot; Inventario &middot; Precios hist&oacute;ricos</p>
 
-  <button type="button" onclick="cmpAbrirManual()" style="width:100%;padding:12px;border:1.5px dashed var(--gold);background:rgba(200,146,58,.08);color:var(--gold);border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:14px">
+  <button type="button" onclick="cmpAbrirManual()" style="width:100%;padding:12px;border:1.5px dashed var(--gold);background:rgba(200,146,58,.08);color:var(--gold);border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:8px">
     &#128196; + Factura manual (PDF) &mdash; para proveedores sin XML/CFDI (Shopify, Anthropic, etc.)
+  </button>
+  <button type="button" onclick="cmpAbrirSinComprobante()" style="width:100%;padding:12px;border:1.5px dashed #8E44AD;background:rgba(142,68,173,.08);color:#8E44AD;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;margin-bottom:14px">
+    &#128181; + Gasto sin comprobante &mdash; ferretería chica, sin ticket (cuenta para control interno, NO es deducible)
   </button>
 
   <!-- STATS -->
@@ -431,14 +445,16 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     <div id="mc-xml-status" style="display:none;font-size:11px;color:var(--green);margin:-8px 0 12px"></div>
 
     <div id="mc-manual-campos" style="display:none">
-      <label style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;display:block">Proveedor *</label>
+      <label id="mc-man-proveedor-label" style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;display:block">Proveedor *</label>
       <input type="text" class="form-input" id="mc-man-proveedor" placeholder="Ej: Shopify International Limited" style="margin-bottom:12px">
 
       <label style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;display:block">Fecha *</label>
       <input type="date" class="form-input" id="mc-man-fecha" style="margin-bottom:12px">
 
-      <label style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;display:block">Folio / N&uacute;mero de factura</label>
-      <input type="text" class="form-input" id="mc-man-folio" placeholder="Ej: Bill #573926516" style="margin-bottom:12px">
+      <div id="mc-man-folio-wrap">
+        <label style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;display:block">Folio / N&uacute;mero de factura</label>
+        <input type="text" class="form-input" id="mc-man-folio" placeholder="Ej: Bill #573926516" style="margin-bottom:12px">
+      </div>
 
       <div style="display:flex;gap:8px;margin-bottom:12px">
         <div style="flex:1">
@@ -455,20 +471,27 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
       </div>
       <div style="font-size:10px;color:var(--gray-400);margin:-8px 0 12px">El total se guarda tal cual, en su moneda original — no se convierte a pesos autom&aacute;ticamente.</div>
 
-      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--navy);margin-bottom:12px;cursor:pointer">
-        <input type="checkbox" id="mc-man-recurrente" style="width:16px;height:16px">
-        Es un gasto recurrente (suscripci&oacute;n mensual, etc.)
-      </label>
+      <div id="mc-man-recurrente-wrap">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--navy);margin-bottom:12px;cursor:pointer">
+          <input type="checkbox" id="mc-man-recurrente" style="width:16px;height:16px">
+          Es un gasto recurrente (suscripci&oacute;n mensual, etc.)
+        </label>
+      </div>
 
-      <input type="file" id="mc-man-pdf-input" accept=".pdf" style="display:none" onchange="cmpSeleccionarPDF(this)">
-      <button type="button" onclick="document.getElementById('mc-man-pdf-input').click()" style="width:100%;padding:10px;border:1.5px dashed var(--gray-200);background:var(--off-white);color:var(--gray-600);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:4px" id="mc-man-pdf-btn">
-        &#128206; Adjuntar PDF de la factura
-      </button>
-      <div id="mc-man-pdf-nombre" style="font-size:11px;color:var(--green);margin-bottom:12px"></div>
+      <div id="mc-man-pdf-wrap">
+        <input type="file" id="mc-man-pdf-input" accept=".pdf" style="display:none" onchange="cmpSeleccionarPDF(this)">
+        <button type="button" onclick="document.getElementById('mc-man-pdf-input').click()" style="width:100%;padding:10px;border:1.5px dashed var(--gray-200);background:var(--off-white);color:var(--gray-600);border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:4px" id="mc-man-pdf-btn">
+          &#128206; Adjuntar PDF de la factura
+        </button>
+        <div id="mc-man-pdf-nombre" style="font-size:11px;color:var(--green);margin-bottom:12px"></div>
+      </div>
     </div>
 
-    <label style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;display:block">RFC del emisor</label>
-    <input type="text" class="form-input" id="mc-rfc" placeholder="Se llena solo si subes el XML, o escríbelo" style="margin-bottom:12px;text-transform:uppercase">
+    <div id="mc-rfc-wrap">
+      <label style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;display:block">RFC del emisor</label>
+      <input type="text" class="form-input" id="mc-rfc" placeholder="Se llena solo si subes el XML, o escríbelo" style="margin-bottom:12px;text-transform:uppercase">
+    </div>
+
 
     <label style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;display:block">Categoría</label>
     <select class="form-select" id="mc-cat" onchange="cmpCatSeleccionCambio()">
@@ -534,7 +557,7 @@ var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
 
-var APP_VERSION = 'v1.8';
+var APP_VERSION = 'v1.9';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -568,6 +591,7 @@ var PREC_CACHE = [];
 var PROV_CACHE = [];
 var MC_ID = null;  // ID factura a clasificar
 var MC_MODO_MANUAL = false; // true = capturando una factura nueva a mano (PDF sin XML)
+var MC_SIN_COMPROBANTE = false; // true = gasto real sin ningún comprobante (ferretería chica, etc.) -- comparte el modo manual, pero sin folio/PDF y marcado con_comprobante=false
 var MC_PDF_FILE = null;     // archivo PDF seleccionado en modo manual
 
 // ── Tabs ──────────────────────────────────────────────────────
@@ -658,7 +682,7 @@ async function cmpCargarFacturas() {
     document.getElementById('fact-periodo-nav').style.display = PERIODO.tipo === 'todo' ? 'none' : 'flex';
 
     var q = sb().from('facturas_recibidas')
-      .select('id,fecha,rfc_emisor,proveedor,folio_factura,categoria,folio_obra,desglosada,subtotal,iva,total')
+      .select('id,fecha,rfc_emisor,proveedor,folio_factura,categoria,folio_obra,desglosada,subtotal,iva,total,con_comprobante')
       .order('fecha', { ascending: false });
     if (rango.desde) q = q.gte('fecha', rango.desde);
     if (rango.hasta) q = q.lte('fecha', rango.hasta);
@@ -743,6 +767,7 @@ function cmpFiltrarFacturas() {
       + '<div class="row-prov">' + esc(f.proveedor||'—') + '</div>'
       + '<div style="margin-top:3px">'
       + '<span class="badge-cat ' + catClass(f.categoria) + '">' + esc(f.categoria||'—') + '</span>'
+      + (f.con_comprobante === false ? ' <span style="display:inline-block;background:rgba(142,68,173,.12);color:#8E44AD;font-size:9px;font-weight:800;padding:2px 6px;border-radius:8px;vertical-align:middle">SIN COMPROBANTE</span>' : '')
       + (function() {
           var args = "'" + f.id + "','" + esc(f.proveedor).replace(/'/g,"\\'") + "','" + esc(f.folio_factura).replace(/'/g,"\\'") + "','" + esc(f.categoria||'').replace(/'/g,"\\'") + "','" + esc(f.folio_obra||'').replace(/'/g,"\\'") + "'," + (f.desglosada?'true':'false') + "," + (parseFloat(f.total)||0) + ",'" + esc(f.rfc_emisor||'').replace(/'/g,"\\'") + "'";
           if (esPnd) return ' <span class="chip-pnd" onclick="cmpAbrirClasificar(' + args + ')">Clasificar →</span>';
@@ -902,6 +927,7 @@ function cmpProcesarXML(input) {
 function cmpAbrirManual() {
   MC_ID = null;
   MC_MODO_MANUAL = true;
+  MC_SIN_COMPROBANTE = false;
   MC_PDF_FILE = null;
   MC_TOTAL_FACTURA = 0;
   MC_ITEMS = [];
@@ -911,6 +937,12 @@ function cmpAbrirManual() {
   document.getElementById('mc-btn-xml').style.display = 'none';
   document.getElementById('mc-xml-status').style.display = 'none';
   document.getElementById('mc-manual-campos').style.display = 'block';
+  document.getElementById('mc-man-folio-wrap').style.display = 'block';
+  document.getElementById('mc-man-pdf-wrap').style.display = 'block';
+  document.getElementById('mc-man-recurrente-wrap').style.display = 'block';
+  document.getElementById('mc-man-proveedor-label').textContent = 'Proveedor *';
+  document.getElementById('mc-man-proveedor').placeholder = 'Ej: Shopify International Limited';
+  document.getElementById('mc-rfc-wrap').style.display = 'block';
 
   document.getElementById('mc-man-proveedor').value = '';
   document.getElementById('mc-man-fecha').value = new Date().toISOString().split('T')[0];
@@ -933,6 +965,52 @@ function cmpAbrirManual() {
   document.getElementById('modal-clasificar').style.display = 'flex';
 }
 
+// Abre el modal en modo "gasto sin comprobante" — para compras reales
+// (ferretería chica, sin ticket) que sí cuentan para el control interno
+// y el punto de equilibrio, pero que NO son deducibles fiscalmente al
+// no tener factura/CFDI. Comparte la mecánica del modo manual, solo
+// sin folio de factura ni PDF, y marcado con_comprobante=false.
+function cmpAbrirSinComprobante() {
+  MC_ID = null;
+  MC_MODO_MANUAL = true;
+  MC_SIN_COMPROBANTE = true;
+  MC_PDF_FILE = null;
+  MC_TOTAL_FACTURA = 0;
+  MC_ITEMS = [];
+
+  document.getElementById('mc-titulo').textContent = '💵 Gasto sin comprobante';
+  document.getElementById('mc-sub').textContent = 'Cuenta para tu control interno, pero no es deducible fiscalmente (sin factura)';
+  document.getElementById('mc-btn-xml').style.display = 'none';
+  document.getElementById('mc-xml-status').style.display = 'none';
+  document.getElementById('mc-manual-campos').style.display = 'block';
+  document.getElementById('mc-man-folio-wrap').style.display = 'none';
+  document.getElementById('mc-man-pdf-wrap').style.display = 'none';
+  document.getElementById('mc-man-recurrente-wrap').style.display = 'none';
+  document.getElementById('mc-man-proveedor-label').textContent = '¿Dónde compraste? (opcional)';
+  document.getElementById('mc-man-proveedor').placeholder = 'Ej: Ferretería La Esquina';
+
+  document.getElementById('mc-man-proveedor').value = '';
+  document.getElementById('mc-man-fecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('mc-man-folio').value = '';
+  document.getElementById('mc-man-total').value = '';
+  document.getElementById('mc-man-moneda').value = 'MXN';
+  document.getElementById('mc-man-recurrente').checked = false;
+  document.getElementById('mc-man-pdf-nombre').textContent = '';
+  document.getElementById('mc-man-pdf-btn').textContent = '📎 Adjuntar PDF de la factura';
+
+  document.getElementById('mc-rfc').value = '';
+  document.getElementById('mc-rfc-wrap').style.display = 'none';
+  cmpAsegurarOpcionCategoria('HERRAMIENTAS');
+  document.getElementById('mc-cat').value = 'HERRAMIENTAS';
+  document.getElementById('mc-cat-nueva').style.display = 'none';
+  document.getElementById('mc-cat-nueva').value = '';
+  document.getElementById('mc-obra').value = '';
+  document.getElementById('mc-multi-obra').checked = false;
+  cmpToggleDesglose();
+
+  document.getElementById('modal-clasificar').style.display = 'flex';
+}
+
 function cmpSeleccionarPDF(input) {
   var f = input.files && input.files[0];
   if (!f) return;
@@ -943,8 +1021,10 @@ function cmpSeleccionarPDF(input) {
 
 async function cmpAbrirClasificar(id, prov, folio, catActual, obraActual, desglosada, totalFactura, rfcActual) {
   MC_MODO_MANUAL = false;
+  MC_SIN_COMPROBANTE = false;
   document.getElementById('mc-btn-xml').style.display = 'block';
   document.getElementById('mc-manual-campos').style.display = 'none';
+  document.getElementById('mc-rfc-wrap').style.display = 'block';
   MC_ID = id;
   MC_TOTAL_FACTURA = parseFloat(totalFactura) || 0;
   document.getElementById('mc-titulo').textContent = 'Clasificar: ' + folio;
@@ -1111,11 +1191,11 @@ async function cmpGuardarClasificacion() {
   if (MC_MODO_MANUAL) {
     var proveedor = document.getElementById('mc-man-proveedor').value.trim();
     var fecha = document.getElementById('mc-man-fecha').value;
-    var folioFactura = document.getElementById('mc-man-folio').value.trim() || null;
+    var folioFactura = MC_SIN_COMPROBANTE ? null : (document.getElementById('mc-man-folio').value.trim() || null);
     var total = parseFloat(document.getElementById('mc-man-total').value);
     var moneda = document.getElementById('mc-man-moneda').value;
-    var recurrente = document.getElementById('mc-man-recurrente').checked;
-    if (!proveedor) { toast('Falta el nombre del proveedor'); return; }
+    var recurrente = MC_SIN_COMPROBANTE ? false : document.getElementById('mc-man-recurrente').checked;
+    if (!MC_SIN_COMPROBANTE && !proveedor) { toast('Falta el nombre del proveedor'); return; }
     if (!fecha) { toast('Falta la fecha'); return; }
     if (!total || total <= 0) { toast('Falta el total'); return; }
 
@@ -1123,7 +1203,7 @@ async function cmpGuardarClasificacion() {
       if (catEsNueva) await cmpGuardarCategoriaNueva(cat);
 
       var archivo_url = null, archivo_nombre = null;
-      if (MC_PDF_FILE) {
+      if (!MC_SIN_COMPROBANTE && MC_PDF_FILE) {
         var ext = MC_PDF_FILE.name.split('.').pop();
         var path = 'manual/' + Date.now() + '_' + MC_PDF_FILE.name.replace(/[^a-zA-Z0-9._-]/g, '_');
         var up = await sb().storage.from('facturas').upload(path, MC_PDF_FILE, { contentType: 'application/pdf', upsert: true });
@@ -1132,12 +1212,13 @@ async function cmpGuardarClasificacion() {
       }
 
       var payloadManual = {
-        fecha: fecha, proveedor: proveedor, folio_factura: folioFactura,
+        fecha: fecha, proveedor: proveedor || (MC_SIN_COMPROBANTE ? 'Gasto sin comprobante' : ''), folio_factura: folioFactura,
         categoria: cat, rfc_emisor: rfc, folio_obra: obra,
         total: total, moneda: moneda, es_recurrente: recurrente,
         desglosada: esDesglose, procesada: true,
         archivo_url: archivo_url, archivo_nombre: archivo_nombre,
-        origen: 'manual_pdf'
+        origen: MC_SIN_COMPROBANTE ? 'sin_comprobante' : 'manual_pdf',
+        con_comprobante: !MC_SIN_COMPROBANTE
       };
       var insRes = await sb().from('facturas_recibidas').insert([payloadManual]).select().single();
       if (insRes.error) throw insRes.error;
@@ -1156,7 +1237,7 @@ async function cmpGuardarClasificacion() {
         await sb().from('facturas_conceptos').insert(filasM);
       }
 
-      toast('✅ Factura manual guardada' + (recurrente ? ' (marcada como recurrente)' : ''));
+      toast(MC_SIN_COMPROBANTE ? '✅ Gasto sin comprobante guardado' : '✅ Factura manual guardada' + (recurrente ? ' (marcada como recurrente)' : ''));
       document.getElementById('modal-clasificar').style.display = 'none';
       cmpCargarFacturas();
     } catch(e) {
