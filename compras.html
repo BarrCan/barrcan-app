@@ -6,6 +6,11 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.9.1
+  v1.9.1 - Filtro nuevo "Con y sin comprobante / Solo con comprobante
+    (deducibles) / Solo sin comprobante" en la lista de facturas --
+    para poder separar rápido lo real-deducible de lo que solo es
+    control interno cuando le des los números a tu contador.
   VERSION : v1.9
   FECHA   : 2026-08-17
   v1.9 - Nuevo botón "💵 Gasto sin comprobante" -- para compras reales
@@ -293,6 +298,11 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
         <option value="GASOLINA">Gasolina</option>
         <option value="MAQUILA">Maquila</option>
       </select>
+      <select class="form-select" id="fact-filtro-comprobante" onchange="cmpFiltrarFacturas()">
+        <option value="">Con y sin comprobante</option>
+        <option value="con">Solo con comprobante (deducibles)</option>
+        <option value="sin">Solo sin comprobante</option>
+      </select>
       <div id="fact-lista"><div style="text-align:center;padding:20px;color:var(--gray-400)">Cargando...</div></div>
     </div>
   </div>
@@ -557,7 +567,7 @@ var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
 
-var APP_VERSION = 'v1.9';
+var APP_VERSION = 'v1.9.1';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -723,6 +733,7 @@ async function cmpCargarFacturas() {
 function cmpFiltrarFacturas() {
   var busca = (document.getElementById('fact-busca').value || '').toLowerCase();
   var cat   = document.getElementById('fact-filtro-cat').value;
+  var compFiltro = document.getElementById('fact-filtro-comprobante').value;
   var lista = document.getElementById('fact-lista');
   var filtrado = FACT_CACHE.filter(function(f) {
     var matchBusca = !busca ||
@@ -731,7 +742,10 @@ function cmpFiltrarFacturas() {
       (f.folio_obra||'').toLowerCase().indexOf(busca) >= 0 ||
       (f.rfc_emisor||'').toLowerCase().indexOf(busca) >= 0;
     var matchCat = !cat || f.categoria === cat;
-    return matchBusca && matchCat;
+    var matchComp = !compFiltro
+      || (compFiltro === 'con' && f.con_comprobante !== false)
+      || (compFiltro === 'sin' && f.con_comprobante === false);
+    return matchBusca && matchCat && matchComp;
   });
 
   // Resumen del periodo (sobre lo filtrado)
