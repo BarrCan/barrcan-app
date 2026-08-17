@@ -6,7 +6,7 @@
 <title>BarrCan · Cotizador Baños</title>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
-  VERSION : v1.8
+  VERSION : v1.9
   FECHA   : 2026-08-09
   v1.8 - FIX: el selector "Tipo de cristal" (Frameless) no actualizaba
     el precio al cambiar de espesor -- se quedaba fijo en $480 sin
@@ -221,14 +221,15 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 
       <div class="form-row">
         <div>
-          <label class="form-label">Ancho (mm)</label>
+          <label class="form-label">Ancho total del hueco (mm)</label>
           <input type="number" class="form-input" id="fl-ancho" value="900" min="400" max="3000" inputmode="numeric">
         </div>
         <div>
-          <label class="form-label">Alto (mm)</label>
+          <label class="form-label">Alto total del hueco (mm)</label>
           <input type="number" class="form-input" id="fl-alto" value="2000" min="800" max="3000" inputmode="numeric">
         </div>
       </div>
+      <div style="font-size:10.5px;color:var(--gray-400);margin:-6px 0 10px">Medida total del vano/hueco — la pieza de vidrio se fabrica más chica (ver pestaña Taller: AP/HP = medida total − 15mm)</div>
 
       <label class="form-label">Cristal</label>
       <select class="form-select" id="fl-cristal" onchange="flSincronizarPrecioVidrio()">
@@ -328,7 +329,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
           <input type="number" class="form-input" id="bc-ancho" value="1200" inputmode="numeric">
         </div>
         <div>
-          <label class="form-label">Alto (mm)</label>
+          <label class="form-label">Alto total (mm)</label>
           <input type="number" class="form-input" id="bc-alto" value="2000" inputmode="numeric">
         </div>
       </div>
@@ -420,16 +421,16 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 
       <div class="form-row">
         <div>
-          <label class="form-label">Ancho frontal (mm)</label>
+          <label class="form-label">Ancho frontal total (mm)</label>
           <input type="number" class="form-input" id="esc-ancho" value="900" inputmode="numeric">
         </div>
         <div>
-          <label class="form-label">Profundidad (mm)</label>
+          <label class="form-label">Profundidad total (mm)</label>
           <input type="number" class="form-input" id="esc-prof" value="900" inputmode="numeric">
         </div>
       </div>
       <div>
-        <label class="form-label">Alto (mm)</label>
+        <label class="form-label">Alto total (mm)</label>
         <input type="number" class="form-input" id="esc-alto" value="1900" inputmode="numeric">
       </div>
 
