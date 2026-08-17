@@ -6,7 +6,13 @@
 <title>BarrCan · Configuración de Costos</title>
 <!--
   BARRCAN · MÓDULO: CONFIGURACIÓN DE COSTOS (config.html)
-  VERSION : v1.5
+  VERSION : v1.6
+  v1.6 - FIX: este módulo nunca mostró su versión en pantalla (el badge
+    solo decía "Online", sin número) -- por eso no había forma
+    de confirmar a simple vista si los cambios ya estaban
+    subidos. Se agregó APP_VERSION al badge, igual que el resto
+    de los módulos.
+  v1.5 - (ver historial debajo)
   FECHA   : 2026-08-15
   v1.5 - Agregado "Tipo de cambio USD → MXN" al grupo Financieros --
     para poder sumar gastos en dólares (Shopify, Anthropic/Claude,
@@ -187,6 +193,7 @@ html, body { min-height:100%; font-family:'DM Sans',sans-serif; background:var(-
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
+const APP_VERSION = 'v1.6';
 const SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co';
 const SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 let _sb = null;
@@ -405,9 +412,9 @@ function iniciar() {
 
 document.addEventListener('DOMContentLoaded', () => {
   const connEl = document.getElementById('conn-status');
-  if (connEl) connEl.textContent = navigator.onLine ? 'Online' : 'Offline';
-  window.addEventListener('online', () => { if (connEl) connEl.textContent = 'Online'; });
-  window.addEventListener('offline', () => { if (connEl) connEl.textContent = 'Offline'; });
+  if (connEl) connEl.textContent = (navigator.onLine ? 'Online' : 'Offline') + ' · ' + APP_VERSION;
+  window.addEventListener('online', () => { if (connEl) connEl.textContent = 'Online · ' + APP_VERSION; });
+  window.addEventListener('offline', () => { if (connEl) connEl.textContent = 'Offline · ' + APP_VERSION; });
 
   if (esAdmin()) { iniciar(); }
   else { document.getElementById('pantalla-bloqueo').style.display = 'block'; }
