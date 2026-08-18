@@ -6,6 +6,14 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.40.2
+  v3.40.2 - FIX importante: la casilla "Requiere seguimiento" guardaba
+    la bandera, pero no existía forma de apagarla -- se hubiera
+    quedado prendida en la alerta del portal para siempre. Ahora cada
+    tarjeta del historial que tenga un seguimiento pendiente muestra
+    la nota y un botón "✅ Ya se atendió" que marca
+    seguimiento_atendido=true. También se muestra el folio_entrega
+    (ENT-#-consecutivo) en cada tarjeta.
   VERSION : v3.40.1
   v3.40.1 - FIX: en el flujo de instalación, "Enviar por WhatsApp"
     mandaba el reporte al número de la propia empresa en vez de al
@@ -2062,7 +2070,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.40.1';
+var APP_VERSION = 'v3.40.2';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -3019,7 +3027,7 @@ async function entCargarHistorial() {
   if (!sb()) return;
   try {
     var resPuerta = await sb().from('reportes_entrega')
-      .select('id,folio,cliente_nombre,cliente_tel,fecha_entrega,tecnico,reporte_url,whatsapp_enviado,created_at')
+      .select('id,folio,folio_entrega,cliente_nombre,cliente_tel,fecha_entrega,tecnico,reporte_url,whatsapp_enviado,created_at,requiere_seguimiento,seguimiento_atendido,notas_seguimiento')
       .eq('eliminado', false)
       .order('created_at', { ascending: false }).limit(30);
     if (resPuerta.error) throw resPuerta.error;
@@ -3068,6 +3076,18 @@ async function entCargarHistorial() {
   }
 }
 
+async function entMarcarSeguimientoAtendido(id) {
+  if (!sb()) { toast('Sin conexión'); return; }
+  try {
+    var res = await sb().from('reportes_entrega').update({ seguimiento_atendido: true }).eq('id', id);
+    if (res.error) throw res.error;
+    toast('✅ Seguimiento marcado como atendido');
+    entCargarHistorial();
+  } catch(e) {
+    toast('No se pudo actualizar: ' + e.message);
+  }
+}
+
 function entRenderHistorial() {
   var div   = document.getElementById('ent-hist-lista');
   var local = JSON.parse(localStorage.getItem('barrcan_reportes_historial') || '[]');
@@ -3097,8 +3117,16 @@ function entRenderHistorial() {
       + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'
       + '<div>'
       + '<div style="font-size:13px;font-weight:700;color:var(--navy)">' + esc(r.folio || '--') + tipoTag + '</div>'
+      + (r.folio_entrega ? '<div style="font-size:9.5px;color:var(--gray-400);font-family:monospace">' + esc(r.folio_entrega) + '</div>' : '')
       + '<div style="font-size:11px;color:var(--gray-400)">' + esc(r.cliente_nombre || '') + ' - ' + esc(r.fecha_entrega || '') + '</div>'
       + (r.reporte_url ? '<div style="font-size:10px;color:var(--green);font-weight:700">Reporte completo disponible</div>' : '')
+      + (r.requiere_seguimiento && !r.seguimiento_atendido
+          ? '<div style="margin-top:4px;background:rgba(200,146,58,.1);border:1px solid rgba(200,146,58,.3);border-radius:6px;padding:5px 7px">'
+            + '<div style="font-size:10px;font-weight:800;color:var(--gold)">&#9888;&#65039; Requiere seguimiento</div>'
+            + (r.notas_seguimiento ? '<div style="font-size:10px;color:var(--gray-600);margin-top:2px">' + esc(r.notas_seguimiento) + '</div>' : '')
+            + '<button onclick="entMarcarSeguimientoAtendido(\'' + idStr + '\')" style="margin-top:5px;width:100%;padding:5px;background:var(--gold);border:none;border-radius:5px;color:#fff;font-size:10px;font-weight:700;cursor:pointer">&#9989; Ya se atendi\u00f3</button>'
+            + '</div>'
+          : (r.requiere_seguimiento && r.seguimiento_atendido ? '<div style="font-size:9.5px;color:var(--green);margin-top:2px">&#9989; Seguimiento ya atendido</div>' : ''))
       + '</div>'
       + (r.whatsapp_enviado ? '<span style="font-size:10px;color:#25D366;font-weight:700">WA ok</span>' : '')
       + '</div>'
