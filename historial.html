@@ -6,6 +6,22 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.0
+  FECHA   : 2026-08-18
+  v3.0 - Tres cosas importantes:
+    1) FIX: 48 de 65 presupuestos tenían saldo=$0 y se ocultaban solos
+       de la lista por el filtro de "declinado/pagado" -- ese filtro
+       trataba CUALQUIER saldo en 0 como "ya liquidado", sin
+       distinguir de un registro recién capturado sin monto todavía.
+       Ahora solo se oculta si hubo un monto real contratado Y ya se
+       liquidó (monto > 0 Y saldo <= 0).
+    2) FIX: la columna `estado` en Supabase no tenía "declinado" como
+       valor válido -- cualquier intento de guardar ese estado fallaba
+       en silencio. Ya se agregó al catálogo de valores permitidos.
+    3) Prevención de folios duplicados (pasó con el 142): "Nuevo
+       Presupuesto" ahora sugiere el siguiente número real
+       automáticamente, y si el folio que se va a guardar ya existe,
+       se bloquea con un aviso claro en vez de duplicarlo.
   VERSIÓN : v2.9
   FECHA   : 2026-08-09
   v2.9 - Soporte para prefijos de folio distintos de CACN (nuevo
@@ -1336,7 +1352,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v2.9';
+var APP_VERSION = 'v3.0';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1492,7 +1508,8 @@ function presFiltrar() {
   if (!q && !verCerrados) {
     var antes = datos.length;
     datos = datos.filter(function(p) {
-      var pagado = (parseFloat(p.saldo) || 0) <= 0;
+      var montoReal = (parseFloat(p.monto) || 0) > 0;
+      var pagado = montoReal && (parseFloat(p.saldo) || 0) <= 0;
       return p.estado !== 'declinado' && !pagado;
     });
     ocultos = antes - datos.length;
@@ -1667,6 +1684,7 @@ function presAbrirNuevo() {
   if (estEl) estEl.value = 'activo';
   var prevEl = document.getElementById('pres-folio-preview');
   if (prevEl) prevEl.textContent = 'CACN-';
+  presSugerirSiguienteNumero();
   var prefEl2 = document.getElementById('pres-prefijo');
   if (prefEl2) prefEl2.value = 'CACN';
   var hidEl = document.getElementById('pres-folio');
@@ -1948,6 +1966,47 @@ function presGuardarOffline(datos, esEdicion) {
   toast('Guardado sin conexi\u00f3n \u00b7 se sincronizar\u00e1 al reconectar');
 }
 
+// Sugiere el siguiente número consecutivo real (según el prefijo
+// elegido) al abrir "Nuevo Presupuesto" -- consultando la base, no
+// adivinando. Si el número que se está capturando es MENOR al que ya
+// existe (por ejemplo, vas capturando presupuestos viejos en desorden),
+// no se fuerza nada -- presVerificarFolioExiste() es la que realmente
+// evita la duplicidad al momento de guardar.
+async function presSugerirSiguienteNumero() {
+  var prefEl = document.getElementById('pres-prefijo');
+  var pref = prefEl ? prefEl.value : 'CACN';
+  var numEl = document.getElementById('pres-num');
+  if (!numEl || !sb()) return;
+  try {
+    var res = await sb().from('presupuestos_atrasados').select('folio').ilike('folio', pref + '-%');
+    if (res.error || !res.data) return;
+    var max = 0;
+    res.data.forEach(function(p) {
+      var m = new RegExp('^' + pref + '-(\\d+)[A-Z]?-').exec(p.folio || '');
+      if (m) { var n = parseInt(m[1], 10); if (n > max) max = n; }
+    });
+    if (max > 0 && !numEl.value) {
+      numEl.value = String(max + 1).padStart(3, '0');
+      presActualizarFolio();
+    }
+  } catch(e) { console.warn('[BarrCan] No se pudo sugerir el siguiente número:', e); }
+}
+
+// Revisa si el folio que se está a punto de guardar ya existe en la
+// base -- para no duplicar (pasó con el folio 142). Solo aplica a
+// presupuestos NUEVOS; al editar uno existente no aplica porque el
+// folio ya es el mismo por definición.
+async function presVerificarFolioExiste(folio, idExcluir) {
+  if (!sb()) return false;
+  try {
+    var q = sb().from('presupuestos_atrasados').select('id').eq('folio', folio).limit(1);
+    var res = await q;
+    if (res.error || !res.data) return false;
+    if (idExcluir && res.data.length && res.data[0].id === idExcluir) return false;
+    return res.data.length > 0;
+  } catch(e) { return false; }
+}
+
 async function presGuardar() {
   // Construir folio desde campos si el hidden no fue actualizado
   presActualizarFolio();
@@ -1984,6 +2043,15 @@ async function presGuardar() {
 
   var esEdicion = !!PRES_EDITANDO_ID;
   if (esEdicion) datos.id = PRES_EDITANDO_ID;
+
+  if (!esEdicion && SYNC.online && sb()) {
+    var yaExiste = await presVerificarFolioExiste(folio);
+    if (yaExiste) {
+      if (errEl) { errEl.textContent = '⚠️ El folio ' + folio + ' ya existe — revisa el historial, no se guardó de nuevo.'; errEl.style.display = 'block'; }
+      if (btn) btn.disabled = false;
+      return;
+    }
+  }
 
   if (!SYNC.online || !sb()) {
     if (!esEdicion) datos.id = crypto.randomUUID();
