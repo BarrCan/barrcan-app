@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>BarrCan · Taller</title>
+<!--
+  BARRCAN · MODULO: TALLER (standalone)
+  VERSION : v1.0
+  FECHA   : 2026-08-16
+  v1.0 - Construcción inicial desde cero.
+    - Lee presupuestos_atrasados (todos los módulos: Nacional B,
+      Español C, Eurovent E, Servicios S, Baños A, Stands STAN, Garantía REPG).
+    - Parsea notas_internas (JSON de piezas) y muestra, por pieza,
+      la ficha de fabricación real ya calculada al cotizar: lista de
+      cortes de aluminio, orden de vidrio al proveedor, herrajes a
+      extraer del inventario.
+    - Si la pieza es Frameless de Baños (resultado.taller existe),
+      dibuja también el diagrama de bisagra (BM) y barreno de
+      jaladera (DB/B) — mismo SVG que la pestaña Taller del cotizador.
+    - Buscador por folio o cliente. Vista de detalle por folio con
+      todas sus piezas. Botón imprimir ficha por pieza.
+    - No inventa datos: si una pieza no tiene cortesCalc/vidrio/
+      herrajesCalc (ej. Mantenimiento, Stands manual), se muestra
+      como "Sin datos de fabricación" en vez de forzar un renderizado.
+    PENDIENTE: catálogo completo de herrajes (Económica/Estándar,
+      PH-01, PH-04, etc.) para poder calcular la distancia B real del
+      barreno de jaladera -- hoy sigue como valor de referencia.
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+:root {
+  --navy: #1B3A5C;
+  --blue: #2E6DA4;
+  --gold: #C8923A;
+  --gold-light: #E8B96A;
+  --white: #FFFFFF;
+  --off-white: #F7F5F0;
+  --gray-100: #F0EDE8;
+  --gray-200: #DDD9D2;
+  --gray-400: #9A9590;
+  --gray-600: #5A5652;
+  --green: #2D7D46;
+  --red: #C0392B;
+  --amber: #E67E22;
+  --shadow-sm: 0 2px 8px rgba(27,58,92,0.08);
+  --shadow-md: 0 8px 32px rgba(27,58,92,0.14);
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { height:100%; font-family:'DM Sans', sans-serif; background:var(--off-white); color:var(--navy); overscroll-behavior:none; }
+#app { min-height:100vh; display:flex; flex-direction:column; }
+.header { background:var(--navy); padding:0 20px; height:56px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; box-shadow:0 2px 12px rgba(0,0,0,0.3); position:relative; z-index:100; }
+.header-logo { display:flex; align-items:center; gap:10px; }
+.logo-mark { width:32px; height:32px; background:linear-gradient(135deg,var(--gold),var(--gold-light)); border-radius:6px; display:flex; align-items:center; justify-content:center; font-family:'Playfair Display',serif; font-weight:900; font-size:16px; color:var(--navy); }
+.logo-text { font-family:'Playfair Display', serif; font-weight:700; font-size:18px; color:var(--white); letter-spacing:0.5px; }
+.logo-sub { font-size:9px; color:var(--gold-light); letter-spacing:2px; text-transform:uppercase; display:block; margin-top:-3px; }
+.offline-badge { display:flex; align-items:center; gap:5px; background:rgba(200,146,58,0.15); border:1px solid rgba(200,146,58,0.3); border-radius:20px; padding:4px 10px; font-size:11px; color:var(--gold-light); font-weight:500; }
+.offline-dot { width:6px; height:6px; border-radius:50%; background:var(--gold-light); animation:pulse-dot 2s infinite; }
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+.content { flex:1; padding:16px; max-width:680px; margin:0 auto; width:100%; box-sizing:border-box; }
+.section-title { font-family:'Playfair Display', serif; font-size:20px; font-weight:700; color:var(--navy); margin-bottom:4px; }
+.section-sub { font-size:12.5px; color:var(--gray-600); margin-bottom:16px; }
+
+.card { background:var(--white); border-radius:var(--radius); padding:14px; margin-bottom:12px; box-shadow:var(--shadow-sm); }
+
+input[type=text] { width:100%; padding:10px 12px; border:1.5px solid var(--gray-200); border-radius:var(--radius-sm); font-family:'DM Sans',sans-serif; font-size:13px; box-sizing:border-box; }
+input[type=text]:focus { outline:none; border-color:var(--blue); }
+
+.folio-card { background:var(--white); border-radius:var(--radius); padding:14px 16px; margin-bottom:10px; box-shadow:var(--shadow-sm); cursor:pointer; transition:box-shadow .15s; border-left:4px solid var(--gray-200); }
+.folio-card:active { box-shadow:var(--shadow-md); }
+.folio-card.tiene-taller { border-left-color:var(--gold); }
+.folio-top { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; }
+.folio-num { font-family:'DM Mono',monospace; font-size:13px; font-weight:700; color:var(--navy); }
+.folio-cliente { font-size:14px; font-weight:600; color:var(--navy); margin-top:2px; }
+.folio-fecha { font-size:11px; color:var(--gray-400); margin-top:2px; }
+.folio-badge { font-size:10px; font-weight:700; padding:3px 9px; border-radius:20px; white-space:nowrap; }
+.folio-badge.si { background:rgba(200,146,58,0.14); color:var(--gold); }
+.folio-badge.no { background:var(--gray-100); color:var(--gray-400); }
+.folio-desc { font-size:12px; color:var(--gray-600); margin-top:6px; }
+
+.empty-state { text-align:center; padding:40px 20px; color:var(--gray-400); }
+.empty-icon { font-size:36px; margin-bottom:10px; }
+
+/* ── Detalle overlay ── */
+#detalle-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:600; }
+#detalle-panel { display:none; position:fixed; top:0; right:0; bottom:0; left:0; background:var(--off-white); z-index:700; overflow-y:auto; }
+.det-header { background:var(--navy); padding:14px 16px; display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:5; }
+.det-back { width:34px; height:34px; border-radius:50%; border:none; background:rgba(255,255,255,0.12); color:#fff; font-size:16px; cursor:pointer; flex-shrink:0; }
+.det-titulo { color:#fff; }
+.det-folio { font-family:'DM Mono',monospace; font-size:13px; font-weight:700; }
+.det-cliente { font-size:15px; font-weight:700; font-family:'Playfair Display',serif; }
+.det-body { padding:16px; max-width:680px; margin:0 auto; }
+
+.pieza-card { background:var(--white); border-radius:var(--radius); margin-bottom:14px; box-shadow:var(--shadow-sm); overflow:hidden; }
+.pieza-head { padding:14px 16px; background:linear-gradient(135deg,var(--navy),#24466E); color:#fff; display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.pieza-titulo { font-weight:700; font-size:14px; }
+.pieza-sub { font-size:11px; color:rgba(255,255,255,0.65); margin-top:2px; }
+.pieza-precio { font-family:'DM Mono',monospace; font-weight:700; font-size:13px; color:var(--gold-light); white-space:nowrap; }
+
+.ficha-sinDatos { padding:16px; text-align:center; color:var(--gray-400); font-size:12.5px; }
+
+.ficha-sec { padding:12px 16px; border-top:1px solid var(--gray-100); }
+.ficha-sec-header { font-size:11px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase; color:var(--gray-600); margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+.ficha-row { display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--gray-100); font-size:12.5px; gap:10px; }
+.ficha-row:last-child { border-bottom:none; }
+.ficha-clave { font-family:'DM Mono',monospace; font-weight:700; color:var(--navy); background:var(--gray-100); border-radius:5px; padding:1px 6px; font-size:11px; flex-shrink:0; }
+.ficha-desc { flex:1; color:var(--gray-600); }
+.ficha-val { font-family:'DM Mono',monospace; font-weight:700; color:var(--navy); text-align:right; white-space:nowrap; }
+.ficha-val small { display:block; font-weight:400; color:var(--gray-400); font-size:10px; }
+
+.vidrio-hero { background:rgba(200,146,58,0.06); border-left:3px solid var(--gold); border-radius:8px; padding:12px; margin-bottom:8px; }
+.vidrio-hero-label { font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--gray-400); margin-bottom:4px; }
+.vidrio-hero-medida { font-family:'DM Mono',monospace; font-size:22px; font-weight:700; color:var(--navy); }
+.vidrio-hero-sub { font-size:11px; color:var(--gray-400); margin-top:3px; }
+
+.taller-diagrama { display:flex; gap:16px; flex-wrap:wrap; align-items:center; }
+.taller-svg-wrap { flex-shrink:0; }
+.taller-medidas { display:flex; flex-wrap:wrap; gap:8px; flex:1; }
+.taller-medida-box { flex:1; min-width:100px; background:var(--off-white); border-radius:8px; padding:9px; text-align:center; }
+.taller-medida-label { font-size:10px; color:var(--gray-400); }
+.taller-medida-val { font-size:16px; font-weight:800; color:var(--navy); font-family:'DM Mono',monospace; }
+.taller-modo-tag { font-size:9px; color:var(--gray-400); margin-top:1px; }
+
+.btn-imprimir { width:100%; padding:11px; background:rgba(46,109,164,0.08); border:1.5px solid rgba(46,109,164,0.25); border-radius:var(--radius-sm); color:var(--blue); font-family:'DM Sans',sans-serif; font-size:12.5px; font-weight:700; cursor:pointer; margin-top:2px; }
+.btn-actualizar { padding:6px 10px; background:rgba(46,109,164,0.08); border:1.5px solid rgba(46,109,164,0.25); border-radius:8px; color:var(--blue); font-size:11px; font-weight:700; cursor:pointer; }
+
+.toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(10px); background:var(--navy); color:#fff; padding:10px 18px; border-radius:20px; font-size:13px; font-weight:600; opacity:0; transition:all .3s; z-index:999; white-space:nowrap; pointer-events:none; }
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+@media print {
+  .header, .content, #detalle-overlay, .det-header, .btn-imprimir, .det-back { display:none !important; }
+  #detalle-panel { position:static !important; background:#fff !important; }
+  #ficha-imprimible { display:block !important; }
+}
+#ficha-imprimible { display:none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="header">
+    <div class="header-logo">
+      <div class="logo-mark">B</div>
+      <div><span class="logo-text">BarrCan</span><span class="logo-sub">Taller · Fabricación</span></div>
+    </div>
+    <div class="offline-badge">
+      <div class="offline-dot"></div>
+      <span id="conn-status">Offline-First</span>
+    </div>
+  </div>
+
+  <div class="content">
+    <p class="section-title">🛠️ Taller</p>
+    <p class="section-sub">Consulta medidas de fabricación, vidrio y herrajes de presupuestos ya guardados — de cualquier cotizador.</p>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div style="font-weight:700;font-size:13px">Buscar presupuesto</div>
+        <button class="btn-actualizar" onclick="tlCargar()">Actualizar</button>
+      </div>
+      <input type="text" id="tl-buscar" placeholder="Buscar por folio o cliente..." oninput="tlFiltrar()">
+      <div id="tl-contador" style="font-size:11px;color:var(--gray-400);margin-top:8px"></div>
+    </div>
+
+    <div id="tl-lista">
+      <div class="empty-state"><div class="empty-icon">⏳</div>Cargando presupuestos…</div>
+    </div>
+  </div>
+</div>
+
+<!-- DETALLE -->
+<div id="detalle-overlay" onclick="tlCerrarDetalle()"></div>
+<div id="detalle-panel">
+  <div class="det-header">
+    <button class="det-back" onclick="tlCerrarDetalle()">←</button>
+    <div class="det-titulo">
+      <div class="det-folio" id="det-folio">—</div>
+      <div class="det-cliente" id="det-cliente">—</div>
+    </div>
+  </div>
+  <div class="det-body" id="det-body"></div>
+</div>
+
+<div id="ficha-imprimible"></div>
+
+<script>
+// ── Supabase ─────────────────────────────────────────────────────
+var SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co';
+var SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
+var _sbClient = null;
+function sb() {
+  if (!_sbClient && window.supabase) {
+    _sbClient = window.supabase.createClient(SB_URL, SB_KEY, {
+      db: { schema: 'barrcan' },
+      auth: { persistSession: true, storageKey: 'barrcan_auth' }
+    });
+  }
+  return _sbClient;
+}
+
+// ── Conexión ─────────────────────────────────────────────────────
+var APP_VERSION = 'v1.0';
+var SYNC = { online: navigator.onLine };
+function detectarConexion() {
+  var b = document.getElementById('conn-status');
+  if (b) b.textContent = (SYNC.online ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
+}
+window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); tlCargar(); });
+window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
+
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c) {
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+  });
+}
+function fmt(n) {
+  return Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits:0, maximumFractionDigits:2 });
+}
+function toast(msg, dur) {
+  dur = dur || 2600;
+  var el = document.getElementById('_toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = '_toast'; el.className = 'toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(el._t);
+  el._t = setTimeout(function() { el.classList.remove('show'); }, dur);
+}
+
+// Mapa de módulo -> etiqueta amigable (según serie de folio si no viene 'modulo')
+var MODULO_LABELS = {
+  cotizador_nacional:  'Nacional',
+  cotizador_espanol:   'Español',
+  cotizador_eurovent:  'Eurovent',
+  cotizador_servicios: 'Servicios',
+  cotizador_banos:     'Baños',
+  cotizador_stands:    'Stands'
+};
+function tlSerieFolio(folio) {
+  var m = /CACN-\d+([A-Z])-/.exec(folio || '');
+  if (m) return m[1];
+  if (/^STAN-/.test(folio || '')) return 'STAN';
+  if (/^REPG-/.test(folio || '')) return 'REPG';
+  return '';
+}
+var SERIE_LABELS = { A:'Baños', B:'Nacional', C:'Español', E:'Eurovent', S:'Servicios', STAN:'Stands', REPG:'Garantía' };
+function tlModuloLabel(row) {
+  if (row.modulo && MODULO_LABELS[row.modulo]) return MODULO_LABELS[row.modulo];
+  var serie = tlSerieFolio(row.folio);
+  return SERIE_LABELS[serie] || '—';
+}
+
+// ── Estado ───────────────────────────────────────────────────────
+var TL_CACHE = [];   // filas crudas de presupuestos_atrasados
+var TL_FILTRO = '';
+
+// ── Carga ────────────────────────────────────────────────────────
+async function tlCargar() {
+  var listaEl = document.getElementById('tl-lista');
+  if (!sb() || !SYNC.online) {
+    tlCargarLocal();
+    tlRender();
+    return;
+  }
+  try {
+    var res = await sb().from('presupuestos_atrasados')
+      .select('id,folio,cliente,tel,descripcion,monto,saldo,estado,fecha,modulo,notas_internas')
+      .order('fecha', { ascending: false })
+      .limit(400);
+    if (res.error) throw res.error;
+    TL_CACHE = res.data || [];
+    localStorage.setItem('barrcan_taller_cache', JSON.stringify(TL_CACHE));
+    localStorage.setItem('barrcan_taller_cache_ts', String(Date.now()));
+    tlRender();
+  } catch (e) {
+    console.warn('[Taller] Error cargando:', e.message);
+    tlCargarLocal();
+    tlRender();
+    toast('⚠️ Sin conexión — mostrando último caché');
+  }
+}
+function tlCargarLocal() {
+  try { TL_CACHE = JSON.parse(localStorage.getItem('barrcan_taller_cache') || '[]'); }
+  catch (e) { TL_CACHE = []; }
+}
+
+function tlFiltrar() {
+  TL_FILTRO = (document.getElementById('tl-buscar').value || '').toLowerCase().trim();
+  tlRender();
+}
+
+// ── ¿Esta fila tiene al menos una pieza con datos de fabricación? ──
+function tlPiezasDe(row) {
+  try {
+    var p = JSON.parse(row.notas_internas || '[]');
+    return Array.isArray(p) ? p : [];
+  } catch (e) { return []; }
+}
+function tlTieneFabricacion(r) {
+  if (!r) return false;
+  var cortes = (r.cortesCalc && r.cortesCalc.length) ? true : false;
+  var vidrio = !!(r.vidTipo && (r.anchoVid || r.altoVid));
+  var herrajes = (r.herrajesCalc && r.herrajesCalc.length) ? true : false;
+  var taller = !!r.taller;
+  return cortes || vidrio || herrajes || taller;
+}
+function tlFolioTieneFabricacion(row) {
+  var piezas = tlPiezasDe(row);
+  for (var i = 0; i < piezas.length; i++) {
+    if (tlTieneFabricacion(piezas[i].resultado)) return true;
+  }
+  return false;
+}
+
+// ── Render lista ─────────────────────────────────────────────────
+function tlRender() {
+  var el = document.getElementById('tl-lista');
+  var cont = document.getElementById('tl-contador');
+  var filas = TL_CACHE.slice();
+
+  if (TL_FILTRO) {
+    filas = filas.filter(function(r) {
+      return (r.folio || '').toLowerCase().indexOf(TL_FILTRO) >= 0 ||
+             (r.cliente || '').toLowerCase().indexOf(TL_FILTRO) >= 0;
+    });
+  }
+
+  if (filas.length === 0) {
+    el.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div>' +
+      (TL_FILTRO ? 'Sin resultados para "' + esc(TL_FILTRO) + '"' : 'Sin presupuestos guardados todavía') + '</div>';
+    cont.textContent = '';
+    return;
+  }
+
+  cont.textContent = filas.length + ' presupuesto' + (filas.length === 1 ? '' : 's');
+
+  el.innerHTML = filas.map(function(r) {
+    var piezas = tlPiezasDe(r);
+    var conFab = tlFolioTieneFabricacion(r);
+    var moduloLbl = tlModuloLabel(r);
+    return '<div class="folio-card ' + (conFab ? 'tiene-taller' : '') + '" onclick="tlAbrirDetalle(' + r.id + ')">' +
+      '<div class="folio-top">' +
+        '<div>' +
+          '<div class="folio-num">' + esc(r.folio || '(sin folio)') + ' <span style="color:var(--gray-400);font-weight:400">· ' + esc(moduloLbl) + '</span></div>' +
+          '<div class="folio-cliente">' + esc(r.cliente || 'Sin nombre') + '</div>' +
+          '<div class="folio-fecha">' + esc(r.fecha || '') + ' · ' + piezas.length + ' pieza' + (piezas.length === 1 ? '' : 's') + '</div>' +
+        '</div>' +
+        '<div class="folio-badge ' + (conFab ? 'si' : 'no') + '">' + (conFab ? '🛠️ Ficha' : 'Sin ficha') + '</div>' +
+      '</div>' +
+      (r.descripcion ? '<div class="folio-desc">' + esc(r.descripcion) + '</div>' : '') +
+    '</div>';
+  }).join('');
+}
+
+// ── Detalle ──────────────────────────────────────────────────────
+var TL_ROW_ACTUAL = null;
+
+function tlAbrirDetalle(id) {
+  var row = TL_CACHE.filter(function(r) { return r.id === id; })[0];
+  if (!row) return;
+  TL_ROW_ACTUAL = row;
+
+  document.getElementById('det-folio').textContent = row.folio || '(sin folio)';
+  document.getElementById('det-cliente').textContent = row.cliente || 'Sin nombre';
+
+  var piezas = tlPiezasDe(row);
+  var body = document.getElementById('det-body');
+
+  if (piezas.length === 0) {
+    body.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div>Este presupuesto no tiene piezas guardadas.</div>';
+  } else {
+    body.innerHTML = piezas.map(function(pz, idx) { return tlRenderFichaPieza(pz, idx); }).join('');
+  }
+
+  document.getElementById('detalle-overlay').style.display = 'block';
+  document.getElementById('detalle-panel').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+
+  // Dibujar diagramas SVG después de insertar el HTML
+  piezas.forEach(function(pz, idx) {
+    var r = pz.resultado;
+    if (r && r.taller) {
+      var svg = document.getElementById('taller-svg-' + idx);
+      if (svg) tlDibujarDiagrama(svg, r.taller.AP, r.taller.HP, r.taller.BM, r.taller.DB, r.taller.B);
+    }
+  });
+}
+
+function tlCerrarDetalle() {
+  document.getElementById('detalle-overlay').style.display = 'none';
+  document.getElementById('detalle-panel').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+// ── Ficha por pieza ──────────────────────────────────────────────
+function tlRenderFichaPieza(pz, idx) {
+  var r = pz.resultado || {};
+  var titulo = (r.sistema || pz.label || 'Pieza ' + (idx + 1));
+  var sub = (r.serie ? r.serie + ' · ' : '') + (r.L && r.H ? r.L + '×' + r.H + ' mm' : '');
+  var precio = pz.precio || pz.precioUnitario || 0;
+
+  var html = '<div class="pieza-card" id="pieza-card-' + idx + '">' +
+    '<div class="pieza-head">' +
+      '<div><div class="pieza-titulo">' + esc(titulo) + '</div>' +
+      (sub ? '<div class="pieza-sub">' + esc(sub) + '</div>' : '') + '</div>' +
+      '<div class="pieza-precio">$' + fmt(precio) + '</div>' +
+    '</div>';
+
+  if (!tlTieneFabricacion(r)) {
+    html += '<div class="ficha-sinDatos">Sin datos de fabricación para esta pieza (servicio, mantenimiento o partida manual).</div></div>';
+    return html;
+  }
+
+  // ── Cortes de aluminio ──
+  if (r.cortesCalc && r.cortesCalc.length) {
+    html += '<div class="ficha-sec"><div class="ficha-sec-header">✂️ Cortes de aluminio</div>';
+    r.cortesCalc.forEach(function(c) {
+      html += '<div class="ficha-row">' +
+        '<span class="ficha-clave">' + esc(c.clave) + '</span>' +
+        '<span class="ficha-desc">' + esc(c.nombre) + '<br><small style="color:var(--gray-400)">' + c.cant + '× pzas</small></span>' +
+        '<span class="ficha-val">' + Math.round(c.mm) + ' mm<small>' + (c.pesoKg ? c.pesoKg.toFixed(2) + ' kg' : '') + '</small></span>' +
+      '</div>';
+    });
+    html += '</div>';
+  }
+
+  // ── Vidrio ──
+  if (r.vidTipo && (r.anchoVid || r.altoVid)) {
+    html += '<div class="ficha-sec"><div class="ficha-sec-header">🔲 Orden de vidrio — proveedor</div>' +
+      '<div class="vidrio-hero">' +
+        '<div class="vidrio-hero-label">Medidas netas a fabricar</div>' +
+        '<div class="vidrio-hero-medida">' + Math.round(r.anchoVid) + ' × ' + Math.round(r.altoVid) + ' <small style="font-size:13px;color:var(--gray-400);font-weight:400">mm</small></div>' +
+        '<div class="vidrio-hero-sub">' + esc(r.vidTipo) + (r.vidCant ? ' · ' + r.vidCant + ' pza(s)' : '') + (r.m2Vidrio ? ' · ' + r.m2Vidrio + ' m²' : '') + '</div>' +
+      '</div>' +
+      (r.pesoVidrio ? '<div class="ficha-row"><span class="ficha-desc">Peso vidrio instalado</span><span class="ficha-val">' + Number(r.pesoVidrio).toFixed(1) + ' kg</span></div>' : '') +
+    '</div>';
+  }
+
+  // ── Herrajes ──
+  if (r.herrajesCalc && r.herrajesCalc.length) {
+    html += '<div class="ficha-sec"><div class="ficha-sec-header">🔩 Herrajes a extraer del inventario</div>';
+    r.herrajesCalc.forEach(function(h) {
+      html += '<div class="ficha-row">' +
+        '<span class="ficha-clave">' + esc(h.cod) + '</span>' +
+        '<span class="ficha-desc">' + esc(h.desc) + '</span>' +
+        '<span class="ficha-val">' + h.cant + '<small>pz/ml</small></span>' +
+      '</div>';
+    });
+    html += '</div>';
+  }
+
+  // ── Diagrama Taller (Baños Frameless) ──
+  if (r.taller) {
+    var t = r.taller;
+    html += '<div class="ficha-sec"><div class="ficha-sec-header">📐 Diagrama de fabricación (Frameless)</div>' +
+      '<div class="taller-diagrama">' +
+        '<div class="taller-svg-wrap"><svg id="taller-svg-' + idx + '" width="260" height="290" viewBox="0 0 260 290"></svg></div>' +
+        '<div class="taller-medidas">' +
+          '<div class="taller-medida-box"><div class="taller-medida-label">Ancho pieza (AP)</div><div class="taller-medida-val">' + t.AP + ' mm</div></div>' +
+          '<div class="taller-medida-box"><div class="taller-medida-label">Alto pieza (HP)</div><div class="taller-medida-val">' + t.HP + ' mm</div></div>' +
+          '<div class="taller-medida-box"><div class="taller-medida-label">Saque bisagra (BM)</div><div class="taller-medida-val">' + t.BM + ' mm</div><div class="taller-modo-tag">' + (t.modoBM === 'estandar' ? 'Estándar' : 'Personalizado') + '</div></div>' +
+          '<div class="taller-medida-box"><div class="taller-medida-label">Barreno jaladera (DB)</div><div class="taller-medida-val">' + t.DB + ' mm</div><div class="taller-modo-tag">' + (t.modoDB === 'estandar' ? 'Estándar (centrado)' : 'Personalizado') + '</div></div>' +
+          '<div class="taller-medida-box"><div class="taller-medida-label">Distancia B</div><div class="taller-medida-val">' + t.B + ' mm</div><div class="taller-modo-tag">Referencia · pend. catálogo herrajes</div></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  html += '<div style="padding:10px 16px 14px"><button class="btn-imprimir" onclick="tlImprimirFicha(' + idx + ')">🖨️ Imprimir esta ficha</button></div>';
+  html += '</div>';
+  return html;
+}
+
+// ── Diagrama SVG (idéntico a cbDibujarTaller de cotizador_banos.html) ──
+function tlDibujarDiagrama(svg, AP, HP, BM, DB, Bh) {
+  if (!svg) return;
+  var escala = Math.min(200 / AP, 260 / HP);
+  var w = AP * escala, h = HP * escala;
+  var ox = (260 - w) / 2, oy = 30;
+
+  var bmY1 = oy + Math.min(BM * escala, h * 0.35);
+  var bmY2 = oy + h - Math.min(BM * escala, h * 0.35);
+  var dbY  = oy + Math.min(Math.max(DB * escala, 8), h - 8);
+  var bX   = ox + w - Math.min(Math.max(Bh * escala, 8), w - 8);
+
+  svg.innerHTML =
+    '<rect x="' + ox + '" y="' + oy + '" width="' + w + '" height="' + h + '" fill="#F0F4F8" stroke="#1B3A5C" stroke-width="2"/>' +
+    '<rect x="' + (ox - 6) + '" y="' + (bmY1 - 5) + '" width="10" height="10" fill="none" stroke="#2E6DA4" stroke-width="1.5"/>' +
+    '<rect x="' + (ox - 6) + '" y="' + (bmY2 - 5) + '" width="10" height="10" fill="none" stroke="#2E6DA4" stroke-width="1.5"/>' +
+    '<text x="' + (ox - 10) + '" y="' + (bmY1 - 8) + '" font-size="9" fill="#2E6DA4" text-anchor="end">BM</text>' +
+    '<text x="' + (ox - 10) + '" y="' + (bmY2 + 16) + '" font-size="9" fill="#2E6DA4" text-anchor="end">BM</text>' +
+    '<circle cx="' + bX + '" cy="' + dbY + '" r="5" fill="none" stroke="#C8923A" stroke-width="1.5"/>' +
+    '<text x="' + (bX + 10) + '" y="' + (dbY + 3) + '" font-size="9" fill="#C8923A">B</text>' +
+    '<text x="' + (ox + w / 2) + '" y="' + (oy - 10) + '" font-size="11" font-weight="700" fill="#1B3A5C" text-anchor="middle">' + AP + ' mm</text>' +
+    '<text x="' + (ox - 24) + '" y="' + (oy + h / 2) + '" font-size="11" font-weight="700" fill="#1B3A5C" text-anchor="middle" transform="rotate(-90 ' + (ox - 24) + ' ' + (oy + h / 2) + ')">' + HP + ' mm</text>';
+}
+
+// ── Imprimir ficha individual ────────────────────────────────────
+function tlImprimirFicha(idx) {
+  var card = document.getElementById('pieza-card-' + idx);
+  var dest = document.getElementById('ficha-imprimible');
+  if (!card || !dest || !TL_ROW_ACTUAL) return;
+  dest.innerHTML =
+    '<div style="padding:24px;font-family:DM Sans,sans-serif;color:#1B3A5C">' +
+      '<div style="font-family:Playfair Display,serif;font-size:20px;font-weight:700;margin-bottom:2px">BarrCan · Ficha de Taller</div>' +
+      '<div style="font-family:DM Mono,monospace;font-size:13px;color:#5A5652;margin-bottom:16px">' +
+        esc(TL_ROW_ACTUAL.folio || '') + ' · ' + esc(TL_ROW_ACTUAL.cliente || '') + ' · ' + esc(TL_ROW_ACTUAL.fecha || '') +
+      '</div>' +
+      card.outerHTML +
+    '</div>';
+  setTimeout(function() { window.print(); }, 150);
+}
+
+// ── Init ─────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  detectarConexion();
+  tlCargarLocal();
+  tlRender();
+  tlCargar();
+});
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('./barrcan_sw.js').catch(function(){});
+  });
+}
+</script>
+</body>
+</html>
