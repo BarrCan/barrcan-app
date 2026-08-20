@@ -6,6 +6,17 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.10
+  FECHA   : 2026-08-20
+  v1.10 - Nuevo campo "¿Qué se compró?" en el gasto manual/sin
+    comprobante -- antes solo existía la categoría (ej. HERRAMIENTAS),
+    pero no había forma de saber qué artículo real fue sin abrir el
+    XML/PDF (que en "sin comprobante" ni siquiera existe). Obligatorio
+    en "Gasto sin comprobante", opcional en factura manual. Se muestra
+    en la tarjeta de cada factura en la lista.
+    Requiere columna nueva en Supabase:
+      ALTER TABLE barrcan.facturas_recibidas
+      ADD COLUMN IF NOT EXISTS descripcion text;
   VERSION : v1.9.1
   v1.9.1 - Filtro nuevo "Con y sin comprobante / Solo con comprobante
     (deducibles) / Solo sin comprobante" en la lista de facturas --
@@ -455,6 +466,9 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     <div id="mc-xml-status" style="display:none;font-size:11px;color:var(--green);margin:-8px 0 12px"></div>
 
     <div id="mc-manual-campos" style="display:none">
+      <label id="mc-man-desc-label" style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;display:block">&iquest;Qu&eacute; se compr&oacute;? *</label>
+      <input type="text" class="form-input" id="mc-man-desc" placeholder="Ej: 2 botes de silic&oacute;n, 1 caja de tornillos autorroscantes" style="margin-bottom:12px">
+
       <label id="mc-man-proveedor-label" style="font-size:12px;font-weight:600;color:var(--navy);margin-bottom:4px;display:block">Proveedor *</label>
       <input type="text" class="form-input" id="mc-man-proveedor" placeholder="Ej: Shopify International Limited" style="margin-bottom:12px">
 
@@ -567,7 +581,7 @@ var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
 
-var APP_VERSION = 'v1.9.1';
+var APP_VERSION = 'v1.10';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -692,7 +706,7 @@ async function cmpCargarFacturas() {
     document.getElementById('fact-periodo-nav').style.display = PERIODO.tipo === 'todo' ? 'none' : 'flex';
 
     var q = sb().from('facturas_recibidas')
-      .select('id,fecha,rfc_emisor,proveedor,folio_factura,categoria,folio_obra,desglosada,subtotal,iva,total,con_comprobante')
+      .select('id,fecha,rfc_emisor,proveedor,folio_factura,categoria,folio_obra,desglosada,subtotal,iva,total,con_comprobante,descripcion')
       .order('fecha', { ascending: false });
     if (rango.desde) q = q.gte('fecha', rango.desde);
     if (rango.hasta) q = q.lte('fecha', rango.hasta);
@@ -779,6 +793,7 @@ function cmpFiltrarFacturas() {
       + '<div>'
       + '<div class="row-folio">' + esc(f.folio_factura||'—') + '</div>'
       + '<div class="row-prov">' + esc(f.proveedor||'—') + '</div>'
+      + (f.descripcion ? '<div style="font-size:11px;color:var(--gray-600);margin-top:2px">📝 ' + esc(f.descripcion) + '</div>' : '')
       + '<div style="margin-top:3px">'
       + '<span class="badge-cat ' + catClass(f.categoria) + '">' + esc(f.categoria||'—') + '</span>'
       + (f.con_comprobante === false ? ' <span style="display:inline-block;background:rgba(142,68,173,.12);color:#8E44AD;font-size:9px;font-weight:800;padding:2px 6px;border-radius:8px;vertical-align:middle">SIN COMPROBANTE</span>' : '')
@@ -954,10 +969,13 @@ function cmpAbrirManual() {
   document.getElementById('mc-man-folio-wrap').style.display = 'block';
   document.getElementById('mc-man-pdf-wrap').style.display = 'block';
   document.getElementById('mc-man-recurrente-wrap').style.display = 'block';
+  document.getElementById('mc-man-desc-label').textContent = '¿Qué se compró? (opcional)';
+  document.getElementById('mc-man-desc').placeholder = 'Ej: material de oficina, licencia anual, etc.';
   document.getElementById('mc-man-proveedor-label').textContent = 'Proveedor *';
   document.getElementById('mc-man-proveedor').placeholder = 'Ej: Shopify International Limited';
   document.getElementById('mc-rfc-wrap').style.display = 'block';
 
+  document.getElementById('mc-man-desc').value = '';
   document.getElementById('mc-man-proveedor').value = '';
   document.getElementById('mc-man-fecha').value = new Date().toISOString().split('T')[0];
   document.getElementById('mc-man-folio').value = '';
@@ -1000,9 +1018,12 @@ function cmpAbrirSinComprobante() {
   document.getElementById('mc-man-folio-wrap').style.display = 'none';
   document.getElementById('mc-man-pdf-wrap').style.display = 'none';
   document.getElementById('mc-man-recurrente-wrap').style.display = 'none';
+  document.getElementById('mc-man-desc-label').textContent = '¿Qué se compró? *';
+  document.getElementById('mc-man-desc').placeholder = 'Ej: 2 botes de silicón, 1 caja de tornillos autorroscantes';
   document.getElementById('mc-man-proveedor-label').textContent = '¿Dónde compraste? (opcional)';
   document.getElementById('mc-man-proveedor').placeholder = 'Ej: Ferretería La Esquina';
 
+  document.getElementById('mc-man-desc').value = '';
   document.getElementById('mc-man-proveedor').value = '';
   document.getElementById('mc-man-fecha').value = new Date().toISOString().split('T')[0];
   document.getElementById('mc-man-folio').value = '';
@@ -1203,6 +1224,7 @@ async function cmpGuardarClasificacion() {
   }
 
   if (MC_MODO_MANUAL) {
+    var descGasto = document.getElementById('mc-man-desc').value.trim();
     var proveedor = document.getElementById('mc-man-proveedor').value.trim();
     var fecha = document.getElementById('mc-man-fecha').value;
     var folioFactura = MC_SIN_COMPROBANTE ? null : (document.getElementById('mc-man-folio').value.trim() || null);
@@ -1210,6 +1232,7 @@ async function cmpGuardarClasificacion() {
     var moneda = document.getElementById('mc-man-moneda').value;
     var recurrente = MC_SIN_COMPROBANTE ? false : document.getElementById('mc-man-recurrente').checked;
     if (!MC_SIN_COMPROBANTE && !proveedor) { toast('Falta el nombre del proveedor'); return; }
+    if (MC_SIN_COMPROBANTE && !descGasto) { toast('Describe qué se compró'); return; }
     if (!fecha) { toast('Falta la fecha'); return; }
     if (!total || total <= 0) { toast('Falta el total'); return; }
 
@@ -1232,7 +1255,8 @@ async function cmpGuardarClasificacion() {
         desglosada: esDesglose, procesada: true,
         archivo_url: archivo_url, archivo_nombre: archivo_nombre,
         origen: MC_SIN_COMPROBANTE ? 'sin_comprobante' : 'manual_pdf',
-        con_comprobante: !MC_SIN_COMPROBANTE
+        con_comprobante: !MC_SIN_COMPROBANTE,
+        descripcion: descGasto || null
       };
       var insRes = await sb().from('facturas_recibidas').insert([payloadManual]).select().single();
       if (insRes.error) throw insRes.error;
