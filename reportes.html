@@ -6,6 +6,14 @@
 <title>BarrCan · Reportes</title>
 <!--
   BARRCAN · MODULO: REPORTES (standalone)
+  VERSION : v1.7
+  FECHA   : 2026-08-18
+  v1.7 - El reporte imprimible por proyecto ("Ganancia" → 🖨️
+    Imprimir reporte de gasto) ahora también incluye los pagos de
+    personal eventual ligados a ese folio (pagos_eventuales,
+    folio_relacionado) -- marcados con 👷 para distinguirlos del
+    material. El total ya dice "TOTAL" en vez de "TOTAL MATERIAL",
+    porque ahora suma ambos.
   VERSION : v1.6
   FECHA   : 2026-08-15
   v1.6 - Botón "🖨️ Imprimir reporte de gasto" en cada obra (pestaña
@@ -285,7 +293,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 </div>
 </body>
 <script>
-var APP_VERSION = 'v1.6';
+var APP_VERSION = 'v1.7';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb=null;
@@ -493,6 +501,11 @@ async function rpImprimirReporteObra(folio) {
     if (resFact.error) throw resFact.error;
     if (resConc.error) throw resConc.error;
 
+    var resEvent = await sb().from('pagos_eventuales')
+      .select('nombre,fecha,evento,monto,notas')
+      .eq('folio_relacionado', folio);
+    if (resEvent.error) console.warn('[BarrCan] No se pudo cargar personal eventual del proyecto:', resEvent.error);
+
     var idsFacturasConcepto = (resConc.data || []).map(function(c) { return c.factura_id; }).filter(function(v, i, a) { return v && a.indexOf(v) === i; });
     var mapaFacturas = {};
     if (idsFacturasConcepto.length) {
@@ -507,6 +520,9 @@ async function rpImprimirReporteObra(folio) {
     (resConc.data || []).forEach(function(c) {
       var f = mapaFacturas[c.factura_id] || {};
       filas.push({ fecha: f.fecha, proveedor: f.proveedor, descripcion: c.descripcion, cantidad: c.cantidad, precio_unitario: c.precio_unitario, importe: parseFloat(c.importe || 0), moneda: 'MXN' });
+    });
+    (resEvent.data || []).forEach(function(ev) {
+      filas.push({ fecha: ev.fecha, proveedor: '👷 ' + (ev.nombre || 'Personal eventual'), descripcion: ev.evento || (ev.notas || 'Pago de personal eventual'), importe: parseFloat(ev.monto || 0), moneda: 'MXN' });
     });
     filas.sort(function(a, b) { return (a.fecha || '') < (b.fecha || '') ? -1 : 1; });
 
@@ -544,7 +560,7 @@ async function rpImprimirReporteObra(folio) {
       + '<div style="font-size:9pt;color:#666;margin-bottom:10px">Generado el ' + hoy + '</div>'
       + '<table><thead><tr><th>Fecha</th><th>Proveedor</th><th>Concepto</th><th style="text-align:center">Cant. \u00d7 P.U.</th><th style="text-align:right">Importe</th></tr></thead>'
       + '<tbody>' + filasHtml + '</tbody></table>'
-      + '<div style="display:flex;justify-content:flex-end;padding-top:14px;font-size:13pt;font-weight:900;color:#1B3A5C">TOTAL MATERIAL: $' + total.toLocaleString('es-MX', {minimumFractionDigits:2}) + '</div>'
+      + '<div style="display:flex;justify-content:flex-end;padding-top:14px;font-size:13pt;font-weight:900;color:#1B3A5C">TOTAL: $' + total.toLocaleString('es-MX', {minimumFractionDigits:2}) + '</div>'
       + '</div></body></html>';
 
     var w = window.open('', '_blank');
