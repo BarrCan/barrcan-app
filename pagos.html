@@ -6,6 +6,27 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.8
+  FECHA   : 2026-08-20
+  v4.8 — FIX: presupuestos "entregado" con saldo pendiente desaparecían
+    del dropdown de pagos + pregunta de entrega al liquidar:
+    - FIX: ESTADOS_CON_SALDO no incluía 'entregado' -- en cuanto un
+      presupuesto pasaba a entregado/instalado, se volvía invisible
+      para pagos.html aunque siguiera con saldo real > 0. Caso típico:
+      se entrega/instala pero el cliente (empresa) paga después por
+      trámite administrativo (transferencia, cuenta corporativa). Se
+      agregó 'entregado' a la lista para que sigan apareciendo.
+    - Nuevo: al registrar un pago (individual o múltiple) que deja el
+      saldo en $0, ya no se asume automáticamente "pendiente_entrega"
+      -- se pregunta si el trabajo ya fue entregado/instalado. Antes
+      esto podía revertir por error un presupuesto que en realidad ya
+      estaba entregado, solo porque el pago llegó tarde.
+    - Requiere columna nueva en Supabase:
+      ALTER TABLE barrcan.presupuestos_atrasados
+      ADD COLUMN IF NOT EXISTS nota_pago_pendiente text;
+      (se llena desde entregas.html cuando se entrega sin cobrar por
+      trámite administrativo, y se limpia sola aquí cuando el pago
+      finalmente se registra).
   VERSIÓN : v4.7
   FECHA   : 2026-08-07
   v4.7 — FIX: logo del header roto (base64 corrupto):
@@ -993,7 +1014,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.7';
+var APP_VERSION = 'v4.8';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -1050,10 +1071,17 @@ var _LOGO_ICONO_B64 = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA
 var _LOGO_SRC   = '';
 var _PAGO_FOTO  = null;
 var _EDIT_FOTO;
-var ESTADOS_CON_SALDO = ['activo', 'aprobado', 'en_produccion', 'pendiente_entrega'];
+// FIX v4.8: 'entregado' se agregó a esta lista -- antes, en cuanto un
+// presupuesto pasaba a 'entregado' (instalado) desaparecía por completo
+// del dropdown de pagos, aunque siguiera con saldo real pendiente (caso
+// típico: se entrega/instala pero el pago queda pendiente por trámite
+// administrativo -- transferencia o cuenta de una empresa). Ahora sigue
+// apareciendo mientras tenga saldo > 0, sin importar si ya se entregó.
+var ESTADOS_CON_SALDO = ['activo', 'aprobado', 'en_produccion', 'pendiente_entrega', 'entregado'];
 var ESTADO_SHORT = {
   activo: 'Activo', aprobado: 'Aprobado',
-  en_produccion: 'En prod.', pendiente_entrega: 'Pend. entrega'
+  en_produccion: 'En prod.', pendiente_entrega: 'Pend. entrega',
+  entregado: 'Entregado'
 };
 var CONCEPTO_L = { anticipo: 'Anticipo 50%', segundo_pago: '2\u00b0 Pago 35%', liquidacion: 'Liquidaci\u00f3n 15%', pago_total: 'Pago total', otro: 'Otro' };
 var FORMA_E    = { transferencia: 'Transf.', efectivo: 'Efectivo', tarjeta: 'Tarjeta' };
@@ -1146,7 +1174,7 @@ function cargarPresDropdown() {
 
   if (!sb()) return;
   sb().from('presupuestos_atrasados')
-    .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,estado')
+    .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,estado,nota_pago_pendiente')
     .in('estado', ESTADOS_CON_SALDO)
     .order('folio', { ascending: true }).limit(200)
     .then(async function(result) {
@@ -1183,7 +1211,8 @@ function llenarDrop(lista) {
     var o = document.createElement('option');
     o.value = p.id;
     var est = ESTADO_SHORT[p.estado] ? ' [' + ESTADO_SHORT[p.estado] + ']' : '';
-    o.textContent = (p.folio || '') + est + ' · ' + p.cliente + ' · Saldo $' + fmt(p.saldo || 0);
+    var admin = p.nota_pago_pendiente ? ' ⚠️ Pago admin. pendiente' : '';
+    o.textContent = (p.folio || '') + est + ' · ' + p.cliente + ' · Saldo $' + fmt(p.saldo || 0) + admin;
     o.dataset.p = JSON.stringify(p);
     sel.appendChild(o);
   });
@@ -1593,12 +1622,24 @@ async function pagoGuardarMultiple() {
     var result = await sb().from('pagos').insert(lineas.map(function(l) { return l.db; }));
     if (result.error) throw result.error;
 
+    // Si alguno de los proyectos queda en $0 y todavía no estaba marcado
+    // "entregado", se pregunta UNA sola vez (no por cada folio) si esos ya
+    // se entregaron/instalaron -- mismo caso que en el pago individual:
+    // puede ser un pago atrasado por trámite administrativo de un cliente
+    // cuyo trabajo ya se había entregado.
+    var hayLiquidadosPorPreguntar = lineas.some(function(l) { return l.saldoNuevo <= 0 && l.presEstado !== 'entregado'; });
+    var marcarEntregados = hayLiquidadosPorPreguntar
+      ? confirm('Uno o más proyectos quedan con saldo $0 tras este pago.\n\n¿Esos proyectos ya fueron entregados/instalados?')
+      : false;
+
     for (var j = 0; j < lineas.length; j++) {
       var l = lineas[j];
       var nuevoEstado = l.presEstado === 'entregado' ? 'entregado'
-        : l.saldoNuevo <= 0 ? 'pendiente_entrega'
+        : l.saldoNuevo <= 0 ? (marcarEntregados ? 'entregado' : 'pendiente_entrega')
         : (l.presEstado === 'activo' ? 'aprobado' : l.presEstado);
-      await sb().from('presupuestos_atrasados').update({ saldo: l.saldoNuevo, estado: nuevoEstado }).eq('id', l.presId);
+      var updatePayload = { saldo: l.saldoNuevo, estado: nuevoEstado };
+      if (l.saldoNuevo <= 0) updatePayload.nota_pago_pendiente = null;
+      await sb().from('presupuestos_atrasados').update(updatePayload).eq('id', l.presId);
     }
 
     toast('Pago $' + fmt(total) + ' repartido entre ' + ids.length + ' proyectos \u00b7 Recibo ' + folioRB);
@@ -1716,13 +1757,29 @@ async function pagoGuardar() {
     resetPaginacion();
 
     if (PRES_SEL && PRES_SEL.id && sb()) {
-      var nuevoEstado = PRES_SEL.estado === 'entregado' ? 'entregado'
-        : saldo <= 0 ? 'pendiente_entrega'
-        : PRES_SEL.estado === 'activo' ? 'aprobado'
-        : PRES_SEL.estado;
+      var nuevoEstado;
+      if (PRES_SEL.estado === 'entregado') {
+        nuevoEstado = 'entregado';
+      } else if (saldo <= 0) {
+        // Este pago deja el saldo en $0 -- antes se asumía automáticamente
+        // que faltaba la entrega/instalación (pendiente_entrega). Ahora se
+        // pregunta, porque puede ser al revés: ya se entregó hace tiempo y
+        // el pago venía atrasado por trámite administrativo (transferencia
+        // o cuenta de una empresa) -- en ese caso el estado real ya es
+        // "entregado", no "pendiente de entrega".
+        nuevoEstado = confirm('Este pago deja el saldo en $0.\n\n¿Este trabajo ya fue entregado/instalado?')
+          ? 'entregado' : 'pendiente_entrega';
+      } else {
+        nuevoEstado = PRES_SEL.estado === 'activo' ? 'aprobado' : PRES_SEL.estado;
+      }
+
+      var updatePayload = { saldo: saldo, estado: nuevoEstado };
+      // Si con este pago el saldo queda en $0, el pago administrativo
+      // pendiente (si lo había) ya se resolvió -- se limpia la nota.
+      if (saldo <= 0) updatePayload.nota_pago_pendiente = null;
 
       await sb().from('presupuestos_atrasados')
-        .update({ saldo: saldo, estado: nuevoEstado })
+        .update(updatePayload)
         .eq('id', PRES_SEL.id);
 
       PRES_SEL.saldo = saldo;
