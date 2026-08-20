@@ -6,6 +6,13 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v2.4
+  FECHA   : 2026-08-20
+  v2.4 - Agregada la tarjeta del nuevo módulo taller.html al grupo
+    "Operación" (visible para supremo, admin, tecnico y taller): permite
+    consultar la ficha de fabricación (cortes, vidrio, herrajes y
+    diagrama BM/DB para Frameless) de cualquier presupuesto ya guardado,
+    de cualquier cotizador.
   VERSION : v2.3
   v2.3 - Alerta de "requiere seguimiento" en las tarjetas de Visitas y
     Entregas (mismo patrón que la de Garantías): cuando un técnico
@@ -252,6 +259,7 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
       <a class="modulo-card" href="garantias.html" data-roles="supremo,admin" id="card-garantias" style="position:relative"><div class="modulo-icono">🛡️</div><div class="modulo-nombre">Garantías</div><div class="modulo-desc">Tickets de postventa</div><div id="badge-garantias" style="display:none;position:absolute;top:8px;right:8px;background:var(--red,#C0392B);color:#fff;font-size:11px;font-weight:800;padding:2px 7px;border-radius:10px;min-width:18px;text-align:center"></div></a>
       <a class="modulo-card" href="ordenes.html" data-roles="supremo,admin,tecnico,taller"><div class="modulo-icono">🛠️</div><div class="modulo-nombre">Órdenes</div><div class="modulo-desc">Asignar instalación</div></a>
       <a class="modulo-card" href="entregas.html" data-roles="supremo,admin,tecnico,taller" id="card-entregas" style="position:relative"><div class="modulo-icono">📦</div><div class="modulo-nombre">Entregas</div><div class="modulo-desc">Comprobantes</div><div id="badge-entregas" style="display:none;position:absolute;top:8px;right:8px;background:var(--gold,#C8923A);color:#fff;font-size:11px;font-weight:800;padding:2px 7px;border-radius:10px;min-width:18px;text-align:center"></div></a>
+      <a class="modulo-card" href="taller.html" data-roles="supremo,admin,tecnico,taller"><div class="modulo-icono">📐</div><div class="modulo-nombre">Taller</div><div class="modulo-desc">Fichas de fabricación</div></a>
       <a class="modulo-card" href="tecnicos.html" data-roles="supremo"><div class="modulo-icono">👷</div><div class="modulo-nombre">Técnicos</div><div class="modulo-desc">Equipo y pagos</div></a>
       <a class="modulo-card" href="config.html" data-roles="supremo"><div class="modulo-icono">⚙️</div><div class="modulo-nombre">Config. Precios</div><div class="modulo-desc">Materiales y márgenes base</div></a>
     </div>
@@ -354,7 +362,7 @@ function sb(){
 }
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
-var APP_VERSION = 'v2.3';
+var APP_VERSION = 'v2.4';
 var USUARIOS = [];
 var USUARIO_SEL = null;   // el que se está tratando de loguear
 var PIN_BUFFER = '';
