@@ -6,6 +6,29 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.41.0
+  FECHA   : 2026-08-20
+  v3.41.0 - Nueva opción "¿Cobrar saldo?" -> "Pendiente — trámite
+    administrativo": para cuando se entrega/instala sin cobrar porque
+    el cliente (empresa) paga después por transferencia o cuenta
+    corporativa. Al elegirla:
+      - Aparece un campo de nota (prellenado, editable) que se
+        imprime en el comprobante en vez de la leyenda genérica de
+        "saldo pendiente, no cobrado".
+      - El presupuesto vinculado se marca como "entregado" en
+        presupuestos_atrasados (si venía de un folio real) SIN tocar
+        el saldo, y se guarda la nota en la nueva columna
+        nota_pago_pendiente. Es best-effort: si falla o está offline,
+        no bloquea el guardado del comprobante.
+    Antes esta pantalla nunca tocaba presupuestos_atrasados -- el
+    "cobrar saldo" solo quedaba impreso en el comprobante, sin
+    reflejarse en el sistema real de saldos/pagos.
+    Requiere columna nueva en Supabase (misma de pagos.html v4.8):
+      ALTER TABLE barrcan.presupuestos_atrasados
+      ADD COLUMN IF NOT EXISTS nota_pago_pendiente text;
+    Se conectó tanto en el flujo simple (puerta/envío/mantenimiento)
+    como en el de Instalación, que antes ni siquiera leía el selector
+    de cobro.
   VERSION : v3.40.2
   v3.40.2 - FIX importante: la casilla "Requiere seguimiento" guardaba
     la bandera, pero no existía forma de apagarla -- se hubiera
@@ -1821,6 +1844,7 @@ body{min-height:100vh}
           <select id="ent-aplica-cobro" class="form-select" onchange="entToggleCobro()">
             <option value="no">No &mdash; ya est&aacute; liquidado</option>
             <option value="si">S&iacute; &mdash; cobrar saldo</option>
+            <option value="pendiente_admin">Pendiente &mdash; tr&aacute;mite administrativo</option>
           </select>
         </div>
         <div class="form-group" id="ent-monto-group" style="margin-bottom:0;display:none">
@@ -1829,6 +1853,14 @@ body{min-height:100vh}
             <input type="number" id="ent-monto" class="form-input" inputmode="decimal" placeholder="0">
             <span class="unit-label">$</span>
           </div>
+        </div>
+      </div>
+      <div id="ent-pago-admin-group" style="display:none;margin-top:10px">
+        <label class="form-label">Nota de pago pendiente</label>
+        <textarea id="ent-pago-admin-nota" class="form-input" rows="2" style="resize:none"
+          placeholder="Ej: se paga por transferencia despu&eacute;s, tr&aacute;mite administrativo de la empresa"></textarea>
+        <div style="font-size:10.5px;color:var(--gray-400);margin-top:4px">
+          Se entrega/instala sin cobrar todav&iacute;a. El presupuesto queda marcado como "entregado" pero sigue apareciendo en Pagos con esta nota hasta que se registre el cobro.
         </div>
       </div>
     </div>
@@ -2070,7 +2102,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.40.2';
+var APP_VERSION = 'v3.41.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -2641,9 +2673,39 @@ function entLimpiarFirma() {
   if (c && ENT_FIRMA_CTX) ENT_FIRMA_CTX.clearRect(0, 0, c.width, c.height);
 }
 
+// ── Pago pendiente por trámite administrativo ──────────────────────
+// Cuando se entrega/instala sin cobrar porque el pago lo hace la
+// empresa después (transferencia, cuenta corporativa), el presupuesto
+// se marca como "entregado" YA -- porque físicamente sí se entregó --
+// pero el saldo NO se toca (sigue siendo el saldo real pendiente) y se
+// guarda una nota visible. Gracias al fix de pagos.html v4.8, un
+// presupuesto "entregado" con saldo > 0 sigue apareciendo ahí para
+// poder registrar el cobro en cuanto llegue. Es "best effort": si
+// falla, no bloquea ni revierte el guardado del comprobante/reporte.
+function entMarcarPagoAdminPendiente(activo, nota) {
+  if (!activo) return;
+  if (!INST_DATOS_FOLIO || !INST_DATOS_FOLIO.id) return;
+  if (!sb() || !SYNC.online) return;
+  sb().from('presupuestos_atrasados')
+    .update({ estado: 'entregado', nota_pago_pendiente: nota || 'Pago pendiente por tr\u00e1mite administrativo' })
+    .eq('id', INST_DATOS_FOLIO.id)
+    .then(function(res) {
+      if (res.error) console.warn('[BarrCan] No se pudo marcar pago administrativo pendiente:', res.error.message);
+    })
+    .catch(function(e) { console.warn('[BarrCan] Error marcando pago administrativo pendiente:', e.message); });
+}
+
 function entToggleCobro() {
-  var si = document.getElementById('ent-aplica-cobro').value === 'si';
-  document.getElementById('ent-monto-group').style.display = si ? 'block' : 'none';
+  var val = document.getElementById('ent-aplica-cobro').value;
+  document.getElementById('ent-monto-group').style.display = val === 'si' ? 'block' : 'none';
+  var grupoAdmin = document.getElementById('ent-pago-admin-group');
+  if (grupoAdmin) {
+    grupoAdmin.style.display = val === 'pendiente_admin' ? 'block' : 'none';
+    var nota = document.getElementById('ent-pago-admin-nota');
+    if (val === 'pendiente_admin' && nota && !nota.value.trim()) {
+      nota.value = 'Se paga despu\u00e9s por cuestiones administrativas de pago (transferencia o cuenta de la empresa).';
+    }
+  }
 }
 
 function entReset() {
@@ -2651,6 +2713,8 @@ function entReset() {
   ENT_MODO_INST = 'completo'; ENT_SIN_ENCARGADO = false;
   ENT_CHECKS_SALIDA = {};
   ENT_SIN_ENCARGADO_SIMPLE = false; ENT_SALDO_REAL = 0;
+  var notaAdmin = document.getElementById('ent-pago-admin-nota'); if (notaAdmin) notaAdmin.value = '';
+  var grupoAdminReset = document.getElementById('ent-pago-admin-group'); if (grupoAdminReset) grupoAdminReset.style.display = 'none';
   var chkSinEncS = document.getElementById('ent-sin-encargado-simple'); if (chkSinEncS) chkSinEncS.checked = false;
   var wrapSimple = document.getElementById('ent-firma-simple-wrap'); if (wrapSimple) wrapSimple.style.display = 'block';
   var notaSimple = document.getElementById('ent-sin-encargado-simple-nota'); if (notaSimple) notaSimple.style.display = 'none';
@@ -2751,8 +2815,14 @@ async function entGenerarReporte() {
     var folio      = document.getElementById('ent-folio').value.trim();
     var fecha      = document.getElementById('ent-fecha').value;
     var piezas     = document.getElementById('ent-piezas').value || '1';
-    var aplica     = document.getElementById('ent-aplica-cobro').value === 'si';
+    var cobroVal   = document.getElementById('ent-aplica-cobro').value;
+    var aplica     = cobroVal === 'si';
+    var pagoAdminPendiente = cobroVal === 'pendiente_admin';
+    var notaPagoAdmin = pagoAdminPendiente
+      ? (document.getElementById('ent-pago-admin-nota') ? document.getElementById('ent-pago-admin-nota').value.trim() : '')
+      : '';
     var monto      = aplica ? (parseFloat(document.getElementById('ent-monto').value) || 0) : 0;
+    entMarcarPagoAdminPendiente(pagoAdminPendiente, notaPagoAdmin);
     var paqueteria = document.getElementById('ent-paqueteria') ? document.getElementById('ent-paqueteria').value : '';
     var numGuia    = document.getElementById('ent-guia') ? document.getElementById('ent-guia').value.trim() : '';
     var folioFull  = folio || ('ENT-' + Date.now().toString().slice(-6));
@@ -2808,6 +2878,7 @@ async function entGenerarReporte() {
       + '<tr><td class=lbl>Tipo</td><td>' + esc(tipoStr) + '</td></tr>'
       + (numGuia ? '<tr><td class=lbl>Num. Guia</td><td style=font-family:monospace;font-weight:700>' + esc(numGuia) + '</td></tr>' : '')
       + (aplica && monto > 0 ? '<tr><td class=lbl style=color:#E67E22>Saldo cobrado</td><td style=font-weight:700>$' + fmt(monto) + ' MXN</td></tr>'
+         : pagoAdminPendiente ? '<tr><td class=lbl style=color:#8E44AD>Pago pendiente</td><td style=font-weight:700;color:#8E44AD>$' + fmt(ENT_SALDO_REAL) + ' MXN &mdash; tr&aacute;mite administrativo' + (notaPagoAdmin ? ' (' + esc(notaPagoAdmin) + ')' : '') + '</td></tr>'
          : (ENT_SALDO_REAL > 0 ? '<tr><td class=lbl style=color:#C0392B>Saldo pendiente</td><td style=font-weight:700;color:#C0392B>$' + fmt(ENT_SALDO_REAL) + ' MXN &mdash; no cobrado en esta entrega</td></tr>' : ''))
       + '</table>'
       + (ENT_FOTOS_EMP.length > 0 ? '<h2>' + (ENT_TIPO === 'mantenimiento' ? 'Antes del mantenimiento' : 'Fotos del empaque') + ' (' + ENT_FOTOS_EMP.length + ')</h2><div style="display:grid;grid-template-columns:' + entColsFotos(ENT_FOTOS_EMP.length) + ';gap:8px">' + fotosEmpHtml + '</div>' : '')
@@ -3977,6 +4048,12 @@ async function entGenerarReporteInstalacion() {
   var direccion = (document.getElementById('inst-direccion') || {}).value || '';
   var fecha     = (document.getElementById('inst-fecha') || {}).value || '';
   var monto     = parseFloat((document.getElementById('inst-monto') || {}).value) || 0;
+  var cobroSelEl = document.getElementById('ent-aplica-cobro');
+  var pagoAdminPendiente = !!cobroSelEl && cobroSelEl.value === 'pendiente_admin';
+  var notaPagoAdmin = pagoAdminPendiente
+    ? (document.getElementById('ent-pago-admin-nota') ? document.getElementById('ent-pago-admin-nota').value.trim() : '')
+    : '';
+  entMarcarPagoAdminPendiente(pagoAdminPendiente, notaPagoAdmin);
   var folio     = (document.getElementById('ent-folio') || {}).value || ('INST-' + Date.now().toString().slice(-6));
   var errEl     = document.getElementById('ent-error');
   if (errEl) errEl.style.display = 'none';
