@@ -6,6 +6,26 @@
 <title>BarrCan · Reportes</title>
 <!--
   BARRCAN · MODULO: REPORTES (standalone)
+  VERSION : v1.8
+  FECHA   : 2026-08-20
+  v1.8 - Dos bugs corregidos en la pestaña "Obras" + buscador nuevo:
+    - FIX: "Obras activas" solo incluía estado activo/aprobado/
+      en_produccion -- se quedaban fuera las que ya tenían anticipo
+      y esperaban instalación (pendiente_entrega). Se agregó ese
+      estado a la lista.
+    - FIX: "Obras terminadas del periodo" filtraba por estado
+      'terminado', que NO EXISTE en los datos reales -- por eso
+      siempre salía vacío, para cualquier proyecto. Se corrigió a
+      'entregado' (el estado real usado al cerrar una obra).
+    - Nuevo: buscador "🔍 Buscar un proyecto en específico" -- antes
+      no había forma de elegir un folio puntual, solo se veía la
+      lista automática (topada a 20, filtrada por 3 estados). Ahora
+      se puede buscar CUALQUIER folio o cliente sin restricción de
+      estado (por eso Stands, que guarda con estado pendiente_entrega
+      desde que se cotiza, tampoco aparecía antes). Al seleccionar un
+      proyecto, muestra todos los artículos comprados para ese folio
+      (facturas simples + artículos desglosados), agrupados por
+      categoría con cantidades y montos.
   VERSION : v1.7
   FECHA   : 2026-08-18
   v1.7 - El reporte imprimible por proyecto ("Ganancia" → 🖨️
@@ -200,6 +220,14 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
   <!-- TAB: OBRAS -->
   <div id="tab-obras" style="display:none">
     <div class="card">
+      <div class="card-title">🔍 Buscar un proyecto en específico</div>
+      <div style="font-size:10px;color:var(--gray-400);margin-bottom:8px">Busca cualquier folio o cliente — sin importar el estado (incluye Stands, Servicios, Baños, etc.) — y mira todo lo comprado para ese proyecto, agrupado por categoría.</div>
+      <input type="text" class="form-input" id="rp-buscar-obra" list="rp-obras-datalist"
+        placeholder="Escribe folio o cliente… ej. STAN, CACN-100A, Juan Pérez" oninput="rpBuscarObraInput()" style="margin-bottom:4px">
+      <datalist id="rp-obras-datalist"></datalist>
+      <div id="rp-detalle-proyecto"></div>
+    </div>
+    <div class="card">
       <div class="card-title">
         Obras activas y en producción
         <button class="btn btn-sm btn-primary" onclick="rpCargarObras()">↻</button>
@@ -207,7 +235,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
       <div id="rp-obras-lista"><div style="text-align:center;padding:20px;color:var(--gray-400)">Cargando...</div></div>
     </div>
     <div class="card">
-      <div class="card-title">Obras terminadas del periodo</div>
+      <div class="card-title">Obras entregadas del periodo</div>
       <div id="rp-obras-term"><div style="text-align:center;padding:14px;color:var(--gray-400)">Cargando...</div></div>
     </div>
   </div>
@@ -293,7 +321,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 </div>
 </body>
 <script>
-var APP_VERSION = 'v1.7';
+var APP_VERSION = 'v1.8';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb=null;
@@ -341,7 +369,7 @@ function rpTab(btn,tab) {
 }
 
 function rpCargarTab(tab) {
-  if(tab==='obras')    rpCargarObras();
+  if(tab==='obras') { rpCargarObras(); rpCargarTodasObras(); }
   if(tab==='ganancia') rpCargarGanancia();
   if(tab==='material') rpCargarMaterial();
   if(tab==='clientes') rpCargarClientes();
@@ -654,19 +682,26 @@ async function rpCargarObras() {
   var listaTerm = document.getElementById('rp-obras-term');
   if(!sb()) return;
   try {
+    // FIX: antes solo incluía ['activo','aprobado','en_produccion'] --
+    // se quedaban fuera obras que ya avanzaron a "pendiente de entrega"
+    // (con anticipo pagado, esperando instalación). Ahora sí cuentan
+    // como "activas" hasta que se entreguen.
     var resAct = await sb().from('presupuestos_atrasados')
       .select('folio,cliente,descripcion,monto,saldo,estado,fecha')
-      .in('estado',['activo','aprobado','en_produccion'])
+      .in('estado',['activo','aprobado','en_produccion','pendiente_entrega'])
       .order('created_at',{ascending:false}).limit(20);
 
+    // FIX: el estado 'terminado' NO existe en los datos reales -- los
+    // estados reales usados son 'entregado' y 'declinado'. Esta sección
+    // siempre salía vacía para TODOS los proyectos, no solo Stands.
     var resTerm = await sb().from('presupuestos_atrasados')
       .select('folio,cliente,monto,saldo,estado,fecha')
-      .eq('estado','terminado')
+      .eq('estado','entregado')
       .gte('fecha', document.getElementById('rp-desde').value)
       .lte('fecha', document.getElementById('rp-hasta').value)
       .order('fecha',{ascending:false}).limit(15);
 
-    var mapEst = {activo:'est-activo',aprobado:'est-activo',en_produccion:'est-prod',terminado:'est-term'};
+    var mapEst = {activo:'est-activo',aprobado:'est-activo',en_produccion:'est-prod',pendiente_entrega:'est-prod',entregado:'est-term'};
 
     function renderObras(obras) {
       if(!obras.length) return '<div style="text-align:center;padding:14px;color:var(--gray-400)">Sin obras</div>';
@@ -690,6 +725,120 @@ async function rpCargarObras() {
     listaTerm.innerHTML = renderObras(resTerm.data||[]);
   } catch(e){
     listaAct.innerHTML='<div style="text-align:center;padding:14px;color:var(--red)">Error al cargar</div>';
+  }
+}
+
+// ── Buscador de proyecto específico (cualquier estado, sin límite de 20) ──
+// FIX del reclamo original: antes no había forma de buscar un folio en
+// concreto (solo la lista automática de "activas", topada a 20 y sin
+// Stands porque su estado real es 'pendiente_entrega', excluido del
+// filtro viejo). Ahora se puede buscar CUALQUIER folio/cliente, de
+// cualquier módulo (Stands, Servicios, Baños, etc.) y cualquier estado.
+var RP_OBRAS_TODAS = [];
+
+async function rpCargarTodasObras() {
+  if (!sb()) return;
+  try {
+    var res = await sb().from('presupuestos_atrasados')
+      .select('folio,cliente,estado')
+      .order('created_at', { ascending: false })
+      .limit(500);
+    if (res.error) throw res.error;
+    RP_OBRAS_TODAS = res.data || [];
+    var dl = document.getElementById('rp-obras-datalist');
+    dl.innerHTML = RP_OBRAS_TODAS.map(function(o) {
+      return '<option value="' + esc(o.folio) + ' — ' + esc(o.cliente || '') + '">';
+    }).join('');
+  } catch (e) {
+    console.warn('[Reportes] Error cargando catálogo de obras:', e.message);
+  }
+}
+
+function rpBuscarObraInput() {
+  var val = document.getElementById('rp-buscar-obra').value.trim();
+  if (!val) { document.getElementById('rp-detalle-proyecto').innerHTML = ''; return; }
+  // Coincidencia exacta con una opción del datalist (folio — cliente) o
+  // con el folio solo (por si lo escribe/pega completo sin el cliente).
+  var folioSel = null;
+  var matchExacto = RP_OBRAS_TODAS.filter(function(o) {
+    return (o.folio + ' — ' + (o.cliente || '')) === val || o.folio === val;
+  });
+  if (matchExacto.length === 1) folioSel = matchExacto[0].folio;
+  if (folioSel) rpMostrarDetalleObra(folioSel);
+  else document.getElementById('rp-detalle-proyecto').innerHTML = '';
+}
+
+async function rpMostrarDetalleObra(folio) {
+  var cont = document.getElementById('rp-detalle-proyecto');
+  cont.innerHTML = '<div style="text-align:center;padding:16px;color:var(--gray-400)">Cargando artículos comprados…</div>';
+  if (!sb()) return;
+
+  try {
+    // Fuente 1: facturas simples (una sola obra, categoría directa en la factura)
+    var resSimples = await sb().from('facturas_recibidas')
+      .select('proveedor,categoria,total,fecha,descripcion')
+      .eq('folio_obra', folio).eq('desglosada', false);
+    if (resSimples.error) throw resSimples.error;
+
+    // Fuente 2: artículos individuales de facturas desglosadas (varias
+    // obras en una sola factura) -- la categoría se hereda de la factura
+    // padre vía el join.
+    var resConceptos = await sb().from('facturas_conceptos')
+      .select('descripcion,cantidad,precio_unitario,importe,folio_obra,facturas_recibidas(categoria,proveedor,fecha)')
+      .eq('folio_obra', folio);
+    if (resConceptos.error) throw resConceptos.error;
+
+    var porCategoria = {}; // { categoria: { cantidad, monto, items:[{desc,cant,monto,proveedor,fecha}] } }
+    function addItem(cat, item) {
+      cat = cat || '(sin categoría)';
+      if (!porCategoria[cat]) porCategoria[cat] = { cantidad: 0, monto: 0, items: [] };
+      porCategoria[cat].cantidad += item.cant;
+      porCategoria[cat].monto += item.monto;
+      porCategoria[cat].items.push(item);
+    }
+
+    (resSimples.data || []).forEach(function(f) {
+      addItem(f.categoria, {
+        desc: f.descripcion || f.proveedor || 'Factura', cant: 1,
+        monto: parseFloat(f.total || 0), proveedor: f.proveedor, fecha: f.fecha
+      });
+    });
+    (resConceptos.data || []).forEach(function(it) {
+      var padre = it.facturas_recibidas || {};
+      addItem(padre.categoria, {
+        desc: it.descripcion, cant: parseFloat(it.cantidad || 0) || 1,
+        monto: parseFloat(it.importe || 0), proveedor: padre.proveedor, fecha: padre.fecha
+      });
+    });
+
+    var categorias = Object.keys(porCategoria);
+    if (!categorias.length) {
+      cont.innerHTML = '<div style="text-align:center;padding:16px;color:var(--gray-400)">Sin compras registradas para <b>' + esc(folio) + '</b> todavía.</div>';
+      return;
+    }
+    categorias.sort(function(a, b) { return porCategoria[b].monto - porCategoria[a].monto; });
+
+    var totalMonto = categorias.reduce(function(s, c) { return s + porCategoria[c].monto; }, 0);
+
+    cont.innerHTML =
+      '<div class="seccion-titulo" style="margin-top:12px">📦 ' + esc(folio) + ' — Total comprado: ' + fmt(totalMonto) + '</div>' +
+      categorias.map(function(cat) {
+        var c = porCategoria[cat];
+        return '<div style="margin-bottom:10px">' +
+          '<div class="bar-row"><div class="bar-label">' + esc(cat) + '</div>' +
+          '<div class="bar-track"><div class="bar-fill" style="width:' + Math.round(c.monto / totalMonto * 100) + '%"></div></div>' +
+          '<div class="bar-val">' + fmt(c.monto) + '</div></div>' +
+          '<div style="font-size:10px;color:var(--gray-400);margin:0 0 4px 108px">' + c.cantidad.toLocaleString('es-MX') + ' unidad(es)/artículo(s)</div>' +
+          '<div style="margin-left:108px">' +
+          c.items.map(function(it) {
+            return '<div class="reporte-row" style="padding:4px 0;font-size:11px">' +
+              '<span>' + esc(it.desc) + (it.cant > 1 ? ' <span style="color:var(--gray-400)">×' + it.cant + '</span>' : '') + '</span>' +
+              '<span style="font-weight:700">' + fmt(it.monto) + '</span></div>';
+          }).join('') +
+          '</div></div>';
+      }).join('');
+  } catch (e) {
+    cont.innerHTML = '<div style="text-align:center;padding:16px;color:var(--red)">Error al cargar: ' + esc(e.message) + '</div>';
   }
 }
 
