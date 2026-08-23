@@ -6,6 +6,15 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.42.0
+  FECHA   : 2026-08-23
+  v3.42.0 - Nueva sección "Captura de confirmación de recepción"
+    (opcional) en Fotos de evidencia, visible en TODAS las
+    modalidades (puerta/envío/mantenimiento/instalación) -- para
+    adjuntar un screenshot que respalde la entrega (ej. confirmación
+    de Mercado Libre, WhatsApp del cliente, guía de paquetería) antes
+    de entregar. Aparece en el reporte impreso y se guarda con el
+    resto de las fotos.
   VERSION : v3.41.0
   FECHA   : 2026-08-20
   v3.41.0 - Nueva opción "¿Cobrar saldo?" -> "Pendiente — trámite
@@ -1771,6 +1780,16 @@ body{min-height:100vh}
     <div class="wizard-card" id="ent-fotos-evidencia-card" style="margin-bottom:12px">
       <div class="wizard-title">&#128247; Fotos de evidencia</div>
 
+      <div style="background:rgba(46,109,164,.06);border:1px solid rgba(46,109,164,.2);border-radius:8px;padding:10px;margin-bottom:14px">
+        <label class="form-label" style="margin-top:0">Captura de confirmación de recepción (opcional)</label>
+        <div style="font-size:11px;color:var(--gray-400);margin-bottom:8px">Screenshot que compruebe que se le entregó (ej. confirmación de Mercado Libre, WhatsApp del cliente, guía de paquetería) -- se adjunta al reporte como respaldo, antes de entregar.</div>
+        <input type="file" id="ent-foto-conf-input" accept="image/*" multiple style="display:none" onchange="entCargarFotos(this,'conf')">
+        <button onclick="document.getElementById('ent-foto-conf-input').click()" style="width:100%;padding:12px;background:var(--off-white);border:2px dashed var(--blue,#2E6DA4);border-radius:var(--radius-sm);cursor:pointer;font-size:13px;color:var(--blue,#2E6DA4);font-family:'DM Sans',sans-serif;font-weight:600;margin-bottom:8px">
+          &#128247; Agregar captura de confirmación
+        </button>
+        <div id="ent-grid-conf" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px"></div>
+      </div>
+
       <label class="form-label" id="ent-label-empaque">Foto del empaque</label>
       <div id="ent-desc-empaque" style="font-size:11px;color:var(--gray-400);margin-bottom:8px">Producto empacado y listo para entrega</div>
       <input type="file" id="ent-foto-empaque-input" accept="image/*" multiple style="display:none" onchange="entCargarFotos(this,'empaque')">
@@ -2102,7 +2121,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.41.0';
+var APP_VERSION = 'v3.42.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -2188,6 +2207,7 @@ function entVerificarAdmin(callback) {
   }
 }
 var ENT_FOTOS_EMP  = [];
+var ENT_FOTOS_CONF = [];
 var ENT_FOTOS_COMP = [];
 var ENT_FOTOS_MANT = []; // fotos adicionales, solo para tipo "mantenimiento"
 // Logo oficial BarrCan (icono cuadrado) — respaldo local si falla la carga
@@ -2583,8 +2603,8 @@ function entComprimirImagen(file, callback) {
 
 function entCargarFotos(input, tipo) {
   if (!input || !input.files) return;
-  var arr    = tipo === 'empaque' ? ENT_FOTOS_EMP : tipo === 'mant' ? ENT_FOTOS_MANT : ENT_FOTOS_COMP;
-  var gridId = tipo === 'empaque' ? 'ent-grid-empaque' : tipo === 'mant' ? 'ent-grid-mant' : 'ent-grid-comp';
+  var arr    = tipo === 'empaque' ? ENT_FOTOS_EMP : tipo === 'mant' ? ENT_FOTOS_MANT : tipo === 'conf' ? ENT_FOTOS_CONF : ENT_FOTOS_COMP;
+  var gridId = tipo === 'empaque' ? 'ent-grid-empaque' : tipo === 'mant' ? 'ent-grid-mant' : tipo === 'conf' ? 'ent-grid-conf' : 'ent-grid-comp';
   var grid   = document.getElementById(gridId);
   for (var i = 0; i < input.files.length; i++) {
     (function(file) {
@@ -2709,7 +2729,7 @@ function entToggleCobro() {
 }
 
 function entReset() {
-  ENT_FOTOS_EMP = []; ENT_FOTOS_COMP = []; ENT_FOTOS_MANT = []; ENT_TIPO = 'puerta'; ENT_FORMA = 'efectivo'; ENT_CHECKS = {}; ENT_EVIDENCIA = {}; INST_DATOS_FOLIO = null;
+  ENT_FOTOS_EMP = []; ENT_FOTOS_COMP = []; ENT_FOTOS_MANT = []; ENT_FOTOS_CONF = []; ENT_TIPO = 'puerta'; ENT_FORMA = 'efectivo'; ENT_CHECKS = {}; ENT_EVIDENCIA = {}; INST_DATOS_FOLIO = null;
   ENT_MODO_INST = 'completo'; ENT_SIN_ENCARGADO = false;
   ENT_CHECKS_SALIDA = {};
   ENT_SIN_ENCARGADO_SIMPLE = false; ENT_SALDO_REAL = 0;
@@ -2845,6 +2865,7 @@ async function entGenerarReporte() {
     var meses = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
     function fd(iso) { if (!iso) return '--'; var p = iso.split('-'); return parseInt(p[2]) + ' de ' + meses[parseInt(p[1])] + ' de ' + p[0]; }
     var fotosEmpHtml  = ENT_FOTOS_EMP.map(function(f) { return '<img src="' + f.dataUrl + '" style="width:100%;max-height:140px;object-fit:cover;border-radius:4px;border:1px solid #ddd">'; }).join('');
+    var fotosConfHtml = ENT_FOTOS_CONF.map(function(f) { return '<img src="' + f.dataUrl + '" style="width:100%;max-height:140px;object-fit:cover;border-radius:4px;border:1px solid #ddd">'; }).join('');
     var fotosCompHtml = ENT_FOTOS_COMP.map(function(f) { return '<img src="' + f.dataUrl + '" style="width:100%;max-height:140px;object-fit:cover;border-radius:4px;border:1px solid #ddd">'; }).join('');
     var fotosMantHtml = ENT_FOTOS_MANT.map(function(f) { return '<img src="' + f.dataUrl + '" style="width:100%;max-height:140px;object-fit:cover;border-radius:4px;border:1px solid #ddd">'; }).join('');
     // Obtener dirección del bloque común
@@ -2881,6 +2902,7 @@ async function entGenerarReporte() {
          : pagoAdminPendiente ? '<tr><td class=lbl style=color:#8E44AD>Pago pendiente</td><td style=font-weight:700;color:#8E44AD>$' + fmt(ENT_SALDO_REAL) + ' MXN &mdash; tr&aacute;mite administrativo' + (notaPagoAdmin ? ' (' + esc(notaPagoAdmin) + ')' : '') + '</td></tr>'
          : (ENT_SALDO_REAL > 0 ? '<tr><td class=lbl style=color:#C0392B>Saldo pendiente</td><td style=font-weight:700;color:#C0392B>$' + fmt(ENT_SALDO_REAL) + ' MXN &mdash; no cobrado en esta entrega</td></tr>' : ''))
       + '</table>'
+      + (ENT_FOTOS_CONF.length > 0 ? '<h2>Captura de confirmación de recepción (' + ENT_FOTOS_CONF.length + ')</h2><div style="display:grid;grid-template-columns:' + entColsFotos(ENT_FOTOS_CONF.length) + ';gap:8px">' + fotosConfHtml + '</div>' : '')
       + (ENT_FOTOS_EMP.length > 0 ? '<h2>' + (ENT_TIPO === 'mantenimiento' ? 'Antes del mantenimiento' : 'Fotos del empaque') + ' (' + ENT_FOTOS_EMP.length + ')</h2><div style="display:grid;grid-template-columns:' + entColsFotos(ENT_FOTOS_EMP.length) + ';gap:8px">' + fotosEmpHtml + '</div>' : '')
       + (ENT_FOTOS_COMP.length > 0 ? '<h2>' + (ENT_TIPO === 'envio' ? 'Guia de envio' : ENT_TIPO === 'mantenimiento' ? 'Trabajo terminado' : 'Comprobante de entrega') + ' (' + ENT_FOTOS_COMP.length + ')</h2><div style="display:grid;grid-template-columns:' + entColsFotos(ENT_FOTOS_COMP.length) + ';gap:8px">' + fotosCompHtml + '</div>' : '')
       + (ENT_FOTOS_MANT.length > 0 ? '<h2>Fotos adicionales (' + ENT_FOTOS_MANT.length + ')</h2><div style="display:grid;grid-template-columns:' + entColsFotos(ENT_FOTOS_MANT.length) + ';gap:8px">' + fotosMantHtml + '</div>' : '')
@@ -2923,7 +2945,7 @@ async function entGenerarReporte() {
       cliente: cliente, tel: tel, desc: desc, fecha: fecha, piezas: piezas,
       aplicaCobro: aplica, monto: monto, paqueteria: paqueteria, numGuia: numGuia,
       direccion: direccion, tipo: ENT_TIPO,
-      fotosEmp: ENT_FOTOS_EMP, fotosComp: ENT_FOTOS_COMP, fotosMant: ENT_FOTOS_MANT,
+      fotosEmp: ENT_FOTOS_EMP, fotosComp: ENT_FOTOS_COMP, fotosMant: ENT_FOTOS_MANT, fotosConf: ENT_FOTOS_CONF,
       firma: (!firmaVacia ? firmaB64 : null),
       firmaTec: (!firmaTecVacia ? firmaTecB64 : null),
       sinEncargado: ENT_SIN_ENCARGADO_SIMPLE, saldoReal: ENT_SALDO_REAL
@@ -3358,8 +3380,10 @@ async function entEditarCompleto(id) {
 
     ENT_FOTOS_COMP = datos.fotosComp || [];
     ENT_FOTOS_EMP  = datos.fotosEmp  || [];
+    ENT_FOTOS_CONF = datos.fotosConf || [];
     entRenderFotosGrid('empaque');
     entRenderFotosGrid('comprobante');
+    entRenderFotosGrid('conf');
 
     if (datos.firmaTec) entDibujarFirmaEnCanvas('ent-canvas-tecnico', datos.firmaTec, function(ctx){ _tec_draw = true; });
     if (datos.firmaCli) entDibujarFirmaEnCanvas('ent-canvas-cliente', datos.firmaCli, function(ctx){ _cli_draw = true; });
@@ -3378,9 +3402,11 @@ async function entEditarCompleto(id) {
     ENT_FOTOS_EMP  = datos.fotosEmp  || [];
     ENT_FOTOS_COMP = datos.fotosComp || [];
     ENT_FOTOS_MANT = datos.fotosMant || [];
+    ENT_FOTOS_CONF = datos.fotosConf || [];
     entRenderFotosGrid('empaque');
     entRenderFotosGrid('comprobante');
     entRenderFotosGrid('mant');
+    entRenderFotosGrid('conf');
 
     if (datos.firma) entDibujarFirmaEnCanvas('ent-canvas-firma', datos.firma, function(ctx){ ENT_FIRMA_DRAW = true; });
     if (datos.firmaTec) entDibujarFirmaEnCanvas('ent-canvas-firma-tecnico', datos.firmaTec, function(ctx){ ENT_FIRMA_TEC_DRAW = true; });
@@ -3442,8 +3468,8 @@ function entDibujarFirmaEnCanvas(canvasId, dataUrl, marcarDibujada) {
 // array ENT_FOTOS_EMP/ENT_FOTOS_COMP — se usa tanto al capturar como al
 // precargar fotos ya guardadas para editar.
 function entRenderFotosGrid(tipo) {
-  var arr    = tipo === 'empaque' ? ENT_FOTOS_EMP : tipo === 'mant' ? ENT_FOTOS_MANT : ENT_FOTOS_COMP;
-  var gridId = tipo === 'empaque' ? 'ent-grid-empaque' : tipo === 'mant' ? 'ent-grid-mant' : 'ent-grid-comp';
+  var arr    = tipo === 'empaque' ? ENT_FOTOS_EMP : tipo === 'mant' ? ENT_FOTOS_MANT : tipo === 'conf' ? ENT_FOTOS_CONF : ENT_FOTOS_COMP;
+  var gridId = tipo === 'empaque' ? 'ent-grid-empaque' : tipo === 'mant' ? 'ent-grid-mant' : tipo === 'conf' ? 'ent-grid-conf' : 'ent-grid-comp';
   var grid   = document.getElementById(gridId);
   if (!grid) return;
   grid.innerHTML = '';
@@ -4121,6 +4147,11 @@ async function entGenerarReporteInstalacion() {
         + '<div style="font-size:10px;color:#6B7280;margin-bottom:3px">Antes ' + (i+1) + '</div>'
         + '<img src="' + f.dataUrl + '" style="width:100%;border-radius:6px;border:1px solid #e8ecf0">'
         + '</div>';
+    }).join('') + ENT_FOTOS_CONF.map(function(f, i) {
+      return '<div class="foto-item" style="display:inline-block;margin:3px;vertical-align:top;width:calc(33.333% - 6px);page-break-inside:avoid">'
+        + '<div style="font-size:10px;color:#6B7280;margin-bottom:3px">Confirmaci\u00f3n de recepci\u00f3n ' + (i+1) + '</div>'
+        + '<img src="' + f.dataUrl + '" style="width:100%;border-radius:6px;border:1px solid #e8ecf0">'
+        + '</div>';
     }).join('');
 
     var meses = ['','enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
@@ -4218,7 +4249,7 @@ async function entGenerarReporteInstalacion() {
       desc: desc.trim(), fecha: fecha, tecnico: tecnico, asignado: asignado, tecnicoAcompanante: acompanante,
       direccion: direccion, monto: monto,
       checklist: ENT_CHECKS, piezas: piezasValidas, evidencia: ENT_EVIDENCIA,
-      fotosComp: ENT_FOTOS_COMP, fotosEmp: ENT_FOTOS_EMP,
+      fotosComp: ENT_FOTOS_COMP, fotosEmp: ENT_FOTOS_EMP, fotosConf: ENT_FOTOS_CONF,
       modoCaptura: ENT_MODO_INST, sinEncargado: ENT_SIN_ENCARGADO, checklistSalida: ENT_CHECKS_SALIDA,
       firmaTec: firmaTec, firmaCli: firmaCli
     };
