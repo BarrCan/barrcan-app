@@ -6,6 +6,16 @@
 <title>BarrCan · Cotizador Baños</title>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v2.3
+  FECHA   : 2026-08-22
+  v2.3 - Nuevo modo "Recalcular pieza" para el sistema Corredizo:
+    viene del botón 🔄 en historial.html (dentro de "Editar
+    Presupuesto"), precarga línea/config/medidas/color/cristal de una
+    pieza ya guardada, y al "Guardar" la REEMPLAZA en su posición
+    original (no la agrega como nueva) -- ajustando monto/saldo del
+    folio y preservando lo que ya se hubiera cobrado. Pensado para
+    corregir presupuestos activos cotizados con los precios ESTIMADO
+    de config_precios, en cuanto se confirmen los reales.
   VERSION : v2.2
   FECHA   : 2026-08-22
   v2.2 - FIX CRÍTICO (preexistente desde v1.9, no introducido por mí
@@ -563,6 +573,10 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
        económica). Ver config_precios (prefijo cc_) para los costos base,
        editables desde config.html sin tocar código. -->
   <div id="tab-corredizo" style="display:none">
+    <div id="cc-banner-recalculo" style="display:none;background:rgba(200,146,58,.1);border-left:3px solid var(--gold);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;color:var(--navy)">
+      🔄 Recalculando una pieza ya guardada del folio <b id="cc-banner-folio">—</b>. Al calcular y guardar, esta pieza se <b>reemplaza</b> (no se agrega una nueva) y el monto/saldo del folio se ajustan solos.
+      <button type="button" onclick="ccCancelarRecalculo()" style="display:block;margin-top:6px;padding:4px 10px;background:none;border:1px solid var(--gold);border-radius:6px;color:var(--gold);font-size:11px;cursor:pointer">Cancelar recálculo</button>
+    </div>
     <div class="card">
       <div class="card-title">Cancel Corredizo — Marco Perimetral</div>
       <div style="font-size:10px;color:var(--gray-400);margin-bottom:10px">El sistema más vendido — vidrio templado con marco de aluminio perimetral, corredizo. Mismo producto anunciado en la tienda en línea.</div>
@@ -683,7 +697,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
         <div class="card-title">Guardar presupuesto Corredizo</div>
         <input type="text" class="form-input" id="corredizo-cliente" placeholder="Nombre del cliente *">
         <input type="text" class="form-input" id="corredizo-tel" placeholder="Tel&eacute;fono">
-        <button class="btn btn-gold" onclick="cbGuardarPresupuesto('corredizo')">Guardar y generar folio CACN</button>
+        <button class="btn btn-gold" onclick="CC_RECALCULO ? ccGuardarRecalculo() : cbGuardarPresupuesto('corredizo')">Guardar y generar folio CACN</button>
       </div>
     </div>
   </div>
@@ -876,7 +890,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v2.2';
+var APP_VERSION = 'v2.3';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -1053,6 +1067,105 @@ function snCargarContinuarFolio() {
   });
   toast('➕ Agregando piezas al folio ' + datos.folio + ' (ya tiene ' + fmt(datos.monto || 0) + ')');
 }
+
+// ── Recalcular una pieza Corredizo ya guardada ──────────────────
+// Viene de historial.html (botón 🔄 en "Editar Presupuesto"). A
+// diferencia de "+Agregar piezas" (que SUMA), este modo REEMPLAZA la
+// pieza en su posición original y ajusta monto/saldo preservando lo
+// que ya se hubiera cobrado, en vez de sumar un concepto nuevo.
+var CC_RECALCULO = null; // { folioId, folio, cliente, tel, monto, saldo, notas_internas, pieceIndex, resultadoOriginal }
+
+function ccCargarRecalculoPieza() {
+  var raw = null;
+  try { raw = localStorage.getItem('barrcan_recalcular_pieza'); } catch(e) {}
+  if (!raw) return;
+  var datos = null;
+  try { datos = JSON.parse(raw); } catch(e) {}
+  if (!datos || !datos.resultadoOriginal) return;
+  if (datos.modulo && datos.modulo !== MODULO_ACTUAL) return;
+  try { localStorage.removeItem('barrcan_recalcular_pieza'); } catch(e) {}
+
+  CC_RECALCULO = datos;
+  var r = datos.resultadoOriginal;
+
+  var btnTab = document.querySelector('.tabs .tab-btn[onclick*="corredizo"]');
+  if (btnTab) cbTab(btnTab, 'corredizo');
+
+  var lineaBtn = document.querySelector('#tab-corredizo .color-grid button[data-linea="' + (r.linea || 'virgo') + '"]');
+  if (lineaBtn) ccSelLinea(lineaBtn);
+
+  var configBtn = document.querySelector('#tab-corredizo .sistema-grid button[data-config="' + (r.config || 'recta') + '"]');
+  if (configBtn) ccSelConfig(configBtn);
+
+  if (r.config === 'escuadra') {
+    if (document.getElementById('cc-ancho1')) document.getElementById('cc-ancho1').value = r.L || 1200;
+    if (document.getElementById('cc-ancho2')) document.getElementById('cc-ancho2').value = r.L2 || 1200;
+  } else {
+    if (document.getElementById('cc-ancho')) document.getElementById('cc-ancho').value = r.L || 1200;
+  }
+  if (document.getElementById('cc-alto')) document.getElementById('cc-alto').value = r.H || 2000;
+
+  var colorBtn = document.querySelector('#tab-corredizo .color-grid button[data-color="' + (r.color || 'NATURAL') + '"]');
+  if (colorBtn) ccSelColor(colorBtn);
+
+  if (r.cristalMM && document.getElementById('cc-cristal')) document.getElementById('cc-cristal').value = String(r.cristalMM);
+  if (r.carretilla  && document.getElementById('cc-carretilla')) document.getElementById('cc-carretilla').value = r.carretilla;
+  ccActualizarUI();
+
+  if (document.getElementById('corredizo-cliente')) document.getElementById('corredizo-cliente').value = datos.cliente || '';
+  if (document.getElementById('corredizo-tel'))     document.getElementById('corredizo-tel').value     = datos.tel || '';
+
+  var banner = document.getElementById('cc-banner-recalculo');
+  if (banner) {
+    banner.style.display = 'block';
+    document.getElementById('cc-banner-folio').textContent = datos.folio;
+  }
+  toast('🔄 Medidas precargadas -- da clic en Calcular para ver el precio actualizado de "' + (datos.folio) + '"');
+}
+
+function ccCancelarRecalculo() {
+  CC_RECALCULO = null;
+  var banner = document.getElementById('cc-banner-recalculo');
+  if (banner) banner.style.display = 'none';
+  toast('Recálculo cancelado');
+}
+
+async function ccGuardarRecalculo() {
+  if (!CB_RESULTADO) { toast('Primero calcula el presupuesto'); return; }
+  var rec = CC_RECALCULO;
+  var piezas = [];
+  try { piezas = JSON.parse(rec.notas_internas || '[]'); } catch(e) {}
+  if (!Array.isArray(piezas) || !piezas[rec.pieceIndex]) { toast('No se encontró la pieza original en el folio -- no se guardó nada'); return; }
+
+  var precioViejo = piezas[rec.pieceIndex].precio || 0;
+  var precioNuevo = Math.round(CB_RESULTADO.precioFinal);
+  var descNueva = CB_RESULTADO.sistema + ' ' + (CB_RESULTADO.L ? CB_RESULTADO.L + 'x' + CB_RESULTADO.H + 'mm' : '');
+
+  piezas[rec.pieceIndex] = { label: descNueva, cantidad: 1, precioUnitario: precioNuevo, precio: precioNuevo, resultado: CB_RESULTADO };
+
+  var montoViejo    = parseFloat(rec.monto) || 0;
+  var saldoViejo     = parseFloat(rec.saldo) || 0;
+  var cobradoPrevio  = montoViejo - saldoViejo;
+  var montoNuevo     = Math.round(montoViejo - precioViejo + precioNuevo);
+  var saldoNuevo     = Math.max(0, Math.round(montoNuevo - cobradoPrevio));
+
+  if (!sb()) { toast('Sin conexión -- no se pudo guardar el recálculo'); return; }
+  try {
+    var res = await sb().from('presupuestos_atrasados')
+      .update({ monto: montoNuevo, saldo: saldoNuevo, notas_internas: JSON.stringify(piezas) })
+      .eq('id', rec.folioId);
+    if (res.error) throw res.error;
+    toast('✅ Pieza recalculada · ' + rec.folio + ' -- era $' + fmt(precioViejo) + ', ahora $' + fmt(precioNuevo));
+    CC_RECALCULO = null;
+    var banner = document.getElementById('cc-banner-recalculo');
+    if (banner) banner.style.display = 'none';
+    document.getElementById('corredizo-cliente').value = '';
+    document.getElementById('corredizo-tel').value = '';
+  } catch(e) {
+    toast('Error al guardar el recálculo: ' + e.message);
+  }
+}
+
 
 // ── Precios base herrajes ETC (factor 2026) ───────────────────
 var FL_FACTOR = 1.19;
@@ -1889,6 +2002,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // Si se llegó aquí desde historial.html con "+ Agregar piezas", carga
   // el folio existente para sumarle la próxima pieza que se calcule.
   snCargarContinuarFolio();
+  ccCargarRecalculoPieza();
 });
 
 // ══════════════════════════════════════════════
