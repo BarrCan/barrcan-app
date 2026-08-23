@@ -6,6 +6,21 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.2
+  FECHA   : 2026-08-22
+  v3.2 - FIX: dejar "Saldo pendiente" en blanco al crear un presupuesto
+    se guardaba como saldo=$0, que en todo el sistema significa "ya
+    pagado por completo" -- exactamente lo opuesto de lo que se
+    quería decir ("no me han dado nada todavía"). Esto causó al menos
+    un caso real detectado en producción (folio CACN-148A). Ahora:
+    - Mientras no se toque Saldo a mano, se sincroniza solo con Monto
+      (nada cobrado = saldo completo, el caso más común).
+    - En cuanto se edita Saldo directamente, deja de sincronizarse.
+    - Al editar un presupuesto ya existente, el saldo guardado se
+      respeta y no se pisa aunque se corrija el Monto.
+    - Salvavidas al guardar: si de todos modos queda vacío, pide
+      confirmar antes de guardarlo como pagado, en vez de hacerlo en
+      silencio.
   VERSIÓN : v3.1
   FECHA   : 2026-08-22
   v3.1 - Nuevo botón "🔄" por pieza dentro de "Editar Presupuesto",
@@ -1280,16 +1295,17 @@ body{min-height:100vh}
       <div class="form-group">
         <label class="form-label">Monto total</label>
         <div class="input-unit">
-          <input type="number" id="pres-monto" class="form-input" placeholder="0" min="0" inputmode="numeric">
+          <input type="number" id="pres-monto" class="form-input" placeholder="0" min="0" inputmode="numeric" oninput="presMontoCambio()">
           <span class="input-unit-label">$</span>
         </div>
       </div>
       <div class="form-group">
         <label class="form-label">Saldo pendiente</label>
         <div class="input-unit">
-          <input type="number" id="pres-saldo" class="form-input" placeholder="0" min="0" inputmode="numeric">
+          <input type="number" id="pres-saldo" class="form-input" placeholder="0" min="0" inputmode="numeric" oninput="PRES_SALDO_TOCADO_MANUAL = true">
           <span class="input-unit-label">$</span>
         </div>
+        <div style="font-size:10px;color:var(--gray-400);margin-top:3px">Lo que FALTA por cobrar. Si no te han dado nada, déjalo igual al monto -- no lo dejes en blanco, eso se guarda como "ya pagado".</div>
       </div>
     </div>
 
@@ -1363,7 +1379,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.1';
+var APP_VERSION = 'v3.2';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1670,6 +1686,7 @@ function presCargarClientesDropdown() {
 // ── Modal nuevo/editar ────────────────────────────────────────────
 function presAbrirNuevo() {
   PRES_EDITANDO_ID = null;
+  PRES_SALDO_TOCADO_MANUAL = false;
   var titulo = document.getElementById('pres-modal-titulo');
   var btnDel = document.getElementById('pres-btn-eliminar');
   var errEl  = document.getElementById('pres-error');
@@ -1915,6 +1932,7 @@ function presConceptoQuitar(idx) {
 }
 
 function presEditar(id) {
+  PRES_SALDO_TOCADO_MANUAL = true;
   var p = null;
   for (var i = 0; i < PRES_CACHE.length; i++) {
     if (PRES_CACHE[i].id === id) { p = PRES_CACHE[i]; break; }
@@ -2050,6 +2068,19 @@ async function presVerificarFolioExiste(folio, idExcluir) {
   } catch(e) { return false; }
 }
 
+// ── Evitar el error de "saldo en blanco = pagado sin querer" ───────
+// Mientras el usuario no haya tocado el campo Saldo a mano, se
+// mantiene igual al Monto (el caso más común: nada cobrado todavía).
+// En cuanto el usuario edita Saldo directamente, deja de sincronizarse
+// -- así si de verdad ya dieron un anticipo, se respeta lo que escriba.
+var PRES_SALDO_TOCADO_MANUAL = false;
+function presMontoCambio() {
+  if (PRES_SALDO_TOCADO_MANUAL) return;
+  var montoEl = document.getElementById('pres-monto');
+  var saldoEl = document.getElementById('pres-saldo');
+  if (montoEl && saldoEl) saldoEl.value = montoEl.value;
+}
+
 async function presGuardar() {
   // Construir folio desde campos si el hidden no fue actualizado
   presActualizarFolio();
@@ -2067,6 +2098,20 @@ async function presGuardar() {
   if (btn) btn.disabled = true;
 
   var getVal = function(id) { var el = document.getElementById(id); return el ? el.value.trim() : ''; };
+
+  // Salvavidas: si Saldo quedó literalmente vacío (no un "0" a propósito),
+  // NO se guarda en silencio como $0 (= pagado) -- se confirma primero.
+  var montoTxt = getVal('pres-monto');
+  var saldoTxt = getVal('pres-saldo');
+  if (saldoTxt === '' && parseFloat(montoTxt) > 0) {
+    if (!confirm('El campo "Saldo pendiente" está vacío. Si lo dejas así se va a guardar como $0 (= ya pagado por completo).\n\n¿Es correcto que este presupuesto ya está pagado? Si NO te han dado nada, cancela y pon el saldo igual al monto ($' + montoTxt + ').')) {
+      var saldoElFoco = document.getElementById('pres-saldo');
+      if (saldoElFoco) saldoElFoco.focus();
+      if (btn) btn.disabled = false;
+      return;
+    }
+  }
+
   var datos = {
     folio:       folio,
     cliente:     cliente,
