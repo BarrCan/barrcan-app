@@ -6,6 +6,18 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.43.0
+  FECHA   : 2026-08-23
+  v3.43.0 - Dos cosas:
+    1) Recordatorio automático de Mercado Libre: al seleccionar un
+       folio que tenga algún pago registrado como "Mercado Libre", se
+       muestra un aviso arriba de Fotos de evidencia recordando tomar
+       la captura de confirmación de recepción antes de entregar
+       (mayor riesgo de reclamo del comprador que en venta directa).
+    2) El aviso de "no se guardó" en Instalación ahora usa alert()
+       además del toast -- mensaje bloqueante que no se puede pasar
+       por alto sin leerlo, con instrucciones claras de no volver a
+       capturar (ya quedó en cola local, se reintenta solo).
   VERSION : v3.42.0
   FECHA   : 2026-08-23
   v3.42.0 - Nueva sección "Captura de confirmación de recepción"
@@ -2121,7 +2133,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.42.0';
+var APP_VERSION = 'v3.43.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -2398,10 +2410,38 @@ function entSelPresupuesto() {
   }
   INST_DATOS_FOLIO = p;
   entCalcularSaldo(p);
+  entVerificarOrigenML(p);
 
   // Depuración en consola
   console.log('Presupuesto seleccionado:', p);
   console.log('Dirección asignada:', document.getElementById('inst-direccion').value || '(vacía)');
+}
+
+// Si el folio tiene algún pago registrado como "Mercado Libre", el
+// riesgo de reclamo del comprador es más alto que en una venta directa
+// -- se recuerda tomar la captura de confirmación de recepción ANTES
+// de entregar (sección ya agregada en Fotos de evidencia).
+async function entVerificarOrigenML(p) {
+  var aviso = document.getElementById('ent-aviso-ml');
+  if (aviso) aviso.style.display = 'none';
+  if (!p || !sb()) return;
+  try {
+    var q = sb().from('pagos').select('id').eq('forma_pago', 'mercado_libre').limit(1);
+    q = p.id ? q.eq('presupuesto_id', p.id) : q.eq('folio_referencia', p.folio);
+    var res = await q;
+    if (res.error) throw res.error;
+    if (res.data && res.data.length) {
+      if (!aviso) {
+        aviso = document.createElement('div');
+        aviso.id = 'ent-aviso-ml';
+        aviso.style.cssText = 'background:rgba(200,146,58,.12);border:1.5px solid rgba(200,146,58,.4);border-radius:8px;padding:10px 12px;margin:10px 0;font-size:12px;color:var(--navy);font-weight:600';
+        var cardFotos = document.getElementById('ent-fotos-evidencia-card');
+        if (cardFotos && cardFotos.parentNode) cardFotos.parentNode.insertBefore(aviso, cardFotos);
+      }
+      aviso.innerHTML = '🛒 <b>Este folio se pagó por Mercado Libre</b> -- si el cliente llega a reclamar, ML te congela el dinero. No olvides tomar la captura de confirmación de recepción antes de irte (abajo en Fotos de evidencia).';
+      aviso.style.display = 'block';
+    }
+  } catch (e) { console.warn('[BarrCan] No se pudo verificar origen ML:', e.message); }
 }
 
 function entCalcularSaldo(p) {
@@ -4343,7 +4383,8 @@ async function entGenerarReporteInstalacion() {
           }
           console.warn('[BarrCan] No se pudo guardar la instalación en Supabase, se reencola completa:', eGuardar);
           offEncolarReporte('entregas_instalacion', payload, htmlReporte, nombreArchInst, datosJsonStr, nombreDatosInst, esEdicion ? editandoId : null);
-          toast('⚠️ NO se guardó todavía (se reintentará solo) · ' + folio + ' — revisa el Historial en un momento · Motivo: ' + (eGuardar.message || 'desconocido'), 6000);
+          alert('⚠️ ATENCIÓN: el reporte de "' + folio + '" NO se guardó en el servidor todavía.\n\nQuedó en la cola de tu teléfono y se va a reintentar solo en cuanto haya señal. No lo vuelvas a capturar por ahora -- revisa el Historial en unos minutos para confirmar que ya se sincronizó.\n\nMotivo: ' + (eGuardar.message || 'desconocido'));
+          toast('⚠️ NO se guardó todavía (se reintentará solo) · ' + folio, 8000);
           setTimeout(offReintentarTodo, 4000);
           return false;
         }
