@@ -6,6 +6,17 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.1
+  FECHA   : 2026-08-22
+  v3.1 - Nuevo botón "🔄" por pieza dentro de "Editar Presupuesto",
+    visible SOLO en piezas del sistema Corredizo (las únicas con datos
+    estructurados guardados: línea, ancho, alto, color, cristal...).
+    Reabre esa pieza en cotizador_banos.html con sus medidas
+    precargadas, para recalcular el precio con los costos actuales
+    (varios siguen marcados ESTIMADO en config_precios, pendientes de
+    confirmar con el proveedor). Al guardar ahí, REEMPLAZA esa pieza
+    específica (no la agrega como nueva) y ajusta monto/saldo del
+    folio solo, preservando lo que ya se hubiera cobrado.
   VERSIÓN : v3.0
   FECHA   : 2026-08-18
   v3.0 - Tres cosas importantes:
@@ -1352,7 +1363,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.0';
+var APP_VERSION = 'v3.1';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1841,6 +1852,11 @@ function presDibujarConceptos() {
   }
   if (vacio) vacio.style.display = 'none';
   cont.innerHTML = PRES_CONCEPTOS.map(function(p, i) {
+    var esCorredizo = p.resultado && p.resultado.tipo === 'corredizo';
+    var btnRecalcular = esCorredizo
+      ? '<button type="button" onclick="presRecalcularPieza(' + i + ')" title="Reabrir en el cotizador Corredizo para recalcular con precios actuales" '
+        + 'style="padding:6px 9px;background:rgba(200,146,58,0.1);border:1.5px solid rgba(200,146,58,0.3);border-radius:6px;color:var(--gold);cursor:pointer;flex-shrink:0;font-size:13px">🔄</button>'
+      : '';
     return '<div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:8px">'
       + '<textarea class="form-input" rows="2" style="resize:none;font-size:13px" '
       + 'oninput="presConceptoEditar(' + i + ',\'label\',this.value)" placeholder="Descripción de esta pieza">' + esc(p.label) + '</textarea>'
@@ -1850,10 +1866,37 @@ function presDibujarConceptos() {
       + 'oninput="presConceptoEditar(' + i + ',\'cantidad\',this.value)">'
       + '<div style="font-size:10px;color:var(--gray-400);text-align:center">$' + fmt(p.precio || 0) + '</div>'
       + '</div>'
+      + btnRecalcular
       + '<button type="button" onclick="presConceptoQuitar(' + i + ')" title="Quitar" '
       + 'style="padding:6px 9px;background:rgba(192,57,43,0.08);border:1.5px solid rgba(192,57,43,0.25);border-radius:6px;color:#C0392B;cursor:pointer;flex-shrink:0">✕</button>'
       + '</div>';
   }).join('');
+}
+
+// ── Recalcular pieza Corredizo con los precios actuales ──────────
+// Solo aplica a piezas del sistema Corredizo (las que tienen datos
+// estructurados guardados: línea, ancho, alto, color, cristal...).
+// Manda al cotizador con esos datos precargados; al guardar ahí,
+// REEMPLAZA esta pieza específica (no la suma como una nueva) y
+// ajusta monto/saldo del folio preservando lo que ya se cobró.
+function presRecalcularPieza(idx) {
+  var pieza = PRES_CONCEPTOS[idx];
+  if (!pieza || !pieza.resultado || pieza.resultado.tipo !== 'corredizo') { toast('Esta pieza no tiene datos para recalcular'); return; }
+  var p = null;
+  for (var i = 0; i < PRES_CACHE.length; i++) {
+    if (PRES_CACHE[i].id === PRES_EDITANDO_ID) { p = PRES_CACHE[i]; break; }
+  }
+  if (!p) { toast('Primero guarda o cierra la edición actual'); return; }
+  if (!confirm('Vas a reabrir "' + (pieza.label || 'esta pieza') + '" en el cotizador Corredizo con sus medidas actuales, para recalcular su precio con los costos de hoy.\n\nAl guardar ahí, esta pieza se REEMPLAZA (no se agrega una nueva) y el monto/saldo del folio se ajustan solos.\n\n¿Continuar?')) return;
+  try {
+    localStorage.setItem('barrcan_recalcular_pieza', JSON.stringify({
+      folioId: p.id, folio: p.folio, cliente: p.cliente, tel: p.tel,
+      monto: p.monto, saldo: p.saldo, descripcion: p.descripcion,
+      notas_internas: p.notas_internas, modulo: presModuloDe(p) || 'banos',
+      pieceIndex: idx, resultadoOriginal: pieza.resultado
+    }));
+  } catch(e) { toast('No se pudo preparar la pieza para recalcular'); return; }
+  location.href = 'cotizador_banos.html';
 }
 
 function presConceptoEditar(idx, campo, valor) {
