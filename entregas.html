@@ -6,6 +6,21 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.44.0
+  FECHA   : 2026-08-23
+  v3.44.0 - Dos cosas más, encontradas revisando un caso real perdido
+    (folio CACN-134A):
+    1) FIX: el reporte de Instalación capturaba la descripción de lo
+       que se entrega (campo "Descripción *") pero nunca la imprimía
+       en el documento final -- ahora sí aparece.
+    2) FIX crítico de pérdida de datos: si el reporte no se podía
+       guardar en el servidor, se encolaba en IndexedDB (cola local)
+       para reintentar después -- pero si ESO también fallaba (cuota
+       llena, modo incógnito, restricciones del navegador), solo se
+       anotaba en la consola, invisible para el usuario. El reporte
+       se perdía de verdad sin que nadie se enterara. Ahora avisa con
+       una alerta bloqueante para que al menos se pueda recuperar a
+       mano con lo que se alcance a fotografiar en pantalla.
   VERSION : v3.43.0
   FECHA   : 2026-08-23
   v3.43.0 - Dos cosas:
@@ -2037,7 +2052,14 @@ function offEncolarReporte(tabla, payload, htmlReporte, nombreArchivo, datosJson
     editId: editId || null,
     ts: new Date().toISOString()
   };
-  offDbGuardar(registro).catch(function(e) { console.warn('[BarrCan] No se pudo encolar en IndexedDB:', e); });
+  offDbGuardar(registro).catch(function(e) {
+    console.warn('[BarrCan] No se pudo encolar en IndexedDB:', e);
+    // Última línea de defensa: si NI SIQUIERA la cola local pudo
+    // guardar el reporte, se pierde de verdad si no se avisa fuerte.
+    // Antes esto solo se anotaba en la consola -- invisible para el
+    // usuario, que creía (por el toast anterior) que estaba a salvo.
+    alert('🚨 URGENTE — "' + (payload.folio || 'este reporte') + '" NO se pudo guardar NI en el servidor NI en la cola local de tu teléfono.\n\nEsto significa que se puede perder de verdad. Por favor:\n1) Toma foto/captura de esta pantalla con los datos del reporte.\n2) Avísale a Mau para que lo capture manualmente.\n\nMotivo técnico: ' + (e && e.message ? e.message : 'desconocido'));
+  });
   return registro;
 }
 
@@ -2133,7 +2155,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.43.0';
+var APP_VERSION = 'v3.44.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -4250,6 +4272,7 @@ async function entGenerarReporteInstalacion() {
       + '<div class="meta-item"><div class="meta-label">Monto</div><div class="meta-val">' + (monto?'$'+monto.toLocaleString('es-MX'):'N/A') + '</div></div>'
       + '</div>'
       + (direccion ? '<div style="background:#F8F9FA;padding:8px 10px;border-radius:6px;margin-bottom:14px;font-size:12px"><span style="color:#9CA3AF;font-size:10px">DIRECCIÓN: </span>' + direccion + '</div>' : '')
+      + (desc ? '<div style="background:#F8F9FA;padding:8px 10px;border-radius:6px;margin-bottom:14px;font-size:12px"><span style="color:#9CA3AF;font-size:10px">SE ENTREG\u00d3 / INSTAL\u00d3: </span>' + esc(desc) + '</div>' : '')
       + piezasHtml
       + (ENT_MODO_INST === 'completo' ? '<h2>&#9989; Checklist T\u00e9cnico de Calidad</h2><table>' + ckRows + '</table>' : '')
       + '<h2>&#128247; Evidencia Fotogr\u00e1fica</h2>'
