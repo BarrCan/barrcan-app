@@ -632,6 +632,12 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
         <option value="10">10mm (solo Acuario Premium)</option>
       </select>
 
+      <label class="form-label">Acabado del cristal</label>
+      <select class="form-select" id="cc-acabado">
+        <option value="transparente">Transparente</option>
+        <option value="esmerilado">Esmerilado</option>
+      </select>
+
       <label class="form-label">Tipo de carretilla <small style="font-weight:400;color:var(--gray-400)">(solo afecta el corte del vidrio)</small></label>
       <select class="form-select" id="cc-carretilla">
         <option value="oculta">Oculta (con barreno)</option>
@@ -929,7 +935,8 @@ var CC_PRECIOS = {
   escuadra_virgo: 539.66, escuadra_acuario: 980.00,
   color_incremento_pct: 8, glass810_incremento_pct: 15,
   kit_danubio_120: 916.61, kit_danubio_150: 973.29, kit_danubio_200: 1096.24,
-  vid_templado_8mm: 1000.00, vid_templado_10mm: 1270.00
+  vid_templado_8mm: 1000.00, vid_templado_10mm: 1270.00,
+  esmerilado_recargo: 800.00
 };
 
 function flSincronizarPrecioVidrio() {
@@ -1109,6 +1116,7 @@ function ccCargarRecalculoPieza() {
   if (colorBtn) ccSelColor(colorBtn);
 
   if (r.cristalMM && document.getElementById('cc-cristal')) document.getElementById('cc-cristal').value = String(r.cristalMM);
+  if (r.acabado    && document.getElementById('cc-acabado')) document.getElementById('cc-acabado').value = r.acabado;
   if (r.carretilla  && document.getElementById('cc-carretilla')) document.getElementById('cc-carretilla').value = r.carretilla;
   ccActualizarUI();
 
@@ -1431,6 +1439,7 @@ function ccCalcular() {
   }
 
   var cristalMM = parseInt(document.getElementById('cc-cristal').value) || 6;
+  var acabado = document.getElementById('cc-acabado').value;
   var carretilla = document.getElementById('cc-carretilla').value;
   var mdo      = parseFloat(document.getElementById('cc-mdo').value) || 0;
   var utilPct  = (parseFloat(document.getElementById('cc-utilidad').value) || 25) / 100;
@@ -1469,6 +1478,10 @@ function ccCalcular() {
   var claveVid = cristalMM === 6 ? 'vid_templado_6mm' : ('vid_templado_' + cristalMM + 'mm');
   var precioVidM2 = cristalMM === 6 ? FL_VID_BASE['6'] : (CC_PRECIOS[claveVid] || FL_VID_BASE['6']);
   var cVidBruto = m2Total * precioVidM2;
+  // Recargo de esmerilado -- fijo por pieza (no por m²), igual a como
+  // se observa en el precio de venta real de la tienda: el esmerilado
+  // cuesta lo mismo de más sin importar el tamaño del cancel.
+  if (acabado === 'esmerilado') cVidBruto += (CC_PRECIOS.esmerilado_recargo || 0);
 
   // ── Kits de aluminio + herrajes + escuadra ──
   var recargoColorPct = (CC_COLOR_ORDEN[CC_COLOR] || 0) * (CC_PRECIOS.color_incremento_pct / 100);
@@ -1506,13 +1519,14 @@ function ccCalcular() {
   var precioFinal = antesIva + ivaMonto;
 
   var lineaLabel = { virgo: 'Virgo Plus', acuario: 'Acuario Premium', danubio: 'Danubio/DTC' }[CC_LINEA];
-  var sistemaNombre = 'Cancel Corredizo ' + lineaLabel + ' ' + (esEscuadra ? 'Escuadra' : 'Recto') + ' ' + CC_COLOR;
+  var acabadoLabel = acabado === 'esmerilado' ? 'Esmerilado' : 'Transparente';
+  var sistemaNombre = 'Cancel Corredizo ' + lineaLabel + ' ' + (esEscuadra ? 'Escuadra' : 'Recto') + ' ' + CC_COLOR + ' ' + acabadoLabel;
 
   CB_RESULTADO = {
     tipo: 'corredizo', sistema: sistemaNombre,
     linea: CC_LINEA, config: CC_CONFIG, color: CC_COLOR,
     L: esEscuadra ? ancho1 : ancho1, L2: esEscuadra ? ancho2 : null, H: A,
-    cristalMM: cristalMM, carretilla: carretilla,
+    cristalMM: cristalMM, acabado: acabado, carretilla: carretilla,
     alturaHojaFija: Math.round(alturaFija), alturaHojaCorrediza: Math.round(alturaCorrediza),
     anchoHojaPared1: Math.round(anchoHoja(ancho1)), anchoHojaPared2: esEscuadra ? Math.round(anchoHoja(ancho2)) : null,
     m2Vidrio: m2Total.toFixed(3),
