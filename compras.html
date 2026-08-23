@@ -6,6 +6,14 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.11
+  FECHA   : 2026-08-23
+  v1.11 - FIX: el selector "¿Quién la trae?" en Herramientas estaba
+    hardcodeado a 5 nombres (Esaú, Miguel, Carlos, Omar, Rodrigo) que
+    NO existen en la tabla real de técnicos -- confirmado con Mau que
+    el roster real hoy es Luis, Mauricio y Ramon. Ahora se carga
+    dinámico desde la misma tabla `tecnicos` que ya usa visitas.html,
+    así que si el roster cambia, se actualiza solo sin tocar código.
   VERSION : v1.10
   FECHA   : 2026-08-20
   v1.10 - Nuevo campo "¿Qué se compró?" en el gasto manual/sin
@@ -423,11 +431,6 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     <label class="form-label">¿Quién la trae? (opcional)</label>
     <select class="form-select" id="hrr-asignado" style="margin-bottom:10px">
       <option value="">— En el taller —</option>
-      <option value="ESAU">Esaú</option>
-      <option value="MIGUEL">Miguel</option>
-      <option value="CARLOS">Carlos</option>
-      <option value="OMAR">Omar</option>
-      <option value="RODRIGO">Rodrigo</option>
     </select>
 
     <label class="form-label">Ubicación extra (opcional)</label>
@@ -581,7 +584,7 @@ var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
 
-var APP_VERSION = 'v1.10';
+var APP_VERSION = 'v1.11';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -1516,7 +1519,26 @@ async function cmpCargarHerramientas() {
   }
 }
 
-var HRR_TEC_NOMBRES = { ESAU:'Esaú', MIGUEL:'Miguel', CARLOS:'Carlos', OMAR:'Omar', RODRIGO:'Rodrigo' };
+var HRR_TEC_NOMBRES = {}; // se llena dinámicamente desde tecnicos.html -- ver cargarTecnicosHerramientas()
+
+async function cargarTecnicosHerramientas() {
+  var sel = document.getElementById('hrr-asignado');
+  if (!sel || !sb()) return;
+  try {
+    var res = await sb().from('tecnicos').select('id,nombre_completo')
+      .eq('activo', true).eq('eliminado', false).order('nombre_completo');
+    if (res.error) throw res.error;
+    var valorPrevio = sel.value;
+    (res.data || []).forEach(function(t) {
+      HRR_TEC_NOMBRES[t.id] = t.nombre_completo;
+      var o = document.createElement('option');
+      o.value = t.id;
+      o.textContent = t.nombre_completo;
+      sel.appendChild(o);
+    });
+    if (valorPrevio) sel.value = valorPrevio;
+  } catch (e) { console.warn('[BarrCan] No se pudieron cargar técnicos para Herramientas:', e.message); }
+}
 var HRR_COND_CFG = {
   bueno:      { label: '✅ Bueno',        color: 'var(--green)' },
   regular:    { label: '⚠️ Regular',      color: 'var(--gold)' },
@@ -1701,6 +1723,7 @@ document.addEventListener('DOMContentLoaded', function() {
   cmpCargarFacturas();
   cmpCargarFoliosObra();
   cmpCargarCategorias();
+  cargarTecnicosHerramientas();
 });
 
 // ══════════════════════════════════════════════
