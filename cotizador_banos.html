@@ -6,6 +6,25 @@
 <title>BarrCan · Cotizador Baños</title>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v2.0
+  FECHA   : 2026-08-20
+  v2.0 - Nuevo tab "Corredizo": el sistema más vendido de BarrCan (marco
+    perimetral de aluminio + vidrio templado corredizo, el mismo
+    anunciado en la tienda en línea) no tenía cotizador propio -- solo
+    existían Frameless, Bacalar y Escuadra (esta última sin templado
+    6mm ni corredizo explícito). Costos reales de catálogo IntegraGlass
+    (Virgo Plus 6mm estándar, Acuario Premium 6/8/10mm alta) y ETC
+    Herrajes (Danubio/DTC, línea económica, tope 1.40x2.00m por
+    problema de carretillas con peso). Recta (1 kit aluminio) y
+    Escuadra (2 kits + kit accesorios escuadra), ambas con selector de
+    color (Natural/Blanco/Inoxidable/Negro, +8% acumulado por escalón
+    sobre el kit aluminio) y grosor de cristal (Acuario también 8/10mm,
+    +15% en aluminio y herrajes). Fórmulas de corte de vidrio reales
+    del catálogo del proveedor, por línea y tipo de carretilla. Todos
+    los costos base viven en config_precios (prefijo cc_) -- editables
+    desde config.html sin tocar código, ya que varios son ESTIMADOS
+    por regla de tres (kits en 1.50/2.00m) pendientes de confirmar con
+    el proveedor.
   VERSION : v1.9
   FECHA   : 2026-08-09
   v1.8 - FIX: el selector "Tipo de cristal" (Frameless) no actualizaba
@@ -183,6 +202,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     <button class="tab-btn active" onclick="cbTab(this,'frameless')">Frameless</button>
     <button class="tab-btn" onclick="cbTab(this,'bacalar')">Bacalar</button>
     <button class="tab-btn" onclick="cbTab(this,'escuadra')">Escuadra</button>
+    <button class="tab-btn" onclick="cbTab(this,'corredizo')">Corredizo</button>
     <button class="tab-btn" onclick="cbTab(this,'taller')">🛠️ Taller</button>
   </div>
 
@@ -497,8 +517,140 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
       </div>
     </div>
 
+  <!-- ══ TAB CORREDIZO (marco perimetral, vidrio templado) ══ -->
+  <!-- El más vendido de BarrCan -- costos reales de catálogo IntegraGlass
+       (Virgo Plus / Acuario Premium) y ETC Herrajes (Danubio/DTC, línea
+       económica). Ver config_precios (prefijo cc_) para los costos base,
+       editables desde config.html sin tocar código. -->
+  <div id="tab-corredizo" style="display:none">
+    <div class="card">
+      <div class="card-title">Cancel Corredizo — Marco Perimetral</div>
+      <div style="font-size:10px;color:var(--gray-400);margin-bottom:10px">El sistema más vendido — vidrio templado con marco de aluminio perimetral, corredizo. Mismo producto anunciado en la tienda en línea.</div>
+
+      <label class="form-label">L&iacute;nea</label>
+      <div class="color-grid">
+        <button class="color-btn active" data-linea="virgo" onclick="ccSelLinea(this)">Virgo Plus<br><small style="font-weight:400">6mm · est&aacute;ndar</small></button>
+        <button class="color-btn" data-linea="acuario" onclick="ccSelLinea(this)">Acuario Premium<br><small style="font-weight:400">6/8/10mm · alta</small></button>
+        <button class="color-btn" data-linea="danubio" onclick="ccSelLinea(this)">Danubio/DTC<br><small style="font-weight:400">econ&oacute;mica · m&aacute;x 1.40m</small></button>
+      </div>
+
+      <div id="cc-aviso-danubio" style="display:none;background:rgba(192,57,43,.08);border-left:3px solid var(--red);border-radius:8px;padding:8px 10px;font-size:11px;color:var(--red);margin-bottom:10px">
+        ⚠️ L&iacute;nea econ&oacute;mica: por problema conocido de carretillas con el peso, no se recomienda arriba de <b>1.40 × 2.00m</b>. S&oacute;lo disponible en configuraci&oacute;n Recta, vidrio 6mm.
+      </div>
+
+      <label class="form-label">Configuraci&oacute;n</label>
+      <div class="sistema-grid">
+        <button class="sistema-btn active" data-config="recta" onclick="ccSelConfig(this)"><span class="emoji">▭</span>Recta<br><small>Fijo + Corredizo</small></button>
+        <button class="sistema-btn" id="cc-btn-escuadra" data-config="escuadra" onclick="ccSelConfig(this)"><span class="emoji">📐</span>Escuadra<br><small>2 paredes</small></button>
+      </div>
+
+      <div id="cc-anchos-recta">
+        <label class="form-label">Ancho total (mm)</label>
+        <input type="number" class="form-input" id="cc-ancho" value="1200" inputmode="numeric">
+      </div>
+      <div id="cc-anchos-escuadra" style="display:none">
+        <div class="form-row">
+          <div>
+            <label class="form-label">Ancho pared frontal (mm)</label>
+            <input type="number" class="form-input" id="cc-ancho1" value="1200" inputmode="numeric">
+          </div>
+          <div>
+            <label class="form-label">Ancho pared lateral (mm)</label>
+            <input type="number" class="form-input" id="cc-ancho2" value="1200" inputmode="numeric">
+          </div>
+        </div>
+      </div>
+      <label class="form-label">Alto total del cancel — &quot;A&quot; (mm)</label>
+      <input type="number" class="form-input" id="cc-alto" value="2000" inputmode="numeric">
+
+      <label class="form-label">Color del marco</label>
+      <div class="color-grid">
+        <button class="color-btn active" data-color="NATURAL" onclick="ccSelColor(this)">Natural</button>
+        <button class="color-btn" data-color="BLANCO" onclick="ccSelColor(this)">Blanco</button>
+        <button class="color-btn" data-color="INOXIDABLE" onclick="ccSelColor(this)">Inoxidable</button>
+        <button class="color-btn" data-color="NEGRO" onclick="ccSelColor(this)">Negro</button>
+      </div>
+
+      <label class="form-label">Grosor de cristal templado</label>
+      <select class="form-select" id="cc-cristal">
+        <option value="6">6mm</option>
+        <option value="8">8mm (solo Acuario Premium)</option>
+        <option value="10">10mm (solo Acuario Premium)</option>
+      </select>
+
+      <label class="form-label">Tipo de carretilla <small style="font-weight:400;color:var(--gray-400)">(solo afecta el corte del vidrio)</small></label>
+      <select class="form-select" id="cc-carretilla">
+        <option value="oculta">Oculta (con barreno)</option>
+        <option value="presion">A presi&oacute;n (sin barreno)</option>
+        <option value="presion2">A presi&oacute;n, 2 rodamientos (solo Acuario)</option>
+      </select>
+
+      <div class="form-row">
+        <div>
+          <label class="form-label">Mano de obra ($)</label>
+          <input type="number" class="form-input" id="cc-mdo" value="600" inputmode="decimal">
+        </div>
+        <div>
+          <label class="form-label">Utilidad (%)</label>
+          <input type="number" class="form-input" id="cc-utilidad" value="25" inputmode="decimal">
+        </div>
+      </div>
+      <div class="form-row">
+        <div>
+          <label class="form-label">GIF (%)</label>
+          <input type="number" class="form-input" id="cc-gif" value="15" inputmode="decimal">
+        </div>
+        <div>
+          <label class="form-label">GA (%)</label>
+          <input type="number" class="form-input" id="cc-ga" value="25" inputmode="decimal">
+        </div>
+      </div>
+      <div class="form-row">
+        <div>
+          <label class="form-label">IVA (%)</label>
+          <input type="number" class="form-input" id="cc-iva" value="16" inputmode="decimal">
+        </div>
+      </div>
+
+      <button class="btn btn-primary" onclick="ccCalcular()">Calcular</button>
+    </div>
+
+    <div id="cc-resultado" style="display:none">
+      <div class="total-box">
+        <div class="total-label">PRECIO FINAL</div>
+        <div class="total-monto" id="cc-precio-final">$0</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Desglose de vidrio</div>
+        <div class="bom-row"><span>Hoja fija</span><span id="cc-d-vid-fija">—</span></div>
+        <div class="bom-row"><span>Hoja corrediza</span><span id="cc-d-vid-corr">—</span></div>
+        <div class="bom-row"><span>Ancho de cada hoja</span><span id="cc-d-ancho-hoja">—</span></div>
+        <div class="bom-row"><span>m&sup2; total de vidrio</span><span id="cc-d-m2">—</span></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Costeo</div>
+        <div class="bom-row"><span>Kit aluminio (con color)</span><span id="cc-d-alu">—</span></div>
+        <div class="bom-row"><span>Kit herrajes</span><span id="cc-d-her">—</span></div>
+        <div class="bom-row" id="cc-row-escuadra" style="display:none"><span>Kit accesorios escuadra</span><span id="cc-d-esc">—</span></div>
+        <div class="bom-row"><span>Vidrio</span><span id="cc-d-vidcost">—</span></div>
+        <div class="bom-row"><span>Mano de obra</span><span id="cc-d-mdo">—</span></div>
+        <div class="bom-row"><span>GIF</span><span id="cc-d-gif">—</span></div>
+        <div class="bom-row"><span>GA</span><span id="cc-d-ga">—</span></div>
+        <div class="bom-row"><span>Utilidad</span><span id="cc-d-util">—</span></div>
+        <div class="bom-row"><span>IVA</span><span id="cc-d-iva">—</span></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Guardar presupuesto Corredizo</div>
+        <input type="text" class="form-input" id="corredizo-cliente" placeholder="Nombre del cliente *">
+        <input type="text" class="form-input" id="corredizo-tel" placeholder="Tel&eacute;fono">
+        <button class="btn btn-gold" onclick="cbGuardarPresupuesto('corredizo')">Guardar y generar folio CACN</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ══ TAB TALLER ══ -->
   <div id="tab-taller" style="display:none">
+
     <div class="card">
       <div class="card-title">🛠️ Medidas de fabricación (pieza Frameless)</div>
       <div id="taller-vacio" style="text-align:center;padding:20px;color:var(--gray-400);font-size:13px">
@@ -655,7 +807,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v1.9';
+var APP_VERSION = 'v2.0';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -684,6 +836,18 @@ var CB_RESULTADO = null; // último resultado calculado para guardar
 // este mapa (actualizado desde config_precios) al cambiar de opción,
 // dejando el campo editable a mano después por si hace falta ajustar.
 var FL_VID_BASE = { '6': 800, '9': 1100, '12': 1600, '18': 1300, '24': 1800 };
+
+// ── CANCEL CORREDIZO — costos base (mismos defaults que config_precios,
+// se sobreescriben al cargar desde Supabase en cbCargarConfigPrecios) ──
+var CC_PRECIOS = {
+  alum_virgo_120: 1139.61, alum_virgo_150: 1424.51, alum_virgo_200: 1899.35,
+  alum_acuario_120: 1940.00, alum_acuario_150: 2425.00, alum_acuario_200: 3233.33,
+  herrajes_virgo: 365.85, herrajes_acuario: 698.00,
+  escuadra_virgo: 539.66, escuadra_acuario: 980.00,
+  color_incremento_pct: 8, glass810_incremento_pct: 15,
+  kit_danubio_120: 916.61, kit_danubio_150: 973.29, kit_danubio_200: 1096.24,
+  vid_templado_8mm: 1000.00, vid_templado_10mm: 1270.00
+};
 
 function flSincronizarPrecioVidrio() {
   var sel = document.getElementById('fl-cristal');
@@ -885,7 +1049,7 @@ var FL_BOM = {
 function cbTab(btn, tab) {
   document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
   btn.classList.add('active');
-  var tabs = ['frameless','bacalar','escuadra','taller'];
+  var tabs = ['frameless','bacalar','escuadra','corredizo','taller'];
   tabs.forEach(function(t) {
     var el = document.getElementById('tab-' + t);
     if (el) el.style.display = t === tab ? 'block' : 'none';
@@ -994,6 +1158,206 @@ function cbSelColor(btn) {
   document.querySelectorAll('.color-btn').forEach(function(b) { b.classList.remove('active'); });
   btn.classList.add('active');
   ESC_COLOR = btn.dataset.color;
+}
+
+// ── CANCEL CORREDIZO — selección de línea/config/color ─────────
+var CC_LINEA = 'virgo';
+var CC_CONFIG = 'recta';
+var CC_COLOR = 'NATURAL';
+var CC_COLOR_ORDEN = { NATURAL: 0, BLANCO: 1, INOXIDABLE: 2, NEGRO: 3 };
+
+function ccSelLinea(btn) {
+  btn.closest('.color-grid').querySelectorAll('.color-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  CC_LINEA = btn.dataset.linea;
+  ccActualizarUI();
+}
+function ccSelConfig(btn) {
+  btn.closest('.sistema-grid').querySelectorAll('.sistema-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  CC_CONFIG = btn.dataset.config;
+  document.getElementById('cc-anchos-recta').style.display    = CC_CONFIG === 'recta'    ? 'block' : 'none';
+  document.getElementById('cc-anchos-escuadra').style.display = CC_CONFIG === 'escuadra' ? 'block' : 'none';
+}
+function ccSelColor(btn) {
+  btn.closest('.color-grid').querySelectorAll('.color-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  CC_COLOR = btn.dataset.color;
+}
+
+// Danubio/DTC: solo Recta, solo 6mm, aviso de tope 1.40m. Acuario: habilita
+// 8/10mm y "2 rodamientos". Virgo: solo 6mm, sin 2 rodamientos.
+function ccActualizarUI() {
+  var esDanubio = CC_LINEA === 'danubio';
+  var esAcuario = CC_LINEA === 'acuario';
+  document.getElementById('cc-aviso-danubio').style.display = esDanubio ? 'block' : 'none';
+
+  var btnEscuadra = document.getElementById('cc-btn-escuadra');
+  if (esDanubio) {
+    // Danubio no tiene kit de escuadra cotizado -- se fuerza a Recta.
+    if (CC_CONFIG === 'escuadra') { document.querySelector('#tab-corredizo .sistema-btn[data-config="recta"]').click(); }
+    btnEscuadra.disabled = true; btnEscuadra.style.opacity = '0.4';
+  } else {
+    btnEscuadra.disabled = false; btnEscuadra.style.opacity = '1';
+  }
+
+  var selCristal = document.getElementById('cc-cristal');
+  if (!esAcuario) { selCristal.value = '6'; }
+  Array.prototype.forEach.call(selCristal.options, function(o) {
+    if (o.value !== '6') o.disabled = !esAcuario;
+  });
+
+  var selCarr = document.getElementById('cc-carretilla');
+  if (selCarr.value === 'presion2' && !esAcuario) selCarr.value = 'presion';
+  Array.prototype.forEach.call(selCarr.options, function(o) {
+    if (o.value === 'presion2') o.disabled = !esAcuario;
+  });
+}
+
+// Redondea hacia el kit estándar más próximo por arriba (se corta del
+// kit más grande, según confirmó Mau con la factura real).
+function ccKitBracket(mm) {
+  if (mm <= 1200) return 120;
+  if (mm <= 1500) return 150;
+  return 200;
+}
+
+function ccPrecioAluminio(linea, bracket) {
+  var clave = 'alum_' + linea + '_' + bracket;
+  return CC_PRECIOS[clave] || 0;
+}
+
+// ── CÁLCULO CANCEL CORREDIZO ────────────────────────────────────
+function ccCalcular() {
+  var A = parseInt(document.getElementById('cc-alto').value) || 0;
+  if (A < 1200) { toast('Alto mínimo recomendado: 1200mm'); return; }
+
+  var esEscuadra = CC_CONFIG === 'escuadra';
+  var ancho1, ancho2;
+  if (esEscuadra) {
+    ancho1 = parseInt(document.getElementById('cc-ancho1').value) || 0;
+    ancho2 = parseInt(document.getElementById('cc-ancho2').value) || 0;
+    if (ancho1 < 700 || ancho2 < 700) { toast('Ancho mínimo por pared: 700mm'); return; }
+  } else {
+    ancho1 = parseInt(document.getElementById('cc-ancho').value) || 0;
+    ancho2 = 0;
+    if (ancho1 < 700) { toast('Ancho mínimo: 700mm'); return; }
+  }
+
+  if (CC_LINEA === 'danubio' && (ancho1 > 1400 || ancho2 > 1400)) {
+    if (!confirm('Danubio/DTC arriba de 1.40m tiene riesgo conocido de falla en carretillas por peso.\n\n¿Continuar de todas formas?')) return;
+  }
+
+  var cristalMM = parseInt(document.getElementById('cc-cristal').value) || 6;
+  var carretilla = document.getElementById('cc-carretilla').value;
+  var mdo      = parseFloat(document.getElementById('cc-mdo').value) || 0;
+  var utilPct  = (parseFloat(document.getElementById('cc-utilidad').value) || 25) / 100;
+  var gifPct   = (parseFloat(document.getElementById('cc-gif').value) || 15) / 100;
+  var gaPct    = (parseFloat(document.getElementById('cc-ga').value) || 25) / 100;
+  var ivaPct   = (parseFloat(document.getElementById('cc-iva').value) || 16) / 100;
+  var ivaComprasPct = (parseFloat(document.getElementById('cfg-iva-compras').value) || 16) / 100;
+
+  // ── Altura de cada hoja según línea + tipo de carretilla ──
+  var alturaCorrediza, alturaFija;
+  if (CC_LINEA === 'acuario') {
+    alturaFija = A - 35;
+    if (carretilla === 'oculta')      alturaCorrediza = A - 53;
+    else if (carretilla === 'presion2') alturaCorrediza = A - 62;
+    else                                alturaCorrediza = A - 61; // presión 1 rodamiento
+  } else {
+    // Virgo Plus y Danubio/DTC comparten la fórmula de Virgo Plus (única
+    // que se tiene confirmada para la línea económica).
+    alturaFija = A - 43;
+    alturaCorrediza = carretilla === 'presion' ? A - 48.86 : A - 67.75;
+  }
+
+  // ── Ancho de cada hoja = (ancho total + 40mm) / 2 -- confirmado por
+  // Mau, igual para ambas líneas y para fija/corrediza. ──
+  function anchoHoja(anchoTotal) { return (anchoTotal + 40) / 2; }
+
+  var paredes = esEscuadra ? [ancho1, ancho2] : [ancho1];
+  var m2Total = 0;
+  paredes.forEach(function(anchoPared) {
+    var aHoja = anchoHoja(anchoPared);
+    m2Total += (aHoja / 1000) * (alturaFija / 1000);      // hoja fija
+    m2Total += (aHoja / 1000) * (alturaCorrediza / 1000); // hoja corrediza
+  });
+
+  // ── Vidrio ──
+  var claveVid = cristalMM === 6 ? 'vid_templado_6mm' : ('vid_templado_' + cristalMM + 'mm');
+  var precioVidM2 = cristalMM === 6 ? FL_VID_BASE['6'] : (CC_PRECIOS[claveVid] || FL_VID_BASE['6']);
+  var cVidBruto = m2Total * precioVidM2;
+
+  // ── Kits de aluminio + herrajes + escuadra ──
+  var recargoColorPct = (CC_COLOR_ORDEN[CC_COLOR] || 0) * (CC_PRECIOS.color_incremento_pct / 100);
+  var recargo810 = (CC_LINEA === 'acuario' && cristalMM > 6) ? (CC_PRECIOS.glass810_incremento_pct / 100) : 0;
+
+  var cAlu = 0, cHer = 0, cEsc = 0;
+
+  if (CC_LINEA === 'danubio') {
+    // Kit Danubio/DTC ya viene COMPLETO (aluminio + herrajes juntos, según
+    // catálogo ETC Herrajes) -- no aplica recargo de color (esa línea solo
+    // trae los acabados de fábrica, no se pintan por separado) ni de 8-10mm.
+    paredes.forEach(function(anchoPared) {
+      var bracket = ccKitBracket(anchoPared);
+      cAlu += CC_PRECIOS['kit_danubio_' + bracket];
+    });
+  } else {
+    paredes.forEach(function(anchoPared) {
+      var bracket = ccKitBracket(anchoPared);
+      var base = ccPrecioAluminio(CC_LINEA, bracket);
+      cAlu += base * (1 + recargoColorPct) * (1 + recargo810);
+    });
+    cHer = CC_PRECIOS['herrajes_' + CC_LINEA] * (1 + recargo810);
+    if (esEscuadra) cEsc = CC_PRECIOS['escuadra_' + CC_LINEA];
+  }
+
+  var costoMaterialesBruto = cAlu + cHer + cEsc + cVidBruto;
+  var costoMaterialesNeto  = costoMaterialesBruto / (1 + ivaComprasPct);
+  var subtotal  = costoMaterialesNeto + mdo;
+  var gif       = subtotal * gifPct;
+  var ga        = subtotal * gaPct;
+  var costoReal = subtotal + gif + ga;
+  var utilidad  = costoReal * utilPct;
+  var antesIva  = costoReal + utilidad;
+  var ivaMonto  = antesIva * ivaPct;
+  var precioFinal = antesIva + ivaMonto;
+
+  var lineaLabel = { virgo: 'Virgo Plus', acuario: 'Acuario Premium', danubio: 'Danubio/DTC' }[CC_LINEA];
+  var sistemaNombre = 'Cancel Corredizo ' + lineaLabel + ' ' + (esEscuadra ? 'Escuadra' : 'Recto') + ' ' + CC_COLOR;
+
+  CB_RESULTADO = {
+    tipo: 'corredizo', sistema: sistemaNombre,
+    linea: CC_LINEA, config: CC_CONFIG, color: CC_COLOR,
+    L: esEscuadra ? ancho1 : ancho1, L2: esEscuadra ? ancho2 : null, H: A,
+    cristalMM: cristalMM, carretilla: carretilla,
+    alturaHojaFija: Math.round(alturaFija), alturaHojaCorrediza: Math.round(alturaCorrediza),
+    anchoHojaPared1: Math.round(anchoHoja(ancho1)), anchoHojaPared2: esEscuadra ? Math.round(anchoHoja(ancho2)) : null,
+    m2Vidrio: m2Total.toFixed(3),
+    costoAluminio: cAlu, costoHerrajes: cHer, costoEscuadra: cEsc, costoVidrio: cVidBruto,
+    mdoTotal: mdo, subtotal: subtotal, gif: gif, ga: ga, utilidad: utilidad, ivaMonto: ivaMonto,
+    precioFinal: precioFinal
+  };
+
+  document.getElementById('cc-precio-final').textContent = fmt(precioFinal);
+  document.getElementById('cc-d-vid-fija').textContent = Math.round(alturaFija) + ' mm alto';
+  document.getElementById('cc-d-vid-corr').textContent = Math.round(alturaCorrediza) + ' mm alto';
+  document.getElementById('cc-d-ancho-hoja').textContent = esEscuadra
+    ? (Math.round(anchoHoja(ancho1)) + ' / ' + Math.round(anchoHoja(ancho2)) + ' mm')
+    : (Math.round(anchoHoja(ancho1)) + ' mm');
+  document.getElementById('cc-d-m2').textContent = m2Total.toFixed(3) + ' m²';
+  document.getElementById('cc-d-alu').textContent = fmt(cAlu);
+  document.getElementById('cc-d-her').textContent = CC_LINEA === 'danubio' ? 'incluido en kit' : fmt(cHer);
+  document.getElementById('cc-row-escuadra').style.display = esEscuadra && CC_LINEA !== 'danubio' ? 'flex' : 'none';
+  document.getElementById('cc-d-esc').textContent = fmt(cEsc);
+  document.getElementById('cc-d-vidcost').textContent = fmt(cVidBruto);
+  document.getElementById('cc-d-mdo').textContent = fmt(mdo);
+  document.getElementById('cc-d-gif').textContent = fmt(gif);
+  document.getElementById('cc-d-ga').textContent = fmt(ga);
+  document.getElementById('cc-d-util').textContent = fmt(utilidad);
+  document.getElementById('cc-d-iva').textContent = fmt(ivaMonto);
+  document.getElementById('cc-resultado').style.display = 'block';
+  document.getElementById('cc-resultado').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ── CÁLCULO FRAMELESS ─────────────────────────────────────────
@@ -1233,8 +1597,8 @@ function cbCalcEscuadra() {
 async function cbGuardarPresupuesto(tipo) {
   if (!CB_RESULTADO) { toast('Primero calcula el presupuesto'); return; }
 
-  var clienteId = tipo === 'frameless' ? 'fl-cliente' : tipo === 'bacalar' ? 'bc-cliente' : 'esc-cliente';
-  var telId     = tipo === 'frameless' ? 'fl-tel'     : tipo === 'bacalar' ? 'bc-tel'     : 'esc-tel';
+  var clienteId = tipo === 'frameless' ? 'fl-cliente' : tipo === 'bacalar' ? 'bc-cliente' : tipo === 'escuadra' ? 'esc-cliente' : 'corredizo-cliente';
+  var telId     = tipo === 'frameless' ? 'fl-tel'     : tipo === 'bacalar' ? 'bc-tel'     : tipo === 'escuadra' ? 'esc-tel'     : 'corredizo-tel';
   var cliente = document.getElementById(clienteId).value.trim();
   var tel     = document.getElementById(telId).value.trim();
   if (!cliente) { toast('Ingresa el nombre del cliente'); return; }
@@ -1432,6 +1796,14 @@ async function cbCargarConfigPrecios() {
       if (mapa[clave] !== undefined) FL_VID_BASE[mapaEsp[clave]] = parseFloat(mapa[clave]);
     });
     flSincronizarPrecioVidrio();
+
+    // Cancel Corredizo: todas las claves cc_* + vidrio templado 8/10mm
+    Object.keys(mapa).forEach(function(clave) {
+      if (clave.indexOf('cc_') === 0) CC_PRECIOS[clave.slice(3)] = parseFloat(mapa[clave]);
+    });
+    if (mapa['vid_templado_8mm']  !== undefined) CC_PRECIOS.vid_templado_8mm  = parseFloat(mapa['vid_templado_8mm']);
+    if (mapa['vid_templado_10mm'] !== undefined) CC_PRECIOS.vid_templado_10mm = parseFloat(mapa['vid_templado_10mm']);
+
     console.log('[Supabase] Config de precios sincronizada (Baños)');
   } catch(e) {
     console.warn('[Supabase] Error cargando config:', e.message);
@@ -1443,6 +1815,7 @@ document.addEventListener('DOMContentLoaded', function() {
   cbCargarHistorial();
   cbCargarConfigPrecios();
   flSincronizarPrecioVidrio();
+  ccActualizarUI();
   if (navigator.onLine) cbReintentarPendientes();
   // Si se llegó aquí desde historial.html con "+ Agregar piezas", carga
   // el folio existente para sumarle la próxima pieza que se calcule.
