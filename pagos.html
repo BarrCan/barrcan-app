@@ -6,6 +6,16 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.9
+  FECHA   : 2026-08-22
+  v4.9 — Nueva forma de pago "🛒 Mercado Libre": al elegirla aparece
+    un campo de % de comisión (default desde config_precios, editable
+    por si varía) y un "Neto real que te llega" calculado en vivo --
+    ESTO ES SOLO PARA MAU, nunca aparece en el recibo impreso (el
+    recibo sigue mostrando el monto completo cobrado, como debe verlo
+    el cliente). El % de comisión se guarda en la nueva columna
+    pagos.comision_ml_pct para poder calcular la utilidad real en
+    reportes.html más adelante.
   VERSIÓN : v4.8
   FECHA   : 2026-08-20
   v4.8 — FIX: presupuestos "entregado" con saldo pendiente desaparecían
@@ -852,7 +862,7 @@ select.form-select { padding-right: 36px; cursor: pointer; }
         <div class="form-group">
           <label class="form-label">Monto de este pago *</label>
           <div class="input-unit">
-            <input type="number" id="pago-monto" class="form-input" placeholder="0" min="0" inputmode="decimal" oninput="actualizarSaldo()">
+            <input type="number" id="pago-monto" class="form-input" placeholder="0" min="0" inputmode="decimal" oninput="actualizarSaldo(); pagoActualizarNetoML();">
             <span class="input-unit-label">$</span>
           </div>
         </div>
@@ -909,10 +919,19 @@ select.form-select { padding-right: 36px; cursor: pointer; }
       </div>
 
       <label class="form-label">Forma de pago</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">
         <button class="pf-btn active" data-forma="transferencia" onclick="selForma(this)">Transferencia</button>
         <button class="pf-btn" data-forma="efectivo" onclick="selForma(this)">Efectivo</button>
         <button class="pf-btn" data-forma="tarjeta" onclick="selForma(this)">Tarjeta</button>
+      </div>
+      <div style="margin-bottom:12px">
+        <button class="pf-btn" data-forma="mercado_libre" onclick="selForma(this)" style="width:100%">🛒 Mercado Libre</button>
+      </div>
+
+      <div id="pago-ml-group" style="display:none;background:rgba(200,146,58,.08);border-left:3px solid var(--gold);border-radius:8px;padding:10px 12px;margin-bottom:12px">
+        <label class="form-label" style="margin-top:0">% comisión de Mercado Libre <small style="font-weight:400;color:var(--gray-400)">(solo para ti, nunca sale en el recibo)</small></label>
+        <input type="number" id="pago-comision-ml" class="form-input" inputmode="decimal" step="0.5" oninput="pagoActualizarNetoML()">
+        <div id="pago-ml-neto" style="font-size:12px;color:var(--gray-600);margin-top:6px">Neto real que te llega: —</div>
       </div>
 
       <label class="form-label">Notas / referencia de transferencia</label>
@@ -972,6 +991,7 @@ select.form-select { padding-right: 36px; cursor: pointer; }
       <option value="transferencia">Transferencia</option>
       <option value="efectivo">Efectivo</option>
       <option value="tarjeta">Tarjeta</option>
+      <option value="mercado_libre">🛒 Mercado Libre</option>
     </select>
     <label class="form-label">Notas</label>
     <input type="text" id="edit-notas" class="form-input" placeholder="Referencia, observaciones...">
@@ -1014,7 +1034,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.8';
+var APP_VERSION = 'v4.9';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -1084,7 +1104,7 @@ var ESTADO_SHORT = {
   entregado: 'Entregado'
 };
 var CONCEPTO_L = { anticipo: 'Anticipo 50%', segundo_pago: '2\u00b0 Pago 35%', liquidacion: 'Liquidaci\u00f3n 15%', pago_total: 'Pago total', otro: 'Otro' };
-var FORMA_E    = { transferencia: 'Transf.', efectivo: 'Efectivo', tarjeta: 'Tarjeta' };
+var FORMA_E    = { transferencia: 'Transf.', efectivo: 'Efectivo', tarjeta: 'Tarjeta', mercado_libre: '🛒 ML' };
 
 // ── Paginación ────────────────────────────────────────────────────
 var PAGOS_VISIBLES = 10;
@@ -1389,11 +1409,42 @@ function actualizarSaldo() {
 }
 
 // ── Forma de pago ─────────────────────────────────────────────────
+var COMISION_ML_DEFAULT = 21;
+
+async function cargarComisionMLDefault() {
+  if (!sb()) return;
+  try {
+    var res = await sb().from('config_precios').select('valor').eq('clave', 'comision_ml_pct').single();
+    if (res.data && res.data.valor != null) COMISION_ML_DEFAULT = parseFloat(res.data.valor);
+  } catch (e) { /* se queda con el default local */ }
+}
+
 function selForma(btn) {
   FORMA_SEL = btn.dataset.forma;
   document.querySelectorAll('.pf-btn').forEach(function(b) {
     b.classList.toggle('active', b === btn);
   });
+  var grupoML = document.getElementById('pago-ml-group');
+  if (grupoML) {
+    grupoML.style.display = FORMA_SEL === 'mercado_libre' ? 'block' : 'none';
+    if (FORMA_SEL === 'mercado_libre') {
+      var comisionEl = document.getElementById('pago-comision-ml');
+      if (comisionEl && !comisionEl.value) comisionEl.value = COMISION_ML_DEFAULT;
+      pagoActualizarNetoML();
+    }
+  }
+}
+
+// Solo informativo, para Mau -- nunca se manda al recibo impreso.
+function pagoActualizarNetoML() {
+  var montoEl = document.getElementById('pago-monto');
+  var comisionEl = document.getElementById('pago-comision-ml');
+  var netoEl = document.getElementById('pago-ml-neto');
+  if (!montoEl || !comisionEl || !netoEl) return;
+  var monto = parseFloat(montoEl.value) || 0;
+  var comisionPct = parseFloat(comisionEl.value) || 0;
+  var neto = monto * (1 - comisionPct / 100);
+  netoEl.textContent = 'Neto real que te llega: $' + fmt(neto) + ' (comisión: $' + fmt(monto - neto) + ')';
 }
 
 // ── Foto ──────────────────────────────────────────────────────────
@@ -1725,10 +1776,14 @@ async function pagoGuardar() {
     notas:         notaConFolio.slice(0, 500) || null,
     registrado_por:'campo',
     comprobante_img: _PAGO_FOTO || null,
-    presupuesto_id: PRES_SEL && PRES_SEL.id ? PRES_SEL.id : null
+    presupuesto_id: PRES_SEL && PRES_SEL.id ? PRES_SEL.id : null,
+    comision_ml_pct: FORMA_SEL === 'mercado_libre' ? (parseFloat(document.getElementById('pago-comision-ml').value) || null) : null
   };
 
-  var fLabels = { transferencia: 'Transferencia bancaria', efectivo: 'Efectivo', tarjeta: 'Tarjeta cr\u00e9dito/d\u00e9bito' };
+  var fLabels = { transferencia: 'Transferencia bancaria', efectivo: 'Efectivo', tarjeta: 'Tarjeta cr\u00e9dito/d\u00e9bito', mercado_libre: 'Mercado Libre' };
+  // OJO: el recibo (_RECIBO) SOLO recibe monto/forma/notas del usuario --
+  // nunca comision_ml_pct ni el neto. Eso es exclusivamente para el
+  // registro interno en `db`, jamás se le imprime al cliente.
   _RECIBO = generarRecibo({
     folioRB: folioRB, folio: folio, cliente: cliente, tel: tel, desc: desc,
     monto: monto, total: total, ant: ant, saldo: saldo,
@@ -2269,6 +2324,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   pagosCargar();
   cargarPresDropdown();
+  cargarComisionMLDefault();
 
   var cola = JSON.parse(localStorage.getItem('barrcan_pagos_pend') || '[]');
   if (cola.length) setTimeout(pagoReintentarPendientes, 1500);
