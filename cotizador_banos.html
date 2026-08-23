@@ -6,6 +6,23 @@
 <title>BarrCan · Cotizador Baños</title>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v2.2
+  FECHA   : 2026-08-22
+  v2.2 - FIX CRÍTICO (preexistente desde v1.9, no introducido por mí
+    pero heredado): a "tab-escuadra" le faltaba su </div> de cierre
+    -- el que había ahí en realidad cerraba "esc-resultado", no la
+    pestaña completa. Por eso TODO lo que viniera después en el
+    documento quedaba anidado DENTRO de Escuadra en el HTML real
+    (aunque el JS de cada pestaña estuviera perfecto): "Taller" ya
+    llevaba así desde v1.9 sin que se hubiera notado, y "Corredizo"
+    heredó el mismo problema al agregarse después de Escuadra. Un
+    div padre oculto (display:none de Escuadra) esconde a sus hijos
+    sin importar el display propio de cada uno -- por eso las
+    pruebas automatizadas "pasaban" (solo revisaban el display del
+    propio elemento) pero en el navegador real no se veía nada.
+    Detectado por Mau en producción; localizado con un parser HTML
+    real (no solo contar <div> a ojo) para encontrar el cierre
+    faltante exacto.
   VERSION : v2.1
   FECHA   : 2026-08-22
   v2.1 - El documento impreso ahora anexa un diagrama técnico de
@@ -525,6 +542,20 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
         <button class="btn btn-gold" onclick="cbGuardarPresupuesto('escuadra')">Guardar y generar folio CACN</button>
       </div>
     </div>
+  </div>
+  <!-- ↑ FIX v2.2: faltaba este </div> -- cerraba "esc-resultado" pero
+       nunca "tab-escuadra" (abierto arriba, id="tab-escuadra"). Bug
+       preexistente desde v1.9: por esto TODO lo que viniera después
+       (Taller, y ahora también Corredizo) quedaba anidado DENTRO de
+       Escuadra en el HTML real, aunque el código de cbTab() y cada
+       display:block/none individual estuvieran perfectos. Un div
+       padre oculto (display:none de Escuadra) se lleva entre las
+       patas a sus hijos sin importar el display propio de cada uno
+       -- por eso Corredizo (y probablemente Taller también, sin que
+       se hubiera notado) no se veían en el navegador real aunque
+       todas las pruebas con jsdom sí "funcionaran": jsdom solo revisa
+       el valor de display del propio elemento, no si algún ancestro
+       ya lo esconde. -->
 
   <!-- ══ TAB CORREDIZO (marco perimetral, vidrio templado) ══ -->
   <!-- El más vendido de BarrCan -- costos reales de catálogo IntegraGlass
@@ -845,7 +876,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v2.1';
+var APP_VERSION = 'v2.2';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
