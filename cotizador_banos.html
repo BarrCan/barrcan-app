@@ -6,6 +6,15 @@
 <title>BarrCan · Cotizador Baños</title>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v2.1
+  FECHA   : 2026-08-22
+  v2.1 - El documento impreso ahora anexa un diagrama técnico de
+    referencia (fotos reales subidas a /assets/: Corre-6mm-Tem.jpg
+    para Recta, Esc-6mm-Tem.jpg para Escuadra) junto a cada pieza del
+    sistema Corredizo, con las medidas reales de esa pieza (ancho ×
+    alto) -- para que el presupuesto final se parezca más a la
+    muestra de referencia del proyecto. No afecta a Frameless/Bacalar/
+    Escuadra (aluminio), que siguen sin imagen por ahora.
   VERSION : v2.0
   FECHA   : 2026-08-20
   v2.0 - Nuevo tab "Corredizo": el sistema más vendido de BarrCan (marco
@@ -747,15 +756,44 @@ function snHeaderOficial(tituloDoc, folioDoc) {
     + '</div>';
 }
 
+// ── Diagrama técnico de referencia (Cancel Corredizo) ───────────
+// Fotos reales subidas por Mau a GitHub: Corre-6mm-Tem.jpg (recta,
+// dos hojas) y Esc-6mm-Tem.jpg (escuadra, fijo-corredizo-fijo).
+// Se anexan al documento impreso con las medidas REALES de la pieza
+// cotizada, igual que la muestra de presupuesto del proyecto.
+var _DIAG_CORREDIZO_URL  = 'https://barrcan.github.io/barrcan-app/assets/Corre-6mm-Tem.jpg';
+var _DIAG_ESCUADRA_URL   = 'https://barrcan.github.io/barrcan-app/assets/Esc-6mm-Tem.jpg';
+
+function snDiagramaCorredizo(resultado) {
+  if (!resultado || resultado.tipo !== 'corredizo') return '';
+  var esEscuadra = resultado.config === 'escuadra';
+  var url = esEscuadra ? _DIAG_ESCUADRA_URL : _DIAG_CORREDIZO_URL;
+  var medidas = esEscuadra
+    ? (resultado.L + ' \u00d7 ' + resultado.L2 + ' mm &middot; alto ' + resultado.H + ' mm')
+    : (resultado.L + ' mm &middot; alto ' + resultado.H + ' mm');
+  return '<div style="display:flex;gap:10px;align-items:center;margin-top:6px;padding-left:4px">'
+    + '<img src="' + url + '" style="width:72px;height:auto;flex-shrink:0;border:1px solid #ddd;border-radius:4px;background:#fafafa" alt="Diagrama de referencia">'
+    + '<div style="font-size:9pt;color:#666">' + medidas + '</div>'
+    + '</div>';
+}
+
 function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha) {
   var fechaStr = fecha.toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
   var total = items.reduce(function(a, it){ return a + (it.precio || 0); }, 0);
   var lista = items.map(function(it, idx) {
     var cant = it.cantidad || 1;
     var detalle = cant > 1 ? ' <span style="color:#888;font-size:9pt">(' + cant + ' pzas \u00d7 $' + fmt(it.precioUnitario != null ? it.precioUnitario : (it.precio / cant)) + ')</span>' : '';
-    return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #eee;font-size:11pt">'
+    // Diagrama técnico de referencia para piezas del sistema Corredizo
+    // (fotos reales subidas por Mau a /assets/ -- Corre-6mm-Tem.jpg para
+    // recta, Esc-6mm-Tem.jpg para escuadra) con las medidas reales de
+    // ESTA pieza, igual que la muestra de presupuesto del proyecto.
+    var diagrama = snDiagramaCorredizo(it.resultado);
+    return '<div style="padding:6px 0;border-bottom:1px solid #eee;font-size:11pt">'
+      + '<div style="display:flex;justify-content:space-between">'
       + '<span>' + (idx + 1) + '. ' + esc(it.label) + detalle + '</span>'
-      + '<span style="font-weight:700;white-space:nowrap;padding-left:12px">$' + fmt(it.precio) + '</span></div>';
+      + '<span style="font-weight:700;white-space:nowrap;padding-left:12px">$' + fmt(it.precio) + '</span></div>'
+      + diagrama
+      + '</div>';
   }).join('');
   return '<!DOCTYPE html><html lang=es><head><meta charset=UTF-8><meta name=viewport content=width=device-width>'
     + '<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10pt;color:#1B3A5C;background:#fff}'
@@ -807,7 +845,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v2.0';
+var APP_VERSION = 'v2.1';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
