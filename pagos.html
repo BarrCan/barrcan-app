@@ -6,6 +6,28 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.11
+  FECHA   : 2026-08-23
+  v4.11 — FIX crítico de pérdida de datos, mismo patrón que se
+    encontró y corrigió en entregas.html: guardarOffline() tenía un
+    catch(e){} vacío -- si el pago no se podía guardar NI en el
+    servidor NI localmente (memoria llena, modo incógnito), se perdía
+    por completo sin ningún aviso. Caso real: el pago de liquidación
+    del folio CACN-082B nunca llegó a la base de datos así. Ahora
+    avisa con una alerta bloqueante para poder recuperarlo a mano.
+  VERSIÓN : v4.10
+  FECHA   : 2026-08-23
+  v4.10 — Disponibilidad real de Mercado Libre calculada sola: al
+    elegir esa forma de pago (con un presupuesto ya seleccionado),
+    busca la fecha de entrega real en reportes_entrega/
+    entregas_instalacion para ese folio y calcula "disponible desde"
+    (entrega + 5 días, que es cuando ML realmente libera el saldo --
+    NO desde la fecha de venta). Si el folio aún no tiene entrega
+    registrada, avisa que el conteo no ha empezado. Nota siempre
+    visible de que esto se puede extender hasta 28 días naturales si
+    el cliente mete un reclamo. Además, el % de comisión default bajó
+    de 21% a 19%, según el promedio real observado en 3 ventas reales
+    (13.5%–19.5% de cargo por venta + ~9% de impuestos aparte).
   VERSIÓN : v4.9
   FECHA   : 2026-08-22
   v4.9 — Nueva forma de pago "🛒 Mercado Libre": al elegirla aparece
@@ -932,6 +954,7 @@ select.form-select { padding-right: 36px; cursor: pointer; }
         <label class="form-label" style="margin-top:0">% comisión de Mercado Libre <small style="font-weight:400;color:var(--gray-400)">(solo para ti, nunca sale en el recibo)</small></label>
         <input type="number" id="pago-comision-ml" class="form-input" inputmode="decimal" step="0.5" oninput="pagoActualizarNetoML()">
         <div id="pago-ml-neto" style="font-size:12px;color:var(--gray-600);margin-top:6px">Neto real que te llega: —</div>
+        <div id="pago-ml-disponible" style="font-size:11.5px;color:var(--navy);margin-top:8px;padding-top:8px;border-top:1px solid rgba(200,146,58,.25)">📅 Disponibilidad: —</div>
       </div>
 
       <label class="form-label">Notas / referencia de transferencia</label>
@@ -1034,7 +1057,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.9';
+var APP_VERSION = 'v4.11';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -1270,6 +1293,7 @@ async function seleccionarPres() {
     s('pago-tel',     p.tel);
     s('pago-desc',    p.descripcion);
     s('pago-total',   p.monto || 0);
+    if (FORMA_SEL === 'mercado_libre') pagoBuscarDisponibilidadML();
 
     if (!document.getElementById('pago-ant').value) {
       var pagadoAntes = Math.max(0, (p.monto || 0) - (p.saldo || 0));
@@ -1409,7 +1433,7 @@ function actualizarSaldo() {
 }
 
 // ── Forma de pago ─────────────────────────────────────────────────
-var COMISION_ML_DEFAULT = 21;
+var COMISION_ML_DEFAULT = 19;
 
 async function cargarComisionMLDefault() {
   if (!sb()) return;
@@ -1431,7 +1455,43 @@ function selForma(btn) {
       var comisionEl = document.getElementById('pago-comision-ml');
       if (comisionEl && !comisionEl.value) comisionEl.value = COMISION_ML_DEFAULT;
       pagoActualizarNetoML();
+      pagoBuscarDisponibilidadML();
     }
+  }
+}
+
+// El plazo de 5 días de Mercado Libre corre desde la ENTREGA real, no
+// desde la venta -- se busca la fecha de entrega ya capturada en
+// entregas.html (reportes_entrega / entregas_instalacion) para este
+// folio, y se calcula sola. Si el cliente no confirma recepción en ML,
+// el plazo se puede extender hasta 28 días naturales (aviso, no un
+// cálculo exacto -- eso solo pasa si hay un reclamo).
+async function pagoBuscarDisponibilidadML() {
+  var el = document.getElementById('pago-ml-disponible');
+  if (!el) return;
+  var folio = PRES_SEL && PRES_SEL.folio;
+  if (!folio) { el.textContent = '📅 Disponibilidad: selecciona un presupuesto para calcularla'; return; }
+  if (!sb()) { el.textContent = '📅 Disponibilidad: sin conexión, no se pudo buscar la entrega'; return; }
+  el.textContent = '📅 Buscando fecha de entrega…';
+  try {
+    var r1 = await sb().from('reportes_entrega').select('fecha_entrega').eq('folio', folio).eq('eliminado', false).order('fecha_entrega', { ascending: false }).limit(1);
+    var r2 = await sb().from('entregas_instalacion').select('fecha').eq('folio', folio).eq('eliminado', false).order('fecha', { ascending: false }).limit(1);
+    var fechaEntrega = null;
+    if (r1.data && r1.data[0] && r1.data[0].fecha_entrega) fechaEntrega = r1.data[0].fecha_entrega;
+    else if (r2.data && r2.data[0] && r2.data[0].fecha) fechaEntrega = r2.data[0].fecha;
+
+    if (!fechaEntrega) {
+      el.textContent = '📅 Disponibilidad: pendiente de entregar -- el conteo de 5 días no ha empezado';
+      return;
+    }
+    var d = new Date(fechaEntrega + 'T00:00:00');
+    d.setDate(d.getDate() + 5);
+    var dStr = d.toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' });
+    el.innerHTML = '📅 Entregado el ' + new Date(fechaEntrega + 'T00:00:00').toLocaleDateString('es-MX', { day: 'numeric', month: 'long' })
+      + ' → disponible aprox. desde el <b>' + dStr + '</b>'
+      + '<div style="font-size:10.5px;color:var(--gray-400);margin-top:3px">Si el cliente no confirma recepción en ML, esto se puede extender hasta 28 días naturales (solo si hay reclamo).</div>';
+  } catch (e) {
+    el.textContent = '📅 Disponibilidad: no se pudo calcular (' + e.message + ')';
   }
 }
 
@@ -1867,7 +1927,14 @@ function guardarOffline(db) {
     resetPaginacion();
     pagosRender();
     toast('Pago guardado localmente');
-  } catch(e) {}
+  } catch(e) {
+    // Última línea de defensa: si NI SIQUIERA se pudo guardar en el
+    // localStorage del teléfono (memoria llena, modo incógnito, etc.),
+    // el pago se pierde de verdad sin que nadie se entere. Antes esto
+    // se tragaba en silencio total.
+    console.warn('[BarrCan] No se pudo guardar el pago ni localmente:', e);
+    alert('🚨 URGENTE — este pago de $' + fmt(db.monto || 0) + ' (' + (db.folio_referencia || '') + ') NO se pudo guardar NI en el servidor NI localmente en tu teléfono.\n\nSe puede perder de verdad. Por favor toma foto de esta pantalla con los datos del pago y avísale a Mau para capturarlo a mano.\n\nMotivo técnico: ' + (e && e.message ? e.message : 'desconocido'));
+  }
 }
 
 async function pagoReintentarPendientes() {
