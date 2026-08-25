@@ -6,6 +6,31 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.47.0
+  FECHA   : 2026-08-26
+  v3.47.0 - Renombrado "Express" a "Pieza única" en todo lo visible
+    (botón del selector, título del reporte impreso, badge en
+    historial) -- confirmado con Mau. El valor interno sigue siendo
+    'express' (modo_captura en la base de datos) para no romper la
+    compatibilidad con reportes ya guardados.
+  VERSION : v3.46.0
+  FECHA   : 2026-08-26
+  v3.46.0 - Feedback probando Instalación:
+    1) "Checklist de Salida" (herramientas/silicón/cinta -- lista de
+       empaque para no salir del taller sin algo) no tenía sentido en
+       el momento de generar el reporte, cuando el trabajo ya está
+       terminado. Renombrado a "Checklist de Cierre" con puntos de
+       calidad/limpieza al terminar: limpieza del área, herramientas
+       recogidas, sellado verificado, carretillas funcionando suave,
+       sobrantes y basura retirados. Ya estaba posicionado antes de
+       las fotos en el formulario -- no hizo falta reordenar.
+    2) Quitado "Asignado por" del reporte impreso -- info interna sin
+       valor para el cliente que lo recibe.
+    3) Compresión de fotos más agresiva (1600px→1280px, calidad
+       72%→62%) para reducir el riesgo de fallos al subir con señal
+       débil en campo.
+    PENDIENTE: renombrar "Express" (propuesta: "Pieza única"),
+    esperando confirmar con Mau antes de tocarlo.
   VERSION : v3.45.0
   FECHA   : 2026-08-24
   v3.45.0 - FIX: mismo patrón que en pagos.html -- la descripción de
@@ -1637,19 +1662,21 @@ body{min-height:100vh}
           </button>
           <button type="button" class="modo-inst-btn" data-modo="express" onclick="entSelModoInst(this)"
             style="flex:1;padding:10px;border-radius:8px;border:1.5px solid var(--gray-200);background:none;color:var(--gray-400);font-size:12px;font-weight:700;cursor:pointer">
-            &#9889; Express<br><small style="font-weight:400;opacity:.7">Rápido, con fotos libres</small>
+            &#128296; Pieza &uacute;nica<br><small style="font-weight:400;opacity:.7">R&aacute;pido, con fotos libres</small>
           </button>
         </div>
 
-        <!-- CHECKLIST DE SALIDA — herramientas e insumos. Se revisa AL INICIO
-             (para no salir del taller sin algo) y se puede seguir marcando
-             durante el trabajo, hasta confirmar todo antes de irse. -->
+        <!-- CHECKLIST DE CIERRE — calidad y limpieza al TERMINAR la
+             instalación (antes decía "de salida", enmarcado como lista
+             de empaque para no salir del taller sin algo -- no tenía
+             sentido en el momento de generar el reporte, cuando el
+             trabajo ya está terminado). -->
         <div style="background:var(--white);border:1.5px solid rgba(230,126,34,.3);border-radius:10px;padding:12px;margin-bottom:14px;box-shadow:0 2px 8px rgba(0,0,0,.05)">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-            <span style="font-size:16px">&#128230;</span>
-            <span style="font-size:13px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px">Checklist de Salida</span>
+            <span style="font-size:16px">&#9989;</span>
+            <span style="font-size:13px;font-weight:700;color:var(--navy);text-transform:uppercase;letter-spacing:.5px">Checklist de Cierre</span>
           </div>
-          <div style="font-size:11px;color:var(--gray-400);margin-bottom:10px">Revísalo antes de salir del taller para no quedarte sin algo, y confírmalo de nuevo antes de irte del sitio</div>
+          <div style="font-size:11px;color:var(--gray-400);margin-bottom:10px">Verifica esto antes de dar por terminada la instalación</div>
           <div id="ent-checklist-salida-lista"></div>
         </div>
 
@@ -2166,7 +2193,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.45.0';
+var APP_VERSION = 'v3.47.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -2650,7 +2677,7 @@ function entComprimirImagen(file, callback) {
   reader.onload = function(e) {
     var img = new Image();
     img.onload = function() {
-      var maxLado = 1600;
+      var maxLado = 1280;
       var w = img.width, h = img.height;
       if (w > maxLado || h > maxLado) {
         if (w > h) { h = Math.round(h * maxLado / w); w = maxLado; }
@@ -2661,7 +2688,7 @@ function entComprimirImagen(file, callback) {
       var ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, w, h);
       try {
-        callback(canvas.toDataURL('image/jpeg', 0.72));
+        callback(canvas.toDataURL('image/jpeg', 0.62));
       } catch (eCanvas) {
         // Si por algo falla el canvas (ej. imagen corrupta), se usa la
         // original sin comprimir en vez de perder la foto por completo.
@@ -3277,7 +3304,7 @@ function entRenderHistorial() {
     var bgPend = r._pendiente ? 'background:rgba(192,57,43,0.04);border-left:3px solid var(--red);padding-left:8px' : '';
     var pendTag = r._pendiente ? '<div style="font-size:9px;font-weight:700;color:var(--red);margin-bottom:2px">SIN SINCRONIZAR</div>' : '';
     var tipoTag = r._tipo === 'instalacion'
-      ? '<span style="font-size:9px;font-weight:700;color:var(--gold);background:rgba(200,146,58,0.12);padding:2px 6px;border-radius:6px;margin-left:6px;vertical-align:middle">&#128295; INSTALACI\u00d3N' + (r.modo_captura === 'express' ? ' &#9889; EXPRESS' : (r.checklist_total ? ' &middot; ' + (r.checklist_ok||0) + '/' + r.checklist_total : '')) + '</span>'
+      ? '<span style="font-size:9px;font-weight:700;color:var(--gold);background:rgba(200,146,58,0.12);padding:2px 6px;border-radius:6px;margin-left:6px;vertical-align:middle">&#128295; INSTALACI\u00d3N' + (r.modo_captura === 'express' ? ' &#128296; PIEZA \u00daNICA' : (r.checklist_total ? ' &middot; ' + (r.checklist_ok||0) + '/' + r.checklist_total : '')) + '</span>'
       : '';
     html += '<div style="padding:9px 0;border-bottom:1px solid var(--gray-200);' + bgPend + '">'
       + pendTag
@@ -3824,11 +3851,11 @@ var _cli_draw        = false;
 var _inst_slot_activo = null;
 
 var ENT_CHECKLIST_SALIDA_ITEMS = [
-  {id:'sal1', titulo:'Herramientas',      icono:'&#128295;'},
-  {id:'sal2', titulo:'Sil\u00edcon(es)',        icono:'&#129441;'},
-  {id:'sal3', titulo:'Cinta 3M / Norton', icono:'&#128220;'},
-  {id:'sal4', titulo:'Masking tape',      icono:'&#128220;'},
-  {id:'sal5', titulo:'Sobrantes de material', icono:'&#128230;'},
+  {id:'sal1', titulo:'Limpieza del área de trabajo', icono:'&#129529;'},
+  {id:'sal2', titulo:'Herramientas recogidas (nada olvidado)', icono:'&#128295;'},
+  {id:'sal3', titulo:'Sellado verificado',    icono:'&#129441;'},
+  {id:'sal4', titulo:'Carretillas/rodamientos funcionando suave', icono:'&#9881;'},
+  {id:'sal5', titulo:'Sobrantes de material retirados', icono:'&#128230;'},
   {id:'sal6', titulo:'Basura / empaque retirado', icono:'&#128465;'}
 ];
 var ENT_CHECKS_SALIDA = {};
@@ -4275,13 +4302,12 @@ async function entGenerarReporteInstalacion() {
       + '.foto-item img{max-height:150px;width:100%;object-fit:cover;border-radius:5px}'
       + '.foto-item div{font-size:9px}'
       + '</style></head><body>'
-      + entHeaderOficial('Reporte de Instalaci\u00f3n' + (ENT_MODO_INST === 'express' ? ' \u2014 Express' : ''), folio)
+      + entHeaderOficial('Reporte de Instalaci\u00f3n' + (ENT_MODO_INST === 'express' ? ' \u2014 Pieza \u00danica' : ''), folio)
       + '<div class="pg-body">'
       + '<div style="font-size:11px;color:#9CA3AF;margin-bottom:14px;text-align:center">Fecha: ' + fechaStr + '</div>'
       + '<div class="meta">'
       + '<div class="meta-item"><div class="meta-label">Cliente</div><div class="meta-val">' + cliente + '</div></div>'
       + '<div class="meta-item"><div class="meta-label">T\u00e9cnico</div><div class="meta-val">' + (tecnico||'N/A') + (acompanante ? ' + ' + acompanante : '') + '</div></div>'
-      + '<div class="meta-item"><div class="meta-label">Asignado por</div><div class="meta-val">' + (asignado||'N/A') + '</div></div>'
       + '<div class="meta-item"><div class="meta-label">Monto</div><div class="meta-val">' + (monto?'$'+monto.toLocaleString('es-MX'):'N/A') + '</div></div>'
       + '</div>'
       + (direccion ? '<div style="background:#F8F9FA;padding:8px 10px;border-radius:6px;margin-bottom:14px;font-size:12px"><span style="color:#9CA3AF;font-size:10px">DIRECCIÓN: </span>' + direccion + '</div>' : '')
@@ -4304,7 +4330,7 @@ async function entGenerarReporteInstalacion() {
           + '<div style="font-size:11px;font-weight:600;margin-top:4px;border-top:1px solid #ccc;padding-top:4px">' + cliente + '</div></div>')
       + '</div>'
       + '<div style="margin-top:14px;padding:8px 10px;background:#FFF8ED;border-radius:6px;font-size:10px;color:#8A6D3B">'
-      + '&#128230; Checklist de salida: ' + ENT_CHECKLIST_SALIDA_ITEMS.filter(function(it){return ENT_CHECKS_SALIDA[it.id];}).length + '/' + ENT_CHECKLIST_SALIDA_ITEMS.length + ' verificado'
+      + '&#9989; Checklist de cierre: ' + ENT_CHECKLIST_SALIDA_ITEMS.filter(function(it){return ENT_CHECKS_SALIDA[it.id];}).length + '/' + ENT_CHECKLIST_SALIDA_ITEMS.length + ' verificado'
       + '</div>'
       + '<div style="margin-top:20px;padding:10px;background:#F8F9FA;border-radius:6px;font-size:11px;color:#9CA3AF;text-align:center">Generado por BarrCan PWA &bull; ' + new Date().toLocaleString('es-MX') + '</div>'
       + '</div></body></html>';
