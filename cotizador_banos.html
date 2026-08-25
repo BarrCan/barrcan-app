@@ -6,6 +6,19 @@
 <title>BarrCan · Cotizador Baños</title>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v2.4
+  FECHA   : 2026-08-25
+  v2.4 - Dos cosas encontradas probando Corredizo (aplican a los 4
+    sistemas, no solo a ese):
+    1) "Nombre del cliente" en Frameless/Bacalar/Escuadra/Corredizo
+       era texto libre puro -- no había forma de elegir uno ya
+       guardado. Ahora los 4 comparten un <datalist> cargado de la
+       tabla real `clientes`; al elegir uno existente, el teléfono se
+       autocompleta solo (si no se había escrito ya).
+    2) La descripción generada por Corredizo usaba el nombre técnico
+       interno (línea/config/color en mayúsculas). Ahora usa el mismo
+       lenguaje que la ficha real de la tienda ("Cancel Corredizo de
+       Vidrio Templado Xmm...").
   VERSION : v2.3
   FECHA   : 2026-08-22
   v2.3 - Nuevo modo "Recalcular pieza" para el sistema Corredizo:
@@ -353,7 +366,8 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
       </div>
       <div class="card">
         <div class="card-title">Guardar presupuesto</div>
-        <input type="text" class="form-input" id="fl-cliente" placeholder="Nombre del cliente *">
+        <input type="text" class="form-input" id="fl-cliente" list="sn-clientes-datalist" placeholder="Nombre del cliente *" oninput="snAutocompletarCliente('fl')">
+        <datalist id="sn-clientes-datalist"></datalist>
         <input type="text" class="form-input" id="fl-tel" placeholder="Tel&eacute;fono">
         <input type="text" class="form-input" id="fl-dir" placeholder="Direcci&oacute;n de obra">
         <textarea class="form-input" id="fl-notas" rows="2" placeholder="Notas del presupuesto" style="resize:none"></textarea>
@@ -448,7 +462,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
       </div>
       <div class="card">
         <div class="card-title">Guardar presupuesto Bacalar</div>
-        <input type="text" class="form-input" id="bc-cliente" placeholder="Nombre del cliente *">
+        <input type="text" class="form-input" id="bc-cliente" list="sn-clientes-datalist" placeholder="Nombre del cliente *" oninput="snAutocompletarCliente('bc')">
         <input type="text" class="form-input" id="bc-tel" placeholder="Tel&eacute;fono">
         <button class="btn btn-gold" onclick="cbGuardarPresupuesto('bacalar')">Guardar y generar folio CACN</button>
       </div>
@@ -547,7 +561,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
       </div>
       <div class="card">
         <div class="card-title">Guardar presupuesto Escuadra</div>
-        <input type="text" class="form-input" id="esc-cliente" placeholder="Nombre del cliente *">
+        <input type="text" class="form-input" id="esc-cliente" list="sn-clientes-datalist" placeholder="Nombre del cliente *" oninput="snAutocompletarCliente('esc')">
         <input type="text" class="form-input" id="esc-tel" placeholder="Tel&eacute;fono">
         <button class="btn btn-gold" onclick="cbGuardarPresupuesto('escuadra')">Guardar y generar folio CACN</button>
       </div>
@@ -701,7 +715,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
       </div>
       <div class="card">
         <div class="card-title">Guardar presupuesto Corredizo</div>
-        <input type="text" class="form-input" id="corredizo-cliente" placeholder="Nombre del cliente *">
+        <input type="text" class="form-input" id="corredizo-cliente" list="sn-clientes-datalist" placeholder="Nombre del cliente *" oninput="snAutocompletarCliente('corredizo')">
         <input type="text" class="form-input" id="corredizo-tel" placeholder="Tel&eacute;fono">
         <button class="btn btn-gold" onclick="CC_RECALCULO ? ccGuardarRecalculo() : cbGuardarPresupuesto('corredizo')">Guardar y generar folio CACN</button>
       </div>
@@ -896,7 +910,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v2.3';
+var APP_VERSION = 'v2.4';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -1520,7 +1534,14 @@ function ccCalcular() {
 
   var lineaLabel = { virgo: 'Virgo Plus', acuario: 'Acuario Premium', danubio: 'Danubio/DTC' }[CC_LINEA];
   var acabadoLabel = acabado === 'esmerilado' ? 'Esmerilado' : 'Transparente';
-  var sistemaNombre = 'Cancel Corredizo ' + lineaLabel + ' ' + (esEscuadra ? 'Escuadra' : 'Recto') + ' ' + CC_COLOR + ' ' + acabadoLabel;
+  // Mismo lenguaje que la ficha real de la tienda ("Cancel Corredizo de
+  // Vidrio Templado 6mm — El Más Vendido de BarrCan..."), en vez del
+  // nombre técnico interno (línea/config/color todo en mayúsculas).
+  var colorTitulo = CC_COLOR.charAt(0) + CC_COLOR.slice(1).toLowerCase();
+  var medidaTxt = esEscuadra ? (ancho1 + 'x' + ancho2) : ancho1;
+  var sistemaNombre = 'Cancel Corredizo de Vidrio Templado ' + cristalMM + 'mm ' + acabadoLabel
+    + ' — Marco ' + colorTitulo + (esEscuadra ? ' (Escuadra)' : '')
+    + ' — ' + medidaTxt + 'x' + A + 'mm — Línea ' + lineaLabel;
 
   CB_RESULTADO = {
     tipo: 'corredizo', sistema: sistemaNombre,
@@ -2006,12 +2027,47 @@ async function cbCargarConfigPrecios() {
   }
 }
 
+// ── Cliente existente: autocomplete compartido en los 4 sistemas ───
+// Antes cada "Nombre del cliente" era texto libre puro, sin forma de
+// elegir uno ya guardado -- se repetían clientes con variaciones de
+// nombre. Un solo <datalist> alimentado de la tabla real `clientes`,
+// reusado por Frameless/Bacalar/Escuadra/Corredizo.
+var SN_CLIENTES_CACHE = []; // [{nombre, telefono}]
+
+async function snCargarClientesDatalist() {
+  if (!sb()) return;
+  try {
+    var res = await sb().from('clientes').select('nombre,telefono').order('nombre').limit(500);
+    if (res.error) throw res.error;
+    SN_CLIENTES_CACHE = res.data || [];
+    var dl = document.getElementById('sn-clientes-datalist');
+    if (dl) {
+      dl.innerHTML = SN_CLIENTES_CACHE.map(function(c) {
+        return '<option value="' + esc(c.nombre) + '">';
+      }).join('');
+    }
+  } catch (e) { console.warn('[BarrCan] No se pudieron cargar clientes para autocomplete:', e.message); }
+}
+
+// Si lo que se escribió coincide EXACTO con un cliente ya guardado
+// (viene de elegir la sugerencia del datalist), rellena el teléfono
+// solo -- si el usuario está escribiendo un cliente nuevo, no hace nada.
+function snAutocompletarCliente(prefijo) {
+  var elCliente = document.getElementById(prefijo + '-cliente');
+  var elTel = document.getElementById(prefijo + '-tel');
+  if (!elCliente || !elTel) return;
+  var valor = elCliente.value.trim();
+  var match = SN_CLIENTES_CACHE.filter(function(c) { return c.nombre === valor; })[0];
+  if (match && match.telefono && !elTel.value) elTel.value = match.telefono;
+}
+
 document.addEventListener('DOMContentLoaded', function() {
   detectar();
   cbCargarHistorial();
   cbCargarConfigPrecios();
   flSincronizarPrecioVidrio();
   ccActualizarUI();
+  snCargarClientesDatalist();
   if (navigator.onLine) cbReintentarPendientes();
   // Si se llegó aquí desde historial.html con "+ Agregar piezas", carga
   // el folio existente para sumarle la próxima pieza que se calcule.
