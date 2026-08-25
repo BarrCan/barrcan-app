@@ -6,6 +6,17 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.45.0
+  FECHA   : 2026-08-24
+  v3.45.0 - FIX: mismo patrón que en pagos.html -- la descripción de
+    lo que se entrega aparecía la primera vez pero no al reimprimir
+    reportes de Instalación. Causa real: la caché local de historial
+    (barrcan_reportes_historial) armaba un objeto reducido para
+    Instalación que no incluía "descripcion" (los de puerta/envío sí
+    la traían, por copiar la fila completa). Se agregó al mapeo, y el
+    "reporte básico" de respaldo (cuando no hay señal para bajar el
+    reporte completo con fotos) ahora sí la muestra, con un aviso más
+    claro de por qué aparece ese modo simplificado.
   VERSION : v3.44.0
   FECHA   : 2026-08-23
   v3.44.0 - Dos cosas más, encontradas revisando un caso real perdido
@@ -2155,7 +2166,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.44.0';
+var APP_VERSION = 'v3.45.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -3206,6 +3217,7 @@ async function entCargarHistorial() {
           id: r.id, folio: r.folio,
           cliente_nombre: r.cliente, cliente_tel: r.tel,
           fecha_entrega: r.fecha, tecnico: r.tecnico,
+          descripcion: r.descripcion,
           reporte_url: r.reporte_url, whatsapp_enviado: false,
           created_at: r.created_at,
           checklist_ok: r.checklist_ok, checklist_total: r.checklist_total,
@@ -3347,12 +3359,13 @@ function entVerReporteFallback(r) {
     + entHeaderOficial('Comprobante de Entrega', r.folio)
     + '<div class=pg-body>'
     + '<div style=background:#FEF9E7;border:1.5px solid #E67E22;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:8.5pt;color:#E67E22>'
-    + 'Nota: Reporte basico. El reporte completo con fotos y firma no esta disponible en este dispositivo.</div>'
+    + '⚠️ Reporte básico -- no se pudo descargar el reporte completo (fotos y firma) por señal débil. Este SÍ trae la descripción, el monto y los datos principales; para ver fotos/firma, reintenta con mejor señal.</div>'
     + '<table>'
     + '<tr><td class=lbl>Cliente</td><td><strong>' + esc(r.cliente_nombre || '--') + '</strong></td></tr>'
     + (r.cliente_tel ? '<tr><td class=lbl>Telefono</td><td>' + esc(r.cliente_tel) + '</td></tr>' : '')
     + '<tr><td class=lbl>Fecha</td><td>' + fd(r.fecha_entrega) + '</td></tr>'
     + '<tr><td class=lbl>Tecnico</td><td>' + esc(r.tecnico || 'BarrCan') + '</td></tr>'
+    + (r.descripcion ? '<tr><td class=lbl>Se entreg\u00f3 / instal\u00f3</td><td>' + esc(r.descripcion) + '</td></tr>' : '')
     + '</table>'
     + '<div style=font-size:7.5pt;color:#aaa;text-align:center;margin-top:12px;border-top:1px solid #eee;padding-top:8px>'
     + esc(r.folio || '') + ' - BarrCan - ' + new Date().toLocaleDateString('es-MX') + '</div>'
