@@ -6,6 +6,38 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.15
+  FECHA   : 2026-08-25
+  v4.15 — Corrección de alcance: los adicionales (v4.13/v4.14) solo
+    estaban disponibles al CREAR un pago nuevo. Ahora también se
+    pueden agregar al EDITAR un recibo ya existente (caso real: el
+    recibo 160, hecho antes de que existiera esta opción) -- suma
+    solo la DIFERENCIA contra lo que ya estuviera reflejado (para no
+    duplicar si el pago ya tenía adicionales de antes), actualiza el
+    monto real del presupuesto en Supabase, y se guarda para que
+    aparezca correcto tanto en el recibo actualizado como al
+    reimprimir después.
+  VERSIÓN : v4.14
+  FECHA   : 2026-08-25
+  v4.14 — Los adicionales de la visita (v4.13) ahora aparecen
+    desglosados en el recibo impreso ("TRABAJOS ADICIONALES DE ESTA
+    VISITA", uno por línea con su monto), no solo sumados al total.
+    Se guardan en la nueva columna pagos.adicionales (jsonb) para que
+    también aparezcan al reimprimir -- el bloque es independiente del
+    "Estado de cuenta" para que sí se muestre en reimpresión (esa
+    sección se manda vacía a propósito al reimprimir).
+  VERSIÓN : v4.13
+  FECHA   : 2026-08-25
+  v4.13 — Nueva sección "➕ Agregar adicional" al cobrar (Instalación,
+    Herrajes, Maniobra, Traslado extra, Material extra, Otro): antes
+    esto solo se anotaba en el campo de notas, sin sumarse al total
+    real de la obra -- el saldo nunca lo reflejaba. Ahora cada
+    adicional se suma en vivo al "Total obra", y al guardar el pago
+    se actualiza también el monto real del presupuesto en Supabase
+    (ANTES de la validación de saldo, para no bloquear el pago por
+    "exceder el saldo" con el monto viejo). Queda trazable en la nota
+    del pago. Caso real que lo motivó: folio CACN-082B, $500
+    adicionales por maniobra que solo quedaron en texto libre.
   VERSIÓN : v4.12
   FECHA   : 2026-08-24
   v4.12 — FIX: la descripción de lo que se está cobrando aparecía en
@@ -889,6 +921,9 @@ select.form-select { padding-right: 36px; cursor: pointer; }
         </div>
       </div>
 
+      <div id="pago-adicionales-lista" style="margin-bottom:6px"></div>
+      <button type="button" onclick="pagoAgregarAdicional()" style="width:100%;padding:9px;background:none;border:1.5px dashed var(--gray-200);border-radius:8px;color:var(--navy);font-size:12px;font-weight:600;cursor:pointer;margin-bottom:12px">➕ Agregar adicional (instalación, herrajes, maniobra...)</button>
+
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Monto de este pago *</label>
@@ -1028,6 +1063,11 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     <label class="form-label">Notas</label>
     <input type="text" id="edit-notas" class="form-input" placeholder="Referencia, observaciones...">
 
+    <label class="form-label" style="margin-top:10px">Trabajos adicionales</label>
+    <div id="edit-adicionales-lista" style="margin-bottom:6px"></div>
+    <button type="button" onclick="editAgregarAdicional()" style="width:100%;padding:9px;background:none;border:1.5px dashed var(--gray-200);border-radius:8px;color:var(--navy);font-size:12px;font-weight:600;cursor:pointer;margin-bottom:12px">➕ Agregar adicional (instalación, herrajes, maniobra...)</button>
+    <div style="font-size:11px;color:var(--gray-400);margin:-6px 0 12px">Si el pago tiene un folio (CACN-...) enlazado, esto también suma al monto real del presupuesto.</div>
+
     <label class="form-label">Foto del comprobante</label>
     <input type="file" id="edit-foto-input" accept="image/*" style="display:none" onchange="pagoCargarFotoEdit(this)">
     <button type="button" onclick="document.getElementById('edit-foto-input').click()" style="width:100%;padding:12px;background:var(--off-white);border:2px dashed var(--gray-200);border-radius:var(--radius-sm);cursor:pointer;font-size:13px;color:var(--gray-400);font-family:'DM Sans',sans-serif;font-weight:600;margin-bottom:8px">
@@ -1066,7 +1106,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.12';
+var APP_VERSION = 'v4.15';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -1302,6 +1342,9 @@ async function seleccionarPres() {
     s('pago-tel',     p.tel);
     s('pago-desc',    p.descripcion);
     s('pago-total',   p.monto || 0);
+    PAGO_MONTO_ORIGINAL = p.monto || 0;
+    PAGO_ADICIONALES = [];
+    pagoRenderAdicionales();
     if (FORMA_SEL === 'mercado_libre') pagoBuscarDisponibilidadML();
 
     if (!document.getElementById('pago-ant').value) {
@@ -1427,6 +1470,57 @@ function pagoMultiEditarAplicado(id, val) {
   if (monto > saldo) monto = saldo;
   PAGO_MULTI_SEL[id].aplicado = monto;
   pagoMultiActualizar();
+}
+
+// ── Adicionales de la visita (instalación, herrajes, maniobra...) ──
+// Antes esto se anotaba solo en el campo de notas, sin sumarse al
+// total de la obra -- el saldo nunca reflejaba lo adicional. Ahora
+// cada uno se suma al "Total obra" en vivo, y al guardar el pago se
+// actualiza también el monto real del presupuesto en Supabase.
+var PAGO_ADICIONALES = []; // [{concepto, monto, id}]
+var PAGO_MONTO_ORIGINAL = 0; // Total obra ANTES de sumar adicionales de esta visita
+var PAGO_ADICIONAL_SEQ = 0;
+
+function pagoAgregarAdicional() {
+  PAGO_ADICIONAL_SEQ++;
+  PAGO_ADICIONALES.push({ id: PAGO_ADICIONAL_SEQ, concepto: 'Instalación', monto: 0 });
+  pagoRenderAdicionales();
+}
+
+function pagoQuitarAdicional(id) {
+  PAGO_ADICIONALES = PAGO_ADICIONALES.filter(function(a) { return a.id !== id; });
+  pagoRenderAdicionales();
+}
+
+function pagoEditarAdicional(id, campo, valor) {
+  var a = PAGO_ADICIONALES.filter(function(x) { return x.id === id; })[0];
+  if (!a) return;
+  a[campo] = campo === 'monto' ? (parseFloat(valor) || 0) : valor;
+  pagoRecalcularTotalConAdicionales();
+}
+
+function pagoRenderAdicionales() {
+  var cont = document.getElementById('pago-adicionales-lista');
+  if (!cont) return;
+  cont.innerHTML = PAGO_ADICIONALES.map(function(a) {
+    return '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
+      + '<select onchange="pagoEditarAdicional(' + a.id + ',\'concepto\',this.value)" style="flex:1.3;padding:8px;border:1.5px solid var(--gray-200);border-radius:8px;font-size:12px">'
+      + ['Instalación','Herrajes','Maniobra','Traslado extra','Material extra','Otro'].map(function(op) {
+          return '<option' + (op === a.concepto ? ' selected' : '') + '>' + op + '</option>';
+        }).join('')
+      + '</select>'
+      + '<input type="number" placeholder="$" value="' + (a.monto || '') + '" oninput="pagoEditarAdicional(' + a.id + ',\'monto\',this.value)" style="width:90px;padding:8px;border:1.5px solid var(--gray-200);border-radius:8px;font-size:12px">'
+      + '<button type="button" onclick="pagoQuitarAdicional(' + a.id + ')" style="padding:6px 9px;background:rgba(192,57,43,0.08);border:1.5px solid rgba(192,57,43,0.25);border-radius:6px;color:#C0392B;cursor:pointer">✕</button>'
+      + '</div>';
+  }).join('');
+  pagoRecalcularTotalConAdicionales();
+}
+
+function pagoRecalcularTotalConAdicionales() {
+  var sumaAdicionales = PAGO_ADICIONALES.reduce(function(s, a) { return s + (a.monto || 0); }, 0);
+  var elTotal = document.getElementById('pago-total');
+  if (elTotal) elTotal.value = PAGO_MONTO_ORIGINAL + sumaAdicionales;
+  actualizarSaldo();
 }
 
 function actualizarSaldo() {
@@ -1560,7 +1654,7 @@ async function pagosCargar() {
   if (!sb()) return;
   try {
     var result = await sb().from('pagos')
-      .select('id,monto,fecha_pago,forma_pago,concepto,notas,descripcion,comprobante_img,created_at,presupuesto_id')
+      .select('id,monto,fecha_pago,forma_pago,concepto,notas,descripcion,adicionales,comprobante_img,created_at,presupuesto_id')
       .order('created_at', { ascending: false }).limit(200);
     if (result.error) throw result.error;
     SYNC.online = true; detectarConexion();
@@ -1811,6 +1905,27 @@ async function pagoGuardar() {
   if (!monto || monto <= 0) { errEl.textContent = 'Ingresa el monto'; errEl.classList.add('visible'); return; }
   if (!fecha)               { errEl.textContent = 'Ingresa la fecha';  errEl.classList.add('visible'); return; }
 
+  // Si se agregaron adicionales (instalación, herrajes, maniobra...),
+  // primero se suman al monto REAL del presupuesto en Supabase --
+  // si no, la validación de saldo de abajo compararía contra el
+  // monto viejo y bloquearía el pago por "exceder el saldo".
+  var sumaAdicionales = PAGO_ADICIONALES.reduce(function(s, a) { return s + (a.monto || 0); }, 0);
+  var descAdicionales = PAGO_ADICIONALES.filter(function(a) { return a.monto > 0; })
+    .map(function(a) { return a.concepto + ' $' + fmt(a.monto); }).join(', ');
+  if (sumaAdicionales > 0 && PRES_SEL && PRES_SEL.id && sb()) {
+    try {
+      var resAdic = await sb().from('presupuestos_atrasados')
+        .update({ monto: (parseFloat(PRES_SEL.monto) || 0) + sumaAdicionales })
+        .eq('id', PRES_SEL.id);
+      if (resAdic.error) throw resAdic.error;
+      PRES_SEL.monto = (parseFloat(PRES_SEL.monto) || 0) + sumaAdicionales;
+    } catch (eAdic) {
+      errEl.textContent = 'No se pudieron guardar los adicionales: ' + eAdic.message;
+      errEl.classList.add('visible');
+      return;
+    }
+  }
+
   if (PRES_SEL && PRES_SEL.id) {
     const real = await recalcularSaldoReal(PRES_SEL.id);
     if (real) {
@@ -1834,6 +1949,7 @@ async function pagoGuardar() {
   var folioRB = nextFolioRB();
   var notaPartes = [folio, cliente, notas];
   if (factura) notaPartes.push('FAC:' + factura);
+  if (descAdicionales) notaPartes.push('ADICIONALES: ' + descAdicionales);
   var nota = notaPartes.filter(Boolean).join(' | ');
   var notaConFolio = nota + (nota ? ' | ' : '') + 'RECIBO:' + folioRB;
 
@@ -1844,6 +1960,7 @@ async function pagoGuardar() {
     concepto:      concepto,
     notas:         notaConFolio.slice(0, 500) || null,
     descripcion:   desc || null,
+    adicionales:   sumaAdicionales > 0 ? PAGO_ADICIONALES.filter(function(a) { return a.monto > 0; }) : null,
     registrado_por:'campo',
     comprobante_img: _PAGO_FOTO || null,
     presupuesto_id: PRES_SEL && PRES_SEL.id ? PRES_SEL.id : null,
@@ -1859,7 +1976,8 @@ async function pagoGuardar() {
     monto: monto, total: total, ant: ant, saldo: saldo,
     fecha: fecha, concepto: concepto, forma: FORMA_SEL,
     formaLabel: fLabels[FORMA_SEL] || FORMA_SEL,
-    notas: notas, factura: factura, foto: _PAGO_FOTO
+    notas: notas, factura: factura, foto: _PAGO_FOTO,
+    adicionales: PAGO_ADICIONALES.filter(function(a) { return a.monto > 0; })
   });
   try { sessionStorage.setItem('barrcan_recibo_actual', _RECIBO); } catch(e) {}
 
@@ -1997,6 +2115,14 @@ function generarRecibo(d) {
     return parseInt(p[2]) + ' de ' + meses[parseInt(p[1])] + ' de ' + p[0];
   }
   var sc = d.saldo <= 0 ? '#27AE60' : '#E67E22';
+  var adicionalesBox = (d.adicionales && d.adicionales.length)
+    ? '<div style="border:1.5px solid #1B3A5C;border-radius:5px;padding:8px 10px;background:#F0F4F8;margin:8px 0">'
+      + '<div style="font-size:7.5pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">TRABAJOS ADICIONALES DE ESTA VISITA</div>'
+      + d.adicionales.filter(function(a) { return a.monto > 0; }).map(function(a) {
+          return '<div style="display:flex;justify-content:space-between;font-size:8pt;padding:1px 0"><span>' + esc(a.concepto) + '</span><span style="font-weight:700">$' + fmt(a.monto) + '</span></div>';
+        }).join('')
+      + '</div>'
+    : '';
   var sboxHTML = d.total > 0
     ? '<div style="border:1.5px solid #E67E22;border-radius:5px;padding:8px 10px;background:#FEF9E7;margin:8px 0">'
       + '<div style="font-size:7.5pt;font-weight:700;color:#E67E22;margin-bottom:4px">ESTADO DE CUENTA</div>'
@@ -2055,6 +2181,7 @@ function generarRecibo(d) {
     + '<div style="font-size:16pt;font-weight:800;color:#F1C40F">$' + fmt(d.monto) + ' MXN</div></div>'
     + '<div style="font-size:24pt">&#10003;</div></div>'
     + sboxHTML
+    + adicionalesBox
     + (d.notas ? '<div style="background:#f5f7fa;border-radius:4px;padding:6px 8px;font-size:7.5pt;color:#555;margin-bottom:6px">' + d.notas + '</div>' : '')
     + (d.foto ? '<div style="margin-bottom:6px"><div style="font-size:7.5pt;font-weight:700;color:#1B3A5C;margin-bottom:3px">Comprobante de pago</div><img src="' + d.foto + '" style="max-width:100%;max-height:150px;border-radius:3px;border:1px solid #ddd"></div>' : '')
     + '<div style="border:1px dashed #1B3A5C;border-radius:4px;padding:6px;text-align:center;font-size:7.5pt;color:#1B3A5C;margin-top:6px">'
@@ -2181,6 +2308,42 @@ function enviarWA() {
   window.open('https://wa.me/' + (tel ? '52' + tel : '525615158415') + '?text=' + texto, '_blank');
 }
 
+// ── Adicionales dentro de "Editar pago" (recibos ya hechos) ─────────
+var EDIT_ADICIONALES = [];
+var EDIT_ADICIONAL_SEQ = 0;
+var EDIT_ADICIONALES_SUMA_ORIGINAL = 0; // lo que ya estaba reflejado en el monto del presupuesto
+var EDIT_PRESUPUESTO_ID = null;
+
+function editAgregarAdicional() {
+  EDIT_ADICIONAL_SEQ++;
+  EDIT_ADICIONALES.push({ id: EDIT_ADICIONAL_SEQ, concepto: 'Instalación', monto: 0 });
+  editRenderAdicionales();
+}
+function editQuitarAdicional(id) {
+  EDIT_ADICIONALES = EDIT_ADICIONALES.filter(function(a) { return a.id !== id; });
+  editRenderAdicionales();
+}
+function editEditarAdicional(id, campo, valor) {
+  var a = EDIT_ADICIONALES.filter(function(x) { return x.id === id; })[0];
+  if (!a) return;
+  a[campo] = campo === 'monto' ? (parseFloat(valor) || 0) : valor;
+}
+function editRenderAdicionales() {
+  var cont = document.getElementById('edit-adicionales-lista');
+  if (!cont) return;
+  cont.innerHTML = EDIT_ADICIONALES.map(function(a) {
+    return '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
+      + '<select onchange="editEditarAdicional(' + a.id + ',\'concepto\',this.value)" style="flex:1.3;padding:8px;border:1.5px solid var(--gray-200);border-radius:8px;font-size:12px">'
+      + ['Instalación','Herrajes','Maniobra','Traslado extra','Material extra','Otro'].map(function(op) {
+          return '<option' + (op === a.concepto ? ' selected' : '') + '>' + op + '</option>';
+        }).join('')
+      + '</select>'
+      + '<input type="number" placeholder="$" value="' + (a.monto || '') + '" oninput="editEditarAdicional(' + a.id + ',\'monto\',this.value)" style="width:90px;padding:8px;border:1.5px solid var(--gray-200);border-radius:8px;font-size:12px">'
+      + '<button type="button" onclick="editQuitarAdicional(' + a.id + ')" style="padding:6px 9px;background:rgba(192,57,43,0.08);border:1.5px solid rgba(192,57,43,0.25);border-radius:6px;color:#C0392B;cursor:pointer">✕</button>'
+      + '</div>';
+  }).join('');
+}
+
 // ── Editar pago ──────────────────────────────────────────────────
 function pagoAbrirEdicion(id) {
   var p = null;
@@ -2193,6 +2356,12 @@ function pagoAbrirEdicion(id) {
   document.getElementById('edit-fecha').value = p.fecha_pago || '';
   document.getElementById('edit-forma').value = p.forma_pago || 'transferencia';
   document.getElementById('edit-notas').value = p.notas || '';
+
+  EDIT_ADICIONALES = (p.adicionales || []).map(function(a, i) { return { id: i + 1, concepto: a.concepto, monto: a.monto }; });
+  EDIT_ADICIONAL_SEQ = EDIT_ADICIONALES.length;
+  EDIT_ADICIONALES_SUMA_ORIGINAL = EDIT_ADICIONALES.reduce(function(s, a) { return s + (a.monto || 0); }, 0);
+  EDIT_PRESUPUESTO_ID = p.presupuesto_id || null;
+  editRenderAdicionales();
 
   var numFolioEl = document.getElementById('edit-folio-num');
   if (numFolioEl) {
@@ -2268,6 +2437,30 @@ async function pagoEditarGuardar() {
 
   var upd = { monto: monto, fecha_pago: fecha, forma_pago: forma, notas: notas || null };
   if (_EDIT_FOTO !== undefined) upd.comprobante_img = _EDIT_FOTO; // null = se quitó, string = nueva foto
+
+  // Adicionales: solo se guarda su DIFERENCIA contra lo que ya estaba
+  // reflejado en el presupuesto (para no duplicar si ya venían de
+  // antes). Caso típico: recibos viejos (como el ejemplo del recibo
+  // 160) que se hicieron antes de que existiera esta opción y no
+  // tenían adicionales -- ahí la diferencia es la suma completa.
+  var sumaAdicionalesNueva = EDIT_ADICIONALES.reduce(function(s, a) { return s + (a.monto || 0); }, 0);
+  var deltaAdicionales = sumaAdicionalesNueva - EDIT_ADICIONALES_SUMA_ORIGINAL;
+  upd.adicionales = EDIT_ADICIONALES.filter(function(a) { return a.monto > 0; }).length
+    ? EDIT_ADICIONALES.filter(function(a) { return a.monto > 0; }) : null;
+
+  if (deltaAdicionales !== 0 && EDIT_PRESUPUESTO_ID && sb()) {
+    try {
+      var resPres = await sb().from('presupuestos_atrasados').select('monto').eq('id', EDIT_PRESUPUESTO_ID).single();
+      if (resPres.error) throw resPres.error;
+      var montoNuevoPres = (parseFloat(resPres.data.monto) || 0) + deltaAdicionales;
+      var resUpdPres = await sb().from('presupuestos_atrasados').update({ monto: montoNuevoPres }).eq('id', EDIT_PRESUPUESTO_ID);
+      if (resUpdPres.error) throw resUpdPres.error;
+    } catch (eDelta) {
+      toast('No se pudo actualizar el monto del presupuesto: ' + eDelta.message);
+      return;
+    }
+  }
+
   var updLocal = Object.assign({}, upd);
   if (folioRB) updLocal.folio_rb = folioRB;
 
@@ -2332,6 +2525,7 @@ function pagoEditarReimprimir() {
     cliente:    cliente,
     tel:        '',
     desc:       p.descripcion || '',
+    adicionales: p.adicionales || null,
     monto:      parseFloat(p.monto) || 0,
     total:      0,
     ant:        0,
@@ -2377,6 +2571,10 @@ function pagoReset() {
   document.getElementById('pago-pres-card').classList.remove('visible');
   document.getElementById('pago-pres').value = '';
   PRES_SEL = null;
+  PAGO_ADICIONALES = [];
+  PAGO_MONTO_ORIGINAL = 0;
+  var contAdic = document.getElementById('pago-adicionales-lista');
+  if (contAdic) contAdic.innerHTML = '';
   FORMA_SEL = 'transferencia';
   document.querySelectorAll('.pf-btn').forEach(function(b, i) {
     b.classList.toggle('active', i === 0);
