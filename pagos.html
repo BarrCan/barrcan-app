@@ -6,6 +6,15 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.14
+  FECHA   : 2026-08-25
+  v4.14 — Los adicionales de la visita (v4.13) ahora aparecen
+    desglosados en el recibo impreso ("TRABAJOS ADICIONALES DE ESTA
+    VISITA", uno por línea con su monto), no solo sumados al total.
+    Se guardan en la nueva columna pagos.adicionales (jsonb) para que
+    también aparezcan al reimprimir -- el bloque es independiente del
+    "Estado de cuenta" para que sí se muestre en reimpresión (esa
+    sección se manda vacía a propósito al reimprimir).
   VERSIÓN : v4.13
   FECHA   : 2026-08-25
   v4.13 — Nueva sección "➕ Agregar adicional" al cobrar (Instalación,
@@ -1081,7 +1090,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.13';
+var APP_VERSION = 'v4.14';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -1629,7 +1638,7 @@ async function pagosCargar() {
   if (!sb()) return;
   try {
     var result = await sb().from('pagos')
-      .select('id,monto,fecha_pago,forma_pago,concepto,notas,descripcion,comprobante_img,created_at,presupuesto_id')
+      .select('id,monto,fecha_pago,forma_pago,concepto,notas,descripcion,adicionales,comprobante_img,created_at,presupuesto_id')
       .order('created_at', { ascending: false }).limit(200);
     if (result.error) throw result.error;
     SYNC.online = true; detectarConexion();
@@ -1935,6 +1944,7 @@ async function pagoGuardar() {
     concepto:      concepto,
     notas:         notaConFolio.slice(0, 500) || null,
     descripcion:   desc || null,
+    adicionales:   sumaAdicionales > 0 ? PAGO_ADICIONALES.filter(function(a) { return a.monto > 0; }) : null,
     registrado_por:'campo',
     comprobante_img: _PAGO_FOTO || null,
     presupuesto_id: PRES_SEL && PRES_SEL.id ? PRES_SEL.id : null,
@@ -1950,7 +1960,8 @@ async function pagoGuardar() {
     monto: monto, total: total, ant: ant, saldo: saldo,
     fecha: fecha, concepto: concepto, forma: FORMA_SEL,
     formaLabel: fLabels[FORMA_SEL] || FORMA_SEL,
-    notas: notas, factura: factura, foto: _PAGO_FOTO
+    notas: notas, factura: factura, foto: _PAGO_FOTO,
+    adicionales: PAGO_ADICIONALES.filter(function(a) { return a.monto > 0; })
   });
   try { sessionStorage.setItem('barrcan_recibo_actual', _RECIBO); } catch(e) {}
 
@@ -2088,6 +2099,14 @@ function generarRecibo(d) {
     return parseInt(p[2]) + ' de ' + meses[parseInt(p[1])] + ' de ' + p[0];
   }
   var sc = d.saldo <= 0 ? '#27AE60' : '#E67E22';
+  var adicionalesBox = (d.adicionales && d.adicionales.length)
+    ? '<div style="border:1.5px solid #1B3A5C;border-radius:5px;padding:8px 10px;background:#F0F4F8;margin:8px 0">'
+      + '<div style="font-size:7.5pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">TRABAJOS ADICIONALES DE ESTA VISITA</div>'
+      + d.adicionales.filter(function(a) { return a.monto > 0; }).map(function(a) {
+          return '<div style="display:flex;justify-content:space-between;font-size:8pt;padding:1px 0"><span>' + esc(a.concepto) + '</span><span style="font-weight:700">$' + fmt(a.monto) + '</span></div>';
+        }).join('')
+      + '</div>'
+    : '';
   var sboxHTML = d.total > 0
     ? '<div style="border:1.5px solid #E67E22;border-radius:5px;padding:8px 10px;background:#FEF9E7;margin:8px 0">'
       + '<div style="font-size:7.5pt;font-weight:700;color:#E67E22;margin-bottom:4px">ESTADO DE CUENTA</div>'
@@ -2146,6 +2165,7 @@ function generarRecibo(d) {
     + '<div style="font-size:16pt;font-weight:800;color:#F1C40F">$' + fmt(d.monto) + ' MXN</div></div>'
     + '<div style="font-size:24pt">&#10003;</div></div>'
     + sboxHTML
+    + adicionalesBox
     + (d.notas ? '<div style="background:#f5f7fa;border-radius:4px;padding:6px 8px;font-size:7.5pt;color:#555;margin-bottom:6px">' + d.notas + '</div>' : '')
     + (d.foto ? '<div style="margin-bottom:6px"><div style="font-size:7.5pt;font-weight:700;color:#1B3A5C;margin-bottom:3px">Comprobante de pago</div><img src="' + d.foto + '" style="max-width:100%;max-height:150px;border-radius:3px;border:1px solid #ddd"></div>' : '')
     + '<div style="border:1px dashed #1B3A5C;border-radius:4px;padding:6px;text-align:center;font-size:7.5pt;color:#1B3A5C;margin-top:6px">'
@@ -2423,6 +2443,7 @@ function pagoEditarReimprimir() {
     cliente:    cliente,
     tel:        '',
     desc:       p.descripcion || '',
+    adicionales: p.adicionales || null,
     monto:      parseFloat(p.monto) || 0,
     total:      0,
     ant:        0,
