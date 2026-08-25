@@ -6,6 +6,18 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.13
+  FECHA   : 2026-08-25
+  v4.13 — Nueva sección "➕ Agregar adicional" al cobrar (Instalación,
+    Herrajes, Maniobra, Traslado extra, Material extra, Otro): antes
+    esto solo se anotaba en el campo de notas, sin sumarse al total
+    real de la obra -- el saldo nunca lo reflejaba. Ahora cada
+    adicional se suma en vivo al "Total obra", y al guardar el pago
+    se actualiza también el monto real del presupuesto en Supabase
+    (ANTES de la validación de saldo, para no bloquear el pago por
+    "exceder el saldo" con el monto viejo). Queda trazable en la nota
+    del pago. Caso real que lo motivó: folio CACN-082B, $500
+    adicionales por maniobra que solo quedaron en texto libre.
   VERSIÓN : v4.12
   FECHA   : 2026-08-24
   v4.12 — FIX: la descripción de lo que se está cobrando aparecía en
@@ -889,6 +901,9 @@ select.form-select { padding-right: 36px; cursor: pointer; }
         </div>
       </div>
 
+      <div id="pago-adicionales-lista" style="margin-bottom:6px"></div>
+      <button type="button" onclick="pagoAgregarAdicional()" style="width:100%;padding:9px;background:none;border:1.5px dashed var(--gray-200);border-radius:8px;color:var(--navy);font-size:12px;font-weight:600;cursor:pointer;margin-bottom:12px">➕ Agregar adicional (instalación, herrajes, maniobra...)</button>
+
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Monto de este pago *</label>
@@ -1066,7 +1081,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.12';
+var APP_VERSION = 'v4.13';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -1302,6 +1317,9 @@ async function seleccionarPres() {
     s('pago-tel',     p.tel);
     s('pago-desc',    p.descripcion);
     s('pago-total',   p.monto || 0);
+    PAGO_MONTO_ORIGINAL = p.monto || 0;
+    PAGO_ADICIONALES = [];
+    pagoRenderAdicionales();
     if (FORMA_SEL === 'mercado_libre') pagoBuscarDisponibilidadML();
 
     if (!document.getElementById('pago-ant').value) {
@@ -1427,6 +1445,57 @@ function pagoMultiEditarAplicado(id, val) {
   if (monto > saldo) monto = saldo;
   PAGO_MULTI_SEL[id].aplicado = monto;
   pagoMultiActualizar();
+}
+
+// ── Adicionales de la visita (instalación, herrajes, maniobra...) ──
+// Antes esto se anotaba solo en el campo de notas, sin sumarse al
+// total de la obra -- el saldo nunca reflejaba lo adicional. Ahora
+// cada uno se suma al "Total obra" en vivo, y al guardar el pago se
+// actualiza también el monto real del presupuesto en Supabase.
+var PAGO_ADICIONALES = []; // [{concepto, monto, id}]
+var PAGO_MONTO_ORIGINAL = 0; // Total obra ANTES de sumar adicionales de esta visita
+var PAGO_ADICIONAL_SEQ = 0;
+
+function pagoAgregarAdicional() {
+  PAGO_ADICIONAL_SEQ++;
+  PAGO_ADICIONALES.push({ id: PAGO_ADICIONAL_SEQ, concepto: 'Instalación', monto: 0 });
+  pagoRenderAdicionales();
+}
+
+function pagoQuitarAdicional(id) {
+  PAGO_ADICIONALES = PAGO_ADICIONALES.filter(function(a) { return a.id !== id; });
+  pagoRenderAdicionales();
+}
+
+function pagoEditarAdicional(id, campo, valor) {
+  var a = PAGO_ADICIONALES.filter(function(x) { return x.id === id; })[0];
+  if (!a) return;
+  a[campo] = campo === 'monto' ? (parseFloat(valor) || 0) : valor;
+  pagoRecalcularTotalConAdicionales();
+}
+
+function pagoRenderAdicionales() {
+  var cont = document.getElementById('pago-adicionales-lista');
+  if (!cont) return;
+  cont.innerHTML = PAGO_ADICIONALES.map(function(a) {
+    return '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
+      + '<select onchange="pagoEditarAdicional(' + a.id + ',\'concepto\',this.value)" style="flex:1.3;padding:8px;border:1.5px solid var(--gray-200);border-radius:8px;font-size:12px">'
+      + ['Instalación','Herrajes','Maniobra','Traslado extra','Material extra','Otro'].map(function(op) {
+          return '<option' + (op === a.concepto ? ' selected' : '') + '>' + op + '</option>';
+        }).join('')
+      + '</select>'
+      + '<input type="number" placeholder="$" value="' + (a.monto || '') + '" oninput="pagoEditarAdicional(' + a.id + ',\'monto\',this.value)" style="width:90px;padding:8px;border:1.5px solid var(--gray-200);border-radius:8px;font-size:12px">'
+      + '<button type="button" onclick="pagoQuitarAdicional(' + a.id + ')" style="padding:6px 9px;background:rgba(192,57,43,0.08);border:1.5px solid rgba(192,57,43,0.25);border-radius:6px;color:#C0392B;cursor:pointer">✕</button>'
+      + '</div>';
+  }).join('');
+  pagoRecalcularTotalConAdicionales();
+}
+
+function pagoRecalcularTotalConAdicionales() {
+  var sumaAdicionales = PAGO_ADICIONALES.reduce(function(s, a) { return s + (a.monto || 0); }, 0);
+  var elTotal = document.getElementById('pago-total');
+  if (elTotal) elTotal.value = PAGO_MONTO_ORIGINAL + sumaAdicionales;
+  actualizarSaldo();
 }
 
 function actualizarSaldo() {
@@ -1811,6 +1880,27 @@ async function pagoGuardar() {
   if (!monto || monto <= 0) { errEl.textContent = 'Ingresa el monto'; errEl.classList.add('visible'); return; }
   if (!fecha)               { errEl.textContent = 'Ingresa la fecha';  errEl.classList.add('visible'); return; }
 
+  // Si se agregaron adicionales (instalación, herrajes, maniobra...),
+  // primero se suman al monto REAL del presupuesto en Supabase --
+  // si no, la validación de saldo de abajo compararía contra el
+  // monto viejo y bloquearía el pago por "exceder el saldo".
+  var sumaAdicionales = PAGO_ADICIONALES.reduce(function(s, a) { return s + (a.monto || 0); }, 0);
+  var descAdicionales = PAGO_ADICIONALES.filter(function(a) { return a.monto > 0; })
+    .map(function(a) { return a.concepto + ' $' + fmt(a.monto); }).join(', ');
+  if (sumaAdicionales > 0 && PRES_SEL && PRES_SEL.id && sb()) {
+    try {
+      var resAdic = await sb().from('presupuestos_atrasados')
+        .update({ monto: (parseFloat(PRES_SEL.monto) || 0) + sumaAdicionales })
+        .eq('id', PRES_SEL.id);
+      if (resAdic.error) throw resAdic.error;
+      PRES_SEL.monto = (parseFloat(PRES_SEL.monto) || 0) + sumaAdicionales;
+    } catch (eAdic) {
+      errEl.textContent = 'No se pudieron guardar los adicionales: ' + eAdic.message;
+      errEl.classList.add('visible');
+      return;
+    }
+  }
+
   if (PRES_SEL && PRES_SEL.id) {
     const real = await recalcularSaldoReal(PRES_SEL.id);
     if (real) {
@@ -1834,6 +1924,7 @@ async function pagoGuardar() {
   var folioRB = nextFolioRB();
   var notaPartes = [folio, cliente, notas];
   if (factura) notaPartes.push('FAC:' + factura);
+  if (descAdicionales) notaPartes.push('ADICIONALES: ' + descAdicionales);
   var nota = notaPartes.filter(Boolean).join(' | ');
   var notaConFolio = nota + (nota ? ' | ' : '') + 'RECIBO:' + folioRB;
 
@@ -2377,6 +2468,10 @@ function pagoReset() {
   document.getElementById('pago-pres-card').classList.remove('visible');
   document.getElementById('pago-pres').value = '';
   PRES_SEL = null;
+  PAGO_ADICIONALES = [];
+  PAGO_MONTO_ORIGINAL = 0;
+  var contAdic = document.getElementById('pago-adicionales-lista');
+  if (contAdic) contAdic.innerHTML = '';
   FORMA_SEL = 'transferencia';
   document.querySelectorAll('.pf-btn').forEach(function(b, i) {
     b.classList.toggle('active', i === 0);
