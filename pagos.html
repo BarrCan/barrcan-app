@@ -6,6 +6,15 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.12
+  FECHA   : 2026-08-24
+  v4.12 — FIX: la descripción de lo que se está cobrando aparecía en
+    el recibo la primera vez que se imprimía, pero al REimprimir
+    (pagoEditarReimprimir) ya no salía. Causa real: la descripción
+    nunca se guardaba en la base de datos, solo vivía en pantalla al
+    momento del primer print. Se agregó la columna pagos.descripcion,
+    se guarda desde el inicio (pago individual y múltiple), y se lee
+    de ahí al reimprimir en vez de dejarla vacía.
   VERSIÓN : v4.11
   FECHA   : 2026-08-23
   v4.11 — FIX crítico de pérdida de datos, mismo patrón que se
@@ -1057,7 +1066,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.11';
+var APP_VERSION = 'v4.12';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -1551,7 +1560,7 @@ async function pagosCargar() {
   if (!sb()) return;
   try {
     var result = await sb().from('pagos')
-      .select('id,monto,fecha_pago,forma_pago,concepto,notas,comprobante_img,created_at,presupuesto_id')
+      .select('id,monto,fecha_pago,forma_pago,concepto,notas,descripcion,comprobante_img,created_at,presupuesto_id')
       .order('created_at', { ascending: false }).limit(200);
     if (result.error) throw result.error;
     SYNC.online = true; detectarConexion();
@@ -1705,7 +1714,7 @@ async function pagoGuardarMultiple() {
     var notaConFolio = nota + (nota ? ' | ' : '') + 'RECIBO:' + folioRB + ' | PAGO MULTIPLE (' + ids.length + ' proyectos)';
     var db = {
       monto: sel.aplicado, fecha_pago: fecha, forma_pago: FORMA_SEL, concepto: concepto,
-      notas: notaConFolio.slice(0, 500) || null, registrado_por: 'campo',
+      notas: notaConFolio.slice(0, 500) || null, descripcion: sel.p.descripcion || null, registrado_por: 'campo',
       comprobante_img: (i === 0 ? (_PAGO_FOTO || null) : null), // la foto del comprobante se adjunta solo una vez, en la primera línea
       presupuesto_id: sel.p.id
     };
@@ -1834,6 +1843,7 @@ async function pagoGuardar() {
     forma_pago:    FORMA_SEL,
     concepto:      concepto,
     notas:         notaConFolio.slice(0, 500) || null,
+    descripcion:   desc || null,
     registrado_por:'campo',
     comprobante_img: _PAGO_FOTO || null,
     presupuesto_id: PRES_SEL && PRES_SEL.id ? PRES_SEL.id : null,
@@ -2321,7 +2331,7 @@ function pagoEditarReimprimir() {
     folio:      folio,
     cliente:    cliente,
     tel:        '',
-    desc:       '',
+    desc:       p.descripcion || '',
     monto:      parseFloat(p.monto) || 0,
     total:      0,
     ant:        0,
