@@ -6,6 +6,17 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.12
+  FECHA   : 2026-08-27
+  v1.12 - Nueva edición de facturas (con comprobante y "sin
+    comprobante") -- antes solo se podían dar de alta, sin forma de
+    corregir un error después. Botón "✏️ Editar" en cada factura,
+    visible SOLO para Mau (mismo criterio que barrcan_brain.html:
+    usuario activo con id==='MAU'), con doble candado (botón oculto +
+    verificación al abrir/guardar). Se puede corregir proveedor,
+    folio, fecha, total, moneda (MXN/USD) y descripción. Caso real
+    que lo motivó: factura de Shopify capturada en pesos siendo en
+    realidad dólares.
   VERSION : v1.11
   FECHA   : 2026-08-23
   v1.11 - FIX: el selector "¿Quién la trae?" en Herramientas estaba
@@ -566,6 +577,47 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     </div>
   </div>
 </div>
+
+<!-- Editar factura -- SOLO visible/usable para Mau (esSupremo()).
+     Aplica igual a facturas con comprobante XML y a las "sin
+     comprobante" (captura libre) -- ambas comparten la misma tabla. -->
+<div id="modal-editar-factura" class="modal-ov">
+  <div class="modal-box">
+    <div class="modal-titulo">✏️ Editar factura</div>
+    <div id="me-sub" style="font-size:11px;color:var(--gray-400);margin-bottom:10px"></div>
+
+    <label class="form-label">Proveedor</label>
+    <input type="text" class="form-input" id="me-proveedor">
+
+    <label class="form-label">Folio / referencia</label>
+    <input type="text" class="form-input" id="me-folio">
+
+    <label class="form-label">Fecha</label>
+    <input type="date" class="form-input" id="me-fecha">
+
+    <div class="form-row">
+      <div>
+        <label class="form-label">Total</label>
+        <input type="number" class="form-input" id="me-total" inputmode="decimal">
+      </div>
+      <div>
+        <label class="form-label">Moneda</label>
+        <select class="form-select" id="me-moneda">
+          <option value="MXN">MXN (pesos)</option>
+          <option value="USD">USD (d&oacute;lares)</option>
+        </select>
+      </div>
+    </div>
+
+    <label class="form-label">Descripci&oacute;n <small style="font-weight:400;color:var(--gray-400)">(solo aplica a "sin comprobante")</small></label>
+    <textarea class="form-input" id="me-descripcion" rows="2" style="resize:none"></textarea>
+
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn btn-primary" style="flex:1" onclick="cmpGuardarEdicionFactura()">Guardar cambios</button>
+      <button class="btn" style="border:1.5px solid var(--gray-200);color:var(--gray-600)" onclick="document.getElementById('modal-editar-factura').style.display='none'">Cancelar</button>
+    </div>
+  </div>
+</div>
 <script>
 // BarrCan Compras v1.0 — var/function, sin const/let globales
 var SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co';
@@ -584,7 +636,7 @@ var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
 
-var APP_VERSION = 'v1.11';
+var APP_VERSION = 'v1.12';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -699,6 +751,61 @@ function cmpPeriodoMover(delta) {
   cmpCargarFacturas();
 }
 
+// ── Edición de facturas -- SOLO para Mau ────────────────────────
+// Mismo criterio que barrcan_brain.html: usuario activo con id==='MAU'.
+// Otros compañeros que capturan facturas en este módulo no ven el
+// botón de editar -- solo pueden dar de alta.
+function esSupremo() {
+  try {
+    var u = JSON.parse(localStorage.getItem('barrcan_usuario_activo') || 'null');
+    return !!(u && u.id === 'MAU');
+  } catch (e) { return false; }
+}
+
+var ME_ID = null;
+
+function cmpAbrirEditarFactura(id) {
+  if (!esSupremo()) { toast('Esta opción es solo para Mau'); return; } // doble candado, aunque el botón ya está oculto
+  var f = FACT_CACHE.filter(function(x) { return x.id === id; })[0];
+  if (!f) { toast('No se encontró la factura'); return; }
+  ME_ID = id;
+  document.getElementById('me-sub').textContent = f.folio_factura ? 'Folio: ' + f.folio_factura : '(sin folio)';
+  document.getElementById('me-proveedor').value = f.proveedor || '';
+  document.getElementById('me-folio').value = f.folio_factura || '';
+  document.getElementById('me-fecha').value = f.fecha || '';
+  document.getElementById('me-total').value = f.total || '';
+  document.getElementById('me-moneda').value = f.moneda || 'MXN';
+  document.getElementById('me-descripcion').value = f.descripcion || '';
+  document.getElementById('modal-editar-factura').style.display = 'flex';
+}
+
+async function cmpGuardarEdicionFactura() {
+  if (!esSupremo()) { toast('Esta opción es solo para Mau'); return; }
+  if (!ME_ID) return;
+  var proveedor = document.getElementById('me-proveedor').value.trim();
+  var folio     = document.getElementById('me-folio').value.trim();
+  var fecha     = document.getElementById('me-fecha').value;
+  var total     = parseFloat(document.getElementById('me-total').value) || 0;
+  var moneda    = document.getElementById('me-moneda').value;
+  var desc      = document.getElementById('me-descripcion').value.trim();
+
+  if (!total || total <= 0) { toast('El total debe ser mayor a $0'); return; }
+
+  var payload = { proveedor: proveedor || null, folio_factura: folio || null, fecha: fecha || null, total: total, moneda: moneda, descripcion: desc || null };
+
+  if (!sb()) { toast('Sin conexión, no se pudo guardar'); return; }
+  try {
+    var res = await sb().from('facturas_recibidas').update(payload).eq('id', ME_ID);
+    if (res.error) throw res.error;
+    toast('✅ Factura actualizada');
+    document.getElementById('modal-editar-factura').style.display = 'none';
+    ME_ID = null;
+    cmpCargarFacturas();
+  } catch (e) {
+    toast('Error al guardar: ' + e.message);
+  }
+}
+
 async function cmpCargarFacturas() {
   var lista = document.getElementById('fact-lista');
   lista.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">Cargando...</div>';
@@ -709,7 +816,7 @@ async function cmpCargarFacturas() {
     document.getElementById('fact-periodo-nav').style.display = PERIODO.tipo === 'todo' ? 'none' : 'flex';
 
     var q = sb().from('facturas_recibidas')
-      .select('id,fecha,rfc_emisor,proveedor,folio_factura,categoria,folio_obra,desglosada,subtotal,iva,total,con_comprobante,descripcion')
+      .select('id,fecha,rfc_emisor,proveedor,folio_factura,categoria,folio_obra,desglosada,subtotal,iva,total,con_comprobante,descripcion,moneda')
       .order('fecha', { ascending: false });
     if (rango.desde) q = q.gte('fecha', rango.desde);
     if (rango.hasta) q = q.lte('fecha', rango.hasta);
@@ -817,8 +924,9 @@ function cmpFiltrarFacturas() {
           : '')
       + '</div>'
       + '<div style="text-align:right">'
-      + '<div class="row-monto">' + fmt(f.total) + '</div>'
+      + '<div class="row-monto">' + fmt(f.total) + (f.moneda && f.moneda !== 'MXN' ? ' <span style="font-size:10px;font-weight:800;color:#8E44AD">' + esc(f.moneda) + '</span>' : '') + '</div>'
       + '<div class="row-fecha">' + (f.fecha||'—') + '</div>'
+      + (esSupremo() ? '<div onclick="cmpAbrirEditarFactura(\'' + f.id + '\')" style="margin-top:4px;font-size:10px;color:var(--navy);font-weight:700;cursor:pointer;text-decoration:underline">✏️ Editar</div>' : '')
       + '</div>'
       + '</div>'
       + '</div>';
