@@ -6,6 +6,32 @@
 <title>BarrCan · Reportes</title>
 <!--
   BARRCAN · MODULO: REPORTES (standalone)
+  VERSION : v2.1
+  FECHA   : 2026-08-26
+  v2.1 - FIX: el botón "🖨️ Imprimir" de "Buscar un proyecto en
+    específico" (agregado en v2.0) se escondía en celular -- el
+    título largo del folio no le dejaba espacio en la misma fila y lo
+    comprimía fuera de vista. Ahora el botón va siempre debajo, a
+    todo el ancho, garantizado visible sin importar qué tan largo sea
+    el folio.
+  VERSION : v2.0
+  FECHA   : 2026-08-26
+  v2.0 - Nuevo botón "🖨️ Imprimir" en "Buscar un proyecto en
+    específico" -- genera un documento con el MISMO formato agrupado
+    por categoría que se ve en pantalla (categoría, subtotal, y sus
+    artículos debajo), en vez del formato de tabla plana que ya
+    existía para el reporte de gasto normal (son dos vistas
+    distintas, cada una con su propio botón de imprimir ahora).
+  VERSION : v1.9
+  FECHA   : 2026-08-26
+  v1.9 - FIX: el cálculo de "Ganancia" por obra no descontaba el
+    personal eventual (pagos_eventuales) -- una obra podía verse más
+    rentable de lo que realmente era. Ahora Ganancia = Contratado −
+    Material − Mano de obra − Eventuales, con una columna nueva
+    "👷 Eventual" en el desglose de cada tarjeta. Caso real detectado:
+    folio STAN-002A pasaba de 56.5% a 43.3% de margen real (13 puntos
+    de diferencia) al incluir los $5,050 de eventuales que ya estaban
+    capturados pero no se sumaban aquí.
   VERSION : v1.8
   FECHA   : 2026-08-20
   v1.8 - Dos bugs corregidos en la pestaña "Obras" + buscador nuevo:
@@ -247,7 +273,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
         Ganancia por obra
         <button class="btn btn-sm btn-primary" onclick="rpCargarGanancia()">↻</button>
       </div>
-      <div style="font-size:10px;color:var(--gray-400);margin-bottom:10px">Contratado − Material − Mano de obra = Ganancia. "Cobrado" es lo que ya pagó el cliente (puede ser menor a lo contratado si aún debe).</div>
+      <div style="font-size:10px;color:var(--gray-400);margin-bottom:10px">Contratado − Material − Mano de obra − Personal eventual = Ganancia. "Cobrado" es lo que ya pagó el cliente (puede ser menor a lo contratado si aún debe).</div>
       <div id="rp-ganancia-lista"><div style="text-align:center;padding:20px;color:var(--gray-400)">Cargando...</div></div>
     </div>
   </div>
@@ -321,7 +347,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 </div>
 </body>
 <script>
-var APP_VERSION = 'v1.8';
+var APP_VERSION = 'v2.1';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb=null;
@@ -613,21 +639,21 @@ async function rpCargarGanancia() {
     var obras = {};
     (resPres.data || []).forEach(function(p) {
       if (!p.folio) return;
-      obras[p.folio] = { cliente: p.cliente, contratado: parseFloat(p.monto || 0), saldo: parseFloat(p.saldo || 0), material: 0, manoObra: 0 };
+      obras[p.folio] = { cliente: p.cliente, contratado: parseFloat(p.monto || 0), saldo: parseFloat(p.saldo || 0), material: 0, manoObra: 0, eventuales: 0 };
     });
 
     // 2) Material — facturas simples (una sola obra)
     var resFact = await sb().from('facturas_recibidas')
       .select('folio_obra,total').eq('desglosada', false).not('folio_obra', 'is', null);
     if (!resFact.error) (resFact.data || []).forEach(function(f) {
-      if (!obras[f.folio_obra]) obras[f.folio_obra] = { cliente: '(sin presupuesto ligado)', contratado: 0, saldo: 0, material: 0, manoObra: 0 };
+      if (!obras[f.folio_obra]) obras[f.folio_obra] = { cliente: '(sin presupuesto ligado)', contratado: 0, saldo: 0, material: 0, manoObra: 0, eventuales: 0 };
       obras[f.folio_obra].material += parseFloat(f.total || 0);
     });
 
     // 3) Material — artículos de facturas desglosadas (varias obras)
     var resConc = await sb().from('facturas_conceptos').select('folio_obra,importe').not('folio_obra', 'is', null);
     if (!resConc.error) (resConc.data || []).forEach(function(it) {
-      if (!obras[it.folio_obra]) obras[it.folio_obra] = { cliente: '(sin presupuesto ligado)', contratado: 0, saldo: 0, material: 0, manoObra: 0 };
+      if (!obras[it.folio_obra]) obras[it.folio_obra] = { cliente: '(sin presupuesto ligado)', contratado: 0, saldo: 0, material: 0, manoObra: 0, eventuales: 0 };
       obras[it.folio_obra].material += parseFloat(it.importe || 0);
     });
 
@@ -638,18 +664,27 @@ async function rpCargarGanancia() {
       obras[o.folio_cotizacion].manoObra += parseFloat(o.costo_mano_obra || 0);
     });
 
-    var folios = Object.keys(obras).filter(function(f) { return obras[f].contratado > 0 || obras[f].material > 0 || obras[f].manoObra > 0; });
+    // 5) Personal eventual ligado a la obra (antes NO se descontaba de la
+    // utilidad real -- una obra podía verse rentable en este reporte
+    // aunque en realidad se le hubiera pagado a alguien eventual por ella).
+    var resEventGan = await sb().from('pagos_eventuales').select('folio_relacionado,monto').not('folio_relacionado', 'is', null);
+    if (!resEventGan.error) (resEventGan.data || []).forEach(function(ev) {
+      if (!ev.folio_relacionado || !obras[ev.folio_relacionado]) return;
+      obras[ev.folio_relacionado].eventuales += parseFloat(ev.monto || 0);
+    });
+
+    var folios = Object.keys(obras).filter(function(f) { return obras[f].contratado > 0 || obras[f].material > 0 || obras[f].manoObra > 0 || obras[f].eventuales > 0; });
     if (!folios.length) { div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">Sin datos suficientes todavía</div>'; return; }
 
     folios.sort(function(a, b) {
-      var gA = obras[a].contratado - obras[a].material - obras[a].manoObra;
-      var gB = obras[b].contratado - obras[b].material - obras[b].manoObra;
+      var gA = obras[a].contratado - obras[a].material - obras[a].manoObra - obras[a].eventuales;
+      var gB = obras[b].contratado - obras[b].material - obras[b].manoObra - obras[b].eventuales;
       return gB - gA;
     });
 
     var html = folios.map(function(folio) {
       var o = obras[folio];
-      var ganancia = o.contratado - o.material - o.manoObra;
+      var ganancia = o.contratado - o.material - o.manoObra - o.eventuales;
       var margen = o.contratado > 0 ? Math.round(ganancia / o.contratado * 100) : null;
       var colorGan = ganancia >= 0 ? 'var(--green)' : 'var(--red)';
       var cobrado = o.contratado - o.saldo;
@@ -660,11 +695,12 @@ async function rpCargarGanancia() {
         + '<div style="text-align:right"><div style="font-size:16px;font-weight:700;color:' + colorGan + '">' + fmtK(ganancia) + '</div>'
         + (margen !== null ? '<div style="font-size:9px;color:var(--gray-400)">margen ' + margen + '%</div>' : '') + '</div>'
         + '</div>'
-        + '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;font-size:9px;color:var(--gray-600);text-align:center;border-top:1px solid #F0F0F0;padding-top:6px">'
+        + '<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px;font-size:9px;color:var(--gray-600);text-align:center;border-top:1px solid #F0F0F0;padding-top:6px">'
         + '<div><div style="color:var(--gray-400)">Contratado</div><div style="font-weight:700">' + fmtK(o.contratado) + '</div></div>'
         + '<div><div style="color:var(--gray-400)">Cobrado</div><div style="font-weight:700">' + fmtK(cobrado) + '</div></div>'
         + '<div><div style="color:var(--gray-400)">Material</div><div style="font-weight:700">' + fmtK(o.material) + '</div></div>'
         + '<div><div style="color:var(--gray-400)">Mano obra</div><div style="font-weight:700">' + fmtK(o.manoObra) + '</div></div>'
+        + '<div><div style="color:var(--gray-400)">👷 Eventual</div><div style="font-weight:700">' + fmtK(o.eventuales) + '</div></div>'
         + '</div>'
         + '<button onclick="rpImprimirReporteObra(\'' + esc(folio).replace(/'/g, "\\'") + '\')" style="width:100%;margin-top:8px;padding:7px;background:rgba(27,58,92,.06);border:1.5px solid rgba(27,58,92,.15);border-radius:6px;color:var(--navy);font-size:11px;font-weight:700;cursor:pointer">🖨️ Imprimir reporte de gasto</button>'
         + '</div>';
@@ -768,6 +804,53 @@ function rpBuscarObraInput() {
   else document.getElementById('rp-detalle-proyecto').innerHTML = '';
 }
 
+var RP_DETALLE_PROYECTO_CACHE = null;
+
+function rpImprimirDetalleProyecto() {
+  var d = RP_DETALLE_PROYECTO_CACHE;
+  if (!d) { toast('Primero busca un proyecto'); return; }
+  var hoy = new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  var categoriasHtml = d.categorias.map(function(cat) {
+    var c = d.porCategoria[cat];
+    var itemsHtml = c.items.map(function(it) {
+      return '<tr>'
+        + '<td style="padding:4px 8px;border-bottom:1px solid #f0f0f0;font-size:9pt">' + esc(it.desc) + (it.cant > 1 ? ' <span style="color:#999">\u00d7' + it.cant + '</span>' : '') + '</td>'
+        + '<td style="padding:4px 8px;border-bottom:1px solid #f0f0f0;font-size:9pt;color:#888">' + esc(it.proveedor || '') + '</td>'
+        + '<td style="padding:4px 8px;border-bottom:1px solid #f0f0f0;font-size:9pt;font-weight:700;text-align:right">$' + it.monto.toLocaleString('es-MX', {minimumFractionDigits:2}) + '</td>'
+        + '</tr>';
+    }).join('');
+    return '<div style="margin-bottom:14px;page-break-inside:avoid">'
+      + '<div style="display:flex;justify-content:space-between;align-items:baseline;background:#F0F4F8;padding:6px 10px;border-radius:6px 6px 0 0;border-left:4px solid #C8923A">'
+      + '<span style="font-size:10.5pt;font-weight:800;color:#1B3A5C;text-transform:uppercase;letter-spacing:.4px">' + esc(cat) + '</span>'
+      + '<span style="font-size:10.5pt;font-weight:800;color:#1B3A5C">$' + c.monto.toLocaleString('es-MX', {minimumFractionDigits:2}) + '</span>'
+      + '</div>'
+      + '<table style="width:100%;border-collapse:collapse;border:1px solid #F0F4F8;border-top:none">' + itemsHtml + '</table>'
+      + '</div>';
+  }).join('');
+
+  var htmlDoc = '<!DOCTYPE html><html lang=es><head><meta charset=UTF-8><meta name=viewport content=width=device-width>'
+    + '<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;color:#1B3A5C;background:#fff}'
+    + '.pg{max-width:720px;margin:0 auto;padding:20px 22px 80px}'
+    + '.barra{position:fixed;bottom:0;left:0;right:0;background:#1B3A5C;padding:8px 14px;display:flex;gap:8px;justify-content:center;z-index:999}'
+    + '.bp{padding:9px 20px;background:#C8923A;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer}'
+    + '.bc{padding:9px 12px;background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:7px;font-size:12px;cursor:pointer}'
+    + '@media print{.barra{display:none!important}}</style></head><body>'
+    + '<div class=barra><button class=bp onclick="window.print()">Imprimir / PDF</button><button class=bc onclick="window.close()">Cerrar</button></div>'
+    + '<div class=pg>'
+    + '<div style="border-bottom:2.5px solid #1B3A5C;padding-bottom:10px;margin-bottom:14px">'
+    + '<div style="font-size:16pt;font-weight:900;color:#1B3A5C">BarrCan \u00b7 Gasto por proyecto (por categor\u00eda)</div>'
+    + '<div style="font-size:11pt;font-weight:700;color:#C8923A;font-family:monospace">' + esc(d.folio) + '</div>'
+    + '</div>'
+    + '<div style="font-size:9pt;color:#666;margin-bottom:14px">Generado el ' + hoy + '</div>'
+    + categoriasHtml
+    + '<div style="display:flex;justify-content:flex-end;padding-top:10px;border-top:2px solid #1B3A5C;font-size:13pt;font-weight:900;color:#1B3A5C">TOTAL: $' + d.totalMonto.toLocaleString('es-MX', {minimumFractionDigits:2}) + '</div>'
+    + '</div></body></html>';
+
+  var w = window.open('', '_blank');
+  if (w) { w.document.write(htmlDoc); w.document.close(); }
+}
+
 async function rpMostrarDetalleObra(folio) {
   var cont = document.getElementById('rp-detalle-proyecto');
   cont.innerHTML = '<div style="text-align:center;padding:16px;color:var(--gray-400)">Cargando artículos comprados…</div>';
@@ -820,8 +903,15 @@ async function rpMostrarDetalleObra(folio) {
 
     var totalMonto = categorias.reduce(function(s, c) { return s + porCategoria[c].monto; }, 0);
 
+    // Se guarda para poder imprimir exactamente esta misma vista, sin
+    // tener que volver a consultar todo.
+    RP_DETALLE_PROYECTO_CACHE = { folio: folio, categorias: categorias, porCategoria: porCategoria, totalMonto: totalMonto };
+
     cont.innerHTML =
-      '<div class="seccion-titulo" style="margin-top:12px">📦 ' + esc(folio) + ' — Total comprado: ' + fmt(totalMonto) + '</div>' +
+      '<div class="seccion-titulo" style="margin-top:12px;display:flex;flex-direction:column;gap:8px">'
+      + '<span>📦 ' + esc(folio) + ' — Total comprado: ' + fmt(totalMonto) + '</span>'
+      + '<button onclick="rpImprimirDetalleProyecto()" style="width:100%;padding:9px;background:rgba(27,58,92,.06);border:1.5px solid rgba(27,58,92,.15);border-radius:6px;color:var(--navy);font-size:12px;font-weight:700;cursor:pointer">🖨️ Imprimir este desglose</button>'
+      + '</div>' +
       categorias.map(function(cat) {
         var c = porCategoria[cat];
         return '<div style="margin-bottom:10px">' +
