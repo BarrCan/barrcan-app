@@ -6,6 +6,60 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v2.8
+  FECHA   : 2026-08-27
+  v2.8 - Sesión expira cada día: antes, una vez que alguien entraba
+    (con PIN o huella), quedaba guardado en el celular PARA SIEMPRE
+    -- reabrir la app entraba directo sin pedir nada nunca más, sin
+    importar quién agarrara el teléfono. Ahora la sesión guarda la
+    fecha en que se inició, y si no es la de hoy, se borra sola y
+    pide PIN/huella de nuevo -- de paso, ese momento de re-entrar ES
+    la "entrada del día" que ya se registra (v2.5), así que no se
+    agrega fricción real, solo se cierra el hueco de seguridad.
+  VERSION : v2.7
+  FECHA   : 2026-08-27
+  v2.7 - Tercera categoría "🚚 Compras" en el recordatorio de
+    actividades (v2.6) -- Mau recordó que él normalmente es quien
+    recolecta material, y eso no encajaba ni en Taller ni en Stand.
+    Actividades: recolección de material, compra en ferretería/
+    proveedor, entrega de material a obra/taller, trámites con
+    proveedor, devolución de material. FIX de paso: el reset de
+    selección al detectar un día pendiente (raVerificarDiaPendiente)
+    se había quedado con las 2 categorías viejas, tronaba al elegir
+    un chip de Compras -- corregido y reprobado.
+  VERSION : v2.6
+  FECHA   : 2026-08-27
+  v2.6 - Recordatorio de actividades del día (Taller/Stand): si al
+    entrar con PIN hay un día ANTERIOR con entrada registrada pero
+    sin cerrar, aparece una tarjeta pidiendo marcar qué se hizo --
+    chips de un toque (no texto libre), separados en dos categorías
+    porque son oficios distintos:
+    - Taller: corte de aluminio/vidrio, ensamble, colocación de
+      vidrio/plástico, tela de mosquitero, chapas, carretillas,
+      bisagras (normal e hidráulica), instalación de herrajes,
+      empaque, preparación de pedido, control de calidad.
+    - Stand: carpintería, cortar módulos de piso/pared, lijar y
+      preparar, armar módulo, armar previo/muestra, resanar, montar,
+      instalación eléctrica, contactos.
+    "Otro" en cualquiera despliega un campo de texto para explicar
+    (un chip sin explicación no sirve de nada). Botón "Después" para
+    no bloquear si de plano no hay tiempo -- se le vuelve a
+    recordar en el siguiente login. Nueva columnas en
+    tecnico_entradas_dia: categoria, actividades (jsonb),
+    otro_detalle, cerrado.
+  VERSION : v2.5
+  FECHA   : 2026-08-27
+  v2.5 - Captura automática de "hora de entrada del día" por técnico:
+    al entrar con su PIN (entrarAlPortal), se registra la hora sola,
+    sin ningún tap extra -- aprovechando que de todas formas entran
+    cada mañana a ver qué les toca. Nueva tabla
+    tecnico_entradas_dia con UNIQUE(tecnico_id,fecha) + upsert
+    ignoreDuplicates, así que solo queda la PRIMERA entrada del día
+    aunque abran la app varias veces. Pensado para complementarse con
+    la hora del reporte de entrega/instalación que ya se genera al
+    terminar el trabajo (eso ya existe, no hizo falta tocarlo) --
+    entrada + reporte final = una aproximación del tiempo del día,
+    sin ningún formulario nuevo que llenar.
   VERSION : v2.4
   FECHA   : 2026-08-20
   v2.4 - Agregada la tarjeta del nuevo módulo taller.html al grupo
@@ -238,6 +292,34 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
     </div>
   </div>
 
+  <div id="recordatorio-actividades" style="display:none;margin:14px 16px 0;background:#fff;border-radius:12px;border:1.5px solid rgba(200,146,58,.35);padding:14px 16px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <span style="font-size:16px">🔧</span>
+      <span style="font-size:12.5px;font-weight:700;color:#1B3A5C">Ayer entraste pero no cerraste tu día</span>
+    </div>
+    <div id="ra-fecha" style="font-size:11.5px;color:#888;margin-bottom:12px">toca lo que hiciste, puedes elegir varias</div>
+
+    <div style="display:flex;gap:6px;margin-bottom:14px">
+      <button type="button" id="ra-tab-taller" onclick="raMostrarCategoria('taller')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #1B3A5C;background:#1B3A5C;color:#fff;font-size:11px;font-weight:700;cursor:pointer">🔧 Taller</button>
+      <button type="button" id="ra-tab-stand" onclick="raMostrarCategoria('stand')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🪵 Stand</button>
+      <button type="button" id="ra-tab-compras" onclick="raMostrarCategoria('compras')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🚚 Compras</button>
+    </div>
+
+    <div id="ra-chips-taller" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
+    <input id="ra-otro-taller" type="text" placeholder="Describe brevemente qué fue..." style="display:none;width:100%;padding:9px;border:1.5px solid #C8923A;border-radius:8px;font-size:12.5px;margin-bottom:14px;color:#1B3A5C;box-sizing:border-box">
+
+    <div id="ra-chips-stand" style="display:none;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
+    <input id="ra-otro-stand" type="text" placeholder="Describe brevemente qué fue..." style="display:none;width:100%;padding:9px;border:1.5px solid #C8923A;border-radius:8px;font-size:12.5px;margin-bottom:14px;color:#1B3A5C;box-sizing:border-box">
+
+    <div id="ra-chips-compras" style="display:none;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
+    <input id="ra-otro-compras" type="text" placeholder="Describe brevemente qué fue..." style="display:none;width:100%;padding:9px;border:1.5px solid #C8923A;border-radius:8px;font-size:12.5px;margin-bottom:14px;color:#1B3A5C;box-sizing:border-box">
+
+    <div style="display:flex;gap:8px">
+      <button type="button" onclick="raGuardar()" style="flex:1;padding:10px;background:#C8923A;border:none;border-radius:8px;color:#fff;font-size:12.5px;font-weight:700;cursor:pointer">Guardar</button>
+      <button type="button" onclick="raDespues()" style="padding:10px 14px;background:none;border:1.5px solid #DDD9D2;border-radius:8px;color:#5F5E5A;font-size:12.5px;cursor:pointer">Después</button>
+    </div>
+  </div>
+
   <div class="portal-content">
 
     <div class="grupo-titulo" data-grupo-roles="supremo,admin">📋 Ventas &amp; Cotizadores</div>
@@ -362,7 +444,7 @@ function sb(){
 }
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
-var APP_VERSION = 'v2.4';
+var APP_VERSION = 'v2.8';
 var USUARIOS = [];
 var USUARIO_SEL = null;   // el que se está tratando de loguear
 var PIN_BUFFER = '';
@@ -663,8 +745,127 @@ async function procesarPinCompleto() {
   }
 }
 
+// Captura la hora de la PRIMERA entrada al portal cada día, por
+// técnico -- sin ningún tap extra, aprovechando que de todas formas
+// entran cada mañana a ver qué les toca. UNIQUE(tecnico_id,fecha) +
+// upsert con ignoreDuplicates garantiza que solo quede la primera
+// entrada del día, no se pisa con logins posteriores. Falla en
+// silencio si no hay señal -- no debe bloquear el login normal.
+// ── Recordatorio de actividades (Taller/Stand) ──────────────────
+// Se muestra solo si el técnico tiene un día ANTERIOR con entrada
+// registrada pero sin cerrar (cerrado=false) -- no bloquea, tiene
+// botón "Después" que lo pospone sin perder el registro.
+var RA_LISTAS = {
+  taller: ['Corte de aluminio','Corte de vidrio','Ensamble de cancel','Colocación de vidrio','Colocación de plástico','Tela de mosquitero','Chapas','Carretillas','Bisagras','Bisagra hidráulica','Instalación de herrajes','Empaque','Preparación de pedido','Control de calidad'],
+  stand: ['Carpintería','Cortar módulos de piso','Cortar módulos de pared','Lijar y preparar','Armar módulo','Armar previo/muestra','Resanar','Montar','Instalación eléctrica','Contactos'],
+  compras: ['Recolección de material','Compra en ferretería/proveedor','Entrega de material a obra','Entrega de material a taller','Trámites con proveedor','Devolución de material']
+};
+var RA_SEL = { taller: [], stand: [], compras: [] };
+var RA_CATEGORIA_ACTIVA = 'taller';
+var RA_REGISTRO_ID = null;
+
+function raRenderChips() {
+  ['taller', 'stand', 'compras'].forEach(function(cat) {
+    var cont = document.getElementById('ra-chips-' + cat);
+    if (!cont) return;
+    var html = RA_LISTAS[cat].map(function(act) {
+      return '<button type="button" class="ra-chip" data-cat="' + cat + '" data-v="' + act + '" onclick="raToggleChip(this)" style="padding:8px 12px;border-radius:20px;border:1.5px solid #DDD9D2;background:#fff;font-size:12px;color:#1B3A5C;cursor:pointer">' + act + '</button>';
+    }).join('');
+    html += '<button type="button" class="ra-chip-otro" data-cat="' + cat + '" onclick="raToggleOtro(this)" style="padding:8px 12px;border-radius:20px;border:1.5px solid #DDD9D2;background:#fff;font-size:12px;color:#1B3A5C;cursor:pointer">Otro</button>';
+    cont.innerHTML = html;
+  });
+}
+
+function raToggleChip(btn) {
+  var cat = btn.dataset.cat, v = btn.dataset.v;
+  var activo = RA_SEL[cat].indexOf(v) >= 0;
+  if (activo) { RA_SEL[cat] = RA_SEL[cat].filter(function(x) { return x !== v; }); }
+  else { RA_SEL[cat].push(v); }
+  btn.style.background = activo ? '#fff' : '#1B3A5C';
+  btn.style.color = activo ? '#1B3A5C' : '#fff';
+  btn.style.borderColor = activo ? '#DDD9D2' : '#1B3A5C';
+}
+
+function raToggleOtro(btn) {
+  var cat = btn.dataset.cat;
+  var campo = document.getElementById('ra-otro-' + cat);
+  var abierto = campo.style.display === 'block';
+  campo.style.display = abierto ? 'none' : 'block';
+  btn.style.background = abierto ? '#fff' : '#1B3A5C';
+  btn.style.color = abierto ? '#1B3A5C' : '#fff';
+  btn.style.borderColor = abierto ? '#DDD9D2' : '#1B3A5C';
+  if (!abierto) campo.focus(); else campo.value = '';
+}
+
+function raMostrarCategoria(cat) {
+  RA_CATEGORIA_ACTIVA = cat;
+  ['taller', 'stand', 'compras'].forEach(function(c) {
+    document.getElementById('ra-chips-' + c).style.display = c === cat ? 'flex' : 'none';
+    var tab = document.getElementById('ra-tab-' + c);
+    tab.style.background = c === cat ? '#1B3A5C' : '#fff';
+    tab.style.color = c === cat ? '#fff' : '#1B3A5C';
+    tab.style.borderColor = c === cat ? '#1B3A5C' : '#DDD9D2';
+  });
+}
+
+// Revisa si hay un día ANTERIOR sin cerrar y muestra el recordatorio.
+async function raVerificarDiaPendiente() {
+  if (!USUARIO_SEL || !USUARIO_SEL.id || !sb()) return;
+  try {
+    var hoy = new Date();
+    var fechaHoy = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
+    var res = await sb().from('tecnico_entradas_dia')
+      .select('id,fecha').eq('tecnico_id', USUARIO_SEL.id).eq('cerrado', false).neq('fecha', fechaHoy)
+      .order('fecha', { ascending: false }).limit(1);
+    if (res.error || !res.data || !res.data.length) return;
+    RA_REGISTRO_ID = res.data[0].id;
+    RA_SEL = { taller: [], stand: [], compras: [] };
+    raRenderChips();
+    raMostrarCategoria('taller');
+    var fd = new Date(res.data[0].fecha + 'T00:00:00');
+    document.getElementById('ra-fecha').textContent = fd.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) + ' · toca lo que hiciste, puedes elegir varias';
+    document.getElementById('recordatorio-actividades').style.display = 'block';
+  } catch (e) { console.warn('[BarrCan] No se pudo verificar día pendiente:', e.message); }
+}
+
+async function raGuardar() {
+  var cat = RA_CATEGORIA_ACTIVA;
+  var otroTxt = (document.getElementById('ra-otro-' + cat).value || '').trim();
+  var actividades = RA_SEL[cat].slice();
+  if (otroTxt) actividades.push('Otro: ' + otroTxt);
+  if (!actividades.length) { alert('Elige al menos una actividad, o toca "Después" si no puedes ahorita.'); return; }
+  try {
+    var res = await sb().from('tecnico_entradas_dia')
+      .update({ categoria: cat, actividades: actividades, otro_detalle: otroTxt || null, cerrado: true })
+      .eq('id', RA_REGISTRO_ID);
+    if (res.error) throw res.error;
+    document.getElementById('recordatorio-actividades').style.display = 'none';
+  } catch (e) { alert('No se pudo guardar: ' + e.message); }
+}
+
+function raDespues() {
+  document.getElementById('recordatorio-actividades').style.display = 'none';
+}
+
+function registrarEntradaDelDia() {
+  if (!USUARIO_SEL || !USUARIO_SEL.id || !sb()) return;
+  var hoy = new Date();
+  var fechaLocal = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
+  sb().from('tecnico_entradas_dia')
+    .upsert({ tecnico_id: USUARIO_SEL.id, tecnico_nombre: USUARIO_SEL.apodo || USUARIO_SEL.nombre, fecha: fechaLocal, hora_entrada: hoy.toISOString() }, { onConflict: 'tecnico_id,fecha', ignoreDuplicates: true })
+    .then(function(res) { if (res.error) console.warn('[BarrCan] No se pudo registrar entrada del día:', res.error.message); })
+    .catch(function(e) { console.warn('[BarrCan] No se pudo registrar entrada del día:', e.message); });
+}
+
+function _fechaLocalHoy() {
+  var d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 function entrarAlPortal() {
-  localStorage.setItem('barrcan_usuario_activo', JSON.stringify({ id: USUARIO_SEL.id, nombre: USUARIO_SEL.apodo || USUARIO_SEL.nombre, rol: USUARIO_SEL.rol }));
+  localStorage.setItem('barrcan_usuario_activo', JSON.stringify({ id: USUARIO_SEL.id, nombre: USUARIO_SEL.apodo || USUARIO_SEL.nombre, rol: USUARIO_SEL.rol, fechaSesion: _fechaLocalHoy() }));
+  registrarEntradaDelDia(); // hora de "inicio de día" -- automática, no invasiva
+  raVerificarDiaPendiente(); // recordatorio de actividades del día anterior, si aplica
   document.getElementById('pantalla-login').style.display = 'none';
   document.getElementById('pantalla-pin').style.display = 'none';
   document.getElementById('portal-avatar').style.background = (USUARIO_SEL.color || '#2E6DA4') + '33';
@@ -832,6 +1033,14 @@ document.addEventListener('DOMContentLoaded', function() {
   cargarUsuarios();
   try {
     var guardado = JSON.parse(localStorage.getItem('barrcan_usuario_activo') || 'null');
+    // Sesión expira cada día -- si el celular se queda sin bloquear o lo
+    // agarra alguien más, no entra directo como quien haya usado la app
+    // antes. De paso, esto hace que pedir PIN/huella cada mañana SEA el
+    // momento natural de "entrada del día" que ya registramos.
+    if (guardado && guardado.fechaSesion && guardado.fechaSesion !== _fechaLocalHoy()) {
+      localStorage.removeItem('barrcan_usuario_activo');
+      guardado = null;
+    }
     if (guardado && guardado.id) {
       // Necesitamos los datos completos (emoji/color) — se completan
       // en cuanto cargue la lista de usuarios.
