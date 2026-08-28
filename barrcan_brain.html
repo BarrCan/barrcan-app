@@ -6,6 +6,38 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v2.10
+  FECHA   : 2026-08-27
+  v2.10 - Nueva tarjeta "🗓️ Captura histórica", visible SOLO para
+    supremo -- para completar días pasados que no se alcanzaron a
+    registrar (el sistema apenas se construyó, así que todo agosto
+    antes de hoy está vacío). Selector de técnico + fecha + los
+    mismos chips de Taller/Stand/Compras, guarda con upsert por
+    (tecnico_id,fecha) así que se puede corregir un día ya
+    capturado sin duplicar. Ojo: hora_entrada en estos registros
+    retroactivos queda con la hora de captura (hoy), no la hora real
+    de aquel día -- no se puede reconstruir ese dato, se prioriza
+    tener registrado QUÉ se hizo por encima de A QUÉ HORA.
+  VERSION : v2.9
+  FECHA   : 2026-08-27
+  v2.9 - Nueva tarjeta "📋 Mis actividades" en el portal (grupo
+    Operación): antes el panel de Taller/Stand/Compras SOLO aparecía
+    automático si detectaba un día ANTERIOR sin cerrar -- no había
+    forma de abrirlo cuando uno quisiera. Ahora se puede acceder en
+    cualquier momento para el día de HOY: si no existe el registro
+    (por ejemplo si registrarEntradaDelDia falló), lo crea; si ya
+    habías elegido algo hoy, lo precarga para poder corregir en vez
+    de duplicar.
+  VERSION : v2.8
+  FECHA   : 2026-08-27
+  v2.8 - Sesión expira cada día: antes, una vez que alguien entraba
+    (con PIN o huella), quedaba guardado en el celular PARA SIEMPRE
+    -- reabrir la app entraba directo sin pedir nada nunca más, sin
+    importar quién agarrara el teléfono. Ahora la sesión guarda la
+    fecha en que se inició, y si no es la de hoy, se borra sola y
+    pide PIN/huella de nuevo -- de paso, ese momento de re-entrar ES
+    la "entrada del día" que ya se registra (v2.5), así que no se
+    agrega fricción real, solo se cierra el hueco de seguridad.
   VERSION : v2.7
   FECHA   : 2026-08-27
   v2.7 - Tercera categoría "🚚 Compras" en el recordatorio de
@@ -282,6 +314,39 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
     </div>
   </div>
 
+  <div id="modal-captura-historica" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;align-items:flex-end;justify-content:center">
+    <div style="background:#fff;border-radius:16px 16px 0 0;padding:18px 16px 24px;width:100%;max-width:480px;max-height:88vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <span style="font-size:14px;font-weight:700;color:var(--navy)">🗓️ Captura histórica</span>
+        <button type="button" onclick="chCerrar()" style="background:none;border:none;font-size:20px;color:#999;cursor:pointer">✕</button>
+      </div>
+      <div style="font-size:11px;color:#888;margin-bottom:14px">Para completar días pasados que no se alcanzaron a registrar solos -- solo tú ves esta opción.</div>
+
+      <label style="font-size:12px;color:#5F5E5A;display:block;margin-bottom:4px">Técnico</label>
+      <select id="ch-tecnico" style="width:100%;padding:9px;border:1.5px solid #DDD9D2;border-radius:8px;font-size:13px;margin-bottom:12px;color:#1B3A5C"></select>
+
+      <label style="font-size:12px;color:#5F5E5A;display:block;margin-bottom:4px">Fecha</label>
+      <input type="date" id="ch-fecha" style="width:100%;padding:9px;border:1.5px solid #DDD9D2;border-radius:8px;font-size:13px;margin-bottom:14px;color:#1B3A5C">
+
+      <div style="display:flex;gap:6px;margin-bottom:14px">
+        <button type="button" id="ch-tab-taller" onclick="chMostrarCategoria('taller')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #1B3A5C;background:#1B3A5C;color:#fff;font-size:11px;font-weight:700;cursor:pointer">🔧 Taller</button>
+        <button type="button" id="ch-tab-stand" onclick="chMostrarCategoria('stand')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🪵 Stand</button>
+        <button type="button" id="ch-tab-compras" onclick="chMostrarCategoria('compras')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🚚 Compras</button>
+      </div>
+
+      <div id="ch-chips-taller" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
+      <input id="ch-otro-taller" type="text" placeholder="Describe brevemente qué fue..." style="display:none;width:100%;padding:9px;border:1.5px solid #C8923A;border-radius:8px;font-size:12.5px;margin-bottom:14px;color:#1B3A5C;box-sizing:border-box">
+
+      <div id="ch-chips-stand" style="display:none;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
+      <input id="ch-otro-stand" type="text" placeholder="Describe brevemente qué fue..." style="display:none;width:100%;padding:9px;border:1.5px solid #C8923A;border-radius:8px;font-size:12.5px;margin-bottom:14px;color:#1B3A5C;box-sizing:border-box">
+
+      <div id="ch-chips-compras" style="display:none;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
+      <input id="ch-otro-compras" type="text" placeholder="Describe brevemente qué fue..." style="display:none;width:100%;padding:9px;border:1.5px solid #C8923A;border-radius:8px;font-size:12.5px;margin-bottom:14px;color:#1B3A5C;box-sizing:border-box">
+
+      <button type="button" onclick="chGuardar()" style="width:100%;padding:11px;background:#C8923A;border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">Guardar día</button>
+    </div>
+  </div>
+
   <div id="recordatorio-actividades" style="display:none;margin:14px 16px 0;background:#fff;border-radius:12px;border:1.5px solid rgba(200,146,58,.35);padding:14px 16px">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
       <span style="font-size:16px">🔧</span>
@@ -329,6 +394,8 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
       <a class="modulo-card" href="visitas.html" data-roles="supremo,admin,tecnico,taller" id="card-visitas" style="position:relative"><div class="modulo-icono">📐</div><div class="modulo-nombre">Visitas</div><div class="modulo-desc">Levantamiento/medición</div><div id="badge-visitas" style="display:none;position:absolute;top:8px;right:8px;background:var(--gold,#C8923A);color:#fff;font-size:11px;font-weight:800;padding:2px 7px;border-radius:10px;min-width:18px;text-align:center"></div></a>
       <a class="modulo-card" href="historial.html" data-roles="supremo,admin"><div class="modulo-icono">📁</div><div class="modulo-nombre">Presupuestos</div><div class="modulo-desc">Historial y estados</div></a>
       <a class="modulo-card" href="garantias.html" data-roles="supremo,admin" id="card-garantias" style="position:relative"><div class="modulo-icono">🛡️</div><div class="modulo-nombre">Garantías</div><div class="modulo-desc">Tickets de postventa</div><div id="badge-garantias" style="display:none;position:absolute;top:8px;right:8px;background:var(--red,#C0392B);color:#fff;font-size:11px;font-weight:800;padding:2px 7px;border-radius:10px;min-width:18px;text-align:center"></div></a>
+      <a class="modulo-card" href="#" onclick="chAbrir();return false;" data-roles="supremo"><div class="modulo-icono">🗓️</div><div class="modulo-nombre">Captura histórica</div><div class="modulo-desc">Completar días pasados</div></a>
+      <a class="modulo-card" href="#" onclick="raAbrirManual();return false;" data-roles="supremo,admin,tecnico,taller"><div class="modulo-icono">📋</div><div class="modulo-nombre">Mis actividades</div><div class="modulo-desc">Taller / Stand / Compras de hoy</div></a>
       <a class="modulo-card" href="ordenes.html" data-roles="supremo,admin,tecnico,taller"><div class="modulo-icono">🛠️</div><div class="modulo-nombre">Órdenes</div><div class="modulo-desc">Asignar instalación</div></a>
       <a class="modulo-card" href="entregas.html" data-roles="supremo,admin,tecnico,taller" id="card-entregas" style="position:relative"><div class="modulo-icono">📦</div><div class="modulo-nombre">Entregas</div><div class="modulo-desc">Comprobantes</div><div id="badge-entregas" style="display:none;position:absolute;top:8px;right:8px;background:var(--gold,#C8923A);color:#fff;font-size:11px;font-weight:800;padding:2px 7px;border-radius:10px;min-width:18px;text-align:center"></div></a>
       <a class="modulo-card" href="taller.html" data-roles="supremo,admin,tecnico,taller"><div class="modulo-icono">📐</div><div class="modulo-nombre">Taller</div><div class="modulo-desc">Fichas de fabricación</div></a>
@@ -434,7 +501,7 @@ function sb(){
 }
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
-var APP_VERSION = 'v2.7';
+var APP_VERSION = 'v2.10';
 var USUARIOS = [];
 var USUARIO_SEL = null;   // el que se está tratando de loguear
 var PIN_BUFFER = '';
@@ -741,6 +808,91 @@ async function procesarPinCompleto() {
 // upsert con ignoreDuplicates garantiza que solo quede la primera
 // entrada del día, no se pisa con logins posteriores. Falla en
 // silencio si no hay señal -- no debe bloquear el login normal.
+// ── Captura histórica (solo supremo) ─────────────────────────────
+var CH_SEL = { taller: [], stand: [], compras: [] };
+var CH_CATEGORIA_ACTIVA = 'taller';
+
+function chAbrir() {
+  if (!USUARIO_SEL || USUARIO_SEL.rol !== 'supremo') { alert('Esta opción es solo para el supremo.'); return; }
+  var sel = document.getElementById('ch-tecnico');
+  sel.innerHTML = USUARIOS.map(function(u) { return '<option value="' + u.id + '">' + esc(u.apodo || u.nombre) + '</option>'; }).join('');
+  document.getElementById('ch-fecha').value = _fechaLocalHoy();
+  CH_SEL = { taller: [], stand: [], compras: [] };
+  chRenderChips();
+  chMostrarCategoria('taller');
+  document.getElementById('modal-captura-historica').style.display = 'flex';
+}
+
+function chCerrar() {
+  document.getElementById('modal-captura-historica').style.display = 'none';
+}
+
+function chRenderChips() {
+  ['taller', 'stand', 'compras'].forEach(function(cat) {
+    var cont = document.getElementById('ch-chips-' + cat);
+    if (!cont) return;
+    var html = RA_LISTAS[cat].map(function(act) {
+      return '<button type="button" class="ch-chip" data-cat="' + cat + '" data-v="' + act + '" onclick="chToggleChip(this)" style="padding:8px 12px;border-radius:20px;border:1.5px solid #DDD9D2;background:#fff;font-size:12px;color:#1B3A5C;cursor:pointer">' + act + '</button>';
+    }).join('');
+    html += '<button type="button" class="ch-chip-otro" data-cat="' + cat + '" onclick="chToggleOtro(this)" style="padding:8px 12px;border-radius:20px;border:1.5px solid #DDD9D2;background:#fff;font-size:12px;color:#1B3A5C;cursor:pointer">Otro</button>';
+    cont.innerHTML = html;
+  });
+}
+
+function chToggleChip(btn) {
+  var cat = btn.dataset.cat, v = btn.dataset.v;
+  var activo = CH_SEL[cat].indexOf(v) >= 0;
+  if (activo) { CH_SEL[cat] = CH_SEL[cat].filter(function(x) { return x !== v; }); }
+  else { CH_SEL[cat].push(v); }
+  btn.style.background = activo ? '#fff' : '#1B3A5C';
+  btn.style.color = activo ? '#1B3A5C' : '#fff';
+  btn.style.borderColor = activo ? '#DDD9D2' : '#1B3A5C';
+}
+
+function chToggleOtro(btn) {
+  var cat = btn.dataset.cat;
+  var campo = document.getElementById('ch-otro-' + cat);
+  var abierto = campo.style.display === 'block';
+  campo.style.display = abierto ? 'none' : 'block';
+  btn.style.background = abierto ? '#fff' : '#1B3A5C';
+  btn.style.color = abierto ? '#1B3A5C' : '#fff';
+  btn.style.borderColor = abierto ? '#DDD9D2' : '#1B3A5C';
+  if (!abierto) campo.focus(); else campo.value = '';
+}
+
+function chMostrarCategoria(cat) {
+  CH_CATEGORIA_ACTIVA = cat;
+  ['taller', 'stand', 'compras'].forEach(function(c) {
+    document.getElementById('ch-chips-' + c).style.display = c === cat ? 'flex' : 'none';
+    var tab = document.getElementById('ch-tab-' + c);
+    tab.style.background = c === cat ? '#1B3A5C' : '#fff';
+    tab.style.color = c === cat ? '#fff' : '#1B3A5C';
+    tab.style.borderColor = c === cat ? '#1B3A5C' : '#DDD9D2';
+  });
+}
+
+async function chGuardar() {
+  var tecnicoId = document.getElementById('ch-tecnico').value;
+  var fecha = document.getElementById('ch-fecha').value;
+  var cat = CH_CATEGORIA_ACTIVA;
+  if (!tecnicoId || !fecha) { alert('Elige técnico y fecha.'); return; }
+  var otroTxt = (document.getElementById('ch-otro-' + cat).value || '').trim();
+  var actividades = CH_SEL[cat].slice();
+  if (otroTxt) actividades.push('Otro: ' + otroTxt);
+  if (!actividades.length) { alert('Elige al menos una actividad.'); return; }
+  var u = USUARIOS.filter(function(x) { return x.id === tecnicoId; })[0];
+  try {
+    // Nota: hora_entrada queda con la hora de captura (ahora), no la
+    // hora real de aquel día -- para historial retroactivo no se
+    // conoce, se prioriza guardar qué se hizo por encima de la hora.
+    var res = await sb().from('tecnico_entradas_dia')
+      .upsert({ tecnico_id: tecnicoId, tecnico_nombre: u ? (u.apodo || u.nombre) : tecnicoId, fecha: fecha, categoria: cat, actividades: actividades, otro_detalle: otroTxt || null, cerrado: true }, { onConflict: 'tecnico_id,fecha' });
+    if (res.error) throw res.error;
+    alert('Guardado: ' + fecha + ' -- ' + (u ? (u.apodo || u.nombre) : tecnicoId));
+    chCerrar();
+  } catch (e) { alert('No se pudo guardar: ' + e.message); }
+}
+
 // ── Recordatorio de actividades (Taller/Stand) ──────────────────
 // Se muestra solo si el técnico tiene un día ANTERIOR con entrada
 // registrada pero sin cerrar (cerrado=false) -- no bloquea, tiene
@@ -798,6 +950,56 @@ function raMostrarCategoria(cat) {
   });
 }
 
+// Acceso manual (tarjeta "Mis actividades" en el portal) -- a
+// diferencia de raVerificarDiaPendiente (que solo detecta días
+// ANTERIORES sin cerrar), esta abre el registro de HOY, se puede usar
+// aunque ya se haya cerrado (para corregir), y si por algún motivo
+// no existe el registro de hoy (falló registrarEntradaDelDia), lo crea.
+async function raAbrirManual() {
+  if (!USUARIO_SEL || !USUARIO_SEL.id || !sb()) { alert('No se pudo abrir -- revisa tu conexión.'); return; }
+  var fechaHoy = _fechaLocalHoy();
+  try {
+    var res = await sb().from('tecnico_entradas_dia').select('id,categoria,actividades,otro_detalle')
+      .eq('tecnico_id', USUARIO_SEL.id).eq('fecha', fechaHoy).limit(1);
+    if (res.error) throw res.error;
+    var reg = res.data && res.data[0];
+    if (!reg) {
+      var resNuevo = await sb().from('tecnico_entradas_dia')
+        .insert([{ tecnico_id: USUARIO_SEL.id, tecnico_nombre: USUARIO_SEL.apodo || USUARIO_SEL.nombre, fecha: fechaHoy }])
+        .select('id').single();
+      if (resNuevo.error) throw resNuevo.error;
+      reg = resNuevo.data;
+    }
+    RA_REGISTRO_ID = reg.id;
+    RA_SEL = { taller: [], stand: [], compras: [] };
+    // Precargar lo que ya hubiera elegido hoy, por si vino a corregir
+    if (reg.categoria && reg.actividades) {
+      (reg.actividades || []).forEach(function(a) {
+        if (a.indexOf('Otro: ') === 0) return; // se restaura aparte, en el campo de texto
+        if (RA_SEL[reg.categoria]) RA_SEL[reg.categoria].push(a);
+      });
+    }
+    raRenderChips();
+    // Repintar chips ya marcados como activos
+    if (reg.categoria) {
+      document.querySelectorAll('.ra-chip[data-cat="' + reg.categoria + '"]').forEach(function(btn) {
+        if (RA_SEL[reg.categoria].indexOf(btn.dataset.v) >= 0) { btn.style.background = '#1B3A5C'; btn.style.color = '#fff'; btn.style.borderColor = '#1B3A5C'; }
+      });
+    }
+    if (reg.otro_detalle) {
+      var cat = reg.categoria || 'taller';
+      var campo = document.getElementById('ra-otro-' + cat);
+      campo.value = reg.otro_detalle; campo.style.display = 'block';
+      var btnO = document.querySelector('.ra-chip-otro[data-cat="' + cat + '"]');
+      if (btnO) { btnO.style.background = '#1B3A5C'; btnO.style.color = '#fff'; btnO.style.borderColor = '#1B3A5C'; }
+    }
+    raMostrarCategoria(reg.categoria || 'taller');
+    document.getElementById('ra-fecha').textContent = 'Hoy · toca lo que hiciste, puedes elegir varias';
+    document.getElementById('recordatorio-actividades').style.display = 'block';
+    document.getElementById('recordatorio-actividades').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) { alert('No se pudo abrir tus actividades: ' + e.message); }
+}
+
 // Revisa si hay un día ANTERIOR sin cerrar y muestra el recordatorio.
 async function raVerificarDiaPendiente() {
   if (!USUARIO_SEL || !USUARIO_SEL.id || !sb()) return;
@@ -847,8 +1049,13 @@ function registrarEntradaDelDia() {
     .catch(function(e) { console.warn('[BarrCan] No se pudo registrar entrada del día:', e.message); });
 }
 
+function _fechaLocalHoy() {
+  var d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
 function entrarAlPortal() {
-  localStorage.setItem('barrcan_usuario_activo', JSON.stringify({ id: USUARIO_SEL.id, nombre: USUARIO_SEL.apodo || USUARIO_SEL.nombre, rol: USUARIO_SEL.rol }));
+  localStorage.setItem('barrcan_usuario_activo', JSON.stringify({ id: USUARIO_SEL.id, nombre: USUARIO_SEL.apodo || USUARIO_SEL.nombre, rol: USUARIO_SEL.rol, fechaSesion: _fechaLocalHoy() }));
   registrarEntradaDelDia(); // hora de "inicio de día" -- automática, no invasiva
   raVerificarDiaPendiente(); // recordatorio de actividades del día anterior, si aplica
   document.getElementById('pantalla-login').style.display = 'none';
@@ -1018,6 +1225,14 @@ document.addEventListener('DOMContentLoaded', function() {
   cargarUsuarios();
   try {
     var guardado = JSON.parse(localStorage.getItem('barrcan_usuario_activo') || 'null');
+    // Sesión expira cada día -- si el celular se queda sin bloquear o lo
+    // agarra alguien más, no entra directo como quien haya usado la app
+    // antes. De paso, esto hace que pedir PIN/huella cada mañana SEA el
+    // momento natural de "entrada del día" que ya registramos.
+    if (guardado && guardado.fechaSesion && guardado.fechaSesion !== _fechaLocalHoy()) {
+      localStorage.removeItem('barrcan_usuario_activo');
+      guardado = null;
+    }
     if (guardado && guardado.id) {
       // Necesitamos los datos completos (emoji/color) — se completan
       // en cuanto cargue la lista de usuarios.
