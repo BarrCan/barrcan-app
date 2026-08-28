@@ -6,6 +6,32 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v2.13
+  FECHA   : 2026-08-27
+  v2.13 - Quinta categoría "📋 Admin" (Administrativo): presupuesto/
+    cotización, pedido de material, programar instalación,
+    planeación de obra, facturación, trámites administrativos,
+    seguimiento a cliente. Agregada en las 3 pantallas (Captura
+    histórica, recordatorio automático, Mis actividades).
+  VERSION : v2.12
+  FECHA   : 2026-08-27
+  v2.12 - Tres cosas en "Captura histórica":
+    1) Selector Técnico/Eventual: ahora se puede registrar el día de
+       un eventual (nombre libre, ej. Ricardo/Osvaldo) igual que uno
+       de planta -- con datalist de nombres ya usados antes (cruza
+       tecnico_entradas_dia + pagos_eventuales). Nuevas columnas
+       folio_obra y es_eventual en la tabla.
+    2) Campo "Folio / obra" (opcional, con datalist de folios
+       recientes): antes no había forma de decir A QUÉ obra
+       pertenecía el trabajo del día -- solo la categoría genérica.
+       Con folio, el reparto de técnicos en reportes.html se puede
+       hacer exacto en vez de aproximado (parejo entre la semana).
+    3) Nueva categoría "🚗 Auto" (limpieza, afinación, revisión de
+       frenos, cambio de aceite, balanceo/alineación, cambio de
+       llantas, revisión general) -- también agregada al recordatorio
+       automático y a "Mis actividades".
+    De paso: limpieza en usuarios_pin -- Esaú/Carlos/Rodrigo/Miguel
+    (nombres viejos que ya no son reales) marcados activo=false.
   VERSION : v2.11
   FECHA   : 2026-08-27
   v2.11 - FIX: "Captura histórica" (v2.10) le salía a Mau el mensaje
@@ -334,8 +360,24 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
       </div>
       <div style="font-size:11px;color:#888;margin-bottom:14px">Para completar días pasados que no se alcanzaron a registrar solos -- solo tú ves esta opción.</div>
 
-      <label style="font-size:12px;color:#5F5E5A;display:block;margin-bottom:4px">Técnico</label>
-      <select id="ch-tecnico" style="width:100%;padding:9px;border:1.5px solid #DDD9D2;border-radius:8px;font-size:13px;margin-bottom:12px;color:#1B3A5C"></select>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button type="button" id="ch-quien-tecnico" onclick="chSelQuien('tecnico')" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #1B3A5C;background:#1B3A5C;color:#fff;font-size:12px;font-weight:700;cursor:pointer">Técnico</button>
+        <button type="button" id="ch-quien-eventual" onclick="chSelQuien('eventual')" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:12px;font-weight:700;cursor:pointer">Eventual</button>
+      </div>
+
+      <div id="ch-wrap-tecnico">
+        <label style="font-size:12px;color:#5F5E5A;display:block;margin-bottom:4px">Técnico</label>
+        <select id="ch-tecnico" style="width:100%;padding:9px;border:1.5px solid #DDD9D2;border-radius:8px;font-size:13px;margin-bottom:12px;color:#1B3A5C"></select>
+      </div>
+      <div id="ch-wrap-eventual" style="display:none">
+        <label style="font-size:12px;color:#5F5E5A;display:block;margin-bottom:4px">Nombre del eventual</label>
+        <input type="text" id="ch-eventual-nombre" list="ch-eventuales-datalist" placeholder="Ej: Ricardo" style="width:100%;padding:9px;border:1.5px solid #DDD9D2;border-radius:8px;font-size:13px;margin-bottom:12px;color:#1B3A5C;box-sizing:border-box">
+        <datalist id="ch-eventuales-datalist"></datalist>
+      </div>
+
+      <label style="font-size:12px;color:#5F5E5A;display:block;margin-bottom:4px">Folio / obra <span style="color:#9A9590">(opcional, pero recomendado -- si no se pone, el reparto en Reportes sigue siendo aproximado)</span></label>
+      <input type="text" id="ch-folio" list="ch-folios-datalist" placeholder="Ej: STAN-001A" style="width:100%;padding:9px;border:1.5px solid #DDD9D2;border-radius:8px;font-size:13px;margin-bottom:12px;color:#1B3A5C;box-sizing:border-box">
+      <datalist id="ch-folios-datalist"></datalist>
 
       <label style="font-size:12px;color:#5F5E5A;display:block;margin-bottom:4px">Fecha</label>
       <input type="date" id="ch-fecha" style="width:100%;padding:9px;border:1.5px solid #DDD9D2;border-radius:8px;font-size:13px;margin-bottom:14px;color:#1B3A5C">
@@ -344,6 +386,8 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
         <button type="button" id="ch-tab-taller" onclick="chMostrarCategoria('taller')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #1B3A5C;background:#1B3A5C;color:#fff;font-size:11px;font-weight:700;cursor:pointer">🔧 Taller</button>
         <button type="button" id="ch-tab-stand" onclick="chMostrarCategoria('stand')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🪵 Stand</button>
         <button type="button" id="ch-tab-compras" onclick="chMostrarCategoria('compras')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🚚 Compras</button>
+        <button type="button" id="ch-tab-auto" onclick="chMostrarCategoria('auto')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🚗 Auto</button>
+        <button type="button" id="ch-tab-administrativo" onclick="chMostrarCategoria('administrativo')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">📋 Admin</button>
       </div>
 
       <div id="ch-chips-taller" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
@@ -354,6 +398,12 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
 
       <div id="ch-chips-compras" style="display:none;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
       <input id="ch-otro-compras" type="text" placeholder="Describe brevemente qué fue..." style="display:none;width:100%;padding:9px;border:1.5px solid #C8923A;border-radius:8px;font-size:12.5px;margin-bottom:14px;color:#1B3A5C;box-sizing:border-box">
+
+      <div id="ch-chips-auto" style="display:none;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
+      <input id="ch-otro-auto" type="text" placeholder="Describe brevemente qué fue..." style="display:none;width:100%;padding:9px;border:1.5px solid #C8923A;border-radius:8px;font-size:12.5px;margin-bottom:14px;color:#1B3A5C;box-sizing:border-box">
+
+      <div id="ch-chips-administrativo" style="display:none;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
+      <input id="ch-otro-administrativo" type="text" placeholder="Describe brevemente qué fue..." style="display:none;width:100%;padding:9px;border:1.5px solid #C8923A;border-radius:8px;font-size:12.5px;margin-bottom:14px;color:#1B3A5C;box-sizing:border-box">
 
       <button type="button" onclick="chGuardar()" style="width:100%;padding:11px;background:#C8923A;border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">Guardar día</button>
     </div>
@@ -370,6 +420,8 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
       <button type="button" id="ra-tab-taller" onclick="raMostrarCategoria('taller')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #1B3A5C;background:#1B3A5C;color:#fff;font-size:11px;font-weight:700;cursor:pointer">🔧 Taller</button>
       <button type="button" id="ra-tab-stand" onclick="raMostrarCategoria('stand')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🪵 Stand</button>
       <button type="button" id="ra-tab-compras" onclick="raMostrarCategoria('compras')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🚚 Compras</button>
+      <button type="button" id="ra-tab-auto" onclick="raMostrarCategoria('auto')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🚗 Auto</button>
+      <button type="button" id="ra-tab-administrativo" onclick="raMostrarCategoria('administrativo')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">📋 Admin</button>
     </div>
 
     <div id="ra-chips-taller" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
@@ -380,6 +432,12 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
 
     <div id="ra-chips-compras" style="display:none;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
     <input id="ra-otro-compras" type="text" placeholder="Describe brevemente qué fue..." style="display:none;width:100%;padding:9px;border:1.5px solid #C8923A;border-radius:8px;font-size:12.5px;margin-bottom:14px;color:#1B3A5C;box-sizing:border-box">
+
+    <div id="ra-chips-auto" style="display:none;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
+    <input id="ra-otro-auto" type="text" placeholder="Describe brevemente qué fue..." style="display:none;width:100%;padding:9px;border:1.5px solid #C8923A;border-radius:8px;font-size:12.5px;margin-bottom:14px;color:#1B3A5C;box-sizing:border-box">
+
+    <div id="ra-chips-administrativo" style="display:none;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
+    <input id="ra-otro-administrativo" type="text" placeholder="Describe brevemente qué fue..." style="display:none;width:100%;padding:9px;border:1.5px solid #C8923A;border-radius:8px;font-size:12.5px;margin-bottom:14px;color:#1B3A5C;box-sizing:border-box">
 
     <div style="display:flex;gap:8px">
       <button type="button" onclick="raGuardar()" style="flex:1;padding:10px;background:#C8923A;border:none;border-radius:8px;color:#fff;font-size:12.5px;font-weight:700;cursor:pointer">Guardar</button>
@@ -513,7 +571,7 @@ function sb(){
 }
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
-var APP_VERSION = 'v2.11';
+var APP_VERSION = 'v2.13';
 var USUARIOS = [];
 var USUARIO_SEL = null;   // el que se está tratando de loguear
 var PIN_BUFFER = '';
@@ -821,17 +879,48 @@ async function procesarPinCompleto() {
 // entrada del día, no se pisa con logins posteriores. Falla en
 // silencio si no hay señal -- no debe bloquear el login normal.
 // ── Captura histórica (solo supremo) ─────────────────────────────
-var CH_SEL = { taller: [], stand: [], compras: [] };
+var CH_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [] };
 var CH_CATEGORIA_ACTIVA = 'taller';
+
+var CH_QUIEN = 'tecnico';
+
+function chSelQuien(tipo) {
+  CH_QUIEN = tipo;
+  document.getElementById('ch-wrap-tecnico').style.display = tipo === 'tecnico' ? 'block' : 'none';
+  document.getElementById('ch-wrap-eventual').style.display = tipo === 'eventual' ? 'block' : 'none';
+  var bt = document.getElementById('ch-quien-tecnico'), be = document.getElementById('ch-quien-eventual');
+  bt.style.background = tipo === 'tecnico' ? '#1B3A5C' : '#fff'; bt.style.color = tipo === 'tecnico' ? '#fff' : '#1B3A5C'; bt.style.borderColor = tipo === 'tecnico' ? '#1B3A5C' : '#DDD9D2';
+  be.style.background = tipo === 'eventual' ? '#1B3A5C' : '#fff'; be.style.color = tipo === 'eventual' ? '#fff' : '#1B3A5C'; be.style.borderColor = tipo === 'eventual' ? '#1B3A5C' : '#DDD9D2';
+}
+
+async function chCargarSugerencias() {
+  if (!sb()) return;
+  try {
+    var resEv = await sb().from('tecnico_entradas_dia').select('tecnico_id').eq('es_eventual', true).limit(200);
+    var resEv2 = await sb().from('pagos_eventuales').select('nombre').limit(200);
+    var nombres = {};
+    if (!resEv.error) (resEv.data || []).forEach(function(r) { if (r.tecnico_id) nombres[r.tecnico_id] = true; });
+    if (!resEv2.error) (resEv2.data || []).forEach(function(r) { if (r.nombre) nombres[r.nombre] = true; });
+    document.getElementById('ch-eventuales-datalist').innerHTML = Object.keys(nombres).map(function(n) { return '<option value="' + esc(n) + '">'; }).join('');
+  } catch (e) { console.warn('[BarrCan] No se pudieron cargar sugerencias de eventuales:', e.message); }
+  try {
+    var resFol = await sb().from('presupuestos_atrasados').select('folio').order('created_at', { ascending: false }).limit(150);
+    if (!resFol.error) document.getElementById('ch-folios-datalist').innerHTML = (resFol.data || []).map(function(p) { return '<option value="' + esc(p.folio) + '">'; }).join('');
+  } catch (e) { console.warn('[BarrCan] No se pudieron cargar sugerencias de folios:', e.message); }
+}
 
 function chAbrir() {
   if (!USUARIO_SEL || USUARIO_SEL.id !== 'MAU') { alert('Esta opción es solo para Mau.'); return; }
   var sel = document.getElementById('ch-tecnico');
   sel.innerHTML = USUARIOS.map(function(u) { return '<option value="' + u.id + '">' + esc(u.apodo || u.nombre) + '</option>'; }).join('');
   document.getElementById('ch-fecha').value = _fechaLocalHoy();
-  CH_SEL = { taller: [], stand: [], compras: [] };
+  document.getElementById('ch-eventual-nombre').value = '';
+  document.getElementById('ch-folio').value = '';
+  chSelQuien('tecnico');
+  CH_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [] };
   chRenderChips();
   chMostrarCategoria('taller');
+  chCargarSugerencias();
   document.getElementById('modal-captura-historica').style.display = 'flex';
 }
 
@@ -840,7 +929,7 @@ function chCerrar() {
 }
 
 function chRenderChips() {
-  ['taller', 'stand', 'compras'].forEach(function(cat) {
+  ['taller', 'stand', 'compras', 'auto', 'administrativo'].forEach(function(cat) {
     var cont = document.getElementById('ch-chips-' + cat);
     if (!cont) return;
     var html = RA_LISTAS[cat].map(function(act) {
@@ -874,7 +963,7 @@ function chToggleOtro(btn) {
 
 function chMostrarCategoria(cat) {
   CH_CATEGORIA_ACTIVA = cat;
-  ['taller', 'stand', 'compras'].forEach(function(c) {
+  ['taller', 'stand', 'compras', 'auto', 'administrativo'].forEach(function(c) {
     document.getElementById('ch-chips-' + c).style.display = c === cat ? 'flex' : 'none';
     var tab = document.getElementById('ch-tab-' + c);
     tab.style.background = c === cat ? '#1B3A5C' : '#fff';
@@ -884,23 +973,32 @@ function chMostrarCategoria(cat) {
 }
 
 async function chGuardar() {
-  var tecnicoId = document.getElementById('ch-tecnico').value;
   var fecha = document.getElementById('ch-fecha').value;
   var cat = CH_CATEGORIA_ACTIVA;
-  if (!tecnicoId || !fecha) { alert('Elige técnico y fecha.'); return; }
+  var folio = (document.getElementById('ch-folio').value || '').trim();
+  var esEventual = CH_QUIEN === 'eventual';
+  var tecnicoId, nombreMostrar, u = null;
+  if (esEventual) {
+    tecnicoId = (document.getElementById('ch-eventual-nombre').value || '').trim();
+    nombreMostrar = tecnicoId;
+  } else {
+    tecnicoId = document.getElementById('ch-tecnico').value;
+    u = USUARIOS.filter(function(x) { return x.id === tecnicoId; })[0];
+    nombreMostrar = u ? (u.apodo || u.nombre) : tecnicoId;
+  }
+  if (!tecnicoId || !fecha) { alert(esEventual ? 'Escribe el nombre del eventual y la fecha.' : 'Elige técnico y fecha.'); return; }
   var otroTxt = (document.getElementById('ch-otro-' + cat).value || '').trim();
   var actividades = CH_SEL[cat].slice();
   if (otroTxt) actividades.push('Otro: ' + otroTxt);
   if (!actividades.length) { alert('Elige al menos una actividad.'); return; }
-  var u = USUARIOS.filter(function(x) { return x.id === tecnicoId; })[0];
   try {
     // Nota: hora_entrada queda con la hora de captura (ahora), no la
     // hora real de aquel día -- para historial retroactivo no se
     // conoce, se prioriza guardar qué se hizo por encima de la hora.
     var res = await sb().from('tecnico_entradas_dia')
-      .upsert({ tecnico_id: tecnicoId, tecnico_nombre: u ? (u.apodo || u.nombre) : tecnicoId, fecha: fecha, categoria: cat, actividades: actividades, otro_detalle: otroTxt || null, cerrado: true }, { onConflict: 'tecnico_id,fecha' });
+      .upsert({ tecnico_id: tecnicoId, tecnico_nombre: nombreMostrar, fecha: fecha, categoria: cat, actividades: actividades, otro_detalle: otroTxt || null, cerrado: true, folio_obra: folio || null, es_eventual: esEventual }, { onConflict: 'tecnico_id,fecha' });
     if (res.error) throw res.error;
-    alert('Guardado: ' + fecha + ' -- ' + (u ? (u.apodo || u.nombre) : tecnicoId));
+    alert('Guardado: ' + fecha + ' -- ' + nombreMostrar + (folio ? ' (' + folio + ')' : ''));
     chCerrar();
   } catch (e) { alert('No se pudo guardar: ' + e.message); }
 }
@@ -912,14 +1010,16 @@ async function chGuardar() {
 var RA_LISTAS = {
   taller: ['Corte de aluminio','Corte de vidrio','Ensamble de cancel','Colocación de vidrio','Colocación de plástico','Tela de mosquitero','Chapas','Carretillas','Bisagras','Bisagra hidráulica','Instalación de herrajes','Empaque','Preparación de pedido','Control de calidad'],
   stand: ['Carpintería','Cortar módulos de piso','Cortar módulos de pared','Lijar y preparar','Armar módulo','Armar previo/muestra','Resanar','Montar','Instalación eléctrica','Contactos'],
-  compras: ['Recolección de material','Compra en ferretería/proveedor','Entrega de material a obra','Entrega de material a taller','Trámites con proveedor','Devolución de material']
+  compras: ['Recolección de material','Compra en ferretería/proveedor','Entrega de material a obra','Entrega de material a taller','Trámites con proveedor','Devolución de material'],
+  auto: ['Limpieza','Afinación','Revisión de frenos','Cambio de aceite','Balanceo/alineación','Cambio de llantas','Revisión general'],
+  administrativo: ['Presupuesto/cotización','Pedido de material','Programar instalación','Planeación de obra','Facturación','Trámites administrativos','Seguimiento a cliente']
 };
-var RA_SEL = { taller: [], stand: [], compras: [] };
+var RA_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [] };
 var RA_CATEGORIA_ACTIVA = 'taller';
 var RA_REGISTRO_ID = null;
 
 function raRenderChips() {
-  ['taller', 'stand', 'compras'].forEach(function(cat) {
+  ['taller', 'stand', 'compras', 'auto', 'administrativo'].forEach(function(cat) {
     var cont = document.getElementById('ra-chips-' + cat);
     if (!cont) return;
     var html = RA_LISTAS[cat].map(function(act) {
@@ -953,7 +1053,7 @@ function raToggleOtro(btn) {
 
 function raMostrarCategoria(cat) {
   RA_CATEGORIA_ACTIVA = cat;
-  ['taller', 'stand', 'compras'].forEach(function(c) {
+  ['taller', 'stand', 'compras', 'auto', 'administrativo'].forEach(function(c) {
     document.getElementById('ra-chips-' + c).style.display = c === cat ? 'flex' : 'none';
     var tab = document.getElementById('ra-tab-' + c);
     tab.style.background = c === cat ? '#1B3A5C' : '#fff';
@@ -983,7 +1083,7 @@ async function raAbrirManual() {
       reg = resNuevo.data;
     }
     RA_REGISTRO_ID = reg.id;
-    RA_SEL = { taller: [], stand: [], compras: [] };
+    RA_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [] };
     // Precargar lo que ya hubiera elegido hoy, por si vino a corregir
     if (reg.categoria && reg.actividades) {
       (reg.actividades || []).forEach(function(a) {
@@ -1023,7 +1123,7 @@ async function raVerificarDiaPendiente() {
       .order('fecha', { ascending: false }).limit(1);
     if (res.error || !res.data || !res.data.length) return;
     RA_REGISTRO_ID = res.data[0].id;
-    RA_SEL = { taller: [], stand: [], compras: [] };
+    RA_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [] };
     raRenderChips();
     raMostrarCategoria('taller');
     var fd = new Date(res.data[0].fecha + 'T00:00:00');
