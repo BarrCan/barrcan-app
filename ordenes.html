@@ -6,6 +6,21 @@
 <title>BarrCan &middot; Ordenes</title>
 <!--
   BARRCAN - MODULO: ORDENES DE TRABAJO
+  VERSION : v2.7
+  FECHA   : 2026-08-27
+  v2.7 - FIX de confusión real reportada: "Saldo a pagar" aquí podía
+    verse distinto a lo que ya mostraba historial.html para la misma
+    obra. Causa: ordenes_trabajo.saldo_pendiente se guarda UNA sola
+    vez al crear la orden (copia del saldo de ese momento) y nunca se
+    vuelve a actualizar -- si el cliente pagaba después, esta
+    pantalla se quedaba con el número congelado mientras historial/
+    pagos ya mostraban el real. Ahora otCargar() cruza cada orden con
+    el saldo REAL vigente en presupuestos_atrasados (misma fuente que
+    historial.html) y lo usa en vez del campo congelado, tanto en la
+    lista como en la hoja de instalación impresa (mismo objeto). Se
+    revisaron taller.html, reportes.html y garantias.html por el
+    mismo patrón -- los dos primeros ya leen el saldo en vivo, el de
+    garantías no se muestra en ningún lado (no generaba confusión).
   VERSION : v2.6
   FECHA   : 2026-07-28
   v2.6 - Renombrado "Hoja" a "Info" (o "Ver informacion de la
@@ -1423,7 +1438,7 @@ function sb(){
 var SYNC={online:navigator.onLine};
 window.addEventListener('online', function(){SYNC.online=true;detectarConexion();otCargar();otCargarTecnicosDinamico();var c=JSON.parse(localStorage.getItem('barrcan_ordenes_pendientes')||'[]');if(c.length)otReintentarPendientes();});
 window.addEventListener('offline',function(){SYNC.online=false;detectarConexion();});
-var APP_VERSION='v2.6';
+var APP_VERSION='v2.7';
 function detectarConexion(){var b=document.getElementById('conn-status');if(b)b.textContent=(navigator.onLine?'Online':'Offline-First')+' \u00b7 '+APP_VERSION;}
 
 // ── Lista de técnicos dinámica (desde tabla tecnicos, módulo tecnicos.html) ──
@@ -1530,7 +1545,29 @@ async function otCargar(){
     if(res.error)throw res.error;
     SYNC.online=true;detectarConexion();
     var pend=local.filter(function(o){return o._pendiente;});
-    OT_CACHE=pend.concat(res.data||[]);otGuardarCache(OT_CACHE);otRender();
+    var datos=res.data||[];
+
+    // FIX: saldo_pendiente se guarda una sola vez al crear la orden y
+    // NUNCA se vuelve a actualizar -- si el cliente paga después, esta
+    // pantalla se queda con el número viejo mientras historial.html sí
+    // muestra el saldo real. Se cruza aquí con el saldo REAL vigente en
+    // presupuestos_atrasados (misma fuente de verdad que historial/
+    // pagos), y se usa ese en vez del campo congelado.
+    var folios=datos.map(function(o){return o.folio_cotizacion;}).filter(function(f,i,arr){return f&&arr.indexOf(f)===i;});
+    if(folios.length){
+      try{
+        var resSaldos=await sb().from('presupuestos_atrasados').select('folio,saldo').in('folio',folios);
+        if(!resSaldos.error&&resSaldos.data){
+          var mapaSaldos={};
+          resSaldos.data.forEach(function(p){mapaSaldos[p.folio]=parseFloat(p.saldo||0);});
+          datos.forEach(function(o){
+            if(o.folio_cotizacion&&mapaSaldos.hasOwnProperty(o.folio_cotizacion)) o.saldo_pendiente=mapaSaldos[o.folio_cotizacion];
+          });
+        }
+      }catch(eSaldo){console.warn('[BarrCan] No se pudo refrescar saldo real en Órdenes:',eSaldo.message);}
+    }
+
+    OT_CACHE=pend.concat(datos);otGuardarCache(OT_CACHE);otRender();
   }catch(e){
     var esRed=/failed to fetch|network|fetch/i.test(e.message||'');
     if(esRed){SYNC.online=false;detectarConexion();}
