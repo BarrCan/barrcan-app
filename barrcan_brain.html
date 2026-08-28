@@ -6,6 +6,27 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v2.19
+  FECHA   : 2026-08-28
+  v2.19 - Rediseño importante: un día ahora puede tener VARIAS
+    actividades/obras (antes solo una por día). Motivado por caso
+    real: instalación en la mañana + pasar por material después,
+    mismo día -- antes solo quedaba registrada la primera.
+    - Nueva columna tecnico_entradas_dia.bloques (jsonb, array) --
+      cada bloque es una actividad independiente con su propia
+      categoría/actividades/folio. Datos existentes migrados sin
+      pérdida al nuevo formato.
+    - Botón "➕ Agregar esta actividad" guarda y DEJA el panel abierto
+      para seguir agregando más; "✅ Ya terminé" cierra.
+    - Nuevo campo de folio manual en el panel (antes solo existía en
+      Captura histórica).
+    - FIX de fondo: antes, una vez cerrado un día, el sistema dejaba
+      de revisarlo -- si aparecía un reporte de entrega DESPUÉS de
+      cerrar, nunca se detectaba. Ahora se revisan los últimos 3 días
+      SIEMPRE (estén cerrados o no), comparando folios ya guardados
+      contra los reportes reales, y si hay algo nuevo sin agregar,
+      se vuelve a abrir el panel mostrando lo que ya había + lo nuevo
+      detectado, sin duplicar.
   VERSION : v2.18
   FECHA   : 2026-08-28
   v2.18 - Nueva tarjeta "🛒 Compra rápida" (visible para operación):
@@ -524,6 +545,8 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
     </div>
     <div id="ra-fecha" style="font-size:11.5px;color:#888;margin-bottom:12px">toca lo que hiciste, puedes elegir varias</div>
     <div id="ra-detectado" style="display:none;background:#F0F8F2;border:1.5px solid rgba(39,174,96,.35);border-radius:8px;padding:10px 12px;margin-bottom:14px"></div>
+    <div id="ra-bloques-existentes" style="display:none;margin-bottom:14px"></div>
+    <div id="ra-nuevo-bloque-label" style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:8px;display:none">➕ Agregar otra actividad de hoy</div>
 
     <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
       <button type="button" id="ra-tab-taller" onclick="raMostrarCategoria('taller')" style="flex:1 1 30%;min-width:90px;padding:9px 4px;border-radius:8px;border:1.5px solid #1B3A5C;background:#1B3A5C;color:#fff;font-size:11px;font-weight:700;cursor:pointer">🔧 Taller</button>
@@ -556,10 +579,15 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
     <div id="ra-chips-obra" style="display:none;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
     <input id="ra-otro-obra" type="text" placeholder="Describe brevemente qué fue..." style="display:none;width:100%;padding:9px;border:1.5px solid #C8923A;border-radius:8px;font-size:12.5px;margin-bottom:14px;color:#1B3A5C;box-sizing:border-box">
 
+    <label style="font-size:12px;color:#5F5E5A;display:block;margin-bottom:4px">Folio / obra <span style="color:#9A9590">(opcional)</span></label>
+    <input type="text" id="ra-folio" list="ra-folios-datalist" placeholder="Ej: STAN-001A" style="width:100%;padding:9px;border:1.5px solid #DDD9D2;border-radius:8px;font-size:13px;margin-bottom:14px;color:#1B3A5C;box-sizing:border-box">
+    <datalist id="ra-folios-datalist"></datalist>
+
     <div style="display:flex;gap:8px">
-      <button type="button" onclick="raGuardar()" style="flex:1;padding:10px;background:#C8923A;border:none;border-radius:8px;color:#fff;font-size:12.5px;font-weight:700;cursor:pointer">Guardar</button>
-      <button type="button" onclick="raDespues()" style="padding:10px 14px;background:none;border:1.5px solid #DDD9D2;border-radius:8px;color:#5F5E5A;font-size:12.5px;cursor:pointer">Después</button>
+      <button type="button" onclick="raGuardar()" style="flex:1;padding:10px;background:#C8923A;border:none;border-radius:8px;color:#fff;font-size:12.5px;font-weight:700;cursor:pointer">➕ Agregar esta actividad</button>
+      <button type="button" onclick="raTerminar()" style="padding:10px 14px;background:#1B3A5C;border:none;border-radius:8px;color:#fff;font-size:12.5px;font-weight:700;cursor:pointer">✅ Ya terminé</button>
     </div>
+    <button type="button" onclick="raDespues()" style="width:100%;margin-top:8px;padding:8px;background:none;border:1.5px solid #DDD9D2;border-radius:8px;color:#5F5E5A;font-size:11.5px;cursor:pointer">Después</button>
   </div>
 
   <div class="portal-content">
@@ -689,7 +717,7 @@ function sb(){
 }
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
-var APP_VERSION = 'v2.18';
+var APP_VERSION = 'v2.19';
 var USUARIOS = [];
 var USUARIO_SEL = null;   // el que se está tratando de loguear
 var PIN_BUFFER = '';
@@ -1358,86 +1386,83 @@ function raMostrarCategoria(cat) {
 // ANTERIORES sin cerrar), esta abre el registro de HOY, se puede usar
 // aunque ya se haya cerrado (para corregir), y si por algún motivo
 // no existe el registro de hoy (falló registrarEntradaDelDia), lo crea.
+var RA_BLOQUES_ACTUALES = []; // bloques ya guardados de la fecha que se está viendo
+
 async function raAbrirManual() {
   if (!USUARIO_SEL || !USUARIO_SEL.id || !sb()) { alert('No se pudo abrir -- revisa tu conexión.'); return; }
   var fechaHoy = _fechaLocalHoy();
   try {
-    var res = await sb().from('tecnico_entradas_dia').select('id,categoria,actividades,otro_detalle')
+    var res = await sb().from('tecnico_entradas_dia').select('id,bloques')
       .eq('tecnico_id', USUARIO_SEL.id).eq('fecha', fechaHoy).limit(1);
     if (res.error) throw res.error;
     var reg = res.data && res.data[0];
     if (!reg) {
       var resNuevo = await sb().from('tecnico_entradas_dia')
         .insert([{ tecnico_id: USUARIO_SEL.id, tecnico_nombre: USUARIO_SEL.apodo || USUARIO_SEL.nombre, fecha: fechaHoy }])
-        .select('id').single();
+        .select('id,bloques').single();
       if (resNuevo.error) throw resNuevo.error;
       reg = resNuevo.data;
     }
     RA_REGISTRO_ID = reg.id;
+    RA_BLOQUES_ACTUALES = reg.bloques || [];
     RA_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [], instalaciones: [], obra: [] };
-    // Precargar lo que ya hubiera elegido hoy, por si vino a corregir
-    if (reg.categoria && reg.actividades) {
-      (reg.actividades || []).forEach(function(a) {
-        if (a.indexOf('Otro: ') === 0) return; // se restaura aparte, en el campo de texto
-        if (RA_SEL[reg.categoria]) RA_SEL[reg.categoria].push(a);
-      });
-    }
     raRenderChips();
-    // Repintar chips ya marcados como activos
-    if (reg.categoria) {
-      document.querySelectorAll('.ra-chip[data-cat="' + reg.categoria + '"]').forEach(function(btn) {
-        if (RA_SEL[reg.categoria].indexOf(btn.dataset.v) >= 0) { btn.style.background = '#1B3A5C'; btn.style.color = '#fff'; btn.style.borderColor = '#1B3A5C'; }
-      });
-    }
-    if (reg.otro_detalle) {
-      var cat = reg.categoria || 'taller';
-      var campo = document.getElementById('ra-otro-' + cat);
-      campo.value = reg.otro_detalle; campo.style.display = 'block';
-      var btnO = document.querySelector('.ra-chip-otro[data-cat="' + cat + '"]');
-      if (btnO) { btnO.style.background = '#1B3A5C'; btnO.style.color = '#fff'; btnO.style.borderColor = '#1B3A5C'; }
-    }
-    raMostrarCategoria(reg.categoria || 'taller');
-    document.getElementById('ra-fecha').textContent = 'Hoy · toca lo que hiciste, puedes elegir varias';
+    raMostrarBloquesExistentes(RA_BLOQUES_ACTUALES);
+    raMostrarDetectado([]);
+    raMostrarCategoria('taller');
+    document.getElementById('ra-fecha').textContent = 'Hoy · toca lo que hiciste, puedes agregar varias actividades';
     document.getElementById('recordatorio-actividades').style.display = 'block';
     document.getElementById('recordatorio-actividades').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) { alert('No se pudo abrir tus actividades: ' + e.message); }
 }
 
-// Revisa si hay un día ANTERIOR sin cerrar y muestra el recordatorio.
+// Revisa los últimos 3 días (no solo "sin cerrar") -- así, si un
+// reporte de entrega aparece DESPUÉS de haber cerrado el día, se
+// detecta igual y se puede agregar como bloque nuevo, en vez de
+// quedarse invisible para siempre por ya estar "cerrado".
 async function raVerificarDiaPendiente() {
   if (!USUARIO_SEL || !USUARIO_SEL.id || !sb()) return;
   try {
     var hoy = new Date();
-    var fechaHoy = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
-    var res = await sb().from('tecnico_entradas_dia')
-      .select('id,fecha').eq('tecnico_id', USUARIO_SEL.id).eq('cerrado', false).neq('fecha', fechaHoy)
-      .order('fecha', { ascending: false }).limit(1);
+    var fechaHoy = _fechaLocalHoy();
+    var fechas = [];
+    for (var i = 1; i <= 3; i++) {
+      var d = new Date(hoy); d.setDate(d.getDate() - i);
+      fechas.push(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'));
+    }
+    var res = await sb().from('tecnico_entradas_dia').select('id,fecha,cerrado,bloques')
+      .eq('tecnico_id', USUARIO_SEL.id).in('fecha', fechas).order('fecha', { ascending: false });
     if (res.error || !res.data || !res.data.length) return;
-    RA_REGISTRO_ID = res.data[0].id;
-    RA_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [], instalaciones: [], obra: [] };
-    raRenderChips();
-    var fd = new Date(res.data[0].fecha + 'T00:00:00');
-    document.getElementById('ra-fecha').textContent = fd.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) + ' · toca lo que hiciste, puedes elegir varias';
-    var reportes = await raBuscarReportesDelDia(USUARIO_SEL.nombre || USUARIO_SEL.apodo, res.data[0].fecha);
-    raMostrarDetectado(reportes);
-    // Repintar como "activos" los chips de Obra que raMostrarDetectado
-    // haya pre-seleccionado (raRenderChips siempre pinta en blanco).
-    document.querySelectorAll('.ra-chip[data-cat="obra"]').forEach(function(btn) {
-      if (RA_SEL.obra.indexOf(btn.dataset.v) >= 0) { btn.style.background = '#1B3A5C'; btn.style.color = '#fff'; btn.style.borderColor = '#1B3A5C'; }
-    });
-    raMostrarCategoria(reportes.length ? 'obra' : 'taller');
-    document.getElementById('recordatorio-actividades').style.display = 'block';
+
+    for (var j = 0; j < res.data.length; j++) {
+      var dia = res.data[j];
+      var bloquesActuales = dia.bloques || [];
+      var foliosYaGuardados = bloquesActuales.map(function(b) { return b.folio_obra; }).filter(Boolean);
+      var reportes = await raBuscarReportesDelDia(USUARIO_SEL.nombre || USUARIO_SEL.apodo, dia.fecha);
+      var reportesFaltantes = reportes.filter(function(r) { return foliosYaGuardados.indexOf(r.folio) < 0; });
+
+      if (!dia.cerrado || reportesFaltantes.length > 0) {
+        RA_REGISTRO_ID = dia.id;
+        RA_BLOQUES_ACTUALES = bloquesActuales;
+        RA_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [], instalaciones: [], obra: [] };
+        raRenderChips();
+        var fd = new Date(dia.fecha + 'T00:00:00');
+        var etiquetaExtra = dia.cerrado ? ' — encontré un reporte nuevo de ese día' : '';
+        document.getElementById('ra-fecha').textContent = fd.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }) + etiquetaExtra;
+        raMostrarBloquesExistentes(bloquesActuales);
+        raMostrarDetectado(reportesFaltantes);
+        document.querySelectorAll('.ra-chip[data-cat="obra"]').forEach(function(btn) {
+          if (RA_SEL.obra.indexOf(btn.dataset.v) >= 0) { btn.style.background = '#1B3A5C'; btn.style.color = '#fff'; btn.style.borderColor = '#1B3A5C'; }
+        });
+        raMostrarCategoria(reportesFaltantes.length ? 'obra' : 'taller');
+        document.getElementById('recordatorio-actividades').style.display = 'block';
+        return; // solo el día más reciente que necesite atención, uno a la vez
+      }
+    }
   } catch (e) { console.warn('[BarrCan] No se pudo verificar día pendiente:', e.message); }
 }
 
 // ── Detección automática de reportes ya generados ────────────────
-// Antes se le pedía a la persona describir de nuevo lo que hizo,
-// aunque YA hubiera un reporte de entrega/instalación con esa misma
-// información -- trabajo duplicado que a la larga hace que la gente
-// deje de llenarlo. Se busca por NOMBRE (esos campos son texto
-// libre, no hay ID limpio) en AMBOS campos: tecnico Y
-// tecnico_acompanante -- caso real: alguien más generó el reporte y
-// puso a este técnico como acompañante.
 var RA_FOLIO_DETECTADO = null;
 
 async function raBuscarReportesDelDia(nombreBuscar, fecha) {
@@ -1461,48 +1486,82 @@ async function raBuscarReportesDelDia(nombreBuscar, fecha) {
   return encontrados;
 }
 
+// Bloques que YA están guardados ese día -- se muestran como
+// resumen de solo lectura, para que se vea claro que se están
+// AGREGANDO más, no reemplazando lo que ya había.
+function raMostrarBloquesExistentes(bloques) {
+  var cont = document.getElementById('ra-bloques-existentes');
+  var label = document.getElementById('ra-nuevo-bloque-label');
+  if (!bloques.length) { cont.style.display = 'none'; label.style.display = 'none'; return; }
+  cont.innerHTML = '<div style="font-size:11.5px;font-weight:700;color:#5F5E5A;margin-bottom:6px">Ya tienes registrado hoy:</div>'
+    + bloques.map(function(b) {
+        var icono = CH_ICONOS_CAT[b.categoria] || '❓';
+        return '<div style="background:#F7F5F0;border-radius:6px;padding:6px 10px;margin-bottom:4px;font-size:11.5px;color:#5F5E5A">'
+          + icono + ' ' + (b.actividades || []).join(', ') + (b.folio_obra ? ' <span style="color:#888">(' + esc(b.folio_obra) + ')</span>' : '')
+          + '</div>';
+      }).join('');
+  cont.style.display = 'block';
+  label.style.display = 'block';
+}
+
 function raMostrarDetectado(reportes) {
   var cont = document.getElementById('ra-detectado');
   if (!reportes.length) { cont.style.display = 'none'; RA_FOLIO_DETECTADO = null; return; }
   RA_FOLIO_DETECTADO = reportes.map(function(r) { return r.folio; }).filter(function(f, i, a) { return a.indexOf(f) === i; }).join(', ');
-  cont.innerHTML = '<div style="font-size:12px;font-weight:700;color:#1B3A5C;margin-bottom:6px">✅ Ya tienes reporte(s) generado(s) ese día:</div>'
+  cont.innerHTML = '<div style="font-size:12px;font-weight:700;color:#1B3A5C;margin-bottom:6px">✅ Encontré reporte(s) que no tienes agregados todavía:</div>'
     + reportes.map(function(r) { return '<div style="font-size:11.5px;color:#5F5E5A;padding:2px 0">· ' + esc(r.tipo) + ' — ' + esc(r.folio) + (r.cliente ? ' (' + esc(r.cliente) + ')' : '') + '</div>'; }).join('')
-    + '<button type="button" onclick="raConfirmarDetectado()" style="width:100%;margin-top:10px;padding:10px;background:#27AE60;border:none;border-radius:8px;color:#fff;font-size:12.5px;font-weight:700;cursor:pointer">✅ Fue solo esto, confirmar</button>'
+    + '<button type="button" onclick="raConfirmarDetectado()" style="width:100%;margin-top:10px;padding:10px;background:#27AE60;border:none;border-radius:8px;color:#fff;font-size:12.5px;font-weight:700;cursor:pointer">✅ Agregar esto</button>'
     + '<div style="text-align:center;font-size:10.5px;color:#999;margin-top:6px">¿hiciste algo más ese día? Selecciónalo abajo también</div>';
   cont.style.display = 'block';
-  // Pre-selecciona en la categoría Obra según el tipo detectado, para
-  // que si de todas formas se revisan los chips, ya vengan marcados.
   var tipos = reportes.map(function(r) { return r.tipo; });
   if (tipos.indexOf('Instalación') >= 0 && RA_SEL.obra.indexOf('Instalación') < 0) RA_SEL.obra.push('Instalación');
   if (tipos.indexOf('Entrega') >= 0) {
-    var etiqueta = 'Entrega de ventanas'; // no se puede saber el tipo exacto de producto desde el reporte -- se deja el más común, editable
+    var etiqueta = 'Entrega de ventanas';
     if (RA_SEL.obra.indexOf(etiqueta) < 0) RA_SEL.obra.push(etiqueta);
   }
 }
 
 async function raConfirmarDetectado() {
-  try {
-    var res = await sb().from('tecnico_entradas_dia')
-      .update({ categoria: 'obra', actividades: RA_SEL.obra.length ? RA_SEL.obra : ['Instalación'], cerrado: true, folio_obra: RA_FOLIO_DETECTADO })
-      .eq('id', RA_REGISTRO_ID);
-    if (res.error) throw res.error;
-    document.getElementById('recordatorio-actividades').style.display = 'none';
-  } catch (e) { alert('No se pudo guardar: ' + e.message); }
+  var nuevoBloque = { categoria: 'obra', actividades: RA_SEL.obra.length ? RA_SEL.obra : ['Instalación'], folio_obra: RA_FOLIO_DETECTADO, otro_detalle: null, origen: 'detectado' };
+  await raGuardarBloque(nuevoBloque);
 }
 
+// "Agregar esta actividad" -- guarda el bloque actual y DEJA el panel
+// abierto para seguir agregando otro (para el caso real: instalación
+// en la mañana + pasar por material después, mismo día).
 async function raGuardar() {
   var cat = RA_CATEGORIA_ACTIVA;
   var otroTxt = (document.getElementById('ra-otro-' + cat).value || '').trim();
   var actividades = RA_SEL[cat].slice();
   if (otroTxt) actividades.push('Otro: ' + otroTxt);
-  if (!actividades.length) { alert('Elige al menos una actividad, o toca "Después" si no puedes ahorita.'); return; }
+  if (!actividades.length) { alert('Elige al menos una actividad antes de agregarla.'); return; }
+  var folio = (document.getElementById('ra-folio').value || '').trim();
+  var nuevoBloque = { categoria: cat, actividades: actividades, folio_obra: folio || RA_FOLIO_DETECTADO || null, otro_detalle: otroTxt || null, origen: 'manual' };
+  await raGuardarBloque(nuevoBloque, true);
+}
+
+async function raGuardarBloque(nuevoBloque, seguirAbierto) {
   try {
-    var res = await sb().from('tecnico_entradas_dia')
-      .update({ categoria: cat, actividades: actividades, otro_detalle: otroTxt || null, cerrado: true, folio_obra: RA_FOLIO_DETECTADO || null })
-      .eq('id', RA_REGISTRO_ID);
+    RA_BLOQUES_ACTUALES = RA_BLOQUES_ACTUALES.concat([nuevoBloque]);
+    var res = await sb().from('tecnico_entradas_dia').update({ bloques: RA_BLOQUES_ACTUALES, cerrado: true }).eq('id', RA_REGISTRO_ID);
     if (res.error) throw res.error;
-    document.getElementById('recordatorio-actividades').style.display = 'none';
+    if (seguirAbierto) {
+      // Limpiar selección para poder agregar la siguiente actividad,
+      // sin cerrar el panel -- así se pueden capturar varias de un jalón.
+      RA_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [], instalaciones: [], obra: [] };
+      raRenderChips();
+      document.getElementById('ra-folio').value = '';
+      raMostrarBloquesExistentes(RA_BLOQUES_ACTUALES);
+      raMostrarDetectado([]);
+      toast('✅ Agregado -- ¿algo más ese día?');
+    } else {
+      document.getElementById('recordatorio-actividades').style.display = 'none';
+    }
   } catch (e) { alert('No se pudo guardar: ' + e.message); }
+}
+
+function raTerminar() {
+  document.getElementById('recordatorio-actividades').style.display = 'none';
 }
 
 function raDespues() {
