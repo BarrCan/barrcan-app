@@ -6,6 +6,30 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v2.16
+  FECHA   : 2026-08-27
+  v2.16 - "Captura histórica" ahora tiene una vista "📋 Ver registros"
+    (toggle junto a "➕ Nuevo"): lista los últimos 60 registros
+    (filtrable por técnico/eventual), mostrando fecha, quién, qué
+    actividades, y si tiene folio de obra o no -- los que NO tienen
+    folio se marcan en rojo "⚠️ Sin folio de obra" para ubicarlos
+    rápido y completarlos. Tocar cualquier registro lo abre
+    precargado en el formulario para editarlo (incluye Otro con su
+    texto), en vez de tener que adivinar técnico+fecha a ciegas como
+    antes.
+  VERSION : v2.15
+  FECHA   : 2026-08-27
+  v2.15 - Sexta categoría "🏠 Propio" (Instalaciones propias): Portón,
+    Herrería, Soldado, Espejos, Muebles, Pintura -- para trabajo de
+    mantenimiento a las instalaciones de BarrCan (ej. reparar el
+    portón de la casa que se usa como taller), que no genera ingreso
+    directo y no encajaba en ninguna categoría existente.
+    FIX de paso: se me había pasado agregar esta pestaña en "Mis
+    actividades"/recordatorio automático (ra-*), solo quedó en
+    Captura histórica -- ya está en ambas pantallas, verificado
+    explícitamente contenedor por contenedor esta vez.
+    Con 6 pestañas ya no caben bien en una sola fila en celular --
+    ahora se acomodan solas en 2 filas de 3 (flex-wrap).
   VERSION : v2.14
   FECHA   : 2026-08-27
   v2.14 - FIX: Ramón no aparecía en el selector de técnico de
@@ -369,6 +393,21 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
       </div>
       <div style="font-size:11px;color:#888;margin-bottom:14px">Para completar días pasados que no se alcanzaron a registrar solos -- solo tú ves esta opción.</div>
 
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button type="button" id="ch-vista-nuevo" onclick="chVerFormulario()" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #1B3A5C;background:#1B3A5C;color:#fff;font-size:12px;font-weight:700;cursor:pointer">➕ Nuevo</button>
+        <button type="button" id="ch-vista-lista" onclick="chVerLista()" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:12px;font-weight:700;cursor:pointer">📋 Ver registros</button>
+      </div>
+
+      <div id="ch-lista-wrap" style="display:none">
+        <div style="display:flex;gap:6px;margin-bottom:10px">
+          <select id="ch-lista-filtro" onchange="chCargarLista()" style="flex:1;padding:8px;border:1.5px solid #DDD9D2;border-radius:8px;font-size:12px;color:#1B3A5C">
+            <option value="">Todos los técnicos/eventuales</option>
+          </select>
+        </div>
+        <div id="ch-lista-registros" style="font-size:12px"></div>
+      </div>
+
+      <div id="ch-form-wrap">
       <div style="display:flex;gap:8px;margin-bottom:12px">
         <button type="button" id="ch-quien-tecnico" onclick="chSelQuien('tecnico')" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #1B3A5C;background:#1B3A5C;color:#fff;font-size:12px;font-weight:700;cursor:pointer">Técnico</button>
         <button type="button" id="ch-quien-eventual" onclick="chSelQuien('eventual')" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:12px;font-weight:700;cursor:pointer">Eventual</button>
@@ -391,12 +430,13 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
       <label style="font-size:12px;color:#5F5E5A;display:block;margin-bottom:4px">Fecha</label>
       <input type="date" id="ch-fecha" style="width:100%;padding:9px;border:1.5px solid #DDD9D2;border-radius:8px;font-size:13px;margin-bottom:14px;color:#1B3A5C">
 
-      <div style="display:flex;gap:6px;margin-bottom:14px">
-        <button type="button" id="ch-tab-taller" onclick="chMostrarCategoria('taller')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #1B3A5C;background:#1B3A5C;color:#fff;font-size:11px;font-weight:700;cursor:pointer">🔧 Taller</button>
-        <button type="button" id="ch-tab-stand" onclick="chMostrarCategoria('stand')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🪵 Stand</button>
-        <button type="button" id="ch-tab-compras" onclick="chMostrarCategoria('compras')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🚚 Compras</button>
-        <button type="button" id="ch-tab-auto" onclick="chMostrarCategoria('auto')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🚗 Auto</button>
-        <button type="button" id="ch-tab-administrativo" onclick="chMostrarCategoria('administrativo')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">📋 Admin</button>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+        <button type="button" id="ch-tab-taller" onclick="chMostrarCategoria('taller')" style="flex:1 1 30%;min-width:90px;padding:9px 4px;border-radius:8px;border:1.5px solid #1B3A5C;background:#1B3A5C;color:#fff;font-size:11px;font-weight:700;cursor:pointer">🔧 Taller</button>
+        <button type="button" id="ch-tab-stand" onclick="chMostrarCategoria('stand')" style="flex:1 1 30%;min-width:90px;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🪵 Stand</button>
+        <button type="button" id="ch-tab-compras" onclick="chMostrarCategoria('compras')" style="flex:1 1 30%;min-width:90px;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🚚 Compras</button>
+        <button type="button" id="ch-tab-auto" onclick="chMostrarCategoria('auto')" style="flex:1 1 30%;min-width:90px;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🚗 Auto</button>
+        <button type="button" id="ch-tab-administrativo" onclick="chMostrarCategoria('administrativo')" style="flex:1 1 30%;min-width:90px;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">📋 Admin</button>
+        <button type="button" id="ch-tab-instalaciones" onclick="chMostrarCategoria('instalaciones')" style="flex:1 1 30%;min-width:90px;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🏠 Propio</button>
       </div>
 
       <div id="ch-chips-taller" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
@@ -414,7 +454,11 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
       <div id="ch-chips-administrativo" style="display:none;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
       <input id="ch-otro-administrativo" type="text" placeholder="Describe brevemente qué fue..." style="display:none;width:100%;padding:9px;border:1.5px solid #C8923A;border-radius:8px;font-size:12.5px;margin-bottom:14px;color:#1B3A5C;box-sizing:border-box">
 
+      <div id="ch-chips-instalaciones" style="display:none;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
+      <input id="ch-otro-instalaciones" type="text" placeholder="Describe brevemente qué fue..." style="display:none;width:100%;padding:9px;border:1.5px solid #C8923A;border-radius:8px;font-size:12.5px;margin-bottom:14px;color:#1B3A5C;box-sizing:border-box">
+
       <button type="button" onclick="chGuardar()" style="width:100%;padding:11px;background:#C8923A;border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">Guardar día</button>
+      </div>
     </div>
   </div>
 
@@ -425,12 +469,13 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
     </div>
     <div id="ra-fecha" style="font-size:11.5px;color:#888;margin-bottom:12px">toca lo que hiciste, puedes elegir varias</div>
 
-    <div style="display:flex;gap:6px;margin-bottom:14px">
-      <button type="button" id="ra-tab-taller" onclick="raMostrarCategoria('taller')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #1B3A5C;background:#1B3A5C;color:#fff;font-size:11px;font-weight:700;cursor:pointer">🔧 Taller</button>
-      <button type="button" id="ra-tab-stand" onclick="raMostrarCategoria('stand')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🪵 Stand</button>
-      <button type="button" id="ra-tab-compras" onclick="raMostrarCategoria('compras')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🚚 Compras</button>
-      <button type="button" id="ra-tab-auto" onclick="raMostrarCategoria('auto')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🚗 Auto</button>
-      <button type="button" id="ra-tab-administrativo" onclick="raMostrarCategoria('administrativo')" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">📋 Admin</button>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+      <button type="button" id="ra-tab-taller" onclick="raMostrarCategoria('taller')" style="flex:1 1 30%;min-width:90px;padding:9px 4px;border-radius:8px;border:1.5px solid #1B3A5C;background:#1B3A5C;color:#fff;font-size:11px;font-weight:700;cursor:pointer">🔧 Taller</button>
+      <button type="button" id="ra-tab-stand" onclick="raMostrarCategoria('stand')" style="flex:1 1 30%;min-width:90px;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🪵 Stand</button>
+      <button type="button" id="ra-tab-compras" onclick="raMostrarCategoria('compras')" style="flex:1 1 30%;min-width:90px;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🚚 Compras</button>
+      <button type="button" id="ra-tab-auto" onclick="raMostrarCategoria('auto')" style="flex:1 1 30%;min-width:90px;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🚗 Auto</button>
+      <button type="button" id="ra-tab-administrativo" onclick="raMostrarCategoria('administrativo')" style="flex:1 1 30%;min-width:90px;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">📋 Admin</button>
+      <button type="button" id="ra-tab-instalaciones" onclick="raMostrarCategoria('instalaciones')" style="flex:1 1 30%;min-width:90px;padding:9px 4px;border-radius:8px;border:1.5px solid #DDD9D2;background:#fff;color:#1B3A5C;font-size:11px;font-weight:700;cursor:pointer">🏠 Propio</button>
     </div>
 
     <div id="ra-chips-taller" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
@@ -447,6 +492,9 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
 
     <div id="ra-chips-administrativo" style="display:none;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
     <input id="ra-otro-administrativo" type="text" placeholder="Describe brevemente qué fue..." style="display:none;width:100%;padding:9px;border:1.5px solid #C8923A;border-radius:8px;font-size:12.5px;margin-bottom:14px;color:#1B3A5C;box-sizing:border-box">
+
+    <div id="ra-chips-instalaciones" style="display:none;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
+    <input id="ra-otro-instalaciones" type="text" placeholder="Describe brevemente qué fue..." style="display:none;width:100%;padding:9px;border:1.5px solid #C8923A;border-radius:8px;font-size:12.5px;margin-bottom:14px;color:#1B3A5C;box-sizing:border-box">
 
     <div style="display:flex;gap:8px">
       <button type="button" onclick="raGuardar()" style="flex:1;padding:10px;background:#C8923A;border:none;border-radius:8px;color:#fff;font-size:12.5px;font-weight:700;cursor:pointer">Guardar</button>
@@ -580,7 +628,7 @@ function sb(){
 }
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
-var APP_VERSION = 'v2.14';
+var APP_VERSION = 'v2.16';
 var USUARIOS = [];
 var USUARIO_SEL = null;   // el que se está tratando de loguear
 var PIN_BUFFER = '';
@@ -888,7 +936,7 @@ async function procesarPinCompleto() {
 // entrada del día, no se pisa con logins posteriores. Falla en
 // silencio si no hay señal -- no debe bloquear el login normal.
 // ── Captura histórica (solo supremo) ─────────────────────────────
-var CH_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [] };
+var CH_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [], instalaciones: [] };
 var CH_CATEGORIA_ACTIVA = 'taller';
 
 var CH_QUIEN = 'tecnico';
@@ -932,10 +980,11 @@ function chAbrir() {
   document.getElementById('ch-eventual-nombre').value = '';
   document.getElementById('ch-folio').value = '';
   chSelQuien('tecnico');
-  CH_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [] };
+  CH_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [], instalaciones: [] };
   chRenderChips();
   chMostrarCategoria('taller');
   chCargarSugerencias();
+  chVerFormulario();
   document.getElementById('modal-captura-historica').style.display = 'flex';
 }
 
@@ -960,7 +1009,7 @@ function chCerrar() {
 }
 
 function chRenderChips() {
-  ['taller', 'stand', 'compras', 'auto', 'administrativo'].forEach(function(cat) {
+  ['taller', 'stand', 'compras', 'auto', 'administrativo', 'instalaciones'].forEach(function(cat) {
     var cont = document.getElementById('ch-chips-' + cat);
     if (!cont) return;
     var html = RA_LISTAS[cat].map(function(act) {
@@ -994,13 +1043,119 @@ function chToggleOtro(btn) {
 
 function chMostrarCategoria(cat) {
   CH_CATEGORIA_ACTIVA = cat;
-  ['taller', 'stand', 'compras', 'auto', 'administrativo'].forEach(function(c) {
+  ['taller', 'stand', 'compras', 'auto', 'administrativo', 'instalaciones'].forEach(function(c) {
     document.getElementById('ch-chips-' + c).style.display = c === cat ? 'flex' : 'none';
     var tab = document.getElementById('ch-tab-' + c);
     tab.style.background = c === cat ? '#1B3A5C' : '#fff';
     tab.style.color = c === cat ? '#fff' : '#1B3A5C';
     tab.style.borderColor = c === cat ? '#1B3A5C' : '#DDD9D2';
   });
+}
+
+// ── Ver / editar registros ya capturados ─────────────────────────
+function chVerFormulario() {
+  document.getElementById('ch-form-wrap').style.display = 'block';
+  document.getElementById('ch-lista-wrap').style.display = 'none';
+  var bn = document.getElementById('ch-vista-nuevo'), bl = document.getElementById('ch-vista-lista');
+  bn.style.background = '#1B3A5C'; bn.style.color = '#fff'; bn.style.borderColor = '#1B3A5C';
+  bl.style.background = '#fff'; bl.style.color = '#1B3A5C'; bl.style.borderColor = '#DDD9D2';
+}
+
+function chVerLista() {
+  document.getElementById('ch-form-wrap').style.display = 'none';
+  document.getElementById('ch-lista-wrap').style.display = 'block';
+  var bn = document.getElementById('ch-vista-nuevo'), bl = document.getElementById('ch-vista-lista');
+  bl.style.background = '#1B3A5C'; bl.style.color = '#fff'; bl.style.borderColor = '#1B3A5C';
+  bn.style.background = '#fff'; bn.style.color = '#1B3A5C'; bn.style.borderColor = '#DDD9D2';
+  chCargarFiltroLista();
+  chCargarLista();
+}
+
+async function chCargarFiltroLista() {
+  var sel = document.getElementById('ch-lista-filtro');
+  if (!sb()) return;
+  try {
+    var res = await sb().from('tecnico_entradas_dia').select('tecnico_id,tecnico_nombre').order('tecnico_nombre');
+    var vistos = {}, opciones = [];
+    (res.data || []).forEach(function(r) {
+      if (vistos[r.tecnico_id]) return;
+      vistos[r.tecnico_id] = true;
+      opciones.push('<option value="' + r.tecnico_id + '">' + esc(r.tecnico_nombre || r.tecnico_id) + '</option>');
+    });
+    sel.innerHTML = '<option value="">Todos los técnicos/eventuales</option>' + opciones.join('');
+  } catch (e) { console.warn('[BarrCan] No se pudo cargar filtro:', e.message); }
+}
+
+var CH_ICONOS_CAT = { taller: '🔧', stand: '🪵', compras: '🚚', auto: '🚗', administrativo: '📋', instalaciones: '🏠' };
+
+async function chCargarLista() {
+  var cont = document.getElementById('ch-lista-registros');
+  cont.innerHTML = '<div style="text-align:center;padding:16px;color:#999">Cargando…</div>';
+  if (!sb()) { cont.innerHTML = '<div style="text-align:center;padding:16px;color:#999">Sin conexión</div>'; return; }
+  var filtroTec = document.getElementById('ch-lista-filtro').value;
+  try {
+    var q = sb().from('tecnico_entradas_dia').select('id,tecnico_id,tecnico_nombre,fecha,categoria,actividades,folio_obra,es_eventual,cerrado')
+      .order('fecha', { ascending: false }).limit(60);
+    if (filtroTec) q = q.eq('tecnico_id', filtroTec);
+    var res = await q;
+    if (res.error) throw res.error;
+    var datos = res.data || [];
+    if (!datos.length) { cont.innerHTML = '<div style="text-align:center;padding:16px;color:#999">Sin registros todavía</div>'; return; }
+    cont.innerHTML = datos.map(function(r) {
+      var fd = new Date(r.fecha + 'T00:00:00');
+      var fechaTxt = fd.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
+      var icono = CH_ICONOS_CAT[r.categoria] || '❓';
+      var actTxt = r.actividades && r.actividades.length ? r.actividades.join(', ') : (r.cerrado ? 'Sin actividades' : 'Sin cerrar');
+      return '<div onclick="chEditarRegistro(\'' + r.id + '\')" style="background:#F7F5F0;border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'
+        + '<span style="font-weight:700;color:#1B3A5C">' + fechaTxt + ' · ' + esc(r.tecnico_nombre || r.tecnico_id) + (r.es_eventual ? ' <span style="font-size:10px;color:#996A24">(eventual)</span>' : '') + '</span>'
+        + '<span style="font-size:11px;color:#C8923A">✏️</span>'
+        + '</div>'
+        + '<div style="color:#5F5E5A;font-size:11.5px">' + icono + ' ' + actTxt + '</div>'
+        + (r.folio_obra ? '<div style="font-size:10.5px;color:#888;margin-top:2px">📁 ' + esc(r.folio_obra) + '</div>' : '<div style="font-size:10.5px;color:#C0392B;margin-top:2px">⚠️ Sin folio de obra</div>')
+        + '</div>';
+    }).join('');
+  } catch (e) { cont.innerHTML = '<div style="text-align:center;padding:16px;color:#999">Error: ' + e.message + '</div>'; }
+}
+
+async function chEditarRegistro(id) {
+  if (!sb()) return;
+  try {
+    var res = await sb().from('tecnico_entradas_dia').select('*').eq('id', id).single();
+    if (res.error) throw res.error;
+    var r = res.data;
+    chVerFormulario();
+    await chCargarTecnicosReales();
+    if (r.es_eventual) {
+      chSelQuien('eventual');
+      document.getElementById('ch-eventual-nombre').value = r.tecnico_id;
+    } else {
+      chSelQuien('tecnico');
+      document.getElementById('ch-tecnico').value = r.tecnico_id;
+    }
+    document.getElementById('ch-fecha').value = r.fecha;
+    document.getElementById('ch-folio').value = r.folio_obra || '';
+    CH_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [], instalaciones: [] };
+    chRenderChips();
+    var cat = r.categoria || 'taller';
+    var otroDeGuardado = '';
+    (r.actividades || []).forEach(function(a) {
+      if (a.indexOf('Otro: ') === 0) { otroDeGuardado = a.slice(6); return; }
+      if (CH_SEL[cat]) CH_SEL[cat].push(a);
+    });
+    // Repintar chips activos
+    document.querySelectorAll('.ch-chip[data-cat="' + cat + '"]').forEach(function(btn) {
+      if (CH_SEL[cat].indexOf(btn.dataset.v) >= 0) { btn.style.background = '#1B3A5C'; btn.style.color = '#fff'; btn.style.borderColor = '#1B3A5C'; }
+    });
+    if (otroDeGuardado) {
+      var campo = document.getElementById('ch-otro-' + cat);
+      campo.value = otroDeGuardado; campo.style.display = 'block';
+      var btnO = document.querySelector('.ch-chip-otro[data-cat="' + cat + '"]');
+      if (btnO) { btnO.style.background = '#1B3A5C'; btnO.style.color = '#fff'; btnO.style.borderColor = '#1B3A5C'; }
+    }
+    chMostrarCategoria(cat);
+    chCargarSugerencias();
+  } catch (e) { alert('No se pudo abrir ese registro: ' + e.message); }
 }
 
 async function chGuardar() {
@@ -1043,14 +1198,15 @@ var RA_LISTAS = {
   stand: ['Carpintería','Cortar módulos de piso','Cortar módulos de pared','Lijar y preparar','Armar módulo','Armar previo/muestra','Resanar','Montar','Instalación eléctrica','Contactos'],
   compras: ['Recolección de material','Compra en ferretería/proveedor','Entrega de material a obra','Entrega de material a taller','Trámites con proveedor','Devolución de material'],
   auto: ['Limpieza','Afinación','Revisión de frenos','Cambio de aceite','Balanceo/alineación','Cambio de llantas','Revisión general'],
-  administrativo: ['Presupuesto/cotización','Pedido de material','Programar instalación','Planeación de obra','Facturación','Trámites administrativos','Seguimiento a cliente']
+  administrativo: ['Presupuesto/cotización','Pedido de material','Programar instalación','Planeación de obra','Facturación','Trámites administrativos','Seguimiento a cliente'],
+  instalaciones: ['Portón','Herrería','Soldado','Espejos','Muebles','Pintura']
 };
-var RA_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [] };
+var RA_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [], instalaciones: [] };
 var RA_CATEGORIA_ACTIVA = 'taller';
 var RA_REGISTRO_ID = null;
 
 function raRenderChips() {
-  ['taller', 'stand', 'compras', 'auto', 'administrativo'].forEach(function(cat) {
+  ['taller', 'stand', 'compras', 'auto', 'administrativo', 'instalaciones'].forEach(function(cat) {
     var cont = document.getElementById('ra-chips-' + cat);
     if (!cont) return;
     var html = RA_LISTAS[cat].map(function(act) {
@@ -1084,7 +1240,7 @@ function raToggleOtro(btn) {
 
 function raMostrarCategoria(cat) {
   RA_CATEGORIA_ACTIVA = cat;
-  ['taller', 'stand', 'compras', 'auto', 'administrativo'].forEach(function(c) {
+  ['taller', 'stand', 'compras', 'auto', 'administrativo', 'instalaciones'].forEach(function(c) {
     document.getElementById('ra-chips-' + c).style.display = c === cat ? 'flex' : 'none';
     var tab = document.getElementById('ra-tab-' + c);
     tab.style.background = c === cat ? '#1B3A5C' : '#fff';
@@ -1114,7 +1270,7 @@ async function raAbrirManual() {
       reg = resNuevo.data;
     }
     RA_REGISTRO_ID = reg.id;
-    RA_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [] };
+    RA_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [], instalaciones: [] };
     // Precargar lo que ya hubiera elegido hoy, por si vino a corregir
     if (reg.categoria && reg.actividades) {
       (reg.actividades || []).forEach(function(a) {
@@ -1154,7 +1310,7 @@ async function raVerificarDiaPendiente() {
       .order('fecha', { ascending: false }).limit(1);
     if (res.error || !res.data || !res.data.length) return;
     RA_REGISTRO_ID = res.data[0].id;
-    RA_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [] };
+    RA_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [], instalaciones: [] };
     raRenderChips();
     raMostrarCategoria('taller');
     var fd = new Date(res.data[0].fecha + 'T00:00:00');
