@@ -6,6 +6,16 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.48.0
+  FECHA   : 2026-08-28
+  v3.48.0 - FIX crítico de pérdida de datos, mismo patrón ya corregido
+    en v3.44.0 pero que se me había pasado en el flujo "puerta/envío"
+    (reportes_entrega) -- solo lo arreglé en "Instalación" antes. Caso
+    real: folio CACN-149A (venta de ML) se perdió por completo sin
+    ningún aviso, ni siquiera un toast, cuando se agotaron los
+    reintentos. Ahora ambas rutas de falla (sin conexión desde el
+    inicio, y reintentos agotados) usan alert() bloqueante además del
+    toast, igual que ya tenía Instalación.
   VERSION : v3.47.0
   FECHA   : 2026-08-26
   v3.47.0 - Renombrado "Express" a "Pieza única" en todo lo visible
@@ -2193,7 +2203,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.47.0';
+var APP_VERSION = 'v3.48.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -3108,7 +3118,12 @@ async function entGenerarReporte() {
       if (hist2.length > 50) hist2.pop();
       localStorage.setItem('barrcan_reportes_historial', JSON.stringify(hist2));
       entRenderHistorial();
-      toast(subidaOk === false && SYNC.online ? 'Fotos pesadas, se reintentará automáticamente' : 'Guardado sin conexion - se sincronizara al reconectar');
+      if (!SYNC.online) {
+        toast('💾 Guardado sin conexión - se sincronizará al reconectar · ' + folioFull, 6000);
+      } else {
+        alert('⚠️ ATENCIÓN: el reporte de "' + folioFull + '" NO se guardó en el servidor todavía (fotos pesadas o falla al subir).\n\nQuedó en la cola de tu teléfono y se va a reintentar solo. Revisa el Historial en unos minutos para confirmar que ya se sincronizó.');
+        toast('⚠️ NO se guardó todavía (se reintentará solo) · ' + folioFull, 8000);
+      }
       entMostrarPost(folioFull, tel, reporteUrl);
       entSalirModoEdicion();
       entReset();
@@ -3133,7 +3148,10 @@ async function entGenerarReporte() {
         if (esRed && i < 3) {
           return new Promise(function(resolve) { setTimeout(function() { intentar(i + 1).then(resolve); }, 1000 * i); });
         }
+        console.warn('[BarrCan] No se pudo guardar el reporte de entrega en Supabase, se reencola:', e);
         offEncolarReporte('reportes_entrega', dbPayload, _ENT_HTML, nombreArch, datosJsonStr, nombreDatos, esEdicion ? editandoId : null);
+        alert('⚠️ ATENCIÓN: el reporte de "' + folioFull + '" NO se guardó en el servidor todavía.\n\nQuedó en la cola de tu teléfono y se va a reintentar solo en cuanto haya señal. No lo vuelvas a capturar por ahora -- revisa el Historial en unos minutos para confirmar que ya se sincronizó.\n\nMotivo: ' + (e.message || 'desconocido'));
+        toast('⚠️ NO se guardó todavía (se reintentará solo) · ' + folioFull, 8000);
         entSalirModoEdicion();
         entMostrarPost(folioFull, tel, reporteUrl);
         entReset();
