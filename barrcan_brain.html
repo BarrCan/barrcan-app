@@ -6,6 +6,15 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v2.14
+  FECHA   : 2026-08-27
+  v2.14 - FIX: Ramón no aparecía en el selector de técnico de
+    "Captura histórica". Causa: ese selector jalaba de USUARIOS (el
+    roster de LOGIN, tabla usuarios_pin) -- Ramón nunca tuvo PIN
+    configurado ahí para entrar él mismo al portal, aunque sí es un
+    técnico real con reportes de entrega a su nombre. Ahora se carga
+    directo de la tabla `tecnicos` (mismo criterio que ordenes.html),
+    que es el roster real de campo, no el de quién puede loguearse.
   VERSION : v2.13
   FECHA   : 2026-08-27
   v2.13 - Quinta categoría "📋 Admin" (Administrativo): presupuesto/
@@ -571,7 +580,7 @@ function sb(){
 }
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
-var APP_VERSION = 'v2.13';
+var APP_VERSION = 'v2.14';
 var USUARIOS = [];
 var USUARIO_SEL = null;   // el que se está tratando de loguear
 var PIN_BUFFER = '';
@@ -912,7 +921,13 @@ async function chCargarSugerencias() {
 function chAbrir() {
   if (!USUARIO_SEL || USUARIO_SEL.id !== 'MAU') { alert('Esta opción es solo para Mau.'); return; }
   var sel = document.getElementById('ch-tecnico');
-  sel.innerHTML = USUARIOS.map(function(u) { return '<option value="' + u.id + '">' + esc(u.apodo || u.nombre) + '</option>'; }).join('');
+  // OJO: se carga de la tabla `tecnicos` (roster real de campo), NO de
+  // usuarios_pin (roster de login) -- Ramón por ejemplo no tiene PIN
+  // configurado para entrar él mismo al portal, pero sí es un técnico
+  // real con reportes de entrega a su nombre. Si se usara usuarios_pin
+  // aquí, nunca aparecería en esta lista.
+  sel.innerHTML = '<option value="">Cargando técnicos…</option>';
+  chCargarTecnicosReales();
   document.getElementById('ch-fecha').value = _fechaLocalHoy();
   document.getElementById('ch-eventual-nombre').value = '';
   document.getElementById('ch-folio').value = '';
@@ -922,6 +937,22 @@ function chAbrir() {
   chMostrarCategoria('taller');
   chCargarSugerencias();
   document.getElementById('modal-captura-historica').style.display = 'flex';
+}
+
+async function chCargarTecnicosReales() {
+  var sel = document.getElementById('ch-tecnico');
+  if (!sb()) { sel.innerHTML = '<option value="">Sin conexión</option>'; return; }
+  try {
+    var res = await sb().from('tecnicos').select('tecnico_id_login,nombre_completo')
+      .eq('activo', true).eq('eliminado', false).order('nombre_completo');
+    if (res.error) throw res.error;
+    var datos = (res.data || []).filter(function(t) { return t.tecnico_id_login; });
+    if (!datos.length) { sel.innerHTML = '<option value="">Sin técnicos con código configurado</option>'; return; }
+    sel.innerHTML = datos.map(function(t) { return '<option value="' + t.tecnico_id_login + '">' + esc(t.nombre_completo) + '</option>'; }).join('');
+  } catch (e) {
+    console.warn('[BarrCan] No se pudieron cargar técnicos reales:', e.message);
+    sel.innerHTML = '<option value="">Error al cargar</option>';
+  }
 }
 
 function chCerrar() {
@@ -983,8 +1014,8 @@ async function chGuardar() {
     nombreMostrar = tecnicoId;
   } else {
     tecnicoId = document.getElementById('ch-tecnico').value;
-    u = USUARIOS.filter(function(x) { return x.id === tecnicoId; })[0];
-    nombreMostrar = u ? (u.apodo || u.nombre) : tecnicoId;
+    var selEl = document.getElementById('ch-tecnico');
+    nombreMostrar = selEl.selectedIndex >= 0 ? selEl.options[selEl.selectedIndex].textContent : tecnicoId;
   }
   if (!tecnicoId || !fecha) { alert(esEventual ? 'Escribe el nombre del eventual y la fecha.' : 'Elige técnico y fecha.'); return; }
   var otroTxt = (document.getElementById('ch-otro-' + cat).value || '').trim();
