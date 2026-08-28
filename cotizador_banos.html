@@ -6,6 +6,22 @@
 <title>BarrCan · Cotizador Baños</title>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v2.5
+  FECHA   : 2026-08-28
+  v2.5 - Dos fixes reportados con el folio 153:
+    1) "Presupuestos recientes" era 100% informativo -- no había
+       forma de reabrir uno ya guardado para reimprimirlo y enviarlo
+       al cliente. Nuevo botón "🖨️ Reimprimir" por tarjeta, reconstruye
+       el documento completo desde notas_internas (con diagramas
+       técnicos si aplica). Presupuestos viejos sin piezas
+       estructuradas caen a un renglón con la descripción + monto
+       total, para no quedar en blanco.
+    2) Solo salía la primera página (precios) -- las 3 páginas de
+       condiciones/pagos/datos bancarios/firmas existían en el
+       prototipo viejo (barrcan_app.html) pero nunca se portaron al
+       cotizador nuevo cuando se modularizó la app. Ya están de
+       vuelta, con los montos de anticipo/segundo pago/liquidación
+       calculados del total real de cada presupuesto.
   VERSION : v2.4
   FECHA   : 2026-08-25
   v2.4 - Dos cosas encontradas probando Corredizo (aplican a los 4
@@ -863,6 +879,9 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha) {
   return '<!DOCTYPE html><html lang=es><head><meta charset=UTF-8><meta name=viewport content=width=device-width>'
     + '<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10pt;color:#1B3A5C;background:#fff}'
     + '.pg{max-width:620px;margin:0 auto;padding:0 0 80px}.pg-body{padding:16px 22px}'
+    + '.page-break{page-break-before:always;padding-top:28px}'
+    + 'h2{font-size:10.5pt;font-weight:700;color:#1B3A5C;border-bottom:2px solid #C8923A;padding-bottom:3px;margin:18px 0 10px;text-transform:uppercase;letter-spacing:.5px}'
+    + 'table{width:100%;border-collapse:collapse}th{background:#1B3A5C;color:#fff;padding:7px 10px;font-size:9pt;font-weight:700}td{padding:6px 10px;font-size:9pt;border:1px solid #ddd}'
     + '.barra{position:fixed;bottom:0;left:0;right:0;background:#1B3A5C;padding:8px 14px;display:flex;gap:8px;justify-content:center;z-index:999}'
     + '.bp{padding:9px 20px;background:#C8923A;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer}'
     + '.bc{padding:9px 12px;background:rgba(255,255,255,.15);color:#fff;border:none;border-radius:7px;font-size:12px;cursor:pointer}'
@@ -878,6 +897,82 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha) {
     + '<div style="display:flex;justify-content:flex-end;padding-top:12px;font-size:14pt;font-weight:900;color:#1B3A5C">$' + fmt(total) + '</div>'
     + '<div style="margin-top:24px;font-size:9pt;text-align:center;color:#1B3A5C;background:#F7F5F0;padding:10px;border-radius:6px">'
     + 'El presente presupuesto contempla los trabajos antes descritos, cualquier otro trabajo adicional se cotizar\u00e1. Estos precios est\u00e1n sujetos a cambios sin previo aviso.'
+    + '</div>'
+
+    // ═══ PÁGINA 2: CONDICIONES DE VENTA ═══
+    + '<div class="page-break">'
+    + '<h2>1. Condiciones de venta</h2>'
+    + '<ol style="padding-left:18px;font-size:9pt;line-height:1.8;color:#222">'
+    + '<li><strong>Vigencia:</strong> Este presupuesto tiene una vigencia de <strong>10 d\u00edas h\u00e1biles</strong> a partir de su fecha de emisi\u00f3n. Transcurrido ese plazo, los precios podr\u00e1n modificarse sin previo aviso. En caso de requerir factura electr\u00f3nica (CFDI), el IVA se desglosar\u00e1 sobre el importe acordado.</li>'
+    + '<li><strong>Vanos descuadrados:</strong> No se incluyen perfiles de ajuste por vanos que presenten falta de plomo, nivel o escuadra. Si se detectan durante la visita de instalaci\u00f3n, se cotizar\u00e1n por separado.</li>'
+    + '<li><strong>Limpieza:</strong> No se incluye limpieza fina posterior a la instalaci\u00f3n. El retiro de residuos propios del proceso de instalaci\u00f3n s\u00ed est\u00e1 comprendido.</li>'
+    + '<li><strong>Tolerancias de fabricaci\u00f3n:</strong> La tolerancia est\u00e1ndar es de \u00b15 mm en todas las dimensiones, conforme a las pr\u00e1cticas del sector.</li>'
+    + '<li><strong>Condici\u00f3n de los vanos:</strong> El estado de los vanos al momento de la instalaci\u00f3n es responsabilidad exclusiva del cliente. BarrCan no responde por deficiencias estructurales preexistentes que dificulten o impidan la correcta instalaci\u00f3n.</li>'
+    + '<li><strong>Cambios y modificaciones:</strong> Este presupuesto quedar\u00e1 sin efecto ante cualquier cambio en modulaci\u00f3n, dimensiones, cantidades, colores, materiales o especificaciones de los elementos descritos. Toda modificaci\u00f3n requerir\u00e1 la emisi\u00f3n de un nuevo presupuesto actualizado.</li>'
+    + '<li><strong>Trabajos con material existente:</strong> La manipulaci\u00f3n de material preexistente (vidrios, espejos, perfiles, herrajes) se realiza sin responsabilidad por da\u00f1os accidentales. En caso de rotura o da\u00f1o, BarrCan no asumir\u00e1 el costo de reposici\u00f3n; el trabajo de restauraci\u00f3n se cotizar\u00e1 por separado.</li>'
+    + '<li><strong>Almacenamiento de material:</strong> El material retirado que deba resguardarse para uso posterior tendr\u00e1 un periodo sin costo de hasta <strong>5 d\u00edas h\u00e1biles</strong>. A partir del quinto d\u00eda se aplicar\u00e1 un cargo de <strong>$80 MXN por d\u00eda natural</strong>. Consulte la Secci\u00f3n 3 para condiciones completas.</li>'
+    + '<li><strong>Aceptaci\u00f3n por dep\u00f3sito:</strong> El dep\u00f3sito del anticipo implica la aceptaci\u00f3n plena de todas las condiciones descritas en este presupuesto. (En casos con visita de asesoramiento previo, se requerir\u00e1 confirmaci\u00f3n expresa del cliente, dado que el costo de dicha visita se acredita al anticipo inicial.)</li>'
+    + '<li><strong>Pol\u00edtica de reembolso:</strong> En caso de cancelaci\u00f3n del proyecto se retendr\u00e1 el <strong>25% del costo total</strong> por gastos administrativos y asesoramiento. Si la cancelaci\u00f3n ocurre antes de iniciar fabricaci\u00f3n, se devolver\u00e1 el material adquirido y la diferencia econ\u00f3mica, descontando el 25% y el costo de materiales comprados. Si la fabricaci\u00f3n ya inici\u00f3, no procede reembolso en efectivo; se entregar\u00e1 el material en el estado en que se encuentre como finiquito total.</li>'
+    + '</ol>'
+    + '<h2>Trabajos no comprendidos en este presupuesto</h2>'
+    + '<ul style="padding-left:18px;font-size:9pt;line-height:2;color:#222">'
+    + '<li><strong>NO INCLUYE</strong> ning\u00fan trabajo de <strong>ALBA\u00d1ILER\u00cdA</strong> (muros, castillos, plantillas, resanes, etc.)</li>'
+    + '<li><strong>NO INCLUYE</strong> ning\u00fan trabajo de <strong>HERRER\u00cdA</strong> (estructuras met\u00e1licas, barandales, rejas u otros similares)</li>'
+    + '<li><strong>NO INCLUYE</strong> ning\u00fan trabajo de <strong>CARPINTER\u00cdA</strong> (marcos, puertas de madera, muebles o similares)</li>'
+    + '<li><strong>NO INCLUYE</strong> ning\u00fan trabajo de <strong>ELECTRICIDAD</strong> (cableado, contactos, iluminaci\u00f3n, etc.)</li>'
+    + '</ul>'
+    + '</div>'
+
+    // ═══ PÁGINA 3: PAGOS + DATOS BANCARIOS + ALMACENAMIENTO ═══
+    + '<div class="page-break">'
+    + '<h2>2. Pol\u00edtica de pagos</h2>'
+    + '<p style="font-size:9pt;color:#333;margin-bottom:10px">Al aprobar formalmente el presupuesto, el cliente acepta las siguientes condiciones de pago:</p>'
+    + '<table style="margin-bottom:12px"><thead><tr><th>Concepto</th><th style="text-align:center;width:100px">Porcentaje</th><th>Momento de pago</th><th style="text-align:right;width:110px">Monto</th></tr></thead><tbody>'
+    + '<tr><td>Anticipo inicial</td><td style="text-align:center">50 %</td><td>Al aprobar y firmar el presupuesto</td><td style="text-align:right;font-weight:700">$&nbsp;' + fmt(total * 0.50) + '</td></tr>'
+    + '<tr style="background:#f5f7fa"><td>Segundo pago</td><td style="text-align:center">35 %</td><td>Al confirmar fecha de entrega e instalaci\u00f3n</td><td style="text-align:right;font-weight:700">$&nbsp;' + fmt(total * 0.35) + '</td></tr>'
+    + '<tr style="background:#1B3A5C;color:white"><td style="color:white;font-weight:700;border-color:#1B3A5C">Liquidaci\u00f3n final</td><td style="color:white;text-align:center;border-color:#1B3A5C">15 %</td><td style="color:rgba(255,255,255,.85);border-color:#1B3A5C">A la entrega y conclusi\u00f3n total del trabajo</td><td style="color:#F1C40F;text-align:right;font-weight:700;border-color:#1B3A5C">$&nbsp;' + fmt(total * 0.15) + '</td></tr>'
+    + '</tbody></table>'
+    + '<div style="display:flex;gap:16px;margin-bottom:12px">'
+    + '<div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px">'
+    + '<div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">Banorte</div>'
+    + '<div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div>'
+    + '<div style="font-size:8.5pt;color:#333">Cuenta: 0672530766</div>'
+    + '<div style="font-size:8.5pt;color:#333">CLABE: 072180006725307668</div></div>'
+    + '<div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px">'
+    + '<div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">BBVA</div>'
+    + '<div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div>'
+    + '<div style="font-size:8.5pt;color:#333">Cuenta: 1512081906</div>'
+    + '<div style="font-size:8.5pt;color:#333">CLABE: 012180015120819061</div></div>'
+    + '<div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px">'
+    + '<div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">Titular</div>'
+    + '<div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div>'
+    + '<div style="font-size:8.5pt;color:#333">RFC: BAEM790610K90</div>'
+    + '<div style="font-size:8pt;color:#888;margin-top:4px;font-style:italic">Factura: can_alum_cris@hotmail.com</div></div>'
+    + '</div>'
+    + '<div style="border:1.5px solid #E67E22;border-radius:4px;padding:10px 12px;margin-bottom:14px;background:#FFF8F0">'
+    + '<div style="font-size:9pt;font-weight:700;color:#E67E22;margin-bottom:4px">IMPORTANTE \u2014 Segundo pago (35%)</div>'
+    + '<div style="font-size:8.5pt;color:#555;font-style:italic;line-height:1.6">Este pago deber\u00e1 efectuarse en la fecha acordada o a m\u00e1s tardar el mismo d\u00eda en que se defina la agenda de instalaci\u00f3n. Si BarrCan no recibe dicho pago en el plazo indicado, la fecha de instalaci\u00f3n agendada quedar\u00e1 autom\u00e1ticamente liberada y deber\u00e1 reagendarse conforme a la disponibilidad del taller. Esta cancelaci\u00f3n no generar\u00e1 penalizaci\u00f3n ni cargo adicional de parte de BarrCan.</div>'
+    + '</div>'
+    + '<h2>3. Almacenamiento y disposici\u00f3n de material</h2>'
+    + '<table style="margin-bottom:14px;font-size:8.5pt"><tbody>'
+    + '<tr><td style="font-weight:700;background:#f5f7fa;width:36%">Periodo sin costo y notificaci\u00f3n</td><td>El material tendr\u00e1 un periodo de almacenamiento sin costo de hasta <strong>5 d\u00edas h\u00e1biles</strong>. Al cuarto d\u00eda h\u00e1bil, BarrCan notificar\u00e1 al cliente por WhatsApp o correo electr\u00f3nico para que considere el retiro antes de que inicie el periodo de cobro.</td></tr>'
+    + '<tr><td style="font-weight:700;background:#f5f7fa">Cargo por almacenamiento</td><td>A partir del quinto d\u00eda h\u00e1bil, se aplicar\u00e1 un cargo de <strong>$80 MXN por d\u00eda natural</strong> hasta que el material sea retirado o cedido formalmente.</td></tr>'
+    + '<tr><td style="font-weight:700;background:#f5f7fa">Flete de entrega (CDMX)</td><td>Si el cliente requiere que BarrCan entregue el material en su domicilio dentro de la Ciudad de M\u00e9xico: <strong>$800 MXN</strong> carga ligera / <strong>$1,000 MXN</strong> volumen medio / <strong>$1,800 MXN</strong> volumen alto. Se liquida antes de coordinar la entrega.</td></tr>'
+    + '<tr><td style="font-weight:700;background:#f5f7fa">Flete for\u00e1neo</td><td>Para entregas fuera de la Ciudad de M\u00e9xico, el costo se calcular\u00e1 conforme a la distancia. BarrCan notificar\u00e1 el monto al cliente para su aprobaci\u00f3n antes de confirmar la log\u00edstica.</td></tr>'
+    + '<tr><td style="font-weight:700;background:#f5f7fa">Cesi\u00f3n de material a BarrCan</td><td>Si el cliente cede el material a BarrCan, se aplicar\u00e1 un cargo \u00fanico de <strong>$1,000 MXN</strong> por concepto de manejo, retiro y disposici\u00f3n, el cual deber\u00e1 cubrirse de forma anticipada.</td></tr>'
+    + '</tbody></table>'
+    + '<h2>4. Tiempo de entrega e instalaci\u00f3n</h2>'
+    + '<div style="font-size:9.5pt;color:#333;padding:10px 14px;background:#EAF4FF;border-left:4px solid #1B3A5C;border-radius:0 4px 4px 0;margin-bottom:18px;line-height:1.7">'
+    + 'El tiempo estimado de fabricaci\u00f3n e instalaci\u00f3n es de <strong>5 a 7 d\u00edas h\u00e1biles</strong> contados a partir de la recepci\u00f3n del anticipo del 50 %. BarrCan notificar\u00e1 con anticipaci\u00f3n si la carga de trabajo no permitiera cumplir con dicho plazo.'
+    + '</div>'
+    + '<table style="width:100%;margin-top:24px"><tr>'
+    + '<td style="width:44%;padding:50px 12px 8px;border-top:1.5px solid #999;font-size:9pt;color:#555;text-align:center">Firma y nombre del cliente<br>Fecha: ___________________</td>'
+    + '<td style="width:12%"></td>'
+    + '<td style="width:44%;padding:50px 12px 8px;border-top:1.5px solid #999;font-size:9pt;color:#555;text-align:center">Sello y firma BarrCan<br><span style="font-family:\'Courier New\',monospace;font-size:8pt;color:#1B3A5C">' + esc(folio) + '</span></td>'
+    + '</tr></table>'
+    + '<div style="font-size:7.5pt;color:#aaa;text-align:center;margin-top:16px;border-top:1px solid #eee;padding-top:8px">'
+    + 'El presente presupuesto contempla los trabajos antes descritos. Cualquier trabajo adicional se cotizar\u00e1 por separado. Estos precios est\u00e1n sujetos a cambios sin previo aviso. &nbsp;\u00b7&nbsp; ' + esc(folio)
+    + '</div>'
     + '</div>'
     + '</div></div></body></html>';
 }
@@ -910,7 +1005,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v2.4';
+var APP_VERSION = 'v2.5';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -1954,7 +2049,7 @@ async function cbCargarHistorial() {
   if (!sb()) return;
   try {
     var res = await sb().from('presupuestos_atrasados')
-      .select('folio,cliente,descripcion,monto,estado,fecha')
+      .select('folio,cliente,descripcion,monto,estado,fecha,dir,tel,notas_internas')
       .in('estado', ['activo','aprobado','en_produccion','pendiente_entrega'])
       .ilike('descripcion', '%cancel%')
       .order('created_at', { ascending: false }).limit(10);
@@ -1977,12 +2072,42 @@ async function cbCargarHistorial() {
         + '<div style="font-size:10px;color:var(--gray-400)">' + (p.fecha||'') + '</div>'
         + '</div>'
         + '</div>'
+        + '<button onclick="cbReimprimirPresupuesto(\'' + esc(p.folio) + '\')" style="margin-top:6px;width:100%;padding:6px;background:rgba(46,109,164,.08);border:1.5px solid rgba(46,109,164,.25);border-radius:6px;color:var(--blue);font-size:11px;font-weight:700;cursor:pointer">🖨️ Reimprimir</button>'
         + '</div>';
     });
     div.innerHTML = html;
   } catch(e) {
     div.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">Sin conexión</div>';
   }
+}
+
+// Reabre un presupuesto ya guardado para reimprimirlo -- antes NO
+// existía ninguna forma de hacer esto, la lista era solo informativa.
+// Reconstruye el documento COMPLETO de 4 páginas (precios, condiciones,
+// pagos/datos bancarios, firmas) usando las piezas guardadas en
+// notas_internas. Para presupuestos viejos sin piezas estructuradas
+// (cotizados antes de que existiera ese formato), cae a un solo
+// renglón con la descripción y el monto total, para no dejar la
+// pantalla en blanco.
+async function cbReimprimirPresupuesto(folio) {
+  if (!sb()) { toast('Sin conexión'); return; }
+  try {
+    var res = await sb().from('presupuestos_atrasados').select('folio,cliente,dir,fecha,notas_internas,monto,descripcion')
+      .eq('folio', folio).eq('eliminado', false).limit(1);
+    if (res.error) throw res.error;
+    var p = res.data && res.data[0];
+    if (!p) { toast('No se encontró el folio ' + folio); return; }
+    var items = [];
+    try { items = JSON.parse(p.notas_internas || '[]'); } catch(e) {}
+    if (!items || !items.length) {
+      items = [{ label: p.descripcion || 'Presupuesto', cantidad: 1, precio: parseFloat(p.monto) || 0, precioUnitario: parseFloat(p.monto) || 0 }];
+    }
+    var fechaObj = p.fecha ? new Date(p.fecha + 'T00:00:00') : new Date();
+    var htmlDoc = snGenerarDocumentoPresupuesto(items, p.folio, p.cliente, p.dir || '', fechaObj);
+    var win = window.open('', '_blank');
+    if (win) { win.document.write(htmlDoc); win.document.close(); }
+    else { toast('El navegador bloque\u00f3 la ventana -- permite pop-ups para este sitio'); }
+  } catch (e) { toast('Error al reimprimir: ' + e.message); }
 }
 
 // ── INIT ──────────────────────────────────────────────────────
