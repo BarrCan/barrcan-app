@@ -6,6 +6,19 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v2.20
+  FECHA   : 2026-08-28
+  v2.20 - FIX: el rediseño de bloques múltiples (v2.19) solo se había
+    aplicado al flujo automático (recordatorio/Mis actividades) --
+    "Captura histórica" se quedó con el sistema viejo de un solo
+    bloque por día, sobrescribiendo en vez de agregar. Ahora:
+    - Al elegir técnico/eventual + fecha, si ya hay algo guardado ese
+      día, se muestra arriba ("Ya hay actividades guardadas -- se
+      AGREGARÁ esta, no se reemplaza") antes de seguir capturando.
+    - Botón cambiado a "➕ Agregar esta actividad" / "✅ Listo" (antes
+      un solo "Guardar día" que sobrescribía).
+    - "Ver registros" y "Editar" ahora muestran/permiten agregar a
+      TODOS los bloques del día, no solo el más reciente.
   VERSION : v2.19
   FECHA   : 2026-08-28
   v2.19 - Rediseño importante: un día ahora puede tener VARIAS
@@ -487,11 +500,11 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
 
       <div id="ch-wrap-tecnico">
         <label style="font-size:12px;color:#5F5E5A;display:block;margin-bottom:4px">Técnico</label>
-        <select id="ch-tecnico" style="width:100%;padding:9px;border:1.5px solid #DDD9D2;border-radius:8px;font-size:13px;margin-bottom:12px;color:#1B3A5C"></select>
+        <select id="ch-tecnico" onchange="chVerificarExistente()" style="width:100%;padding:9px;border:1.5px solid #DDD9D2;border-radius:8px;font-size:13px;margin-bottom:12px;color:#1B3A5C"></select>
       </div>
       <div id="ch-wrap-eventual" style="display:none">
         <label style="font-size:12px;color:#5F5E5A;display:block;margin-bottom:4px">Nombre del eventual</label>
-        <input type="text" id="ch-eventual-nombre" list="ch-eventuales-datalist" placeholder="Ej: Ricardo" style="width:100%;padding:9px;border:1.5px solid #DDD9D2;border-radius:8px;font-size:13px;margin-bottom:12px;color:#1B3A5C;box-sizing:border-box">
+        <input type="text" id="ch-eventual-nombre" list="ch-eventuales-datalist" onchange="chVerificarExistente()" placeholder="Ej: Ricardo" style="width:100%;padding:9px;border:1.5px solid #DDD9D2;border-radius:8px;font-size:13px;margin-bottom:12px;color:#1B3A5C;box-sizing:border-box">
         <datalist id="ch-eventuales-datalist"></datalist>
       </div>
 
@@ -500,7 +513,9 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
       <datalist id="ch-folios-datalist"></datalist>
 
       <label style="font-size:12px;color:#5F5E5A;display:block;margin-bottom:4px">Fecha</label>
-      <input type="date" id="ch-fecha" style="width:100%;padding:9px;border:1.5px solid #DDD9D2;border-radius:8px;font-size:13px;margin-bottom:14px;color:#1B3A5C">
+      <input type="date" id="ch-fecha" onchange="chVerificarExistente()" style="width:100%;padding:9px;border:1.5px solid #DDD9D2;border-radius:8px;font-size:13px;margin-bottom:14px;color:#1B3A5C">
+
+      <div id="ch-bloques-existentes" style="display:none;margin-bottom:14px"></div>
 
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
         <button type="button" id="ch-tab-taller" onclick="chMostrarCategoria('taller')" style="flex:1 1 30%;min-width:90px;padding:9px 4px;border-radius:8px;border:1.5px solid #1B3A5C;background:#1B3A5C;color:#fff;font-size:11px;font-weight:700;cursor:pointer">🔧 Taller</button>
@@ -533,7 +548,10 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
       <div id="ch-chips-obra" style="display:none;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
       <input id="ch-otro-obra" type="text" placeholder="Describe brevemente qué fue..." style="display:none;width:100%;padding:9px;border:1.5px solid #C8923A;border-radius:8px;font-size:12.5px;margin-bottom:14px;color:#1B3A5C;box-sizing:border-box">
 
-      <button type="button" onclick="chGuardar()" style="width:100%;padding:11px;background:#C8923A;border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">Guardar día</button>
+      <div style="display:flex;gap:8px">
+        <button type="button" onclick="chGuardar()" style="flex:1;padding:11px;background:#C8923A;border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">➕ Agregar esta actividad</button>
+        <button type="button" onclick="chCerrar()" style="padding:11px 16px;background:#1B3A5C;border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:700;cursor:pointer">✅ Listo</button>
+      </div>
       </div>
     </div>
   </div>
@@ -717,7 +735,7 @@ function sb(){
 }
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
-var APP_VERSION = 'v2.19';
+var APP_VERSION = 'v2.20';
 var USUARIOS = [];
 var USUARIO_SEL = null;   // el que se está tratando de loguear
 var PIN_BUFFER = '';
@@ -1037,6 +1055,7 @@ function chSelQuien(tipo) {
   var bt = document.getElementById('ch-quien-tecnico'), be = document.getElementById('ch-quien-eventual');
   bt.style.background = tipo === 'tecnico' ? '#1B3A5C' : '#fff'; bt.style.color = tipo === 'tecnico' ? '#fff' : '#1B3A5C'; bt.style.borderColor = tipo === 'tecnico' ? '#1B3A5C' : '#DDD9D2';
   be.style.background = tipo === 'eventual' ? '#1B3A5C' : '#fff'; be.style.color = tipo === 'eventual' ? '#fff' : '#1B3A5C'; be.style.borderColor = tipo === 'eventual' ? '#1B3A5C' : '#DDD9D2';
+  chVerificarExistente();
 }
 
 async function chCargarSugerencias() {
@@ -1097,6 +1116,9 @@ async function crGuardar() {
   } catch (e) { alert('No se pudo guardar: ' + e.message); }
 }
 
+var CH_BLOQUES_ACTUALES = [];
+var CH_REGISTRO_ID_EXISTENTE = null;
+
 function chAbrir() {
   if (!USUARIO_SEL || USUARIO_SEL.id !== 'MAU') { alert('Esta opción es solo para Mau.'); return; }
   var sel = document.getElementById('ch-tecnico');
@@ -1112,11 +1134,47 @@ function chAbrir() {
   document.getElementById('ch-folio').value = '';
   chSelQuien('tecnico');
   CH_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [], instalaciones: [], obra: [] };
+  CH_BLOQUES_ACTUALES = [];
+  CH_REGISTRO_ID_EXISTENTE = null;
   chRenderChips();
+  document.getElementById('ch-bloques-existentes').style.display = 'none';
   chMostrarCategoria('taller');
   chCargarSugerencias();
   chVerFormulario();
   document.getElementById('modal-captura-historica').style.display = 'flex';
+}
+
+// Se dispara al elegir técnico/eventual o cambiar la fecha -- revisa
+// si YA existe un registro para esa combinación y, si tiene bloques,
+// los muestra arriba para que se AGREGUE a lo que ya hay, en vez de
+// pisarlo sin darse cuenta.
+async function chVerificarExistente() {
+  var fecha = document.getElementById('ch-fecha').value;
+  var tecnicoId = CH_QUIEN === 'eventual'
+    ? (document.getElementById('ch-eventual-nombre').value || '').trim()
+    : document.getElementById('ch-tecnico').value;
+  var cont = document.getElementById('ch-bloques-existentes');
+  if (!tecnicoId || !fecha || !sb()) { cont.style.display = 'none'; CH_BLOQUES_ACTUALES = []; CH_REGISTRO_ID_EXISTENTE = null; return; }
+  try {
+    var res = await sb().from('tecnico_entradas_dia').select('id,bloques').eq('tecnico_id', tecnicoId).eq('fecha', fecha).limit(1);
+    if (res.error) throw res.error;
+    var reg = res.data && res.data[0];
+    if (!reg) { cont.style.display = 'none'; CH_BLOQUES_ACTUALES = []; CH_REGISTRO_ID_EXISTENTE = null; return; }
+    CH_REGISTRO_ID_EXISTENTE = reg.id;
+    CH_BLOQUES_ACTUALES = reg.bloques || [];
+    if (CH_BLOQUES_ACTUALES.length) {
+      cont.innerHTML = '<div style="font-size:11.5px;font-weight:700;color:#5F5E5A;margin-bottom:6px">⚠️ Ya hay actividades guardadas ese día -- se AGREGARÁ esta, no se reemplaza:</div>'
+        + CH_BLOQUES_ACTUALES.map(function(b) {
+            var icono = CH_ICONOS_CAT[b.categoria] || '❓';
+            return '<div style="background:#F7F5F0;border-radius:6px;padding:6px 10px;margin-bottom:4px;font-size:11.5px;color:#5F5E5A">'
+              + icono + ' ' + (b.actividades || []).join(', ') + (b.folio_obra ? ' <span style="color:#888">(' + esc(b.folio_obra) + ')</span>' : '')
+              + '</div>';
+          }).join('');
+      cont.style.display = 'block';
+    } else {
+      cont.style.display = 'none';
+    }
+  } catch (e) { console.warn('[BarrCan] No se pudo verificar existente:', e.message); }
 }
 
 async function chCargarTecnicosReales() {
@@ -1225,7 +1283,7 @@ async function chCargarLista() {
   if (!sb()) { cont.innerHTML = '<div style="text-align:center;padding:16px;color:#999">Sin conexión</div>'; return; }
   var filtroTec = document.getElementById('ch-lista-filtro').value;
   try {
-    var q = sb().from('tecnico_entradas_dia').select('id,tecnico_id,tecnico_nombre,fecha,categoria,actividades,folio_obra,es_eventual,cerrado')
+    var q = sb().from('tecnico_entradas_dia').select('id,tecnico_id,tecnico_nombre,fecha,bloques,es_eventual,cerrado')
       .order('fecha', { ascending: false }).limit(60);
     if (filtroTec) q = q.eq('tecnico_id', filtroTec);
     var res = await q;
@@ -1235,15 +1293,21 @@ async function chCargarLista() {
     cont.innerHTML = datos.map(function(r) {
       var fd = new Date(r.fecha + 'T00:00:00');
       var fechaTxt = fd.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
-      var icono = CH_ICONOS_CAT[r.categoria] || '❓';
-      var actTxt = r.actividades && r.actividades.length ? r.actividades.join(', ') : (r.cerrado ? 'Sin actividades' : 'Sin cerrar');
+      var bloques = r.bloques || [];
+      var sinFolio = bloques.some(function(b) { return !b.folio_obra; });
+      var resumenBloques = bloques.length
+        ? bloques.map(function(b) {
+            var icono = CH_ICONOS_CAT[b.categoria] || '❓';
+            return '<div style="font-size:11.5px;color:#5F5E5A;padding:1px 0">' + icono + ' ' + (b.actividades || []).join(', ') + (b.folio_obra ? ' <span style="color:#888">(' + esc(b.folio_obra) + ')</span>' : ' <span style="color:#C0392B">(sin folio)</span>') + '</div>';
+          }).join('')
+        : '<div style="font-size:11.5px;color:#999">' + (r.cerrado ? 'Sin actividades' : 'Sin cerrar') + '</div>';
       return '<div onclick="chEditarRegistro(\'' + r.id + '\')" style="background:#F7F5F0;border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer">'
         + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">'
-        + '<span style="font-weight:700;color:#1B3A5C">' + fechaTxt + ' · ' + esc(r.tecnico_nombre || r.tecnico_id) + (r.es_eventual ? ' <span style="font-size:10px;color:#996A24">(eventual)</span>' : '') + '</span>'
+        + '<span style="font-weight:700;color:#1B3A5C">' + fechaTxt + ' · ' + esc(r.tecnico_nombre || r.tecnico_id) + (r.es_eventual ? ' <span style="font-size:10px;color:#996A24">(eventual)</span>' : '') + (bloques.length > 1 ? ' <span style="font-size:10px;color:#996A24">(' + bloques.length + ' actividades)</span>' : '') + '</span>'
         + '<span style="font-size:11px;color:#C8923A">✏️</span>'
         + '</div>'
-        + '<div style="color:#5F5E5A;font-size:11.5px">' + icono + ' ' + actTxt + '</div>'
-        + (r.folio_obra ? '<div style="font-size:10.5px;color:#888;margin-top:2px">📁 ' + esc(r.folio_obra) + '</div>' : '<div style="font-size:10.5px;color:#C0392B;margin-top:2px">⚠️ Sin folio de obra</div>')
+        + resumenBloques
+        + (sinFolio ? '<div style="font-size:10px;color:#C0392B;margin-top:3px">⚠️ Alguna actividad sin folio de obra</div>' : '')
         + '</div>';
     }).join('');
   } catch (e) { cont.innerHTML = '<div style="text-align:center;padding:16px;color:#999">Error: ' + e.message + '</div>'; }
@@ -1257,6 +1321,8 @@ async function chEditarRegistro(id) {
     var r = res.data;
     chVerFormulario();
     await chCargarTecnicosReales();
+    CH_REGISTRO_ID_EXISTENTE = r.id;
+    CH_BLOQUES_ACTUALES = r.bloques || [];
     if (r.es_eventual) {
       chSelQuien('eventual');
       document.getElementById('ch-eventual-nombre').value = r.tecnico_id;
@@ -1265,26 +1331,24 @@ async function chEditarRegistro(id) {
       document.getElementById('ch-tecnico').value = r.tecnico_id;
     }
     document.getElementById('ch-fecha').value = r.fecha;
-    document.getElementById('ch-folio').value = r.folio_obra || '';
+    document.getElementById('ch-folio').value = '';
     CH_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [], instalaciones: [], obra: [] };
     chRenderChips();
-    var cat = r.categoria || 'taller';
-    var otroDeGuardado = '';
-    (r.actividades || []).forEach(function(a) {
-      if (a.indexOf('Otro: ') === 0) { otroDeGuardado = a.slice(6); return; }
-      if (CH_SEL[cat]) CH_SEL[cat].push(a);
-    });
-    // Repintar chips activos
-    document.querySelectorAll('.ch-chip[data-cat="' + cat + '"]').forEach(function(btn) {
-      if (CH_SEL[cat].indexOf(btn.dataset.v) >= 0) { btn.style.background = '#1B3A5C'; btn.style.color = '#fff'; btn.style.borderColor = '#1B3A5C'; }
-    });
-    if (otroDeGuardado) {
-      var campo = document.getElementById('ch-otro-' + cat);
-      campo.value = otroDeGuardado; campo.style.display = 'block';
-      var btnO = document.querySelector('.ch-chip-otro[data-cat="' + cat + '"]');
-      if (btnO) { btnO.style.background = '#1B3A5C'; btnO.style.color = '#fff'; btnO.style.borderColor = '#1B3A5C'; }
+    chMostrarCategoria('taller');
+    // Mostrar lo que ya tiene guardado (modo AGREGAR, no reemplazar)
+    var cont = document.getElementById('ch-bloques-existentes');
+    if (CH_BLOQUES_ACTUALES.length) {
+      cont.innerHTML = '<div style="font-size:11.5px;font-weight:700;color:#5F5E5A;margin-bottom:6px">Ya tiene guardado ese día -- lo nuevo se AGREGA:</div>'
+        + CH_BLOQUES_ACTUALES.map(function(b) {
+            var icono = CH_ICONOS_CAT[b.categoria] || '❓';
+            return '<div style="background:#F7F5F0;border-radius:6px;padding:6px 10px;margin-bottom:4px;font-size:11.5px;color:#5F5E5A">'
+              + icono + ' ' + (b.actividades || []).join(', ') + (b.folio_obra ? ' <span style="color:#888">(' + esc(b.folio_obra) + ')</span>' : '')
+              + '</div>';
+          }).join('');
+      cont.style.display = 'block';
+    } else {
+      cont.style.display = 'none';
     }
-    chMostrarCategoria(cat);
     chCargarSugerencias();
   } catch (e) { alert('No se pudo abrir ese registro: ' + e.message); }
 }
@@ -1294,7 +1358,7 @@ async function chGuardar() {
   var cat = CH_CATEGORIA_ACTIVA;
   var folio = (document.getElementById('ch-folio').value || '').trim();
   var esEventual = CH_QUIEN === 'eventual';
-  var tecnicoId, nombreMostrar, u = null;
+  var tecnicoId, nombreMostrar;
   if (esEventual) {
     tecnicoId = (document.getElementById('ch-eventual-nombre').value || '').trim();
     nombreMostrar = tecnicoId;
@@ -1308,15 +1372,25 @@ async function chGuardar() {
   var actividades = CH_SEL[cat].slice();
   if (otroTxt) actividades.push('Otro: ' + otroTxt);
   if (!actividades.length) { alert('Elige al menos una actividad.'); return; }
+
+  var nuevoBloque = { categoria: cat, actividades: actividades, folio_obra: folio || null, otro_detalle: otroTxt || null, origen: 'manual' };
+  var bloquesFinal = CH_BLOQUES_ACTUALES.concat([nuevoBloque]);
+
   try {
     // Nota: hora_entrada queda con la hora de captura (ahora), no la
     // hora real de aquel día -- para historial retroactivo no se
     // conoce, se prioriza guardar qué se hizo por encima de la hora.
     var res = await sb().from('tecnico_entradas_dia')
-      .upsert({ tecnico_id: tecnicoId, tecnico_nombre: nombreMostrar, fecha: fecha, categoria: cat, actividades: actividades, otro_detalle: otroTxt || null, cerrado: true, folio_obra: folio || null, es_eventual: esEventual }, { onConflict: 'tecnico_id,fecha' });
+      .upsert({ tecnico_id: tecnicoId, tecnico_nombre: nombreMostrar, fecha: fecha, bloques: bloquesFinal, cerrado: true, es_eventual: esEventual }, { onConflict: 'tecnico_id,fecha' });
     if (res.error) throw res.error;
-    alert('Guardado: ' + fecha + ' -- ' + nombreMostrar + (folio ? ' (' + folio + ')' : ''));
-    chCerrar();
+    CH_BLOQUES_ACTUALES = bloquesFinal;
+    toast('✅ Agregado: ' + nombreMostrar + ' — ' + fecha + (folio ? ' (' + folio + ')' : ''));
+    // Limpiar solo la selección de chips/folio, para poder seguir
+    // agregando otra actividad del mismo técnico+fecha sin cerrar.
+    CH_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [], instalaciones: [], obra: [] };
+    chRenderChips();
+    document.getElementById('ch-folio').value = '';
+    chVerificarExistente();
   } catch (e) { alert('No se pudo guardar: ' + e.message); }
 }
 
