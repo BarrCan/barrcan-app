@@ -6,6 +6,15 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.13
+  FECHA   : 2026-08-28
+  v1.13 - Segunda pieza de "Compra rápida" (la primera está en
+    barrcan_brain.html): las capturas rápidas (borrador=true) ahora
+    salen marcadas con un badge naranja "⏳ COMPLETAR CON FACTURA
+    REAL" en la lista, más un aviso arriba contando cuántas hay
+    pendientes. El modal de editar factura (v1.12) ya tiene el
+    checkbox para desmarcarlas como completas en cuanto llegue la
+    factura real y se le agregue el folio/RFC correcto.
   VERSION : v1.12
   FECHA   : 2026-08-27
   v1.12 - Nueva edición de facturas (con comprobante y "sin
@@ -299,6 +308,8 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
         <div style="flex:1;text-align:center;font-weight:700;color:var(--navy);font-size:13px" id="fact-periodo-label">—</div>
         <button class="btn btn-sm" onclick="cmpPeriodoMover(1)" style="padding:6px 12px">▶</button>
       </div>
+
+      <div id="fact-borradores-aviso" style="display:none;background:rgba(230,126,34,.1);border-left:3px solid #E67E22;border-radius:8px;padding:8px 12px;margin-bottom:10px;font-size:12px;color:#E67E22;font-weight:700"></div>
 
       <!-- Resumen del periodo -->
       <div style="display:flex;gap:8px;margin-bottom:10px">
@@ -612,6 +623,11 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     <label class="form-label">Descripci&oacute;n <small style="font-weight:400;color:var(--gray-400)">(solo aplica a "sin comprobante")</small></label>
     <textarea class="form-input" id="me-descripcion" rows="2" style="resize:none"></textarea>
 
+    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:var(--gray-600);cursor:pointer">
+      <input type="checkbox" id="me-borrador" style="width:16px;height:16px">
+      Es una captura rápida, todavía sin la factura real completa
+    </label>
+
     <div style="display:flex;gap:8px;margin-top:8px">
       <button class="btn btn-primary" style="flex:1" onclick="cmpGuardarEdicionFactura()">Guardar cambios</button>
       <button class="btn" style="border:1.5px solid var(--gray-200);color:var(--gray-600)" onclick="document.getElementById('modal-editar-factura').style.display='none'">Cancelar</button>
@@ -636,7 +652,7 @@ var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
 
-var APP_VERSION = 'v1.12';
+var APP_VERSION = 'v1.13';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -776,6 +792,8 @@ function cmpAbrirEditarFactura(id) {
   document.getElementById('me-total').value = f.total || '';
   document.getElementById('me-moneda').value = f.moneda || 'MXN';
   document.getElementById('me-descripcion').value = f.descripcion || '';
+  var chkBorrador = document.getElementById('me-borrador');
+  if (chkBorrador) chkBorrador.checked = !!f.borrador;
   document.getElementById('modal-editar-factura').style.display = 'flex';
 }
 
@@ -788,10 +806,12 @@ async function cmpGuardarEdicionFactura() {
   var total     = parseFloat(document.getElementById('me-total').value) || 0;
   var moneda    = document.getElementById('me-moneda').value;
   var desc      = document.getElementById('me-descripcion').value.trim();
+  var chkBorrador = document.getElementById('me-borrador');
+  var borrador  = chkBorrador ? chkBorrador.checked : false;
 
   if (!total || total <= 0) { toast('El total debe ser mayor a $0'); return; }
 
-  var payload = { proveedor: proveedor || null, folio_factura: folio || null, fecha: fecha || null, total: total, moneda: moneda, descripcion: desc || null };
+  var payload = { proveedor: proveedor || null, folio_factura: folio || null, fecha: fecha || null, total: total, moneda: moneda, descripcion: desc || null, borrador: borrador };
 
   if (!sb()) { toast('Sin conexión, no se pudo guardar'); return; }
   try {
@@ -816,7 +836,7 @@ async function cmpCargarFacturas() {
     document.getElementById('fact-periodo-nav').style.display = PERIODO.tipo === 'todo' ? 'none' : 'flex';
 
     var q = sb().from('facturas_recibidas')
-      .select('id,fecha,rfc_emisor,proveedor,folio_factura,categoria,folio_obra,desglosada,subtotal,iva,total,con_comprobante,descripcion,moneda')
+      .select('id,fecha,rfc_emisor,proveedor,folio_factura,categoria,folio_obra,desglosada,subtotal,iva,total,con_comprobante,descripcion,moneda,borrador')
       .order('fecha', { ascending: false });
     if (rango.desde) q = q.gte('fecha', rango.desde);
     if (rango.hasta) q = q.lte('fecha', rango.hasta);
@@ -824,6 +844,15 @@ async function cmpCargarFacturas() {
     if (res.error) throw res.error;
     SYNC.online = true; detectar();
     FACT_CACHE = res.data || [];
+
+    var avisoDiv = document.getElementById('fact-borradores-aviso');
+    var pendientesBorrador = FACT_CACHE.filter(function(f) { return f.borrador; });
+    if (pendientesBorrador.length) {
+      avisoDiv.textContent = '⏳ ' + pendientesBorrador.length + ' compra(s) capturada(s) rápido, pendiente(s) de completar con la factura real';
+      avisoDiv.style.display = 'block';
+    } else {
+      avisoDiv.style.display = 'none';
+    }
 
     // Traer de una vez los artículos de TODAS las facturas desglosadas,
     // para poder mostrarlos directo en la lista sin tener que abrir cada
@@ -907,6 +936,7 @@ function cmpFiltrarFacturas() {
       + '<div style="margin-top:3px">'
       + '<span class="badge-cat ' + catClass(f.categoria) + '">' + esc(f.categoria||'—') + '</span>'
       + (f.con_comprobante === false ? ' <span style="display:inline-block;background:rgba(142,68,173,.12);color:#8E44AD;font-size:9px;font-weight:800;padding:2px 6px;border-radius:8px;vertical-align:middle">SIN COMPROBANTE</span>' : '')
+      + (f.borrador ? ' <span style="display:inline-block;background:rgba(230,126,34,.12);color:#E67E22;font-size:9px;font-weight:800;padding:2px 6px;border-radius:8px;vertical-align:middle">⏳ COMPLETAR CON FACTURA REAL</span>' : '')
       + (function() {
           var args = "'" + f.id + "','" + esc(f.proveedor).replace(/'/g,"\\'") + "','" + esc(f.folio_factura).replace(/'/g,"\\'") + "','" + esc(f.categoria||'').replace(/'/g,"\\'") + "','" + esc(f.folio_obra||'').replace(/'/g,"\\'") + "'," + (f.desglosada?'true':'false') + "," + (parseFloat(f.total)||0) + ",'" + esc(f.rfc_emisor||'').replace(/'/g,"\\'") + "'";
           if (esPnd) return ' <span class="chip-pnd" onclick="cmpAbrirClasificar(' + args + ')">Clasificar →</span>';
