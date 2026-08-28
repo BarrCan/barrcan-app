@@ -6,6 +6,18 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v2.11
+  FECHA   : 2026-08-27
+  v2.11 - FIX: "Captura histórica" (v2.10) le salía a Mau el mensaje
+    de "solo para el supremo" y no lo dejaba entrar. La tarjeta
+    (data-roles="supremo") sí estaba bien -- se ve vía nivelAcceso(),
+    que mapea id==='MAU' a 'supremo' dinámicamente. El bug real
+    estaba SOLO dentro de chAbrir(): comparaba directo contra
+    USUARIO_SEL.rol (que en la base real de Mau es 'admin', el campo
+    crudo -- 'supremo' no existe como valor de rol en usuarios_pin)
+    en vez de comparar por id==='MAU' como el resto de la app.
+    Reprobado con los datos reales de Mau (rol admin) y de Luis
+    (también admin, pero correctamente sigue bloqueado).
   VERSION : v2.10
   FECHA   : 2026-08-27
   v2.10 - Nueva tarjeta "🗓️ Captura histórica", visible SOLO para
@@ -394,7 +406,7 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
       <a class="modulo-card" href="visitas.html" data-roles="supremo,admin,tecnico,taller" id="card-visitas" style="position:relative"><div class="modulo-icono">📐</div><div class="modulo-nombre">Visitas</div><div class="modulo-desc">Levantamiento/medición</div><div id="badge-visitas" style="display:none;position:absolute;top:8px;right:8px;background:var(--gold,#C8923A);color:#fff;font-size:11px;font-weight:800;padding:2px 7px;border-radius:10px;min-width:18px;text-align:center"></div></a>
       <a class="modulo-card" href="historial.html" data-roles="supremo,admin"><div class="modulo-icono">📁</div><div class="modulo-nombre">Presupuestos</div><div class="modulo-desc">Historial y estados</div></a>
       <a class="modulo-card" href="garantias.html" data-roles="supremo,admin" id="card-garantias" style="position:relative"><div class="modulo-icono">🛡️</div><div class="modulo-nombre">Garantías</div><div class="modulo-desc">Tickets de postventa</div><div id="badge-garantias" style="display:none;position:absolute;top:8px;right:8px;background:var(--red,#C0392B);color:#fff;font-size:11px;font-weight:800;padding:2px 7px;border-radius:10px;min-width:18px;text-align:center"></div></a>
-      <a class="modulo-card" href="#" onclick="chAbrir();return false;" data-roles="supremo"><div class="modulo-icono">🗓️</div><div class="modulo-nombre">Captura histórica</div><div class="modulo-desc">Completar días pasados</div></a>
+      <a class="modulo-card" href="#" onclick="chAbrir();return false;" data-roles="supremo" id="card-captura-historica"><div class="modulo-icono">🗓️</div><div class="modulo-nombre">Captura histórica</div><div class="modulo-desc">Completar días pasados</div></a>
       <a class="modulo-card" href="#" onclick="raAbrirManual();return false;" data-roles="supremo,admin,tecnico,taller"><div class="modulo-icono">📋</div><div class="modulo-nombre">Mis actividades</div><div class="modulo-desc">Taller / Stand / Compras de hoy</div></a>
       <a class="modulo-card" href="ordenes.html" data-roles="supremo,admin,tecnico,taller"><div class="modulo-icono">🛠️</div><div class="modulo-nombre">Órdenes</div><div class="modulo-desc">Asignar instalación</div></a>
       <a class="modulo-card" href="entregas.html" data-roles="supremo,admin,tecnico,taller" id="card-entregas" style="position:relative"><div class="modulo-icono">📦</div><div class="modulo-nombre">Entregas</div><div class="modulo-desc">Comprobantes</div><div id="badge-entregas" style="display:none;position:absolute;top:8px;right:8px;background:var(--gold,#C8923A);color:#fff;font-size:11px;font-weight:800;padding:2px 7px;border-radius:10px;min-width:18px;text-align:center"></div></a>
@@ -501,7 +513,7 @@ function sb(){
 }
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
-var APP_VERSION = 'v2.10';
+var APP_VERSION = 'v2.11';
 var USUARIOS = [];
 var USUARIO_SEL = null;   // el que se está tratando de loguear
 var PIN_BUFFER = '';
@@ -813,7 +825,7 @@ var CH_SEL = { taller: [], stand: [], compras: [] };
 var CH_CATEGORIA_ACTIVA = 'taller';
 
 function chAbrir() {
-  if (!USUARIO_SEL || USUARIO_SEL.rol !== 'supremo') { alert('Esta opción es solo para el supremo.'); return; }
+  if (!USUARIO_SEL || USUARIO_SEL.id !== 'MAU') { alert('Esta opción es solo para Mau.'); return; }
   var sel = document.getElementById('ch-tecnico');
   sel.innerHTML = USUARIOS.map(function(u) { return '<option value="' + u.id + '">' + esc(u.apodo || u.nombre) + '</option>'; }).join('');
   document.getElementById('ch-fecha').value = _fechaLocalHoy();
