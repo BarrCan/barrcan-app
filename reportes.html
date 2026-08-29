@@ -6,6 +6,31 @@
 <title>BarrCan · Reportes</title>
 <!--
   BARRCAN · MODULO: REPORTES (standalone)
+  VERSION : v2.5
+  FECHA   : 2026-08-28
+  v2.5 - Nuevo "🔗 Combinar con otro(s) proyecto(s)" en "Buscar un
+    proyecto en específico": para juntar el gasto de varios folios
+    relacionados (ej. dos partes del mismo Stand/evento) en un solo
+    desglose sumado -- se agregan como chips, se pueden quitar, y
+    "Ver combinado" muestra todo junto (materiales + mano de obra
+    técnicos + eventuales de todos los folios). El botón de imprimir
+    ya existente funciona igual con la vista combinada. Probado y
+    confirmado exacto con STAN-001A + STAN-002A.
+  VERSION : v2.4
+  FECHA   : 2026-08-28
+  v2.4 - "Buscar un proyecto en específico" (el que se usa para
+    entregar el reporte de gasto de un proyecto, ej. Stands) ahora
+    incluye mano de obra -- antes solo mostraba materiales. Dos
+    categorías nuevas: "MANO DE OBRA (TÉCNICOS)" (mismo cálculo por
+    bloques que Ganancia por obra) y "MANO DE OBRA (EVENTUALES)"
+    (pagos_eventuales.folio_relacionado). Probado y confirmado exacto
+    con datos reales de STAN-002A: $1,250 de Luis + $5,050 de 7 pagos
+    a eventuales (Oswaldo/Gibran/Ricardo).
+    NOTA para STAN-001A: su única actividad (27-ago) cae en una
+    semana de sueldo que todavía no se ha capturado en el módulo de
+    Técnicos → Pagos -- en cuanto se capture ahí, va a aparecer solo
+    aquí, sin tocar nada más (el reporte consulta todo en vivo, no
+    hay ningún cálculo guardado que actualizar).
   VERSION : v2.3
   FECHA   : 2026-08-28
   v2.3 - El sueldo de técnicos por fin aparece EXACTO en Ganancia por
@@ -285,6 +310,18 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
       <input type="text" class="form-input" id="rp-buscar-obra" list="rp-obras-datalist"
         placeholder="Escribe folio o cliente… ej. STAN, CACN-100A, Juan Pérez" oninput="rpBuscarObraInput()" style="margin-bottom:4px">
       <datalist id="rp-obras-datalist"></datalist>
+
+      <div id="rp-combinar-wrap" style="margin-bottom:4px">
+        <button type="button" onclick="rpToggleCombinar()" id="rp-btn-combinar" style="font-size:11px;color:var(--blue);background:none;border:none;padding:4px 0;cursor:pointer;text-decoration:underline">🔗 Combinar con otro(s) proyecto(s)</button>
+        <div id="rp-combinar-panel" style="display:none;background:#F7F8FA;border-radius:8px;padding:10px;margin-top:6px">
+          <div style="font-size:10px;color:var(--gray-400);margin-bottom:6px">Para juntar el gasto de varios folios relacionados (ej. dos partes del mismo evento) en un solo total.</div>
+          <input type="text" id="rp-combinar-input" list="rp-obras-datalist" placeholder="Escribe otro folio y toca +" style="width:100%;padding:7px;border:1.5px solid var(--gray-200);border-radius:6px;font-size:12px;margin-bottom:6px;box-sizing:border-box">
+          <button type="button" onclick="rpCombinarAgregar()" style="width:100%;padding:7px;background:var(--navy);color:#fff;border:none;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;margin-bottom:8px">➕ Agregar a la combinación</button>
+          <div id="rp-combinar-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px"></div>
+          <button type="button" onclick="rpCombinarVer()" style="width:100%;padding:9px;background:var(--gold,#C8923A);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer">Ver combinado</button>
+        </div>
+      </div>
+
       <div id="rp-detalle-proyecto"></div>
     </div>
     <div class="card">
@@ -382,7 +419,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 </div>
 </body>
 <script>
-var APP_VERSION = 'v2.3';
+var APP_VERSION = 'v2.5';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb=null;
@@ -947,7 +984,46 @@ function rpImprimirDetalleProyecto() {
   if (w) { w.document.write(htmlDoc); w.document.close(); }
 }
 
-async function rpMostrarDetalleObra(folio) {
+// ── Combinar varios proyectos en un solo desglose ────────────────
+var RP_COMBINAR_FOLIOS = [];
+
+function rpToggleCombinar() {
+  var panel = document.getElementById('rp-combinar-panel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+}
+
+function rpCombinarAgregar() {
+  var input = document.getElementById('rp-combinar-input');
+  var val = (input.value || '').trim();
+  if (!val) return;
+  if (RP_COMBINAR_FOLIOS.indexOf(val) < 0) RP_COMBINAR_FOLIOS.push(val);
+  input.value = '';
+  rpRenderCombinarChips();
+}
+
+function rpCombinarQuitar(folio) {
+  RP_COMBINAR_FOLIOS = RP_COMBINAR_FOLIOS.filter(function(f) { return f !== folio; });
+  rpRenderCombinarChips();
+}
+
+function rpRenderCombinarChips() {
+  var cont = document.getElementById('rp-combinar-chips');
+  cont.innerHTML = RP_COMBINAR_FOLIOS.map(function(f) {
+    return '<span style="display:inline-flex;align-items:center;gap:5px;padding:5px 8px;background:#fff;border:1.5px solid var(--gray-200);border-radius:16px;font-size:11px;color:var(--navy)">'
+      + esc(f) + '<button type="button" onclick="rpCombinarQuitar(\'' + esc(f).replace(/'/g, "\\'") + '\')" style="background:none;border:none;color:#C0392B;cursor:pointer;font-weight:700;padding:0">✕</button></span>';
+  }).join('');
+}
+
+function rpCombinarVer() {
+  if (RP_COMBINAR_FOLIOS.length < 2) { alert('Agrega al menos 2 folios para combinar.'); return; }
+  return rpMostrarDetalleObra(RP_COMBINAR_FOLIOS.slice());
+}
+
+async function rpMostrarDetalleObra(folioOFolios) {
+  // Acepta un folio (string) o varios (array) -- para "combinar"
+  // proyectos relacionados (ej. dos folios del mismo evento/Stand)
+  // en un solo desglose sumado.
+  var folios = Array.isArray(folioOFolios) ? folioOFolios : [folioOFolios];
   var cont = document.getElementById('rp-detalle-proyecto');
   cont.innerHTML = '<div style="text-align:center;padding:16px;color:var(--gray-400)">Cargando artículos comprados…</div>';
   if (!sb()) return;
@@ -956,7 +1032,7 @@ async function rpMostrarDetalleObra(folio) {
     // Fuente 1: facturas simples (una sola obra, categoría directa en la factura)
     var resSimples = await sb().from('facturas_recibidas')
       .select('proveedor,categoria,total,fecha,descripcion')
-      .eq('folio_obra', folio).eq('desglosada', false);
+      .in('folio_obra', folios).eq('desglosada', false);
     if (resSimples.error) throw resSimples.error;
 
     // Fuente 2: artículos individuales de facturas desglosadas (varias
@@ -964,7 +1040,7 @@ async function rpMostrarDetalleObra(folio) {
     // padre vía el join.
     var resConceptos = await sb().from('facturas_conceptos')
       .select('descripcion,cantidad,precio_unitario,importe,folio_obra,facturas_recibidas(categoria,proveedor,fecha)')
-      .eq('folio_obra', folio);
+      .in('folio_obra', folios);
     if (resConceptos.error) throw resConceptos.error;
 
     var porCategoria = {}; // { categoria: { cantidad, monto, items:[{desc,cant,monto,proveedor,fecha}] } }
@@ -990,9 +1066,47 @@ async function rpMostrarDetalleObra(folio) {
       });
     });
 
+    // Fuente 3: mano de obra -- técnicos de planta (mismo cálculo por
+    // bloques que Ganancia por obra: cada bloque de actividad de ese
+    // folio reparte su parte proporcional del sueldo semanal) y
+    // eventuales ligados directo al folio. Antes esta pantalla solo
+    // mostraba materiales -- caso real que lo motivó: el reporte de
+    // STAN-001/002 no traía nada de sueldos.
+    try {
+      var resPagosTec2 = await sb().from('pagos_tecnicos').select('tecnico_id,tecnico_nombre,semana_inicio,semana_fin,monto');
+      var resEntradas2 = await sb().from('tecnico_entradas_dia').select('tecnico_id,tecnico_nombre,fecha,bloques');
+      if (!resPagosTec2.error && !resEntradas2.error) {
+        var entradas2 = resEntradas2.data || [];
+        (resPagosTec2.data || []).forEach(function(pt) {
+          var diasSemana = entradas2.filter(function(e) {
+            return e.tecnico_id === pt.tecnico_id && e.fecha >= pt.semana_inicio && e.fecha <= pt.semana_fin;
+          });
+          var todosLosBloques = [];
+          diasSemana.forEach(function(d) { (d.bloques || []).forEach(function(b) { todosLosBloques.push(b); }); });
+          if (!todosLosBloques.length) return;
+          var parte = (parseFloat(pt.monto) || 0) / todosLosBloques.length;
+          var bloquesDeEstosFolios = todosLosBloques.filter(function(b) { return b.folio_obra && folios.indexOf(b.folio_obra) >= 0; });
+          if (!bloquesDeEstosFolios.length) return;
+          addItem('MANO DE OBRA (TÉCNICOS)', {
+            desc: (pt.tecnico_nombre || pt.tecnico_id) + ' -- ' + bloquesDeEstosFolios.map(function(b) { return (b.actividades || []).join(', '); }).join(' / '),
+            cant: 1, monto: parte * bloquesDeEstosFolios.length,
+            proveedor: pt.tecnico_nombre || pt.tecnico_id, fecha: pt.semana_inicio + ' al ' + pt.semana_fin
+          });
+        });
+      }
+      var resEvent2 = await sb().from('pagos_eventuales').select('nombre,monto,fecha,evento').in('folio_relacionado', folios);
+      if (!resEvent2.error) (resEvent2.data || []).forEach(function(ev) {
+        addItem('MANO DE OBRA (EVENTUALES)', {
+          desc: (ev.nombre || 'Eventual') + (ev.evento ? ' -- ' + ev.evento : ''), cant: 1,
+          monto: parseFloat(ev.monto || 0), proveedor: ev.nombre, fecha: ev.fecha
+        });
+      });
+    } catch (eManoObra) { console.warn('[BarrCan] No se pudo agregar mano de obra al desglose:', eManoObra.message); }
+
     var categorias = Object.keys(porCategoria);
+    var tituloFolios = folios.join(' + ');
     if (!categorias.length) {
-      cont.innerHTML = '<div style="text-align:center;padding:16px;color:var(--gray-400)">Sin compras registradas para <b>' + esc(folio) + '</b> todavía.</div>';
+      cont.innerHTML = '<div style="text-align:center;padding:16px;color:var(--gray-400)">Sin compras registradas para <b>' + esc(tituloFolios) + '</b> todavía.</div>';
       return;
     }
     categorias.sort(function(a, b) { return porCategoria[b].monto - porCategoria[a].monto; });
@@ -1001,11 +1115,11 @@ async function rpMostrarDetalleObra(folio) {
 
     // Se guarda para poder imprimir exactamente esta misma vista, sin
     // tener que volver a consultar todo.
-    RP_DETALLE_PROYECTO_CACHE = { folio: folio, categorias: categorias, porCategoria: porCategoria, totalMonto: totalMonto };
+    RP_DETALLE_PROYECTO_CACHE = { folio: tituloFolios, folios: folios, categorias: categorias, porCategoria: porCategoria, totalMonto: totalMonto };
 
     cont.innerHTML =
       '<div class="seccion-titulo" style="margin-top:12px;display:flex;flex-direction:column;gap:8px">'
-      + '<span>📦 ' + esc(folio) + ' — Total comprado: ' + fmt(totalMonto) + '</span>'
+      + '<span>📦 ' + esc(tituloFolios) + ' — Total comprado: ' + fmt(totalMonto) + '</span>'
       + '<button onclick="rpImprimirDetalleProyecto()" style="width:100%;padding:9px;background:rgba(27,58,92,.06);border:1.5px solid rgba(27,58,92,.15);border-radius:6px;color:var(--navy);font-size:12px;font-weight:700;cursor:pointer">🖨️ Imprimir este desglose</button>'
       + '</div>' +
       categorias.map(function(cat) {
