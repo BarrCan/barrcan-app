@@ -6,6 +6,16 @@
 <title>BarrCan · Reportes</title>
 <!--
   BARRCAN · MODULO: REPORTES (standalone)
+  VERSION : v2.6
+  FECHA   : 2026-08-28
+  v2.6 - FIX: "🔗 Combinar con otro(s) proyecto(s)" (v2.5) guardaba
+    el texto completo del datalist ("folio — cliente") en vez de solo
+    el folio -- por eso "Ver combinado" siempre salía en "Sin
+    compras registradas", aunque el folio sí existiera. Ahora se
+    corta directo el texto por el separador " — ", sin depender de
+    que coincida exacto con el catálogo (que fallaba si el nombre
+    del cliente venía truncado/parcial). Reprobado con el texto
+    exacto reportado -- ya encuentra las compras correctas.
   VERSION : v2.5
   FECHA   : 2026-08-28
   v2.5 - Nuevo "🔗 Combinar con otro(s) proyecto(s)" en "Buscar un
@@ -419,7 +429,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 </div>
 </body>
 <script>
-var APP_VERSION = 'v2.5';
+var APP_VERSION = 'v2.6';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb=null;
@@ -996,7 +1006,12 @@ function rpCombinarAgregar() {
   var input = document.getElementById('rp-combinar-input');
   var val = (input.value || '').trim();
   if (!val) return;
-  if (RP_COMBINAR_FOLIOS.indexOf(val) < 0) RP_COMBINAR_FOLIOS.push(val);
+  // El folio siempre va ANTES del " — cliente" en el datalist -- se
+  // corta ahí directo, sin depender de que coincida exacto con el
+  // catálogo completo (que fallaba si el texto venía parcial o
+  // truncado, como pasó con un nombre de cliente cortado a la mitad).
+  var folioReal = val.split(' — ')[0].trim();
+  if (RP_COMBINAR_FOLIOS.indexOf(folioReal) < 0) RP_COMBINAR_FOLIOS.push(folioReal);
   input.value = '';
   rpRenderCombinarChips();
 }
