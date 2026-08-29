@@ -1359,7 +1359,7 @@ body{background:var(--off-white)}
           <span>Descuento al cliente</span>
           <span id="inp-descuento-label" style="color:var(--red);font-weight:700">0%</span>
         </label>
-        <input type="range" id="inp-descuento" min="0" max="30" step="1" value="0"
+        <input type="range" id="inp-descuento" min="0" max="10" step="1" value="0"
           style="width:100%;margin:4px 0"
           oninput="document.getElementById('inp-descuento-label').textContent=this.value+'%'">
       </div>
@@ -5231,7 +5231,7 @@ function sb(){
 }
 
 // ── Auxiliares del app base ────────────────────────────────
-const APP_VERSION = 'v1.6.0';
+const APP_VERSION = 'v1.6.1';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
