@@ -6,6 +6,27 @@
 <title>BarrCan · Reportes</title>
 <!--
   BARRCAN · MODULO: REPORTES (standalone)
+  VERSION : v2.7
+  FECHA   : 2026-08-29
+  v2.7 - FIX CRÍTICO -- causa raíz encontrada de por qué el sueldo de
+    Luis y Mauricio NUNCA aparecía en los reportes (solo eventuales):
+    la consulta a pagos_tecnicos pedía la columna "tecnico_nombre",
+    que NO EXISTE en esa tabla -- eso hacía fallar la consulta
+    completa en SILENCIO (el código solo salta el bloque si hay
+    error, sin avisar nada), así que el cálculo de técnicos nunca
+    corría. Corregido: ya no se pide esa columna; el nombre se arma
+    con un mapa fijo (HER/MAU/RAM → nombre real), igual criterio que
+    el resto de la app. Confirmado con datos reales: STAN-001A ahora
+    sale con $3,541.67 de técnicos, STAN-002A con $2,500.00, y varias
+    obras más de CACN.
+    De paso: corregido el límite de fecha entre semanas de pago
+    (antes usaba <= en ambos lados, duplicando el día exacto en que
+    una semana termina y la siguiente empieza -- ahora es medio
+    abierto, sin duplicar ni dejar huecos).
+    Hallazgo aparte (NO corregido todavía, anotado para después):
+    Ramón tiene pagos_tecnicos registrados bajo DOS ids distintos --
+    su UUID real (viejo) y "RAM" (nuevo) -- las semanas viejas con el
+    UUID nunca van a cruzar contra tecnico_entradas_dia, que usa RAM.
   VERSION : v2.6
   FECHA   : 2026-08-28
   v2.6 - FIX: "🔗 Combinar con otro(s) proyecto(s)" (v2.5) guardaba
@@ -429,7 +450,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 </div>
 </body>
 <script>
-var APP_VERSION = 'v2.6';
+var APP_VERSION = 'v2.7';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb=null;
@@ -706,6 +727,11 @@ async function rpImprimirReporteObra(folio) {
   }
 }
 
+// pagos_tecnicos no guarda el nombre, solo el id (HER/MAU/RAM) --
+// se usa el mismo roster real que el resto de la app.
+var RP_ROSTER_TECNICOS = { HER: 'Luis Enrique Barrera Espinosa', MAU: 'Mauricio Barrera Espinosa', RAM: 'Ramon' };
+function RP_NOMBRE_TECNICO(id) { return RP_ROSTER_TECNICOS[id] || id; }
+
 async function rpCargarGanancia() {
   var div = document.getElementById('rp-ganancia-lista');
   div.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">Cargando...</div>';
@@ -767,13 +793,13 @@ async function rpCargarGanancia() {
     // administrativo, mantenimiento del auto, etc.) son gasto
     // general de operar el negocio -- igual que el GIF/GA de los
     // cotizadores -- y NO se le cargan a ninguna obra particular.
-    var resPagosTec = await sb().from('pagos_tecnicos').select('tecnico_id,tecnico_nombre,semana_inicio,semana_fin,monto');
+    var resPagosTec = await sb().from('pagos_tecnicos').select('tecnico_id,semana_inicio,semana_fin,monto');
     var resEntradas = await sb().from('tecnico_entradas_dia').select('tecnico_id,fecha,bloques');
     if (!resPagosTec.error && !resEntradas.error) {
       var entradas = resEntradas.data || [];
       (resPagosTec.data || []).forEach(function(pt) {
         var diasSemana = entradas.filter(function(e) {
-          return e.tecnico_id === pt.tecnico_id && e.fecha >= pt.semana_inicio && e.fecha <= pt.semana_fin;
+          return e.tecnico_id === pt.tecnico_id && e.fecha >= pt.semana_inicio && e.fecha < pt.semana_fin;
         });
         var todosLosBloques = [];
         diasSemana.forEach(function(d) { (d.bloques || []).forEach(function(b) { todosLosBloques.push(b); }); });
@@ -784,7 +810,7 @@ async function rpCargarGanancia() {
           // suma a gastos generales para no perderlo del cálculo,
           // marcado para que se note que falta capturar.
           gastosGenerales.tecnicos += parseFloat(pt.monto) || 0;
-          gastosGenerales.detalleFaltante.push((pt.tecnico_nombre || pt.tecnico_id) + ' (' + pt.semana_inicio + ')');
+          gastosGenerales.detalleFaltante.push((RP_NOMBRE_TECNICO(pt.tecnico_id)) + ' (' + pt.semana_inicio + ')');
           return;
         }
 
@@ -1088,13 +1114,13 @@ async function rpMostrarDetalleObra(folioOFolios) {
     // mostraba materiales -- caso real que lo motivó: el reporte de
     // STAN-001/002 no traía nada de sueldos.
     try {
-      var resPagosTec2 = await sb().from('pagos_tecnicos').select('tecnico_id,tecnico_nombre,semana_inicio,semana_fin,monto');
+      var resPagosTec2 = await sb().from('pagos_tecnicos').select('tecnico_id,semana_inicio,semana_fin,monto');
       var resEntradas2 = await sb().from('tecnico_entradas_dia').select('tecnico_id,tecnico_nombre,fecha,bloques');
       if (!resPagosTec2.error && !resEntradas2.error) {
         var entradas2 = resEntradas2.data || [];
         (resPagosTec2.data || []).forEach(function(pt) {
           var diasSemana = entradas2.filter(function(e) {
-            return e.tecnico_id === pt.tecnico_id && e.fecha >= pt.semana_inicio && e.fecha <= pt.semana_fin;
+            return e.tecnico_id === pt.tecnico_id && e.fecha >= pt.semana_inicio && e.fecha < pt.semana_fin;
           });
           var todosLosBloques = [];
           diasSemana.forEach(function(d) { (d.bloques || []).forEach(function(b) { todosLosBloques.push(b); }); });
@@ -1103,9 +1129,9 @@ async function rpMostrarDetalleObra(folioOFolios) {
           var bloquesDeEstosFolios = todosLosBloques.filter(function(b) { return b.folio_obra && folios.indexOf(b.folio_obra) >= 0; });
           if (!bloquesDeEstosFolios.length) return;
           addItem('MANO DE OBRA (TÉCNICOS)', {
-            desc: (pt.tecnico_nombre || pt.tecnico_id) + ' -- ' + bloquesDeEstosFolios.map(function(b) { return (b.actividades || []).join(', '); }).join(' / '),
+            desc: (RP_NOMBRE_TECNICO(pt.tecnico_id)) + ' -- ' + bloquesDeEstosFolios.map(function(b) { return (b.actividades || []).join(', '); }).join(' / '),
             cant: 1, monto: parte * bloquesDeEstosFolios.length,
-            proveedor: pt.tecnico_nombre || pt.tecnico_id, fecha: pt.semana_inicio + ' al ' + pt.semana_fin
+            proveedor: RP_NOMBRE_TECNICO(pt.tecnico_id), fecha: pt.semana_inicio + ' al ' + pt.semana_fin
           });
         });
       }
