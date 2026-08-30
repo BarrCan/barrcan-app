@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>BarrCan &middot; Mensajes</title>
+<!--
+  BARRCAN · MODULO: MENSAJES LISTOS (standalone)
+  VERSION : v1.0
+  FECHA   : 2026-08-29
+  v1.0 - Creación inicial. Primero de los 3 huecos identificados al
+    comparar contra un producto genérico de "maletín digital del
+    vidriero" (catálogo WhatsApp, mensajes listos, guía de cuánto
+    cobrar) -- este es "mensajes listos".
+    10 plantillas en 4 categorías (Ventas, Pagos, Entrega/Instalación,
+    Postventa), cada una con variables que se llenan solas al elegir
+    un folio (cliente, monto, saldo, fecha). El texto queda editable
+    antes de enviar -- nunca se manda nada sin que la persona lo vea
+    y confirme primero. Botón para copiar o abrir WhatsApp directo
+    (usa el teléfono del cliente si existe en el presupuesto).
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+:root {
+  --navy: #1B3A5C;
+  --blue: #2E6DA4;
+  --gold: #C8923A;
+  --gold-light: #E8B96A;
+  --white: #FFFFFF;
+  --off-white: #F7F5F0;
+  --gray-100: #F0EDE8;
+  --gray-200: #DDD9D2;
+  --gray-400: #9A9590;
+  --gray-600: #5A5652;
+  --green: #2D7D46;
+  --red: #C0392B;
+  --shadow-sm: 0 2px 8px rgba(27,58,92,0.08);
+  --shadow-md: 0 8px 32px rgba(27,58,92,0.14);
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--off-white); color:var(--navy); overscroll-behavior:none; }
+#app { height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+.header { background:var(--navy); padding:0 20px; height:56px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; box-shadow:0 2px 12px rgba(0,0,0,.3); position:relative; z-index:100; }
+.header-logo { display:flex; align-items:center; gap:10px; }
+.logo-mark { width:32px; height:32px; background:linear-gradient(135deg,var(--gold),var(--gold-light)); border-radius:6px; display:flex; align-items:center; justify-content:center; font-family:'Playfair Display',serif; font-weight:900; font-size:16px; color:var(--navy); }
+.logo-text { font-family:'Playfair Display',serif; font-weight:700; font-size:18px; color:#fff; }
+.logo-sub { font-size:9px; color:var(--gold-light); letter-spacing:2px; text-transform:uppercase; display:block; margin-top:-3px; }
+.offline-badge { display:flex; align-items:center; gap:5px; background:rgba(200,146,58,.15); border:1px solid rgba(200,146,58,.3); border-radius:20px; padding:4px 10px; font-size:11px; color:var(--gold-light); font-weight:500; }
+.offline-dot { width:6px; height:6px; border-radius:50%; background:var(--gold-light); animation:pulse-dot 2s infinite; }
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
+.content { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:16px; }
+.section-title { font-family:'Playfair Display',serif; font-size:19px; font-weight:700; color:var(--navy); margin-bottom:3px; }
+.section-sub { font-size:11.5px; color:var(--gray-400); margin-bottom:14px; }
+.wizard-card { background:#fff; border-radius:var(--radius); padding:16px; margin-bottom:12px; box-shadow:var(--shadow-sm); }
+.form-label { display:block; font-size:11px; font-weight:600; color:var(--gray-600); margin-bottom:5px; }
+.form-input { width:100%; padding:10px 12px; border:1.5px solid var(--gray-200); border-radius:var(--radius-sm); font-family:'DM Sans',sans-serif; font-size:14px; color:var(--navy); background:var(--off-white); box-sizing:border-box; }
+.form-input:focus { outline:none; border-color:var(--blue); background:#fff; }
+.cat-tabs { display:flex; gap:6px; overflow-x:auto; margin-bottom:14px; padding-bottom:2px; }
+.cat-tab { flex-shrink:0; padding:8px 14px; border-radius:20px; border:1.5px solid var(--gray-200); background:#fff; font-size:12px; font-weight:600; color:var(--gray-600); cursor:pointer; white-space:nowrap; }
+.cat-tab.active { background:var(--navy); color:#fff; border-color:var(--navy); }
+.plantilla-card { background:#fff; border-radius:10px; padding:12px 14px; margin-bottom:8px; box-shadow:var(--shadow-sm); cursor:pointer; border:1.5px solid transparent; }
+.plantilla-card:active { border-color:var(--gold); }
+.plantilla-titulo { font-size:13px; font-weight:700; color:var(--navy); margin-bottom:3px; }
+.plantilla-preview { font-size:11px; color:var(--gray-400); line-height:1.4; }
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); z-index:2000; align-items:flex-end; justify-content:center; }
+.modal-overlay.visible { display:flex; }
+.modal-sheet { background:#fff; border-radius:16px 16px 0 0; padding:18px 16px 24px; width:100%; max-width:520px; max-height:90vh; overflow-y:auto; }
+.btn { padding:11px; border-radius:var(--radius-sm); font-size:13px; font-weight:700; cursor:pointer; border:none; text-align:center; }
+.btn-primary { background:var(--gold); color:#fff; }
+.btn-navy { background:var(--navy); color:#fff; }
+.btn-outline { background:none; border:1.5px solid var(--gray-200); color:var(--gray-600); }
+textarea.form-input { resize:vertical; min-height:130px; line-height:1.5; font-size:13.5px; }
+datalist {}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="header">
+    <div class="header-logo">
+      <div class="logo-mark">B</div>
+      <div><div class="logo-text">BarrCan</div><span class="logo-sub">Mensajes</span></div>
+    </div>
+    <div class="offline-badge"><span class="offline-dot"></span><span id="conn-status">Online</span></div>
+  </div>
+
+  <div class="content">
+    <div class="section-title">💬 Mensajes listos</div>
+    <div class="section-sub">Elige un folio (opcional) y una plantilla -- se llena sola, la revisas y la mandas.</div>
+
+    <div class="wizard-card">
+      <label class="form-label">Folio / cliente <span style="color:var(--gray-400);font-weight:400">(opcional -- si no eliges, se queda con [cliente] genérico)</span></label>
+      <input type="text" class="form-input" id="msj-folio-buscar" list="msj-folios-datalist" placeholder="Escribe folio o nombre del cliente…" oninput="msjBuscarFolio()">
+      <datalist id="msj-folios-datalist"></datalist>
+      <div id="msj-folio-seleccionado" style="display:none;margin-top:8px;padding:8px 10px;background:var(--off-white);border-radius:8px;font-size:11.5px;color:var(--gray-600)"></div>
+    </div>
+
+    <div class="cat-tabs" id="msj-cat-tabs"></div>
+    <div id="msj-lista-plantillas"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="msj-modal">
+  <div class="modal-sheet">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <span style="font-size:14px;font-weight:700;color:var(--navy)" id="msj-modal-titulo">Mensaje</span>
+      <button type="button" onclick="msjCerrarModal()" style="background:none;border:none;font-size:20px;color:#999;cursor:pointer">✕</button>
+    </div>
+    <label class="form-label">Teléfono del cliente <span style="color:var(--gray-400);font-weight:400">(10 dígitos, sin espacios)</span></label>
+    <input type="text" class="form-input" id="msj-tel" placeholder="Ej: 5512345678" style="margin-bottom:12px" inputmode="tel">
+
+    <label class="form-label">Mensaje <span style="color:var(--gray-400);font-weight:400">(edítalo si hace falta)</span></label>
+    <textarea class="form-input" id="msj-texto"></textarea>
+
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button type="button" class="btn btn-outline" style="flex:1" onclick="msjCopiar()">📋 Copiar</button>
+      <button type="button" class="btn btn-primary" style="flex:1.4" onclick="msjAbrirWhatsapp()">💬 Abrir WhatsApp</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var APP_VERSION = 'v1.0';
+var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
+var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
+var _sbClient=null;
+function sb(){
+  if(!_sbClient&&window.supabase){
+    _sbClient=window.supabase.createClient(SB_URL,SB_KEY,{db:{schema:'barrcan'},auth:{persistSession:true,storageKey:'barrcan_auth'}});
+  }
+  return _sbClient;
+}
+window.addEventListener('online', function(){detectarConexion();});
+window.addEventListener('offline',function(){detectarConexion();});
+function detectarConexion(){var b=document.getElementById('conn-status');if(b)b.textContent=(navigator.onLine?'Online':'Offline')+' · '+APP_VERSION;}
+function esc(s){return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function fmt(n){return Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:0,maximumFractionDigits:2});}
+function toast(msg,dur){dur=dur||2600;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
+
+// ── Plantillas ────────────────────────────────────────────────────
+var MSJ_CATEGORIAS = {
+  ventas: { emoji: '📋', nombre: 'Ventas' },
+  pagos: { emoji: '💰', nombre: 'Pagos' },
+  entrega: { emoji: '🚚', nombre: 'Entrega' },
+  postventa: { emoji: '⭐', nombre: 'Postventa' }
+};
+
+var MSJ_PLANTILLAS = [
+  { cat: 'ventas', titulo: 'Enviar cotización',
+    texto: 'Hola {cliente}, te comparto tu cotización folio {folio} por ${monto}. Cualquier duda quedo a tus órdenes 😊' },
+  { cat: 'ventas', titulo: 'Seguimiento a cotización sin respuesta',
+    texto: 'Hola {cliente}, ¿cómo estás? Solo para saber si tuviste oportunidad de revisar la cotización que te envié (folio {folio}). Quedo atento a tus comentarios 🙂' },
+  { cat: 'pagos', titulo: 'Confirmar anticipo recibido',
+    texto: '¡Gracias {cliente}! Confirmamos tu anticipo del folio {folio}. En cuanto tengamos fecha de instalación te avisamos.' },
+  { cat: 'pagos', titulo: 'Recordatorio de segundo pago',
+    texto: 'Hola {cliente}, te recuerdo que para poder agendar la instalación de tu folio {folio} necesitamos el segundo pago. Cualquier duda, aquí estoy 🙋' },
+  { cat: 'pagos', titulo: 'Recordatorio de saldo pendiente',
+    texto: 'Hola {cliente}, te comparto que tu folio {folio} tiene un saldo pendiente de ${saldo}. Quedo atento para coordinar el pago.' },
+  { cat: 'entrega', titulo: 'Confirmar fecha de instalación',
+    texto: 'Hola {cliente}, confirmamos tu instalación del folio {folio} para el día {fecha}. Cualquier cambio, avísanos con tiempo 🙏' },
+  { cat: 'entrega', titulo: 'Aviso: material listo',
+    texto: 'Hola {cliente}, tu material del folio {folio} ya está listo. Coordinamos fecha de entrega/instalación cuando gustes.' },
+  { cat: 'entrega', titulo: 'Aviso de ajuste de fecha',
+    texto: 'Hola {cliente}, te escribo para avisarte que tu instalación del folio {folio} va a tener un pequeño ajuste de fecha. Te contacto en cuanto tenga el nuevo día para coordinar contigo.' },
+  { cat: 'postventa', titulo: 'Agradecimiento + garantía',
+    texto: '¡Gracias por tu confianza, {cliente}! Tu folio {folio} cuenta con garantía -- cualquier detalle, aquí estamos para apoyarte.' },
+  { cat: 'postventa', titulo: 'Solicitar reseña',
+    texto: 'Hola {cliente}, nos encantaría que compartieras tu experiencia con nosotros dejando una reseña. ¡Gracias por confiar en BarrCan! 🙌' }
+];
+
+var MSJ_FOLIO_SEL = null; // {folio, cliente, tel, monto, saldo}
+var MSJ_CAT_ACTIVA = 'ventas';
+
+function msjRenderTabs() {
+  var cont = document.getElementById('msj-cat-tabs');
+  cont.innerHTML = Object.keys(MSJ_CATEGORIAS).map(function(k) {
+    var c = MSJ_CATEGORIAS[k];
+    return '<button type="button" class="cat-tab' + (k === MSJ_CAT_ACTIVA ? ' active' : '') + '" onclick="msjCambiarCat(\'' + k + '\')">' + c.emoji + ' ' + c.nombre + '</button>';
+  }).join('');
+}
+
+function msjCambiarCat(cat) {
+  MSJ_CAT_ACTIVA = cat;
+  msjRenderTabs();
+  msjRenderLista();
+}
+
+function msjRenderLista() {
+  var cont = document.getElementById('msj-lista-plantillas');
+  var items = MSJ_PLANTILLAS.filter(function(p) { return p.cat === MSJ_CAT_ACTIVA; });
+  cont.innerHTML = items.map(function(p, i) {
+    var idx = MSJ_PLANTILLAS.indexOf(p);
+    return '<div class="plantilla-card" onclick="msjAbrirPlantilla(' + idx + ')">'
+      + '<div class="plantilla-titulo">' + esc(p.titulo) + '</div>'
+      + '<div class="plantilla-preview">' + esc(p.texto.slice(0, 90)) + (p.texto.length > 90 ? '…' : '') + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+async function msjBuscarFolio() {
+  var q = (document.getElementById('msj-folio-buscar').value || '').trim();
+  if (q.length < 2 || !sb()) return;
+  try {
+    var res = await sb().from('presupuestos_atrasados').select('folio,cliente,tel,monto,saldo')
+      .or('folio.ilike.%' + q + '%,cliente.ilike.%' + q + '%').limit(20);
+    if (res.error) return;
+    document.getElementById('msj-folios-datalist').innerHTML = (res.data || [])
+      .map(function(p) { return '<option value="' + esc(p.folio) + ' — ' + esc(p.cliente) + '">'; }).join('');
+
+    var match = (res.data || []).filter(function(p) { return (p.folio + ' — ' + p.cliente) === q || p.folio === q; })[0];
+    if (match) {
+      MSJ_FOLIO_SEL = match;
+      var div = document.getElementById('msj-folio-seleccionado');
+      div.style.display = 'block';
+      div.innerHTML = '✅ ' + esc(match.cliente) + (match.tel ? ' · 📱 ' + esc(match.tel) : ' · <span style="color:var(--red)">sin teléfono guardado</span>');
+    }
+  } catch (e) { console.warn('[BarrCan] Error buscando folio:', e.message); }
+}
+
+function msjRellenar(texto) {
+  var hoy = new Date();
+  var fechaTxt = hoy.toLocaleDateString('es-MX', { day: 'numeric', month: 'long' });
+  var d = MSJ_FOLIO_SEL || {};
+  return texto
+    .replace(/{cliente}/g, d.cliente || '[cliente]')
+    .replace(/{folio}/g, d.folio || '[folio]')
+    .replace(/{monto}/g, (d.monto !== undefined && d.monto !== null) ? fmt(d.monto) : '[monto]')
+    .replace(/{saldo}/g, (d.saldo !== undefined && d.saldo !== null) ? fmt(d.saldo) : '[saldo]')
+    .replace(/{fecha}/g, fechaTxt);
+}
+
+function msjAbrirPlantilla(idx) {
+  var p = MSJ_PLANTILLAS[idx];
+  document.getElementById('msj-modal-titulo').textContent = p.titulo;
+  document.getElementById('msj-texto').value = msjRellenar(p.texto);
+  document.getElementById('msj-tel').value = (MSJ_FOLIO_SEL && MSJ_FOLIO_SEL.tel) ? MSJ_FOLIO_SEL.tel.replace(/\D/g, '') : '';
+  document.getElementById('msj-modal').classList.add('visible');
+}
+
+function msjCerrarModal() {
+  document.getElementById('msj-modal').classList.remove('visible');
+}
+
+function msjCopiar() {
+  var txt = document.getElementById('msj-texto').value;
+  navigator.clipboard.writeText(txt).then(function() {
+    toast('✅ Copiado -- pégalo donde lo necesites');
+  }).catch(function() {
+    toast('No se pudo copiar automático -- selecciona el texto a mano');
+  });
+}
+
+function msjAbrirWhatsapp() {
+  var tel = (document.getElementById('msj-tel').value || '').replace(/\D/g, '');
+  var txt = document.getElementById('msj-texto').value;
+  if (!tel || tel.length < 10) { toast('⚠️ Falta un teléfono válido (10 dígitos)'); return; }
+  var telConLada = tel.length === 10 ? '52' + tel : tel;
+  window.open('https://wa.me/' + telConLada + '?text=' + encodeURIComponent(txt), '_blank');
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  detectarConexion();
+  msjRenderTabs();
+  msjRenderLista();
+});
+</script>
+</body>
+</html>
