@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>BarrCan &middot; Log&iacute;stica</title>
+<!--
+  BARRCAN · MODULO: LOGISTICA FORANEA (standalone)
+  VERSION : v1.1
+  FECHA   : 2026-08-29
+  v1.1 - Se podía GUARDAR un cálculo, pero no había forma de volver a
+    verlo -- mismo patrón que ya se corrigió antes en otras partes de
+    la app. Nueva sección "📋 Cálculos guardados": lista los últimos
+    30, cada uno tocable para ver el desglose completo (gasolina,
+    casetas, día(s) de trabajo, empaque, margen de riesgo, total).
+  VERSION : v1.0
+  FECHA   : 2026-08-29
+  v1.0 - Creación inicial. Motivado por caso real: pedido de 18
+    espejos para una constructora en Querétaro -- el costo de envío
+    se puso a ojo ($2,500) sin desglosar transporte real, día de
+    trabajo, empaque ni margen de riesgo por rotura. Esta calculadora
+    separa cada componente (casetas + gasolina reales según distancia,
+    día(s) de trabajo, empaque, % de riesgo) y da un total transparente
+    -- se SUMA al precio que ya da el cotizador del producto, no lo
+    reemplaza. Guarda destinos frecuentes (ej. Querétaro) para no
+    volver a capturar distancia/casetas cada vez.
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+:root {
+  --navy: #1B3A5C; --blue: #2E6DA4; --gold: #C8923A; --gold-light: #E8B96A;
+  --white: #FFFFFF; --off-white: #F7F5F0; --gray-100: #F0EDE8; --gray-200: #DDD9D2;
+  --gray-400: #9A9590; --gray-600: #5A5652; --green: #2D7D46; --red: #C0392B;
+  --shadow-sm: 0 2px 8px rgba(27,58,92,0.08); --radius: 12px; --radius-sm: 8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--off-white); color:var(--navy); overscroll-behavior:none; }
+#app { height:100vh; display:flex; flex-direction:column; overflow:hidden; }
+.header { background:var(--navy); padding:0 20px; height:56px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; box-shadow:0 2px 12px rgba(0,0,0,.3); position:relative; z-index:100; }
+.header-logo { display:flex; align-items:center; gap:10px; }
+.logo-mark { width:32px; height:32px; background:linear-gradient(135deg,var(--gold),var(--gold-light)); border-radius:6px; display:flex; align-items:center; justify-content:center; font-family:'Playfair Display',serif; font-weight:900; font-size:16px; color:var(--navy); }
+.logo-text { font-family:'Playfair Display',serif; font-weight:700; font-size:18px; color:#fff; }
+.logo-sub { font-size:9px; color:var(--gold-light); letter-spacing:2px; text-transform:uppercase; display:block; margin-top:-3px; }
+.offline-badge { display:flex; align-items:center; gap:5px; background:rgba(200,146,58,.15); border:1px solid rgba(200,146,58,.3); border-radius:20px; padding:4px 10px; font-size:11px; color:var(--gold-light); font-weight:500; }
+.offline-dot { width:6px; height:6px; border-radius:50%; background:var(--gold-light); animation:pulse-dot 2s infinite; }
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
+.content { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:16px 16px 40px; }
+.section-title { font-family:'Playfair Display',serif; font-size:19px; font-weight:700; color:var(--navy); margin-bottom:3px; }
+.section-sub { font-size:11.5px; color:var(--gray-400); margin-bottom:14px; }
+.wizard-card { background:#fff; border-radius:var(--radius); padding:16px; margin-bottom:12px; box-shadow:var(--shadow-sm); }
+.card-titulo { font-size:12px; font-weight:700; color:var(--navy); text-transform:uppercase; letter-spacing:.4px; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+.form-label { display:block; font-size:11px; font-weight:600; color:var(--gray-600); margin-bottom:5px; }
+.form-input, select.form-input { width:100%; padding:10px 12px; border:1.5px solid var(--gray-200); border-radius:var(--radius-sm); font-family:'DM Sans',sans-serif; font-size:14px; color:var(--navy); background:var(--off-white); box-sizing:border-box; }
+.form-input:focus { outline:none; border-color:var(--blue); background:#fff; }
+.form-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.form-group { margin-bottom:10px; }
+.form-group:last-child { margin-bottom:0; }
+.btn { padding:11px; border-radius:var(--radius-sm); font-size:13px; font-weight:700; cursor:pointer; border:none; text-align:center; width:100%; }
+.btn-primary { background:var(--gold); color:#fff; }
+.btn-outline { background:none; border:1.5px solid var(--gray-200); color:var(--gray-600); }
+.desglose-row { display:flex; justify-content:space-between; align-items:center; padding:7px 0; font-size:12.5px; border-bottom:1px solid var(--gray-100); }
+.desglose-row:last-child { border-bottom:none; }
+.desglose-label { color:var(--gray-600); }
+.desglose-val { font-weight:700; color:var(--navy); }
+.total-box { background:var(--navy); border-radius:var(--radius); padding:16px; margin:14px 0; text-align:center; }
+.total-label { font-size:11px; color:var(--gold-light); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px; }
+.total-val { font-size:28px; font-weight:800; color:#fff; font-family:'Playfair Display',serif; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="header">
+    <div class="header-logo">
+      <div class="logo-mark">B</div>
+      <div><div class="logo-text">BarrCan</div><span class="logo-sub">Log&iacute;stica</span></div>
+    </div>
+    <div class="offline-badge"><span class="offline-dot"></span><span id="conn-status">Online</span></div>
+  </div>
+
+  <div class="content">
+    <div class="section-title">🚚 Calculadora de logística foránea</div>
+    <div class="section-sub">Para pedidos fuera de tu zona normal (volumen, otra ciudad). Este total se SUMA al precio del cotizador, no lo reemplaza.</div>
+
+    <div class="wizard-card">
+      <div class="card-titulo">📍 Destino</div>
+      <div class="form-group">
+        <label class="form-label">Elegir destino guardado, o escribe uno nuevo</label>
+        <input type="text" class="form-input" id="log-destino" list="log-destinos-datalist" placeholder="Ej: Querétaro" oninput="logCargarDestinoGuardado()">
+        <datalist id="log-destinos-datalist"></datalist>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Distancia (km, un sentido)</label>
+          <input type="number" class="form-input" id="log-distancia" inputmode="decimal" oninput="logCalcular()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Casetas (un sentido, $)</label>
+          <input type="number" class="form-input" id="log-casetas" inputmode="decimal" oninput="logCalcular()">
+        </div>
+      </div>
+      <button type="button" class="btn btn-outline" onclick="logGuardarDestino()" style="margin-top:6px">💾 Guardar este destino para la próxima vez</button>
+    </div>
+
+    <div class="wizard-card">
+      <div class="card-titulo">⛽ Combustible</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Rendimiento (km/l)</label>
+          <input type="number" class="form-input" id="log-rendimiento" value="10" inputmode="decimal" oninput="logCalcular()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Precio gasolina ($/l)</label>
+          <input type="number" class="form-input" id="log-precio-gas" value="24" inputmode="decimal" oninput="logCalcular()">
+        </div>
+      </div>
+      <div style="font-size:10.5px;color:var(--gray-400)">Rendimiento de 10 km/l es referencia para camioneta/van cargada -- ajústalo según tu vehículo real.</div>
+    </div>
+
+    <div class="wizard-card">
+      <div class="card-titulo">👷 Día(s) de trabajo</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Días completos</label>
+          <input type="number" class="form-input" id="log-dias" value="1" inputmode="decimal" oninput="logCalcular()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Costo por día ($)</label>
+          <input type="number" class="form-input" id="log-costo-dia" value="500" inputmode="decimal" oninput="logCalcular()">
+        </div>
+      </div>
+    </div>
+
+    <div class="wizard-card">
+      <div class="card-titulo">📦 Empaque y riesgo</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Empaque ($)</label>
+          <input type="number" class="form-input" id="log-empaque" value="0" inputmode="decimal" oninput="logCalcular()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Margen de riesgo (%)</label>
+          <input type="number" class="form-input" id="log-riesgo" value="5" inputmode="decimal" oninput="logCalcular()">
+        </div>
+      </div>
+    </div>
+
+    <div class="wizard-card">
+      <div class="card-titulo">🧾 Desglose</div>
+      <div id="log-desglose"></div>
+    </div>
+
+    <div class="total-box">
+      <div class="total-label">Total a sumar al cotizador</div>
+      <div class="total-val" id="log-total">$0</div>
+    </div>
+
+    <div class="wizard-card">
+      <div class="form-group">
+        <label class="form-label">Folio relacionado <span style="color:var(--gray-400);font-weight:400">(opcional)</span></label>
+        <input type="text" class="form-input" id="log-folio" placeholder="Ej: CACN-155A">
+      </div>
+      <button type="button" class="btn btn-primary" onclick="logGuardarCalculo()">💾 Guardar este cálculo</button>
+    </div>
+
+    <div class="wizard-card">
+      <div class="card-titulo">📋 Cálculos guardados <button type="button" onclick="logCargarHistorial()" style="margin-left:auto;background:none;border:none;color:var(--blue);font-size:11px;cursor:pointer;text-decoration:underline">🔄 Actualizar</button></div>
+      <div id="log-historial"><div style="text-align:center;padding:14px;color:var(--gray-400);font-size:12px">Cargando…</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="log-detalle-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;align-items:flex-end;justify-content:center">
+  <div style="background:#fff;border-radius:16px 16px 0 0;padding:18px 16px 24px;width:100%;max-width:520px;max-height:85vh;overflow-y:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <span id="log-detalle-titulo" style="font-size:14px;font-weight:700;color:var(--navy)"></span>
+      <button type="button" onclick="document.getElementById('log-detalle-modal').style.display='none'" style="background:none;border:none;font-size:20px;color:#999;cursor:pointer">✕</button>
+    </div>
+    <div id="log-detalle-cuerpo"></div>
+  </div>
+</div>
+
+<script>
+var APP_VERSION = 'v1.1';
+var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
+var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
+var _sbClient=null;
+function sb(){
+  if(!_sbClient&&window.supabase){
+    _sbClient=window.supabase.createClient(SB_URL,SB_KEY,{db:{schema:'barrcan'},auth:{persistSession:true,storageKey:'barrcan_auth'}});
+  }
+  return _sbClient;
+}
+window.addEventListener('online', function(){detectarConexion();});
+window.addEventListener('offline',function(){detectarConexion();});
+function detectarConexion(){var b=document.getElementById('conn-status');if(b)b.textContent=(navigator.onLine?'Online':'Offline')+' · '+APP_VERSION;}
+function esc(s){return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function fmt(n){return '$'+Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:0,maximumFractionDigits:2});}
+function toast(msg,dur){dur=dur||2600;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
+
+var LOG_DESTINOS_CACHE = [];
+
+async function logCargarDestinos() {
+  if (!sb()) return;
+  try {
+    var res = await sb().from('logistica_destinos').select('id,nombre,distancia_km,casetas_ida').order('nombre');
+    if (res.error) return;
+    LOG_DESTINOS_CACHE = res.data || [];
+    document.getElementById('log-destinos-datalist').innerHTML = LOG_DESTINOS_CACHE
+      .map(function(d) { return '<option value="' + esc(d.nombre) + '">'; }).join('');
+  } catch (e) { console.warn('[BarrCan] No se pudieron cargar destinos:', e.message); }
+}
+
+function logCargarDestinoGuardado() {
+  var nombre = document.getElementById('log-destino').value.trim();
+  var match = LOG_DESTINOS_CACHE.filter(function(d) { return d.nombre.toLowerCase() === nombre.toLowerCase(); })[0];
+  if (match) {
+    document.getElementById('log-distancia').value = match.distancia_km;
+    document.getElementById('log-casetas').value = match.casetas_ida;
+    logCalcular();
+    toast('✅ Destino cargado: ' + match.nombre);
+  }
+}
+
+async function logGuardarDestino() {
+  var nombre = document.getElementById('log-destino').value.trim();
+  var distancia = parseFloat(document.getElementById('log-distancia').value) || 0;
+  var casetas = parseFloat(document.getElementById('log-casetas').value) || 0;
+  if (!nombre || !distancia) { toast('Falta el nombre del destino o la distancia'); return; }
+  if (!sb()) { toast('Sin conexión'); return; }
+  try {
+    var res = await sb().from('logistica_destinos').insert([{ nombre: nombre, distancia_km: distancia, casetas_ida: casetas }]);
+    if (res.error) throw res.error;
+    toast('✅ ' + nombre + ' guardado para la próxima vez');
+    logCargarDestinos();
+  } catch (e) { toast('No se pudo guardar: ' + e.message); }
+}
+
+function logCalcularValores() {
+  var distancia = parseFloat(document.getElementById('log-distancia').value) || 0;
+  var casetasIda = parseFloat(document.getElementById('log-casetas').value) || 0;
+  var rendimiento = parseFloat(document.getElementById('log-rendimiento').value) || 1;
+  var precioGas = parseFloat(document.getElementById('log-precio-gas').value) || 0;
+  var dias = parseFloat(document.getElementById('log-dias').value) || 0;
+  var costoDia = parseFloat(document.getElementById('log-costo-dia').value) || 0;
+  var empaque = parseFloat(document.getElementById('log-empaque').value) || 0;
+  var riesgoPct = parseFloat(document.getElementById('log-riesgo').value) || 0;
+
+  var distanciaTotal = distancia * 2; // ida y vuelta
+  var litros = distanciaTotal / rendimiento;
+  var costoGasolina = litros * precioGas;
+  var costoCasetas = casetasIda * 2; // ida y vuelta
+  var costoDiasTotal = dias * costoDia;
+  var subtotal = costoGasolina + costoCasetas + costoDiasTotal + empaque;
+  var margenRiesgo = subtotal * (riesgoPct / 100);
+  var total = subtotal + margenRiesgo;
+
+  return { distanciaTotal: distanciaTotal, litros: litros, costoGasolina: costoGasolina, costoCasetas: costoCasetas,
+    costoDiasTotal: costoDiasTotal, empaque: empaque, margenRiesgo: margenRiesgo, total: total, dias: dias, costoDia: costoDia };
+}
+
+function logCalcular() {
+  var v = logCalcularValores();
+  document.getElementById('log-desglose').innerHTML =
+    '<div class="desglose-row"><span class="desglose-label">Gasolina (' + v.distanciaTotal.toLocaleString('es-MX') + ' km, ' + v.litros.toFixed(1) + ' l)</span><span class="desglose-val">' + fmt(v.costoGasolina) + '</span></div>' +
+    '<div class="desglose-row"><span class="desglose-label">Casetas (ida y vuelta)</span><span class="desglose-val">' + fmt(v.costoCasetas) + '</span></div>' +
+    '<div class="desglose-row"><span class="desglose-label">Día(s) de trabajo (' + v.dias + ' &times; ' + fmt(v.costoDia) + ')</span><span class="desglose-val">' + fmt(v.costoDiasTotal) + '</span></div>' +
+    '<div class="desglose-row"><span class="desglose-label">Empaque</span><span class="desglose-val">' + fmt(v.empaque) + '</span></div>' +
+    '<div class="desglose-row"><span class="desglose-label">Margen de riesgo</span><span class="desglose-val">' + fmt(v.margenRiesgo) + '</span></div>';
+  document.getElementById('log-total').textContent = fmt(v.total);
+}
+
+async function logGuardarCalculo() {
+  var v = logCalcularValores();
+  var destino = document.getElementById('log-destino').value.trim();
+  var folio = document.getElementById('log-folio').value.trim();
+  if (!sb()) { toast('Sin conexión'); return; }
+  try {
+    var res = await sb().from('logistica_calculos').insert([{
+      destino: destino || null, folio_relacionado: folio || null,
+      distancia_km: parseFloat(document.getElementById('log-distancia').value) || 0,
+      litros: v.litros, costo_gasolina: v.costoGasolina, costo_casetas: v.costoCasetas,
+      dias_trabajo: v.dias, costo_por_dia: v.costoDia, costo_empaque: v.empaque,
+      margen_riesgo_pct: parseFloat(document.getElementById('log-riesgo').value) || 0,
+      total: v.total
+    }]);
+    if (res.error) throw res.error;
+    toast('✅ Cálculo guardado -- total ' + fmt(v.total));
+    await logCargarHistorial();
+  } catch (e) { toast('No se pudo guardar: ' + e.message); }
+}
+
+var LOG_HISTORIAL_CACHE = [];
+
+async function logCargarHistorial() {
+  var cont = document.getElementById('log-historial');
+  cont.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:12px">Cargando…</div>';
+  if (!sb()) { cont.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:12px">Sin conexión</div>'; return; }
+  try {
+    var res = await sb().from('logistica_calculos').select('*').order('created_at', { ascending: false }).limit(30);
+    if (res.error) throw res.error;
+    LOG_HISTORIAL_CACHE = res.data || [];
+    if (!LOG_HISTORIAL_CACHE.length) { cont.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:12px">Sin cálculos guardados todavía</div>'; return; }
+    cont.innerHTML = LOG_HISTORIAL_CACHE.map(function(c, i) {
+      var fecha = c.created_at ? new Date(c.created_at).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' }) : '';
+      return '<div onclick="logVerDetalle(' + i + ')" style="padding:9px 0;border-bottom:1px solid var(--gray-100);cursor:pointer;display:flex;justify-content:space-between;align-items:center">'
+        + '<div><div style="font-size:12.5px;font-weight:700;color:var(--navy)">' + esc(c.destino || '(sin destino)') + (c.folio_relacionado ? ' · ' + esc(c.folio_relacionado) : '') + '</div>'
+        + '<div style="font-size:10.5px;color:var(--gray-400)">' + fecha + '</div></div>'
+        + '<div style="font-size:13px;font-weight:800;color:var(--gold)">' + fmt(c.total) + '</div>'
+        + '</div>';
+    }).join('');
+  } catch (e) { cont.innerHTML = '<div style="text-align:center;padding:14px;color:var(--red);font-size:12px">Error: ' + e.message + '</div>'; }
+}
+
+function logVerDetalle(idx) {
+  var c = LOG_HISTORIAL_CACHE[idx];
+  if (!c) return;
+  document.getElementById('log-detalle-titulo').textContent = (c.destino || 'Cálculo') + (c.folio_relacionado ? ' · ' + c.folio_relacionado : '');
+  document.getElementById('log-detalle-cuerpo').innerHTML =
+    '<div class="desglose-row"><span class="desglose-label">Distancia (ida)</span><span class="desglose-val">' + (c.distancia_km || 0).toLocaleString('es-MX') + ' km</span></div>' +
+    '<div class="desglose-row"><span class="desglose-label">Gasolina (' + (c.litros || 0).toFixed(1) + ' l)</span><span class="desglose-val">' + fmt(c.costo_gasolina) + '</span></div>' +
+    '<div class="desglose-row"><span class="desglose-label">Casetas (ida y vuelta)</span><span class="desglose-val">' + fmt(c.costo_casetas) + '</span></div>' +
+    '<div class="desglose-row"><span class="desglose-label">Día(s) de trabajo (' + c.dias_trabajo + ' &times; ' + fmt(c.costo_por_dia) + ')</span><span class="desglose-val">' + fmt((c.dias_trabajo || 0) * (c.costo_por_dia || 0)) + '</span></div>' +
+    '<div class="desglose-row"><span class="desglose-label">Empaque</span><span class="desglose-val">' + fmt(c.costo_empaque) + '</span></div>' +
+    '<div class="desglose-row"><span class="desglose-label">Margen de riesgo (' + c.margen_riesgo_pct + '%)</span><span class="desglose-val">' + fmt(c.total - (c.costo_gasolina + c.costo_casetas + (c.dias_trabajo * c.costo_por_dia) + c.costo_empaque)) + '</span></div>' +
+    '<div class="desglose-row" style="border-top:2px solid var(--navy);margin-top:6px;padding-top:10px"><span class="desglose-label" style="font-weight:700;font-size:13px">TOTAL</span><span class="desglose-val" style="font-size:15px;color:var(--gold)">' + fmt(c.total) + '</span></div>';
+  document.getElementById('log-detalle-modal').style.display = 'flex';
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  detectarConexion();
+  logCargarDestinos();
+  logCargarHistorial();
+  logCalcular();
+});
+</script>
+</body>
+</html>
