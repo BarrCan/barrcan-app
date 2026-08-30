@@ -6,6 +6,12 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v2.23
+  FECHA   : 2026-08-29
+  v2.23 - Agregadas tarjetas de acceso a los dos módulos nuevos:
+    "🚚 Logística foránea" (calculadora de costo real de viajes por
+    volumen/fuera de zona) y "💬 Mensajes listos" (plantillas para
+    clientes por WhatsApp).
   VERSION : v2.22
   FECHA   : 2026-08-29
   v2.22 - Nuevo "📥 Importar automático de reportes de entrega" en
@@ -663,6 +669,8 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
       <a class="modulo-card" href="historial.html" data-roles="supremo,admin"><div class="modulo-icono">📁</div><div class="modulo-nombre">Presupuestos</div><div class="modulo-desc">Historial y estados</div></a>
       <a class="modulo-card" href="garantias.html" data-roles="supremo,admin" id="card-garantias" style="position:relative"><div class="modulo-icono">🛡️</div><div class="modulo-nombre">Garantías</div><div class="modulo-desc">Tickets de postventa</div><div id="badge-garantias" style="display:none;position:absolute;top:8px;right:8px;background:var(--red,#C0392B);color:#fff;font-size:11px;font-weight:800;padding:2px 7px;border-radius:10px;min-width:18px;text-align:center"></div></a>
       <a class="modulo-card" href="#" onclick="crAbrir();return false;" data-roles="supremo,admin,tecnico,taller"><div class="modulo-icono">🛒</div><div class="modulo-nombre">Compra rápida</div><div class="modulo-desc">Capturar en el momento</div></a>
+      <a class="modulo-card" href="logistica.html" data-roles="supremo,admin"><div class="modulo-icono">🚚</div><div class="modulo-nombre">Logística foránea</div><div class="modulo-desc">Costo real de viajes</div></a>
+      <a class="modulo-card" href="mensajes.html" data-roles="supremo,admin,tecnico,taller"><div class="modulo-icono">💬</div><div class="modulo-nombre">Mensajes listos</div><div class="modulo-desc">Plantillas para clientes</div></a>
       <a class="modulo-card" href="#" onclick="chAbrir();return false;" data-roles="supremo" id="card-captura-historica"><div class="modulo-icono">🗓️</div><div class="modulo-nombre">Captura histórica</div><div class="modulo-desc">Completar días pasados</div></a>
       <a class="modulo-card" href="#" onclick="raAbrirManual();return false;" data-roles="supremo,admin,tecnico,taller"><div class="modulo-icono">📋</div><div class="modulo-nombre">Mis actividades</div><div class="modulo-desc">Taller / Stand / Compras de hoy</div></a>
       <a class="modulo-card" href="ordenes.html" data-roles="supremo,admin,tecnico,taller"><div class="modulo-icono">🛠️</div><div class="modulo-nombre">Órdenes</div><div class="modulo-desc">Asignar instalación</div></a>
@@ -770,7 +778,7 @@ function sb(){
 }
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
-var APP_VERSION = 'v2.22';
+var APP_VERSION = 'v2.23';
 var USUARIOS = [];
 var USUARIO_SEL = null;   // el que se está tratando de loguear
 var PIN_BUFFER = '';
