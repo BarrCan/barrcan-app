@@ -5,7 +5,19 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Servicios y Accesorios</title>
 <!--
-  BARRCAN SERVICIOS Y ACCESORIOS v1.14.2
+  BARRCAN SERVICIOS Y ACCESORIOS v1.14.3
+  v1.14.3 - DIAGNÓSTICO 3: confirmado que "Cubierta de Mesa" sí se
+    selecciona bien (alerta verde apareció), pero DESPUÉS de eso
+    ningún botón responde -- ni Circular (no cambia de color) ni
+    Calcular (con Rectangular). Nueva teoría: alert() en celular
+    puede dejar el sistema de toques trabado un momento después de
+    cerrarlo, interfiriendo con el siguiente toque sin que sea culpa
+    del código. Se quitaron TODAS las alertas y se reemplazaron por
+    un panel de texto fijo en pantalla (fondo negro, letras verdes,
+    arriba del formulario) que se actualiza solo sin interrumpir
+    nada -- si esto tampoco se actualiza al tocar los botones,
+    confirma que el problema es anterior a mi código.
+  v1.14.2 - Alertas incondicionales en 3 puntos (ver detalle abajo).
   v1.14.2 - DIAGNÓSTICO 2: la versión anterior con try/catch tampoco
     mostró ninguna alerta -- confirma que el clic ni siquiera está
     llegando a las funciones (no es un error dentro de ellas). Se
@@ -1973,6 +1985,7 @@ body{background:var(--off-white)}
 
   <!-- ══════════ WIZARD CUBIERTA DE MESA ══════════ -->
   <div id="wizard-cubierta" style="display:none">
+    <div id="cm-debug-panel" style="background:#000;color:#0f0;font-family:monospace;font-size:11px;padding:10px;margin-bottom:10px;border-radius:8px;white-space:pre-wrap;min-height:60px">Panel de diagnóstico -- toca cualquier botón de forma o Calcular, y aquí va a aparecer qué está pasando (sin interrumpir nada).</div>
     <div class="wizard-card">
       <div class="wizard-title">🍽️ Configuración de la Cubierta</div>
       <div class="form-group">
@@ -3953,7 +3966,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.14.2';
+const APP_VERSION = 'v1.14.3';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -4737,7 +4750,7 @@ function snSelSistema(sis,cardEl){
   if (esEspejo)   espReset(sis);
   if (esServicio) servicioReset(sis);
   if (esGarantia) garantiaWizReset(sis);
-  if (esCubierta) { alert('🟢 SISTEMA SELECCIONADO: esCubierta=' + esCubierta + ', sis.id=' + (sis ? sis.id : 'sis es null')); cmReset(sis); }
+  if (esCubierta) { cmDebug('🟢 Sistema seleccionado. esCubierta=' + esCubierta + ', sis.id=' + (sis ? sis.id : 'sis es null')); cmReset(sis); }
 
   const destino = esEspejo ? document.getElementById('wizard-espejo')
     : esServicio ? document.getElementById('wizard-servicio')
@@ -4931,11 +4944,17 @@ function cmReset(sistema) {
   document.getElementById('cm-grupo-libre').style.display = 'none';
   document.getElementById('cm-forma-nota').textContent = '';
   document.getElementById('cm-resultado').style.display = 'none';
- } catch(e) { alert('⚠️ ERROR en cmReset: ' + e.message + '\n' + e.stack); }
+ } catch(e) { cmDebug('❌ ERROR en cmReset: ' + e.message); }
+}
+
+function cmDebug(msg) {
+  var p = document.getElementById('cm-debug-panel');
+  var hora = new Date().toLocaleTimeString('es-MX');
+  if (p) p.textContent = '[' + hora + '] ' + msg + '\n\n' + p.textContent;
 }
 
 function cmSelForma(btn) {
- alert('🔵 BOTÓN TOCADO: forma=' + (btn ? btn.dataset.forma : 'btn es null/undefined'));
+ cmDebug('🔵 cmSelForma llamada. forma=' + (btn ? btn.dataset.forma : 'btn es null'));
  try {
   CM_FORMA = btn.dataset.forma;
   document.querySelectorAll('.cm-forma-btn').forEach(b => {
@@ -4950,7 +4969,8 @@ function cmSelForma(btn) {
   document.getElementById('cm-grupo-libre').style.display = CM_FORMA === 'libre' ? 'grid' : 'none';
   document.getElementById('cm-forma-nota').textContent = CM_NOTAS_FORMA[CM_FORMA];
   cmActualizar();
- } catch(e) { alert('⚠️ ERROR en cmSelForma: ' + e.message + '\n' + e.stack); }
+  cmDebug('✅ cmSelForma terminó OK. CM_FORMA ahora es: ' + CM_FORMA);
+ } catch(e) { cmDebug('❌ ERROR en cmSelForma: ' + e.message); }
 }
 
 // Devuelve {m2, ml} -- área en m² y perímetro en metros lineales,
@@ -5073,9 +5093,9 @@ function cmCalcularPreview() {
 }
 
 function cmCalcular() {
- alert('🟠 BOTÓN CALCULAR TOCADO');
+ cmDebug('🟠 cmCalcular llamada.');
  try {
-  if (!CM_SISTEMA) { alert('⚠️ DIAGNÓSTICO: CM_SISTEMA está vacío -- la selección del sistema no se guardó correctamente.'); return; }
+  if (!CM_SISTEMA) { cmDebug('❌ CM_SISTEMA está vacío -- la selección del sistema no se guardó.'); return; }
   const { m2 } = cmMedidas();
   if (!m2 || m2 <= 0) { toast('⚠️ Ingresa las medidas de la cubierta'); return; }
   const r = cmCalcularPreview();
@@ -5093,7 +5113,7 @@ function cmCalcular() {
   toast('✅ Cubierta de mesa calculada');
   renderResultado(STATE.ultimoResultado);
   switchTab('resultado');
- } catch(e) { alert('⚠️ ERROR en cmCalcular: ' + e.message + '\n' + e.stack); }
+ } catch(e) { cmDebug('❌ ERROR en cmCalcular: ' + e.message); }
 }
 
 // ── Wizard Servicio / Mantenimiento ─────────────────────────────
