@@ -5,7 +5,19 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Servicios y Accesorios</title>
 <!--
-  BARRCAN SERVICIOS Y ACCESORIOS v1.14.0
+  BARRCAN SERVICIOS Y ACCESORIOS v1.14.1
+  v1.14.1 - DIAGNÓSTICO: Mau reportó que en Cubiertas de Mesa ni los
+    botones de forma (Circular/Óvalo/Figura libre) ni "Calcular
+    cubierta" hacen nada -- ni con Rectangular. Revisé cada ID
+    referenciado uno por uno contra el HTML y todos coinciden; no
+    encontré el bug por lectura de código. Se descartó caché vieja
+    (cerró navegador completo, seguía igual) y placeholders sin
+    llenar (sí escribió valores reales). Como no lo puedo reproducir
+    aquí, se agregó una alerta visible que muestra el error real y
+    su línea exacta si algo truena en cmSelForma/cmReset/cmCalcular
+    -- para diagnosticar con precisión en el siguiente intento en
+    lugar de seguir adivinando.
+  v1.14.0 - Nueva familia "🍽️ Cubiertas de Mesa" (ver detalle abajo).
   v1.14.0 - Nueva familia "🍽️ Cubiertas de Mesa": 4 formas (Rectangular/
     Cuadrado, Circular, Óvalo, Figura libre), grosor 6mm/9mm, sin
     templar/templado, canto (pulido/bisel/pecho de paloma) cobrado por
@@ -3930,7 +3942,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.14.0';
+const APP_VERSION = 'v1.14.1';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -4886,6 +4898,7 @@ const CM_NOTAS_FORMA = {
 };
 
 function cmReset(sistema) {
+ try {
   CM_SISTEMA = sistema;
   CM_FORMA = 'rect';
   document.querySelectorAll('.cm-forma-btn').forEach(b => {
@@ -4907,9 +4920,11 @@ function cmReset(sistema) {
   document.getElementById('cm-grupo-libre').style.display = 'none';
   document.getElementById('cm-forma-nota').textContent = '';
   document.getElementById('cm-resultado').style.display = 'none';
+ } catch(e) { alert('⚠️ ERROR en cmReset: ' + e.message + '\n' + e.stack); }
 }
 
 function cmSelForma(btn) {
+ try {
   CM_FORMA = btn.dataset.forma;
   document.querySelectorAll('.cm-forma-btn').forEach(b => {
     const activo = b === btn;
@@ -4923,6 +4938,7 @@ function cmSelForma(btn) {
   document.getElementById('cm-grupo-libre').style.display = CM_FORMA === 'libre' ? 'grid' : 'none';
   document.getElementById('cm-forma-nota').textContent = CM_NOTAS_FORMA[CM_FORMA];
   cmActualizar();
+ } catch(e) { alert('⚠️ ERROR en cmSelForma: ' + e.message + '\n' + e.stack); }
 }
 
 // Devuelve {m2, ml} -- área en m² y perímetro en metros lineales,
@@ -5045,7 +5061,8 @@ function cmCalcularPreview() {
 }
 
 function cmCalcular() {
-  if (!CM_SISTEMA) return;
+ try {
+  if (!CM_SISTEMA) { alert('⚠️ DIAGNÓSTICO: CM_SISTEMA está vacío -- la selección del sistema no se guardó correctamente.'); return; }
   const { m2 } = cmMedidas();
   if (!m2 || m2 <= 0) { toast('⚠️ Ingresa las medidas de la cubierta'); return; }
   const r = cmCalcularPreview();
@@ -5063,6 +5080,7 @@ function cmCalcular() {
   toast('✅ Cubierta de mesa calculada');
   renderResultado(STATE.ultimoResultado);
   switchTab('resultado');
+ } catch(e) { alert('⚠️ ERROR en cmCalcular: ' + e.message + '\n' + e.stack); }
 }
 
 // ── Wizard Servicio / Mantenimiento ─────────────────────────────
