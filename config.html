@@ -182,6 +182,9 @@ html, body { min-height:100%; font-family:'DM Sans',sans-serif; background:var(-
     <div class="grupo">
       <div class="grupo-titulo">☂️ Domo (Nave Industrial)</div>
       <div id="grupo-domo"></div>
+
+      <div class="grupo-titulo">🍽️ Cubiertas de Mesa</div>
+      <div id="grupo-cubiertas"></div>
     </div>
 
     <div class="footer-guardar">
@@ -193,7 +196,7 @@ html, body { min-height:100%; font-family:'DM Sans',sans-serif; background:var(-
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
-const APP_VERSION = 'v1.6';
+const APP_VERSION = 'v1.7';
 const SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co';
 const SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 let _sb = null;
@@ -261,6 +264,17 @@ const CAMPOS = [
   { grupo:'grupo-domo', clave:'domo_norton',   label:'Norton (perfil de cierre)', unidad:'$' },
   { grupo:'grupo-domo', clave:'domo_masking',  label:'Masking',                    unidad:'$' },
   { grupo:'grupo-domo', clave:'domo_sellador', label:'Sellador',                   unidad:'$' },
+
+  { grupo:'grupo-cubiertas', clave:'cm_vidrio_6mm_st',  label:'Vidrio 6mm sin templar',  unidad:'$/m²' },
+  { grupo:'grupo-cubiertas', clave:'cm_vidrio_6mm_tem', label:'Vidrio 6mm templado',     unidad:'$/m²' },
+  { grupo:'grupo-cubiertas', clave:'cm_vidrio_9mm_st',  label:'Vidrio 9mm sin templar',  unidad:'$/m²' },
+  { grupo:'grupo-cubiertas', clave:'cm_vidrio_9mm_tem', label:'Vidrio 9mm templado',     unidad:'$/m²' },
+  { grupo:'grupo-cubiertas', clave:'cm_canto_pulido',       label:'Canto pulido',         unidad:'$/ml' },
+  { grupo:'grupo-cubiertas', clave:'cm_canto_bisel',        label:'Canto bisel',          unidad:'$/ml' },
+  { grupo:'grupo-cubiertas', clave:'cm_canto_pecho_paloma', label:'Canto pecho de paloma',unidad:'$/ml' },
+  { grupo:'grupo-cubiertas', clave:'cm_recargo_circular_pct', label:'Recargo forma circular',       unidad:'%' },
+  { grupo:'grupo-cubiertas', clave:'cm_recargo_ovalo_pct',    label:'Recargo forma óvalo (plantilla)', unidad:'%' },
+  { grupo:'grupo-cubiertas', clave:'cm_recargo_libre_pct',    label:'Recargo figura libre (plantilla)', unidad:'%' },
 ];
 
 // ── Acceso: mismo patrón que tecnicos.html/entregas.html/historial.html ──
