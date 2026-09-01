@@ -5,7 +5,18 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Servicios y Accesorios</title>
 <!--
-  BARRCAN SERVICIOS Y ACCESORIOS v1.14.1
+  BARRCAN SERVICIOS Y ACCESORIOS v1.14.2
+  v1.14.2 - DIAGNÓSTICO 2: la versión anterior con try/catch tampoco
+    mostró ninguna alerta -- confirma que el clic ni siquiera está
+    llegando a las funciones (no es un error dentro de ellas). Se
+    agregaron alertas INCONDICIONALES (sin ninguna lógica antes) en
+    3 puntos: al seleccionar la tarjeta "Cubierta de Mesa" del
+    catálogo, al tocar cualquier botón de forma, y al tocar
+    "Calcular cubierta". Si NINGUNA de las 3 aparece, el problema
+    está en cómo se seleccionó/renderizó el sistema desde el
+    catálogo, no en el wizard en sí.
+  v1.14.1 - Primera versión de diagnóstico (con try/catch, sin alerta
+    visible al usuario).
   v1.14.1 - DIAGNÓSTICO: Mau reportó que en Cubiertas de Mesa ni los
     botones de forma (Circular/Óvalo/Figura libre) ni "Calcular
     cubierta" hacen nada -- ni con Rectangular. Revisé cada ID
@@ -3942,7 +3953,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.14.1';
+const APP_VERSION = 'v1.14.2';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -4726,7 +4737,7 @@ function snSelSistema(sis,cardEl){
   if (esEspejo)   espReset(sis);
   if (esServicio) servicioReset(sis);
   if (esGarantia) garantiaWizReset(sis);
-  if (esCubierta) cmReset(sis);
+  if (esCubierta) { alert('🟢 SISTEMA SELECCIONADO: esCubierta=' + esCubierta + ', sis.id=' + (sis ? sis.id : 'sis es null')); cmReset(sis); }
 
   const destino = esEspejo ? document.getElementById('wizard-espejo')
     : esServicio ? document.getElementById('wizard-servicio')
@@ -4924,6 +4935,7 @@ function cmReset(sistema) {
 }
 
 function cmSelForma(btn) {
+ alert('🔵 BOTÓN TOCADO: forma=' + (btn ? btn.dataset.forma : 'btn es null/undefined'));
  try {
   CM_FORMA = btn.dataset.forma;
   document.querySelectorAll('.cm-forma-btn').forEach(b => {
@@ -5061,6 +5073,7 @@ function cmCalcularPreview() {
 }
 
 function cmCalcular() {
+ alert('🟠 BOTÓN CALCULAR TOCADO');
  try {
   if (!CM_SISTEMA) { alert('⚠️ DIAGNÓSTICO: CM_SISTEMA está vacío -- la selección del sistema no se guardó correctamente.'); return; }
   const { m2 } = cmMedidas();
