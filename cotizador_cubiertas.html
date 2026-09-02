@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>BarrCan &middot; Cubiertas de Mesa</title>
+<!--
+  BARRCAN · MODULO: COTIZADOR CUBIERTAS DE MESA (standalone)
+  VERSION : v1.0
+  FECHA   : 2026-08-31
+  v1.0 - Creación inicial. Se intentó primero integrar dentro de
+    cotizador_servicios.html (archivo de más de 1MB) pero tras 3
+    rondas de diagnóstico (try/catch con alert, alertas
+    incondicionales, panel de texto visible sin alert()) nunca se
+    logró reproducir ni una señal de que los botones ejecutaran el
+    código -- ni el cambio de color, que no depende de ningún
+    cálculo. Se decidió construirlo aparte, mismo criterio que
+    mensajes.html y logistica.html.
+    4 formas (Rectangular/Cuadrado, Circular, Óvalo, Figura libre),
+    grosor 6mm/9mm, sin templar/templado, canto (pulido/bisel/pecho
+    de paloma) por metro lineal de perímetro, recargo por forma
+    (circular +25%, óvalo/libre +37.5%, requieren plantilla). Misma
+    fórmula financiera del resto de la app (GIF+GA+Utilidad+IVA).
+    Precios sincronizados con config_precios (mismas claves cm_* ya
+    creadas y visibles en config.html).
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+:root {
+  --navy: #1B3A5C; --blue: #2E6DA4; --gold: #C8923A; --gold-light: #E8B96A;
+  --white: #FFFFFF; --off-white: #F7F5F0; --gray-100: #F0EDE8; --gray-200: #DDD9D2;
+  --gray-400: #9A9590; --gray-600: #5A5652; --green: #2D7D46; --red: #C0392B;
+  --shadow-sm: 0 2px 8px rgba(27,58,92,0.08); --radius: 12px; --radius-sm: 8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--off-white); color:var(--navy); overscroll-behavior:none; }
+#app { min-height:100vh; display:flex; flex-direction:column; }
+.header { background:var(--navy); padding:0 20px; height:56px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; box-shadow:0 2px 12px rgba(0,0,0,.3); position:sticky; top:0; z-index:100; }
+.header-logo { display:flex; align-items:center; gap:10px; }
+.logo-mark { width:32px; height:32px; background:linear-gradient(135deg,var(--gold),var(--gold-light)); border-radius:6px; display:flex; align-items:center; justify-content:center; font-family:'Playfair Display',serif; font-weight:900; font-size:16px; color:var(--navy); }
+.logo-text { font-family:'Playfair Display',serif; font-weight:700; font-size:18px; color:#fff; }
+.logo-sub { font-size:9px; color:var(--gold-light); letter-spacing:2px; text-transform:uppercase; display:block; margin-top:-3px; }
+.offline-badge { display:flex; align-items:center; gap:5px; background:rgba(200,146,58,.15); border:1px solid rgba(200,146,58,.3); border-radius:20px; padding:4px 10px; font-size:11px; color:var(--gold-light); font-weight:500; }
+.offline-dot { width:6px; height:6px; border-radius:50%; background:var(--gold-light); animation:pulse-dot 2s infinite; }
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
+.content { flex:1; padding:16px 16px 60px; max-width:600px; margin:0 auto; width:100%; }
+.section-title { font-family:'Playfair Display',serif; font-size:19px; font-weight:700; color:var(--navy); margin-bottom:3px; }
+.section-sub { font-size:11.5px; color:var(--gray-400); margin-bottom:14px; }
+.wizard-card { background:#fff; border-radius:var(--radius); padding:16px; margin-bottom:12px; box-shadow:var(--shadow-sm); }
+.wizard-title { font-size:13px; font-weight:700; color:var(--navy); margin-bottom:12px; }
+.form-label { display:block; font-size:11px; font-weight:600; color:var(--gray-600); margin-bottom:5px; }
+.form-input, select.form-input { width:100%; padding:10px 12px; border:1.5px solid var(--gray-200); border-radius:var(--radius-sm); font-family:'DM Sans',sans-serif; font-size:14px; color:var(--navy); background:var(--off-white); box-sizing:border-box; }
+.form-input:focus { outline:none; border-color:var(--blue); background:#fff; }
+.input-unit { position:relative; }
+.input-unit-label { position:absolute; right:12px; top:50%; transform:translateY(-50%); font-size:11px; color:var(--gray-400); font-weight:600; }
+.form-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.form-group { margin-bottom:10px; }
+.form-group:last-child { margin-bottom:0; }
+.forma-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:4px; }
+.forma-btn { padding:14px 6px; border:2px solid var(--gray-200); border-radius:8px; background:none; cursor:pointer; font-family:'DM Sans',sans-serif; font-size:12px; font-weight:600; color:var(--gray-400); text-align:center; }
+.forma-btn .icono { font-size:22px; display:block; margin-bottom:4px; }
+.forma-btn.active { border-color:var(--blue); background:rgba(46,109,164,0.08); color:var(--blue); }
+.btn-calcular { width:100%; padding:15px; background:linear-gradient(135deg,var(--gold),var(--gold-light)); color:#fff; border:none; border-radius:var(--radius-sm); font-size:15px; font-weight:700; cursor:pointer; box-shadow:0 4px 16px rgba(200,146,58,.35); margin-top:4px; }
+.costo-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; font-size:12.5px; border-bottom:1px solid var(--gray-100); }
+.costo-row:last-child { border-bottom:none; }
+.costo-row.subtotal { font-weight:700; border-top:1.5px solid var(--gray-200); border-bottom:none; margin-top:4px; padding-top:10px; }
+.costo-row.total { background:var(--navy); color:#fff; margin:10px -16px -16px; padding:14px 16px; border-radius:0 0 var(--radius) var(--radius); font-size:16px; font-weight:800; }
+.costo-row.total span:last-child { color:var(--gold-light); }
+.costo-monto { font-family:'DM Mono',monospace; font-weight:600; }
+.toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--navy); color:#fff; padding:10px 18px; border-radius:20px; font-size:13px; font-weight:600; opacity:0; transition:all .3s; z-index:999; white-space:nowrap; pointer-events:none; max-width:90vw; text-align:center; }
+.toast.show { opacity:1; transform:translateX(-50%) translateY(-6px); }
+.badge-forma { display:inline-block; background:var(--navy); color:#fff; padding:4px 12px; border-radius:20px; font-size:11px; font-weight:700; margin-bottom:6px; }
+.nota-forma { font-size:11px; color:var(--gold); background:rgba(200,146,58,.08); border-left:3px solid var(--gold); padding:8px 10px; border-radius:0 6px 6px 0; margin-top:4px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="header">
+    <div class="header-logo">
+      <div class="logo-mark">B</div>
+      <div><div class="logo-text">BarrCan</div><span class="logo-sub">Cubiertas de Mesa</span></div>
+    </div>
+    <div class="offline-badge"><span class="offline-dot"></span><span id="conn-status">Online</span></div>
+  </div>
+
+  <div class="content">
+    <div class="section-title">🍽️ Cotizador de Cubiertas de Mesa</div>
+    <div class="section-sub">Rectangular, cuadrada, circular, óvalo o figura libre.</div>
+
+    <div class="wizard-card">
+      <div class="wizard-title">📐 Forma</div>
+      <div class="forma-grid" id="cm-forma-grid"></div>
+      <div id="cm-forma-nota"></div>
+    </div>
+
+    <div class="wizard-card">
+      <!-- Rectangular/Cuadrado -->
+      <div class="form-row" id="cm-grupo-rect">
+        <div class="form-group">
+          <label class="form-label">Largo</label>
+          <div class="input-unit"><input type="number" id="cm-largo" class="form-input" min="10" placeholder="120" oninput="cmActualizar()"><span class="input-unit-label">cm</span></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Ancho</label>
+          <div class="input-unit"><input type="number" id="cm-ancho" class="form-input" min="10" placeholder="80" oninput="cmActualizar()"><span class="input-unit-label">cm</span></div>
+        </div>
+      </div>
+
+      <!-- Circular -->
+      <div class="form-group" id="cm-grupo-circ" style="display:none">
+        <label class="form-label">Diámetro</label>
+        <div class="input-unit"><input type="number" id="cm-diametro" class="form-input" min="10" placeholder="100" oninput="cmActualizar()"><span class="input-unit-label">cm</span></div>
+      </div>
+
+      <!-- Óvalo -->
+      <div class="form-row" id="cm-grupo-ovalo" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Eje mayor</label>
+          <div class="input-unit"><input type="number" id="cm-eje-mayor" class="form-input" min="10" placeholder="140" oninput="cmActualizar()"><span class="input-unit-label">cm</span></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Eje menor</label>
+          <div class="input-unit"><input type="number" id="cm-eje-menor" class="form-input" min="10" placeholder="90" oninput="cmActualizar()"><span class="input-unit-label">cm</span></div>
+        </div>
+      </div>
+
+      <!-- Figura libre -->
+      <div class="form-row" id="cm-grupo-libre" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Área aprox. (plantilla)</label>
+          <div class="input-unit"><input type="number" id="cm-area-libre" class="form-input" min="0.01" step="0.01" placeholder="1.20" oninput="cmActualizar()"><span class="input-unit-label">m²</span></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Perímetro aprox.</label>
+          <div class="input-unit"><input type="number" id="cm-perimetro-libre" class="form-input" min="0.1" step="0.1" placeholder="4.20" oninput="cmActualizar()"><span class="input-unit-label">m</span></div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Grosor</label>
+          <select id="cm-grosor" class="form-input" onchange="cmActualizar()">
+            <option value="6">6 mm</option>
+            <option value="9">9 mm</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Templado</label>
+          <select id="cm-templado" class="form-input" onchange="cmActualizar()">
+            <option value="no">Sin templar</option>
+            <option value="si">Templado</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo de canto</label>
+        <select id="cm-canto" class="form-input" onchange="cmActualizar()">
+          <option value="pulido">Pulido</option>
+          <option value="bisel">Bisel</option>
+          <option value="pecho">Pecho de paloma</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Mano de obra instalación <span style="font-weight:400;color:var(--gray-400)">(opcional)</span></label>
+        <div class="input-unit"><input type="number" id="cm-mo" class="form-input" value="0" min="0" oninput="cmActualizar()"><span class="input-unit-label">$</span></div>
+      </div>
+    </div>
+
+    <div id="cm-resultado" class="wizard-card" style="display:none">
+      <div class="wizard-title">🧾 Resumen</div>
+      <div class="badge-forma" id="cm-desc-badge"></div>
+      <div style="font-family:'DM Mono',monospace;font-size:11.5px;color:var(--gray-400);margin-bottom:10px" id="cm-m2-label"></div>
+      <div class="costo-row"><span id="cm-label-vidrio">Vidrio</span><span class="costo-monto" id="cm-c-vidrio"></span></div>
+      <div class="costo-row"><span id="cm-label-canto">Canto</span><span class="costo-monto" id="cm-c-canto"></span></div>
+      <div class="costo-row" id="cm-row-forma" style="display:none"><span id="cm-label-forma">Recargo por forma</span><span class="costo-monto" id="cm-c-forma"></span></div>
+      <div class="costo-row"><span>Mano de obra</span><span class="costo-monto" id="cm-c-mo"></span></div>
+      <div class="costo-row subtotal"><span>Subtotal (neto)</span><span class="costo-monto" id="cm-c-sub"></span></div>
+      <div class="costo-row" id="cm-row-gif"><span id="cm-label-gif">GIF</span><span class="costo-monto" id="cm-c-gif"></span></div>
+      <div class="costo-row" id="cm-row-ga"><span id="cm-label-ga">GA</span><span class="costo-monto" id="cm-c-ga"></span></div>
+      <div class="costo-row" id="cm-row-util"><span id="cm-label-util">Utilidad</span><span class="costo-monto" id="cm-c-util"></span></div>
+      <div class="costo-row"><span id="cm-label-iva">IVA</span><span class="costo-monto" id="cm-c-iva"></span></div>
+      <div class="costo-row total"><span>PRECIO FINAL</span><span class="costo-monto" id="cm-c-total"></span></div>
+    </div>
+
+    <button class="btn-calcular" onclick="cmCalcular()">🍽️ Calcular cubierta</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+var APP_VERSION = 'v1.0';
+var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
+var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
+var _sbClient=null;
+function sb(){
+  if(!_sbClient&&window.supabase){
+    _sbClient=window.supabase.createClient(SB_URL,SB_KEY,{db:{schema:'barrcan'},auth:{persistSession:true,storageKey:'barrcan_auth'}});
+  }
+  return _sbClient;
+}
+window.addEventListener('online', function(){detectarConexion();});
+window.addEventListener('offline',function(){detectarConexion();});
+function detectarConexion(){var b=document.getElementById('conn-status');if(b)b.textContent=(navigator.onLine?'Online':'Offline')+' · '+APP_VERSION;}
+function esc(s){return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function fmt(n){return Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function esSupremo(){ try { var u=JSON.parse(localStorage.getItem('barrcan_usuario_activo')||'{}'); return u.id==='MAU'; } catch(e){ return false; } }
+function toast(msg,dur){
+  dur=dur||2600;
+  var el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  clearTimeout(el._t); el._t=setTimeout(function(){el.classList.remove('show');},dur);
+}
+
+// ── Config de precios (Supabase, sincronizable) ──────────────────
+var CFG = {
+  gif:15, ga:25, utilidad:25, iva:16, ivaCompras:16,
+  vidrio_6_st:400, vidrio_6_tem:650, vidrio_9_st:750, vidrio_9_tem:1100,
+  canto_pulido:90, canto_bisel:180, canto_pecho:220,
+  recargo_circ:25, recargo_ovalo:37.5, recargo_libre:37.5
+};
+var CFG_MAPA = {
+  cfg_gif:'gif', cfg_ga:'ga', cfg_utilidad:'utilidad', cfg_iva:'iva', cfg_iva_compras:'ivaCompras',
+  cm_vidrio_6mm_st:'vidrio_6_st', cm_vidrio_6mm_tem:'vidrio_6_tem',
+  cm_vidrio_9mm_st:'vidrio_9_st', cm_vidrio_9mm_tem:'vidrio_9_tem',
+  cm_canto_pulido:'canto_pulido', cm_canto_bisel:'canto_bisel', cm_canto_pecho_paloma:'canto_pecho',
+  cm_recargo_circular_pct:'recargo_circ', cm_recargo_ovalo_pct:'recargo_ovalo', cm_recargo_libre_pct:'recargo_libre'
+};
+async function cargarConfig() {
+  if (!sb()) return;
+  try {
+    var res = await sb().from('config_precios').select('clave,valor')
+      .in('clave', Object.keys(CFG_MAPA));
+    if (res.error) throw res.error;
+    (res.data || []).forEach(function(r) {
+      var campo = CFG_MAPA[r.clave];
+      if (campo) CFG[campo] = parseFloat(r.valor) || CFG[campo];
+    });
+  } catch (e) { console.warn('[BarrCan] No se pudo cargar config_precios, usando valores por defecto:', e.message); }
+}
+
+// ── Forma ─────────────────────────────────────────────────────────
+var CM_FORMA = 'rect';
+var CM_FORMAS = [
+  { id:'rect',  icono:'▭', label:'Rectangular / Cuadrado', nota:'' },
+  { id:'circ',  icono:'⬤', label:'Circular', nota:'⚠️ Aplica recargo por corte circular' },
+  { id:'ovalo', icono:'⬭', label:'Óvalo', nota:'⚠️ Aplica recargo -- requiere plantilla (cartón/película/madera)' },
+  { id:'libre', icono:'✦', label:'Figura libre', nota:'⚠️ Aplica recargo -- requiere plantilla. Captura área y perímetro tomados directo de ella.' }
+];
+
+function renderFormaGrid() {
+  var cont = document.getElementById('cm-forma-grid');
+  cont.innerHTML = CM_FORMAS.map(function(f) {
+    return '<button type="button" class="forma-btn' + (f.id === CM_FORMA ? ' active' : '') + '" data-forma="' + f.id + '" onclick="cmSelForma(\'' + f.id + '\')">'
+      + '<span class="icono">' + f.icono + '</span>' + f.label + '</button>';
+  }).join('');
+}
+
+function cmSelForma(formaId) {
+  CM_FORMA = formaId;
+  document.querySelectorAll('.forma-btn').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.forma === formaId);
+  });
+  document.getElementById('cm-grupo-rect').style.display  = formaId === 'rect'  ? 'grid'  : 'none';
+  document.getElementById('cm-grupo-circ').style.display  = formaId === 'circ'  ? 'block' : 'none';
+  document.getElementById('cm-grupo-ovalo').style.display = formaId === 'ovalo' ? 'grid'  : 'none';
+  document.getElementById('cm-grupo-libre').style.display = formaId === 'libre' ? 'grid'  : 'none';
+  var f = CM_FORMAS.find(function(x) { return x.id === formaId; });
+  document.getElementById('cm-forma-nota').innerHTML = f.nota ? '<div class="nota-forma">' + f.nota + '</div>' : '';
+  cmActualizar();
+}
+
+// ── Medidas: área (m²) y perímetro (ml), según forma ─────────────
+function cmMedidas() {
+  if (CM_FORMA === 'rect') {
+    var L = parseFloat(document.getElementById('cm-largo').value) || 0;
+    var A = parseFloat(document.getElementById('cm-ancho').value) || 0;
+    return { m2: (L/100)*(A/100), ml: 2*((L/100)+(A/100)) };
+  }
+  if (CM_FORMA === 'circ') {
+    var D = parseFloat(document.getElementById('cm-diametro').value) || 0;
+    var r = (D/100)/2;
+    return { m2: Math.PI*r*r, ml: Math.PI*(D/100) };
+  }
+  if (CM_FORMA === 'ovalo') {
+    var a = (parseFloat(document.getElementById('cm-eje-mayor').value) || 0)/100/2;
+    var b = (parseFloat(document.getElementById('cm-eje-menor').value) || 0)/100/2;
+    var m2 = Math.PI*a*b;
+    var ml = Math.PI*(3*(a+b) - Math.sqrt((3*a+b)*(a+3*b))); // Ramanujan
+    return { m2: m2, ml: ml };
+  }
+  return {
+    m2: parseFloat(document.getElementById('cm-area-libre').value) || 0,
+    ml: parseFloat(document.getElementById('cm-perimetro-libre').value) || 0
+  };
+}
+
+function cmPrecioVidrio() {
+  var grosor = document.getElementById('cm-grosor').value;
+  var templado = document.getElementById('cm-templado').value === 'si';
+  return CFG['vidrio_' + grosor + '_' + (templado ? 'tem' : 'st')];
+}
+function cmPrecioCanto() {
+  var tipo = document.getElementById('cm-canto').value;
+  return CFG['canto_' + tipo];
+}
+function cmRecargoFormaPct() {
+  if (CM_FORMA === 'rect') return 0;
+  var mapa = { circ:'recargo_circ', ovalo:'recargo_ovalo', libre:'recargo_libre' };
+  return CFG[mapa[CM_FORMA]] / 100;
+}
+
+function cmActualizar() {
+  var d = cmMedidas();
+  if (d.m2 <= 0) { document.getElementById('cm-resultado').style.display = 'none'; return null; }
+
+  var precioVidrioM2 = cmPrecioVidrio();
+  var precioCantoMl  = cmPrecioCanto();
+  var mo = parseFloat(document.getElementById('cm-mo').value) || 0;
+
+  var costoVidrio = d.m2 * precioVidrioM2;
+  var costoCanto  = d.ml * precioCantoMl;
+  var baseMat     = costoVidrio + costoCanto;
+  var recargoPct  = cmRecargoFormaPct();
+  var cargoForma  = baseMat * recargoPct;
+  var totalMat    = baseMat + cargoForma;
+
+  var totalMatNeto = totalMat / (1 + CFG.ivaCompras/100);
+  var subtotal = totalMatNeto + mo;
+  var gif = subtotal * (CFG.gif/100);
+  var ga = subtotal * (CFG.ga/100);
+  var costoReal = subtotal + gif + ga;
+  var utilidad = costoReal * (CFG.utilidad/100);
+  var antesIva = costoReal + utilidad;
+  var ivaMonto = antesIva * (CFG.iva/100);
+  var total = antesIva + ivaMonto;
+
+  var res = document.getElementById('cm-resultado');
+  res.style.display = 'block';
+  var grosor = document.getElementById('cm-grosor').value;
+  var templadoTxt = document.getElementById('cm-templado').value === 'si' ? 'Templado' : 'Sin templar';
+  var cantoTxt = { pulido:'Pulido', bisel:'Bisel', pecho:'Pecho de paloma' }[document.getElementById('cm-canto').value];
+  var formaLabel = CM_FORMAS.find(function(f){return f.id===CM_FORMA;}).label;
+  document.getElementById('cm-desc-badge').textContent = formaLabel + ' · ' + grosor + 'mm ' + templadoTxt + ' · Canto ' + cantoTxt;
+  document.getElementById('cm-m2-label').textContent = d.m2.toFixed(3) + ' m² · ' + d.ml.toFixed(2) + ' ml';
+  document.getElementById('cm-label-vidrio').textContent = 'Vidrio ' + d.m2.toFixed(3) + 'm² × $' + precioVidrioM2 + '/m²';
+  document.getElementById('cm-c-vidrio').textContent = '$' + fmt(costoVidrio);
+  document.getElementById('cm-label-canto').textContent = 'Canto ' + cantoTxt + ' ' + d.ml.toFixed(2) + 'ml × $' + precioCantoMl + '/ml';
+  document.getElementById('cm-c-canto').textContent = '$' + fmt(costoCanto);
+  var rowForma = document.getElementById('cm-row-forma');
+  if (CM_FORMA !== 'rect') {
+    rowForma.style.display = 'flex';
+    document.getElementById('cm-label-forma').textContent = 'Recargo ' + formaLabel + ' (+' + (recargoPct*100).toFixed(1) + '%)';
+    document.getElementById('cm-c-forma').textContent = '$' + fmt(cargoForma);
+  } else rowForma.style.display = 'none';
+  document.getElementById('cm-c-mo').textContent = '$' + fmt(mo);
+  document.getElementById('cm-c-sub').textContent = '$' + fmt(subtotal);
+  document.getElementById('cm-label-gif').textContent = 'GIF +' + CFG.gif + '%';
+  document.getElementById('cm-c-gif').textContent = '$' + fmt(gif);
+  document.getElementById('cm-label-ga').textContent = 'GA +' + CFG.ga + '%';
+  document.getElementById('cm-c-ga').textContent = '$' + fmt(ga);
+  document.getElementById('cm-label-util').textContent = 'Utilidad +' + CFG.utilidad + '%';
+  document.getElementById('cm-c-util').textContent = '$' + fmt(utilidad);
+  var esSup = esSupremo();
+  ['cm-row-gif','cm-row-ga','cm-row-util'].forEach(function(id) {
+    document.getElementById(id).style.display = esSup ? 'flex' : 'none';
+  });
+  document.getElementById('cm-label-iva').textContent = 'IVA +' + CFG.iva + '%';
+  document.getElementById('cm-c-iva').textContent = '$' + fmt(ivaMonto);
+  document.getElementById('cm-c-total').textContent = '$' + fmt(total);
+
+  return { m2:d.m2, ml:d.ml, costoVidrio:costoVidrio, costoCanto:costoCanto, cargoForma:cargoForma,
+    mo:mo, subtotal:subtotal, gif:gif, ga:ga, utilidad:utilidad, ivaMonto:ivaMonto, total:total,
+    forma:CM_FORMA, formaLabel:formaLabel, grosor:grosor, templado:templadoTxt, canto:cantoTxt };
+}
+
+function cmCalcular() {
+  var d = cmMedidas();
+  if (!d.m2 || d.m2 <= 0) { toast('⚠️ Ingresa las medidas de la cubierta'); return; }
+  var r = cmActualizar();
+  if (!r) return;
+  toast('✅ Cubierta calculada -- $' + fmt(r.total));
+  document.getElementById('cm-resultado').scrollIntoView({ behavior:'smooth', block:'center' });
+}
+
+document.addEventListener('DOMContentLoaded', async function() {
+  detectarConexion();
+  await cargarConfig();
+  renderFormaGrid();
+  cmSelForma('rect');
+});
+</script>
+</body>
+</html>
