@@ -6,6 +6,19 @@
 <title>BarrCan &middot; Cubiertas de Mesa</title>
 <!--
   BARRCAN · MODULO: COTIZADOR CUBIERTAS DE MESA (standalone)
+  VERSION : v1.2
+  FECHA   : 2026-09-02
+  v1.2 - El documento IMPRESO ahora también muestra ambas opciones
+    (sin templar y templado) para que el cliente elija directo del
+    papel -- antes solo se veía en pantalla, el PDF solo llevaba la
+    opción que estuviera seleccionada. Nuevo checkbox "Incluir sin
+    templar y templado" (activado por default) al generar el
+    presupuesto. Cuando está activo: tabla de precios muestra las 2
+    filas con sus montos, y la sección de pagos muestra solo
+    porcentajes (no montos fijos) ya que el total depende de cuál
+    elija el cliente. Reimprimir también recupera y muestra la
+    comparación si el presupuesto se guardó así. Probado ambos casos
+    (con y sin comparación) -- correctos.
   VERSION : v1.1
   FECHA   : 2026-09-02
   v1.1 - Tres cosas pedidas después de confirmar que el módulo ya
@@ -241,6 +254,10 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--off
           <input type="text" id="cm-p-dir" class="form-input" placeholder="...">
         </div>
       </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:12px;color:var(--gray-600);cursor:pointer;background:var(--off-white);padding:10px 12px;border-radius:8px">
+        <input type="checkbox" id="cm-p-ambos" checked style="width:16px;height:16px">
+        Incluir sin templar y templado en el documento (para que el cliente elija)
+      </label>
       <button type="button" class="btn-calcular" onclick="cmGenerarPresupuesto()">📄 Generar presupuesto (imprimible)</button>
     </div>
 
@@ -254,7 +271,7 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--off
 <div class="toast" id="toast"></div>
 
 <script>
-var APP_VERSION = 'v1.1';
+var APP_VERSION = 'v1.2';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sbClient=null;
@@ -568,8 +585,27 @@ async function cmPedirNumeroFolio() {
   return String(num).padStart(3, '0');
 }
 
-function cmGenerarDocumento(r, folio, cliente, dir, tel, fecha) {
+function cmGenerarDocumento(r, folio, cliente, dir, tel, fecha, rAlt) {
   var fechaTxt = fecha.toLocaleDateString('es-MX', { day:'numeric', month:'long', year:'numeric' });
+  // rAlt = la otra opción (templado si r es sin templar, o viceversa) --
+  // si viene, se muestran las DOS para que el cliente elija del papel,
+  // en vez de imprimir solo la que estaba seleccionada en pantalla.
+  var hayComparacion = !!rAlt;
+  var filaSt, filaTem, totalRow;
+  if (hayComparacion) {
+    var rSinTemplar = r.templado === 'Sin templar' ? r : rAlt;
+    var rTemplado   = r.templado === 'Templado' ? r : rAlt;
+    filaSt = '<tr><td>Cubierta de mesa ' + esc(r.formaLabel) + ' -- ' + esc(r.grosor) + 'mm <strong>sin templar</strong>, canto ' + esc(r.canto) + '<br><span style="font-size:8pt;color:#888">' + r.m2.toFixed(3) + ' m² · ' + r.ml.toFixed(2) + ' ml de perímetro</span></td>'
+      + '<td style="text-align:right;font-weight:700">$' + fmt(rSinTemplar.total) + '</td></tr>';
+    filaTem = '<tr style="background:#FFF8F0"><td>Cubierta de mesa ' + esc(r.formaLabel) + ' -- ' + esc(r.grosor) + 'mm <strong>templado</strong>, canto ' + esc(r.canto) + '<br><span style="font-size:8pt;color:#888">' + r.m2.toFixed(3) + ' m² · ' + r.ml.toFixed(2) + ' ml de perímetro</span></td>'
+      + '<td style="text-align:right;font-weight:700">$' + fmt(rTemplado.total) + '</td></tr>';
+    totalRow = '<tr><td colspan="2" style="text-align:center;font-size:8.5pt;color:#888;font-style:italic;border:none;padding-top:8px">El precio final se define según la opción (templado o sin templar) que elija el cliente.</td></tr>';
+  } else {
+    filaSt = '<tr><td>Cubierta de mesa ' + esc(r.formaLabel) + ' -- ' + esc(r.grosor) + 'mm ' + esc(r.templado) + ', canto ' + esc(r.canto) + '<br><span style="font-size:8pt;color:#888">' + r.m2.toFixed(3) + ' m² · ' + r.ml.toFixed(2) + ' ml de perímetro</span></td>'
+      + '<td style="text-align:right;font-weight:700">$' + fmt(r.total) + '</td></tr>';
+    filaTem = '';
+    totalRow = '<tr style="background:#1B3A5C"><td style="color:#fff;font-weight:700">TOTAL</td><td style="color:#F1C40F;text-align:right;font-weight:800">$' + fmt(r.total) + '</td></tr>';
+  }
   return '<!DOCTYPE html><html lang=es><head><meta charset=UTF-8><meta name=viewport content=width=device-width>'
     + '<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10pt;color:#1B3A5C;background:#fff}'
     + '.pg{max-width:620px;margin:0 auto;padding:0 0 80px}.pg-body{padding:16px 22px}'
@@ -588,11 +624,9 @@ function cmGenerarDocumento(r, folio, cliente, dir, tel, fecha) {
     + (tel ? '<tr><td style="font-weight:700;background:#f5f7fa">Teléfono</td><td>' + esc(tel) + '</td></tr>' : '')
     + (dir ? '<tr><td style="font-weight:700;background:#f5f7fa">Dirección</td><td>' + esc(dir) + '</td></tr>' : '')
     + '<tr><td style="font-weight:700;background:#f5f7fa">Fecha</td><td>' + fechaTxt + '</td></tr></table>'
-    + '<h2>Descripción</h2>'
+    + '<h2>Descripción' + (hayComparacion ? ' -- Opciones a elegir' : '') + '</h2>'
     + '<table style="margin-bottom:14px"><thead><tr><th>Concepto</th><th style="text-align:right;width:110px">Precio</th></tr></thead><tbody>'
-    + '<tr><td>Cubierta de mesa ' + esc(r.formaLabel) + ' -- ' + esc(r.grosor) + 'mm ' + esc(r.templado) + ', canto ' + esc(r.canto) + '<br><span style="font-size:8pt;color:#888">' + r.m2.toFixed(3) + ' m² · ' + r.ml.toFixed(2) + ' ml de perímetro</span></td>'
-    + '<td style="text-align:right;font-weight:700">$' + fmt(r.total) + '</td></tr>'
-    + '<tr style="background:#1B3A5C"><td style="color:#fff;font-weight:700">TOTAL</td><td style="color:#F1C40F;text-align:right;font-weight:800">$' + fmt(r.total) + '</td></tr>'
+    + filaSt + filaTem + totalRow
     + '</tbody></table>'
     + '<div style="font-size:9pt;text-align:center;color:#1B3A5C;background:#F7F5F0;padding:10px;border-radius:6px">El presente presupuesto contempla los trabajos antes descritos, cualquier otro trabajo adicional se cotizará. Estos precios están sujetos a cambios sin previo aviso.</div>'
 
@@ -606,11 +640,18 @@ function cmGenerarDocumento(r, folio, cliente, dir, tel, fecha) {
     + '</ol></div>'
 
     + '<div class="page-break"><h2>2. Política de pagos</h2>'
-    + '<table style="margin-bottom:12px"><thead><tr><th>Concepto</th><th style="text-align:center;width:100px">%</th><th style="text-align:right;width:110px">Monto</th></tr></thead><tbody>'
-    + '<tr><td>Anticipo inicial</td><td style="text-align:center">50%</td><td style="text-align:right;font-weight:700">$' + fmt(r.total*0.50) + '</td></tr>'
-    + '<tr style="background:#f5f7fa"><td>Segundo pago (confirmar producción)</td><td style="text-align:center">35%</td><td style="text-align:right;font-weight:700">$' + fmt(r.total*0.35) + '</td></tr>'
-    + '<tr style="background:#1B3A5C"><td style="color:#fff;font-weight:700">Liquidación (entrega)</td><td style="color:#fff;text-align:center">15%</td><td style="color:#F1C40F;text-align:right;font-weight:700">$' + fmt(r.total*0.15) + '</td></tr>'
-    + '</tbody></table>'
+    + (hayComparacion
+      ? '<div style="font-size:9pt;color:#555;background:#F7F5F0;padding:10px 12px;border-radius:6px;margin-bottom:10px">Los montos de pago se calculan sobre el precio final, una vez que el cliente confirme cuál de las dos opciones (templado o sin templar) elige.</div>'
+        + '<table style="margin-bottom:12px"><thead><tr><th>Concepto</th><th style="text-align:center;width:100px">%</th></tr></thead><tbody>'
+        + '<tr><td>Anticipo inicial</td><td style="text-align:center">50%</td></tr>'
+        + '<tr style="background:#f5f7fa"><td>Segundo pago (confirmar producción)</td><td style="text-align:center">35%</td></tr>'
+        + '<tr style="background:#1B3A5C"><td style="color:#fff;font-weight:700">Liquidación (entrega)</td><td style="color:#fff;text-align:center">15%</td></tr>'
+        + '</tbody></table>'
+      : '<table style="margin-bottom:12px"><thead><tr><th>Concepto</th><th style="text-align:center;width:100px">%</th><th style="text-align:right;width:110px">Monto</th></tr></thead><tbody>'
+        + '<tr><td>Anticipo inicial</td><td style="text-align:center">50%</td><td style="text-align:right;font-weight:700">$' + fmt(r.total*0.50) + '</td></tr>'
+        + '<tr style="background:#f5f7fa"><td>Segundo pago (confirmar producción)</td><td style="text-align:center">35%</td><td style="text-align:right;font-weight:700">$' + fmt(r.total*0.35) + '</td></tr>'
+        + '<tr style="background:#1B3A5C"><td style="color:#fff;font-weight:700">Liquidación (entrega)</td><td style="color:#fff;text-align:center">15%</td><td style="color:#F1C40F;text-align:right;font-weight:700">$' + fmt(r.total*0.15) + '</td></tr>'
+        + '</tbody></table>')
     + '<div style="display:flex;gap:16px;margin-bottom:14px">'
     + '<div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px"><div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">Banorte</div><div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div><div style="font-size:8.5pt;color:#333">Cuenta: 0672530766</div><div style="font-size:8.5pt;color:#333">CLABE: 072180006725307668</div></div>'
     + '<div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px"><div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">BBVA</div><div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div><div style="font-size:8.5pt;color:#333">Cuenta: 1512081906</div><div style="font-size:8.5pt;color:#333">CLABE: 012180015120819061</div></div>'
@@ -638,21 +679,36 @@ async function cmGenerarPresupuesto() {
   var numFolio = await cmPedirNumeroFolio();
   if (numFolio === null) { toast('Cancelado'); return; }
 
+  // Si el checkbox está activo, calcula también la opción contraria
+  // (templado <-> sin templar) para que el documento muestre las dos.
+  var incluirAmbos = document.getElementById('cm-p-ambos').checked;
+  var rAlt = null;
+  if (incluirAmbos) {
+    var d = cmMedidas();
+    var templadoActual = document.getElementById('cm-templado').value === 'si';
+    var otro = cmCalcularParaTemplado(d, !templadoActual);
+    rAlt = Object.assign({}, r, {
+      total: otro.total, costoVidrio: otro.costoVidrio, costoCanto: otro.costoCanto, cargoForma: otro.cargoForma,
+      subtotal: otro.subtotal, gif: otro.gif, ga: otro.ga, utilidad: otro.utilidad, ivaMonto: otro.ivaMonto,
+      templado: templadoActual ? 'Sin templar' : 'Templado'
+    });
+  }
+
   var hoy = new Date();
   var yy = String(hoy.getFullYear()).slice(-2), mm = String(hoy.getMonth()+1).padStart(2,'0'), dd = String(hoy.getDate()).padStart(2,'0');
   var numCliente = 'AUTO-' + String(Math.floor(Math.random()*900)+100);
   var folio = 'CACN-' + numFolio + 'A-' + yy + mm + dd + '-' + numCliente;
   var monto = Math.round(r.total);
-  var desc = 'Cubierta de mesa ' + r.formaLabel + ' ' + r.grosor + 'mm ' + r.templado + ', canto ' + r.canto + ' -- ' + r.m2.toFixed(2) + 'm²';
+  var desc = 'Cubierta de mesa ' + r.formaLabel + ' ' + r.grosor + 'mm ' + (incluirAmbos ? '(sin templar/templado a elegir)' : r.templado) + ', canto ' + r.canto + ' -- ' + r.m2.toFixed(2) + 'm²';
 
   var payload = {
     folio: folio, cliente: cliente, tel: tel || null, dir: dir || null,
     descripcion: desc, monto: monto, saldo: monto, estado: 'activo',
     fecha: hoy.getFullYear() + '-' + mm + '-' + dd, modulo: 'cubiertas',
-    notas_internas: JSON.stringify([{ label: desc, cantidad: 1, precioUnitario: monto, precio: monto, resultado: r }])
+    notas_internas: JSON.stringify([{ label: desc, cantidad: 1, precioUnitario: monto, precio: monto, resultado: r, resultadoAlt: rAlt }])
   };
 
-  var htmlDoc = cmGenerarDocumento(r, folio, cliente, dir, tel, hoy);
+  var htmlDoc = cmGenerarDocumento(r, folio, cliente, dir, tel, hoy, rAlt);
   var w = window.open('', '_blank');
   if (w) { w.document.write(htmlDoc); w.document.close(); }
 
@@ -690,8 +746,9 @@ function cmReimprimir(idx) {
   try {
     var piezas = JSON.parse(p.notas_internas || '[]');
     var r = piezas[0] && piezas[0].resultado;
+    var rAlt = piezas[0] && piezas[0].resultadoAlt;
     if (!r) { toast('Este presupuesto no tiene datos de cubierta guardados'); return; }
-    var htmlDoc = cmGenerarDocumento(r, p.folio, p.cliente, p.dir || '', p.tel || '', p.fecha ? new Date(p.fecha + 'T00:00:00') : new Date());
+    var htmlDoc = cmGenerarDocumento(r, p.folio, p.cliente, p.dir || '', p.tel || '', p.fecha ? new Date(p.fecha + 'T00:00:00') : new Date(), rAlt || null);
     var w = window.open('', '_blank');
     if (w) { w.document.write(htmlDoc); w.document.close(); }
   } catch (e) { toast('No se pudo reimprimir: ' + e.message); }
