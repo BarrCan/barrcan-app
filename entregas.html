@@ -6,6 +6,19 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.51.0
+  FECHA   : 2026-09-03
+  v3.51.0 - FIX: el respaldo offline de t&eacute;cnicos (cuando falla la
+    conexi&oacute;n a Supabase) ten&iacute;a 5 nombres quemados en el HTML
+    (Esa&uacute;, Miguel, Carlos, Omar, Rodrigo) que ya no existen en el
+    equipo real -- causaba que reportes sin conexi&oacute;n pudieran
+    guardarse con c&oacute;digos de t&eacute;cnico hu&eacute;rfanos, sin
+    dato real detr&aacute;s. Ahora la &uacute;ltima lista real que s&iacute;
+    se pudo bajar de Supabase se guarda en localStorage y esa es la que se
+    usa como respaldo offline (siempre vigente). El HTML fijo qued&oacute;
+    solo como &uacute;ltimo recurso (instalaci&oacute;n nueva, nunca hubo
+    cach&eacute;) y ya refleja al equipo actual: Luis Enrique (HER),
+    Mauricio (MAU), Ram&oacute;n (RAM).
   VERSION : v3.50.0
   FECHA   : 2026-09-03
   v3.50.0 - FIX: caso real -- el mismo folio (STAN-001A) se guardó DOS
@@ -1742,11 +1755,9 @@ body{min-height:100vh}
             <label class="form-label">T&eacute;cnico instalador</label>
             <select id="inst-tecnico-nombre" class="form-select" style="margin-bottom:4px">
               <option value="">-- Selecciona t&eacute;cnico --</option>
-              <option value="ESAU">Esa&uacute;</option>
-              <option value="MIGUEL">Miguel</option>
-              <option value="CARLOS">Carlos</option>
-              <option value="OMAR">Omar</option>
-              <option value="RODRIGO">Rodrigo</option>
+              <option value="HER">Luis Enrique</option>
+              <option value="MAU">Mauricio</option>
+              <option value="RAM">Ram&oacute;n</option>
             </select>
             <div style="font-size:10px;color:var(--gray-400)">Se llena solo desde el cat&aacute;logo de t&eacute;cnicos &mdash; si no ves a alguien, agr&eacute;galo en tecnicos.html</div>
           </div>
@@ -1754,22 +1765,18 @@ body{min-height:100vh}
             <label class="form-label">Asignado por</label>
             <select id="inst-asignado" class="form-select">
               <option value="">-- Selecciona --</option>
-              <option value="ESAU">Esa&uacute;</option>
-              <option value="MIGUEL">Miguel</option>
-              <option value="CARLOS">Carlos</option>
-              <option value="OMAR">Omar</option>
-              <option value="RODRIGO">Rodrigo</option>
+              <option value="HER">Luis Enrique</option>
+              <option value="MAU">Mauricio</option>
+              <option value="RAM">Ram&oacute;n</option>
             </select>
           </div>
           <div style="margin-top:8px">
             <label class="form-label">T&eacute;cnico acompa&ntilde;ante <span style="font-weight:400;color:var(--gray-400)">(opcional, si fueron 2)</span></label>
             <select id="inst-tecnico-acompanante" class="form-select">
               <option value="">-- Ninguno / trabaj&oacute; solo --</option>
-              <option value="ESAU">Esa&uacute;</option>
-              <option value="MIGUEL">Miguel</option>
-              <option value="CARLOS">Carlos</option>
-              <option value="OMAR">Omar</option>
-              <option value="RODRIGO">Rodrigo</option>
+              <option value="HER">Luis Enrique</option>
+              <option value="MAU">Mauricio</option>
+              <option value="RAM">Ram&oacute;n</option>
             </select>
             <div style="font-size:10px;color:var(--gray-400)">Para llevar estad&iacute;stica de apoyos entre t&eacute;cnicos</div>
           </div>
@@ -2226,12 +2233,41 @@ async function entCargarTecnicosDinamico() {
       if (valorPrevioAcomp) selAcomp.value = valorPrevioAcomp;
     }
     datos.forEach(function(t) { ENT_TEC_NOMBRES_DIN[t.tecnico_id_login] = t.nombre_completo; });
+    try { localStorage.setItem('ent_tecnicos_cache', JSON.stringify(datos)); } catch(eCache) {}
   } catch(e) {
-    console.warn('[BarrCan] No se pudo cargar la lista de t\u00e9cnicos desde Supabase (se usa la lista fija):', e);
+    console.warn('[BarrCan] No se pudo cargar la lista de t\u00e9cnicos desde Supabase, se usa el \u00faltimo respaldo real conocido:', e);
+    entAplicarTecnicosDesdeCache();
   }
 }
 
-var APP_VERSION = 'v3.50.0';
+// Respaldo offline: usa la \u00faltima lista REAL que s\u00ed se pudo bajar de Supabase
+// (guardada en localStorage cada vez que carga con \u00e9xito), en vez de una lista
+// fija quemada en el HTML que se vuelve obsoleta cuando cambia el equipo.
+function entAplicarTecnicosDesdeCache() {
+  var sel = document.getElementById('inst-tecnico-nombre');
+  var selAsig = document.getElementById('inst-asignado');
+  var selAcomp = document.getElementById('inst-tecnico-acompanante');
+  var raw = null;
+  try { raw = localStorage.getItem('ent_tecnicos_cache'); } catch(e) { return; }
+  if (!raw) return;
+  var datos;
+  try { datos = JSON.parse(raw); } catch(e) { return; }
+  if (!datos || !datos.length) return;
+  var opciones = '<option value="">-- Selecciona --</option>'
+    + datos.map(function(t) {
+        return '<option value="' + t.tecnico_id_login + '">' + t.nombre_completo + '</option>';
+      }).join('');
+  var opcionesAcomp = '<option value="">-- Ninguno / trabaj\u00f3 solo --</option>'
+    + datos.map(function(t) {
+        return '<option value="' + t.tecnico_id_login + '">' + t.nombre_completo + '</option>';
+      }).join('');
+  if (sel) { var vp = sel.value; sel.innerHTML = opciones; if (vp) sel.value = vp; }
+  if (selAsig) { var vpa = selAsig.value; selAsig.innerHTML = opciones; if (vpa) selAsig.value = vpa; }
+  if (selAcomp) { var vpc = selAcomp.value; selAcomp.innerHTML = opcionesAcomp; if (vpc) selAcomp.value = vpc; }
+  datos.forEach(function(t) { ENT_TEC_NOMBRES_DIN[t.tecnico_id_login] = t.nombre_completo; });
+}
+
+var APP_VERSION = 'v3.51.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
