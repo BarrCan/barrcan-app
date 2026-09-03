@@ -6,6 +6,16 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.3
+  FECHA   : 2026-09-02
+  v3.3 - FIX: "+Piezas" no funcionaba en folios de Stands (STAN-001A/
+    002A) -- "No se reconoce el módulo de este folio". Causa doble:
+    (1) esos folios tenían el campo modulo vacío en la base (se
+    corrigió directo en Supabase), y (2) presModuloDe() solo
+    reconocía el patrón CACN- por letra de serie, nunca STAN- por
+    prefijo. Se agregó ese respaldo -- ahora reconoce STAN- aunque
+    el campo modulo vuelva a venir vacío en el futuro. Probado con
+    los folios reales.
   VERSIÓN : v3.2
   FECHA   : 2026-08-22
   v3.2 - FIX: dejar "Saldo pendiente" en blanco al crear un presupuesto
@@ -1379,7 +1389,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.2';
+var APP_VERSION = 'v3.3';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1742,6 +1752,10 @@ var PRES_SERIE_VIEJA_A_MODULO = { B: 'nacional', C: 'espanol', E: 'eurovent', S:
 
 function presModuloDe(datos) {
   if (datos.modulo && PRES_MODULO_A_ARCHIVO[datos.modulo]) return datos.modulo;
+  // Respaldo por si el campo "modulo" viene vacío (folios viejos) --
+  // detecta por el prefijo del folio en vez de solo por la letra de
+  // serie, que nunca coincidía con STAN- (caso real: STAN-001A/002A).
+  if (/^STAN-/.test(datos.folio || '')) return 'stands';
   var m = /^CACN-\d+([A-Z])/.exec(datos.folio || '');
   var letra = m ? m[1] : null;
   return letra ? PRES_SERIE_VIEJA_A_MODULO[letra] : null;
