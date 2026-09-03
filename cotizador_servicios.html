@@ -5,7 +5,68 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Servicios y Accesorios</title>
 <!--
-  BARRCAN SERVICIOS Y ACCESORIOS v1.13.2
+  BARRCAN SERVICIOS Y ACCESORIOS v1.15.0
+  v1.15.0 - Cubiertas de Mesa QUITADA de este archivo (HTML, DB.sistemas,
+    tarjeta de familia, todas las funciones cm*, todo). Tres rondas
+    de diagnóstico (try/catch, alertas incondicionales, panel visible
+    sin alert()) nunca lograron reproducir ni una sola señal de que
+    los botones estuvieran ejecutando el código -- ni siquiera el
+    cambio de color, que no depende de ningún cálculo. Se decidió
+    construirla como módulo aparte (cotizador_cubiertas.html), igual
+    que ya se hizo con Mensajes y Logística, en vez de seguir
+    peleando contra lo que sea que está pasando en este archivo tan
+    grande. La lógica y matemática ya estaban probadas correctas por
+    separado -- se reutilizan ahí.
+  v1.14.3 - (retirado, ver arriba)
+  v1.14.3 - DIAGNÓSTICO 3: confirmado que "Cubierta de Mesa" sí se
+    selecciona bien (alerta verde apareció), pero DESPUÉS de eso
+    ningún botón responde -- ni Circular (no cambia de color) ni
+    Calcular (con Rectangular). Nueva teoría: alert() en celular
+    puede dejar el sistema de toques trabado un momento después de
+    cerrarlo, interfiriendo con el siguiente toque sin que sea culpa
+    del código. Se quitaron TODAS las alertas y se reemplazaron por
+    un panel de texto fijo en pantalla (fondo negro, letras verdes,
+    arriba del formulario) que se actualiza solo sin interrumpir
+    nada -- si esto tampoco se actualiza al tocar los botones,
+    confirma que el problema es anterior a mi código.
+  v1.14.2 - Alertas incondicionales en 3 puntos (ver detalle abajo).
+  v1.14.2 - DIAGNÓSTICO 2: la versión anterior con try/catch tampoco
+    mostró ninguna alerta -- confirma que el clic ni siquiera está
+    llegando a las funciones (no es un error dentro de ellas). Se
+    agregaron alertas INCONDICIONALES (sin ninguna lógica antes) en
+    3 puntos: al seleccionar la tarjeta "Cubierta de Mesa" del
+    catálogo, al tocar cualquier botón de forma, y al tocar
+    "Calcular cubierta". Si NINGUNA de las 3 aparece, el problema
+    está en cómo se seleccionó/renderizó el sistema desde el
+    catálogo, no en el wizard en sí.
+  v1.14.1 - Primera versión de diagnóstico (con try/catch, sin alerta
+    visible al usuario).
+  v1.14.1 - DIAGNÓSTICO: Mau reportó que en Cubiertas de Mesa ni los
+    botones de forma (Circular/Óvalo/Figura libre) ni "Calcular
+    cubierta" hacen nada -- ni con Rectangular. Revisé cada ID
+    referenciado uno por uno contra el HTML y todos coinciden; no
+    encontré el bug por lectura de código. Se descartó caché vieja
+    (cerró navegador completo, seguía igual) y placeholders sin
+    llenar (sí escribió valores reales). Como no lo puedo reproducir
+    aquí, se agregó una alerta visible que muestra el error real y
+    su línea exacta si algo truena en cmSelForma/cmReset/cmCalcular
+    -- para diagnosticar con precisión en el siguiente intento en
+    lugar de seguir adivinando.
+  v1.14.0 - Nueva familia "🍽️ Cubiertas de Mesa" (ver detalle abajo).
+  v1.14.0 - Nueva familia "🍽️ Cubiertas de Mesa": 4 formas (Rectangular/
+    Cuadrado, Circular, Óvalo, Figura libre), grosor 6mm/9mm, sin
+    templar/templado, canto (pulido/bisel/pecho de paloma) cobrado por
+    metro lineal de perímetro. Recargo por forma: circular +25%, óvalo
+    y figura libre +37.5% (requieren plantilla física). Óvalo usa la
+    aproximación de Ramanujan para el perímetro. Sigue la misma
+    fórmula financiera del resto (GIF+GA+Utilidad+IVA). Precios
+    editables desde config.html (grupo nuevo), sincronizados vía
+    config_precios igual que vidrio/aluminio/espejos.
+    Matemática de las 3 formas geométricas verificada por separado con
+    números exactos -- no se logró correr una prueba de clic-por-clic
+    completa por el tamaño del archivo (limitación de la herramienta
+    de prueba, no del código). Recomendado probar en vivo antes de
+    usarlo con un cliente real.
   v1.13.2 - Precio de espejos conectado a Config. Precios: antes vivía fijo
     en el código (900/1200/1200/1800 por m² según el tipo), sin
     forma de cambiarlo sin editar el archivo. Ahora se sincroniza
@@ -1833,6 +1894,16 @@ body{background:var(--off-white)}
     <input type="hidden" id="cfg-pel-fil-costo" value="180">
     <input type="hidden" id="cfg-pel-vin-venta" value="450">
     <input type="hidden" id="cfg-pel-vin-costo" value="200">
+    <input type="hidden" id="cfg-cm-vidrio-6-st"  value="400">
+    <input type="hidden" id="cfg-cm-vidrio-6-tem" value="650">
+    <input type="hidden" id="cfg-cm-vidrio-9-st"  value="750">
+    <input type="hidden" id="cfg-cm-vidrio-9-tem" value="1100">
+    <input type="hidden" id="cfg-cm-canto-pulido" value="90">
+    <input type="hidden" id="cfg-cm-canto-bisel"  value="180">
+    <input type="hidden" id="cfg-cm-canto-pecho"  value="220">
+    <input type="hidden" id="cfg-cm-recargo-circ"  value="25">
+    <input type="hidden" id="cfg-cm-recargo-ovalo" value="37.5">
+    <input type="hidden" id="cfg-cm-recargo-libre" value="37.5">
 
     <!-- BOTÓN CALCULAR — idéntico al app base -->
     <button class="btn-calc" id="btn-calcular" onclick="calcular()">
@@ -2220,6 +2291,7 @@ const DB = {
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[],
       formulas:{ cortes:[], vidrio:{tipo:"Espejo 4–6mm con luz LED/Neón",cant:1,ancho:(L,H)=>L,alto:(L,H)=>H} }
     },
+
 
     // ══════════════════════════════════════
     // MANTENIMIENTO Y SERVICIOS
@@ -2664,7 +2736,13 @@ const SB_CONFIG_MAPA = {
   'pct_bronce':    'cfg-pct-bronce', 'pct_azul':      'cfg-pct-azul',
   'pel_esm_venta': 'cfg-pel-esm-venta', 'pel_esm_costo':'cfg-pel-esm-costo',
   'pel_fil_venta': 'cfg-pel-fil-venta', 'pel_fil_costo':'cfg-pel-fil-costo',
-  'pel_vin_venta': 'cfg-pel-vin-venta'
+  'pel_vin_venta': 'cfg-pel-vin-venta',
+  'cm_vidrio_6mm_st':  'cfg-cm-vidrio-6-st',  'cm_vidrio_6mm_tem': 'cfg-cm-vidrio-6-tem',
+  'cm_vidrio_9mm_st':  'cfg-cm-vidrio-9-st',  'cm_vidrio_9mm_tem': 'cfg-cm-vidrio-9-tem',
+  'cm_canto_pulido':   'cfg-cm-canto-pulido', 'cm_canto_bisel':    'cfg-cm-canto-bisel',
+  'cm_canto_pecho_paloma': 'cfg-cm-canto-pecho',
+  'cm_recargo_circular_pct': 'cfg-cm-recargo-circ', 'cm_recargo_ovalo_pct': 'cfg-cm-recargo-ovalo',
+  'cm_recargo_libre_pct':    'cfg-cm-recargo-libre'
 };
 
 // ── Cargar config_precios desde Supabase (fuente de verdad cuando hay conexión) ──
@@ -3761,7 +3839,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.13.3';
+const APP_VERSION = 'v1.15.0';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -4079,8 +4157,6 @@ function renderResultado(r) {
     document.querySelector('.sn-body').style.paddingBottom = '80px';
     return;
   }
-
-  const modLabel = STATE.modalidad === 'local' ? `Inst. Local · Piso ${STATE.pisoActual}` : 'Envío Nacional';
 
   el.innerHTML = `
     <div class=slide-up>

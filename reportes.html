@@ -6,6 +6,20 @@
 <title>BarrCan · Reportes</title>
 <!--
   BARRCAN · MODULO: REPORTES (standalone)
+  VERSION : v2.8
+  FECHA   : 2026-08-31
+  v2.8 - FIX: "🖨️ Imprimir reporte de gasto" (en Ganancia, por obra)
+    tronaba en silencio -- pedía una columna que no existe
+    (folio_cfdi, es folio_factura). Mismo tipo de bug que ya
+    corregimos antes con tecnico_nombre.
+    De paso: el reporte impreso ahora también incluye la mano de obra
+    de técnicos (antes solo material + eventuales) -- mismo cálculo
+    por bloques que ya usa el resto del módulo.
+    Sobre "no aparece la suma de Materiales": verificado con datos
+    reales (STAN-001A $36,651, STAN-002A $31,494) que SÍ se calcula
+    correctamente en la tarjeta de cada obra -- no encontré el bug
+    ahí. Puede ser que se refiriera al mismo error de imprimir de
+    arriba, o hace falta un ejemplo más específico para ubicarlo.
   VERSION : v2.7
   FECHA   : 2026-08-29
   v2.7 - FIX CRÍTICO -- causa raíz encontrada de por qué el sueldo de
@@ -450,7 +464,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 </div>
 </body>
 <script>
-var APP_VERSION = 'v2.7';
+var APP_VERSION = 'v2.8';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb=null;
@@ -650,7 +664,7 @@ async function rpImprimirReporteObra(folio) {
   toast('Generando reporte...');
   try {
     var resFact = await sb().from('facturas_recibidas')
-      .select('proveedor,fecha,folio_cfdi,total,moneda')
+      .select('proveedor,fecha,folio_factura,total,moneda')
       .eq('folio_obra', folio).eq('desglosada', false);
     var resConc = await sb().from('facturas_conceptos')
       .select('descripcion,cantidad,precio_unitario,importe,factura_id')
@@ -662,6 +676,27 @@ async function rpImprimirReporteObra(folio) {
       .select('nombre,fecha,evento,monto,notas')
       .eq('folio_relacionado', folio);
     if (resEvent.error) console.warn('[BarrCan] No se pudo cargar personal eventual del proyecto:', resEvent.error);
+
+    var filasTecnicos = [];
+    try {
+      var resPagosTec3 = await sb().from('pagos_tecnicos').select('tecnico_id,semana_inicio,semana_fin,monto');
+      var resEntradas3 = await sb().from('tecnico_entradas_dia').select('tecnico_id,fecha,bloques');
+      if (!resPagosTec3.error && !resEntradas3.error) {
+        var entradas3 = resEntradas3.data || [];
+        (resPagosTec3.data || []).forEach(function(pt) {
+          var diasSemana = entradas3.filter(function(e) { return e.tecnico_id === pt.tecnico_id && e.fecha >= pt.semana_inicio && e.fecha < pt.semana_fin; });
+          var todosLosBloques = [];
+          diasSemana.forEach(function(d) { (d.bloques || []).forEach(function(b) { todosLosBloques.push({ b: b, fecha: d.fecha }); }); });
+          if (!todosLosBloques.length) return;
+          var parte = (parseFloat(pt.monto) || 0) / todosLosBloques.length;
+          todosLosBloques.forEach(function(item) {
+            if (item.b.folio_obra === folio) {
+              filasTecnicos.push({ fecha: item.fecha, proveedor: '🔧 ' + RP_NOMBRE_TECNICO(pt.tecnico_id), descripcion: (item.b.actividades || []).join(', '), importe: parte, moneda: 'MXN' });
+            }
+          });
+        });
+      }
+    } catch (eTec) { console.warn('[BarrCan] No se pudo cargar técnicos del proyecto:', eTec.message); }
 
     var idsFacturasConcepto = (resConc.data || []).map(function(c) { return c.factura_id; }).filter(function(v, i, a) { return v && a.indexOf(v) === i; });
     var mapaFacturas = {};
@@ -681,6 +716,7 @@ async function rpImprimirReporteObra(folio) {
     (resEvent.data || []).forEach(function(ev) {
       filas.push({ fecha: ev.fecha, proveedor: '👷 ' + (ev.nombre || 'Personal eventual'), descripcion: ev.evento || (ev.notas || 'Pago de personal eventual'), importe: parseFloat(ev.monto || 0), moneda: 'MXN' });
     });
+    filasTecnicos.forEach(function(f) { filas.push(f); });
     filas.sort(function(a, b) { return (a.fecha || '') < (b.fecha || '') ? -1 : 1; });
 
     var total = filas.reduce(function(a, f) { return a + f.importe; }, 0);

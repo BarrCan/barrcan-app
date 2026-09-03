@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>BarrCan &middot; Cubiertas de Mesa</title>
+<!--
+  BARRCAN · MODULO: COTIZADOR CUBIERTAS DE MESA (standalone)
+  VERSION : v1.2
+  FECHA   : 2026-09-02
+  v1.2 - El documento IMPRESO ahora también muestra ambas opciones
+    (sin templar y templado) para que el cliente elija directo del
+    papel -- antes solo se veía en pantalla, el PDF solo llevaba la
+    opción que estuviera seleccionada. Nuevo checkbox "Incluir sin
+    templar y templado" (activado por default) al generar el
+    presupuesto. Cuando está activo: tabla de precios muestra las 2
+    filas con sus montos, y la sección de pagos muestra solo
+    porcentajes (no montos fijos) ya que el total depende de cuál
+    elija el cliente. Reimprimir también recupera y muestra la
+    comparación si el presupuesto se guardó así. Probado ambos casos
+    (con y sin comparación) -- correctos.
+  VERSION : v1.1
+  FECHA   : 2026-09-02
+  v1.1 - Tres cosas pedidas después de confirmar que el módulo ya
+    funcionaba bien:
+    1) Comparación automática sin templar/templado: ya no hay que
+       elegir para ver ambos precios -- se muestran juntos siempre
+       que se captura una medida.
+    2) Diagrama SVG de la forma con las medidas rotuladas (rectángulo,
+       círculo, óvalo con sus ejes; figura libre muestra un contorno
+       de referencia ya que no hay forma exacta que dibujar sin la
+       plantilla física).
+    3) Presupuesto formal completo, mismo criterio que
+       cotizador_banos.html: folio CACN-XXXA-YYMMDD-NNN, datos del
+       cliente, documento de 3 páginas (precio, condiciones, pagos
+       con datos bancarios reales y firmas), guardado en
+       presupuestos_atrasados, con historial y reimprimir.
+    Todo probado de punta a punta con jsdom -- comparación exacta,
+    diagrama con medida correcta, documento completo, guardado e
+    historial funcionando.
+  VERSION : v1.0
+  FECHA   : 2026-08-31
+  v1.0 - Creación inicial. Se intentó primero integrar dentro de
+    cotizador_servicios.html (archivo de más de 1MB) pero tras 3
+    rondas de diagnóstico (try/catch con alert, alertas
+    incondicionales, panel de texto visible sin alert()) nunca se
+    logró reproducir ni una señal de que los botones ejecutaran el
+    código -- ni el cambio de color, que no depende de ningún
+    cálculo. Se decidió construirlo aparte, mismo criterio que
+    mensajes.html y logistica.html.
+    4 formas (Rectangular/Cuadrado, Circular, Óvalo, Figura libre),
+    grosor 6mm/9mm, sin templar/templado, canto (pulido/bisel/pecho
+    de paloma) por metro lineal de perímetro, recargo por forma
+    (circular +25%, óvalo/libre +37.5%, requieren plantilla). Misma
+    fórmula financiera del resto de la app (GIF+GA+Utilidad+IVA).
+    Precios sincronizados con config_precios (mismas claves cm_* ya
+    creadas y visibles en config.html).
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+:root {
+  --navy: #1B3A5C; --blue: #2E6DA4; --gold: #C8923A; --gold-light: #E8B96A;
+  --white: #FFFFFF; --off-white: #F7F5F0; --gray-100: #F0EDE8; --gray-200: #DDD9D2;
+  --gray-400: #9A9590; --gray-600: #5A5652; --green: #2D7D46; --red: #C0392B;
+  --shadow-sm: 0 2px 8px rgba(27,58,92,0.08); --radius: 12px; --radius-sm: 8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--off-white); color:var(--navy); overscroll-behavior:none; }
+#app { min-height:100vh; display:flex; flex-direction:column; }
+.header { background:var(--navy); padding:0 20px; height:56px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; box-shadow:0 2px 12px rgba(0,0,0,.3); position:sticky; top:0; z-index:100; }
+.header-logo { display:flex; align-items:center; gap:10px; }
+.logo-mark { width:32px; height:32px; background:linear-gradient(135deg,var(--gold),var(--gold-light)); border-radius:6px; display:flex; align-items:center; justify-content:center; font-family:'Playfair Display',serif; font-weight:900; font-size:16px; color:var(--navy); }
+.logo-text { font-family:'Playfair Display',serif; font-weight:700; font-size:18px; color:#fff; }
+.logo-sub { font-size:9px; color:var(--gold-light); letter-spacing:2px; text-transform:uppercase; display:block; margin-top:-3px; }
+.offline-badge { display:flex; align-items:center; gap:5px; background:rgba(200,146,58,.15); border:1px solid rgba(200,146,58,.3); border-radius:20px; padding:4px 10px; font-size:11px; color:var(--gold-light); font-weight:500; }
+.offline-dot { width:6px; height:6px; border-radius:50%; background:var(--gold-light); animation:pulse-dot 2s infinite; }
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
+.content { flex:1; padding:16px 16px 60px; max-width:600px; margin:0 auto; width:100%; }
+.section-title { font-family:'Playfair Display',serif; font-size:19px; font-weight:700; color:var(--navy); margin-bottom:3px; }
+.section-sub { font-size:11.5px; color:var(--gray-400); margin-bottom:14px; }
+.wizard-card { background:#fff; border-radius:var(--radius); padding:16px; margin-bottom:12px; box-shadow:var(--shadow-sm); }
+.wizard-title { font-size:13px; font-weight:700; color:var(--navy); margin-bottom:12px; }
+.form-label { display:block; font-size:11px; font-weight:600; color:var(--gray-600); margin-bottom:5px; }
+.form-input, select.form-input { width:100%; padding:10px 12px; border:1.5px solid var(--gray-200); border-radius:var(--radius-sm); font-family:'DM Sans',sans-serif; font-size:14px; color:var(--navy); background:var(--off-white); box-sizing:border-box; }
+.form-input:focus { outline:none; border-color:var(--blue); background:#fff; }
+.input-unit { position:relative; }
+.input-unit-label { position:absolute; right:12px; top:50%; transform:translateY(-50%); font-size:11px; color:var(--gray-400); font-weight:600; }
+.form-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.form-group { margin-bottom:10px; }
+.form-group:last-child { margin-bottom:0; }
+.forma-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:4px; }
+.forma-btn { padding:14px 6px; border:2px solid var(--gray-200); border-radius:8px; background:none; cursor:pointer; font-family:'DM Sans',sans-serif; font-size:12px; font-weight:600; color:var(--gray-400); text-align:center; }
+.forma-btn .icono { font-size:22px; display:block; margin-bottom:4px; }
+.forma-btn.active { border-color:var(--blue); background:rgba(46,109,164,0.08); color:var(--blue); }
+.btn-calcular { width:100%; padding:15px; background:linear-gradient(135deg,var(--gold),var(--gold-light)); color:#fff; border:none; border-radius:var(--radius-sm); font-size:15px; font-weight:700; cursor:pointer; box-shadow:0 4px 16px rgba(200,146,58,.35); margin-top:4px; }
+.costo-row { display:flex; justify-content:space-between; align-items:center; padding:8px 0; font-size:12.5px; border-bottom:1px solid var(--gray-100); }
+.costo-row:last-child { border-bottom:none; }
+.costo-row.subtotal { font-weight:700; border-top:1.5px solid var(--gray-200); border-bottom:none; margin-top:4px; padding-top:10px; }
+.costo-row.total { background:var(--navy); color:#fff; margin:10px -16px -16px; padding:14px 16px; border-radius:0 0 var(--radius) var(--radius); font-size:16px; font-weight:800; }
+.costo-row.total span:last-child { color:var(--gold-light); }
+.costo-monto { font-family:'DM Mono',monospace; font-weight:600; }
+.toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--navy); color:#fff; padding:10px 18px; border-radius:20px; font-size:13px; font-weight:600; opacity:0; transition:all .3s; z-index:999; white-space:nowrap; pointer-events:none; max-width:90vw; text-align:center; }
+.toast.show { opacity:1; transform:translateX(-50%) translateY(-6px); }
+.badge-forma { display:inline-block; background:var(--navy); color:#fff; padding:4px 12px; border-radius:20px; font-size:11px; font-weight:700; margin-bottom:6px; }
+.nota-forma { font-size:11px; color:var(--gold); background:rgba(200,146,58,.08); border-left:3px solid var(--gold); padding:8px 10px; border-radius:0 6px 6px 0; margin-top:4px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="header">
+    <div class="header-logo">
+      <div class="logo-mark">B</div>
+      <div><div class="logo-text">BarrCan</div><span class="logo-sub">Cubiertas de Mesa</span></div>
+    </div>
+    <div class="offline-badge"><span class="offline-dot"></span><span id="conn-status">Online</span></div>
+  </div>
+
+  <div class="content">
+    <div class="section-title">🍽️ Cotizador de Cubiertas de Mesa</div>
+    <div class="section-sub">Rectangular, cuadrada, circular, óvalo o figura libre.</div>
+
+    <div class="wizard-card">
+      <div class="wizard-title">📐 Forma</div>
+      <div class="forma-grid" id="cm-forma-grid"></div>
+      <div id="cm-forma-nota"></div>
+    </div>
+
+    <div class="wizard-card">
+      <!-- Rectangular/Cuadrado -->
+      <div class="form-row" id="cm-grupo-rect">
+        <div class="form-group">
+          <label class="form-label">Largo</label>
+          <div class="input-unit"><input type="number" id="cm-largo" class="form-input" min="10" placeholder="120" oninput="cmActualizar()"><span class="input-unit-label">cm</span></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Ancho</label>
+          <div class="input-unit"><input type="number" id="cm-ancho" class="form-input" min="10" placeholder="80" oninput="cmActualizar()"><span class="input-unit-label">cm</span></div>
+        </div>
+      </div>
+
+      <!-- Circular -->
+      <div class="form-group" id="cm-grupo-circ" style="display:none">
+        <label class="form-label">Diámetro</label>
+        <div class="input-unit"><input type="number" id="cm-diametro" class="form-input" min="10" placeholder="100" oninput="cmActualizar()"><span class="input-unit-label">cm</span></div>
+      </div>
+
+      <!-- Óvalo -->
+      <div class="form-row" id="cm-grupo-ovalo" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Eje mayor</label>
+          <div class="input-unit"><input type="number" id="cm-eje-mayor" class="form-input" min="10" placeholder="140" oninput="cmActualizar()"><span class="input-unit-label">cm</span></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Eje menor</label>
+          <div class="input-unit"><input type="number" id="cm-eje-menor" class="form-input" min="10" placeholder="90" oninput="cmActualizar()"><span class="input-unit-label">cm</span></div>
+        </div>
+      </div>
+
+      <!-- Figura libre -->
+      <div class="form-row" id="cm-grupo-libre" style="display:none">
+        <div class="form-group">
+          <label class="form-label">Área aprox. (plantilla)</label>
+          <div class="input-unit"><input type="number" id="cm-area-libre" class="form-input" min="0.01" step="0.01" placeholder="1.20" oninput="cmActualizar()"><span class="input-unit-label">m²</span></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Perímetro aprox.</label>
+          <div class="input-unit"><input type="number" id="cm-perimetro-libre" class="form-input" min="0.1" step="0.1" placeholder="4.20" oninput="cmActualizar()"><span class="input-unit-label">m</span></div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Grosor</label>
+          <select id="cm-grosor" class="form-input" onchange="cmActualizar()">
+            <option value="6">6 mm</option>
+            <option value="9">9 mm</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Templado</label>
+          <select id="cm-templado" class="form-input" onchange="cmActualizar()">
+            <option value="no">Sin templar</option>
+            <option value="si">Templado</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tipo de canto</label>
+        <select id="cm-canto" class="form-input" onchange="cmActualizar()">
+          <option value="pulido">Pulido</option>
+          <option value="bisel">Bisel</option>
+          <option value="pecho">Pecho de paloma</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Mano de obra instalación <span style="font-weight:400;color:var(--gray-400)">(opcional)</span></label>
+        <div class="input-unit"><input type="number" id="cm-mo" class="form-input" value="0" min="0" oninput="cmActualizar()"><span class="input-unit-label">$</span></div>
+      </div>
+    </div>
+
+    <div id="cm-comparacion" class="wizard-card" style="display:none">
+      <div class="wizard-title">⚖️ Comparación rápida</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div style="background:var(--off-white);border-radius:8px;padding:12px;text-align:center">
+          <div style="font-size:10.5px;color:var(--gray-400);font-weight:700;margin-bottom:4px">SIN TEMPLAR</div>
+          <div style="font-family:'Playfair Display',serif;font-size:19px;font-weight:800;color:var(--navy)" id="cm-comp-st"></div>
+        </div>
+        <div style="background:rgba(200,146,58,.08);border-radius:8px;padding:12px;text-align:center;border:1.5px solid rgba(200,146,58,.3)">
+          <div style="font-size:10.5px;color:var(--gold);font-weight:700;margin-bottom:4px">TEMPLADO</div>
+          <div style="font-family:'Playfair Display',serif;font-size:19px;font-weight:800;color:var(--gold)" id="cm-comp-tem"></div>
+        </div>
+      </div>
+      <div style="font-size:10.5px;color:var(--gray-400);text-align:center;margin-top:8px">Diferencia: <span id="cm-comp-dif"></span> -- elige abajo cuál usar para el presupuesto</div>
+    </div>
+
+    <div id="cm-resultado" class="wizard-card" style="display:none">
+      <div class="wizard-title">🧾 Resumen</div>
+      <div class="badge-forma" id="cm-desc-badge"></div>
+      <div style="font-family:'DM Mono',monospace;font-size:11.5px;color:var(--gray-400);margin-bottom:10px" id="cm-m2-label"></div>
+      <div class="costo-row"><span id="cm-label-vidrio">Vidrio</span><span class="costo-monto" id="cm-c-vidrio"></span></div>
+      <div class="costo-row"><span id="cm-label-canto">Canto</span><span class="costo-monto" id="cm-c-canto"></span></div>
+      <div class="costo-row" id="cm-row-forma" style="display:none"><span id="cm-label-forma">Recargo por forma</span><span class="costo-monto" id="cm-c-forma"></span></div>
+      <div class="costo-row"><span>Mano de obra</span><span class="costo-monto" id="cm-c-mo"></span></div>
+      <div class="costo-row subtotal"><span>Subtotal (neto)</span><span class="costo-monto" id="cm-c-sub"></span></div>
+      <div class="costo-row" id="cm-row-gif"><span id="cm-label-gif">GIF</span><span class="costo-monto" id="cm-c-gif"></span></div>
+      <div class="costo-row" id="cm-row-ga"><span id="cm-label-ga">GA</span><span class="costo-monto" id="cm-c-ga"></span></div>
+      <div class="costo-row" id="cm-row-util"><span id="cm-label-util">Utilidad</span><span class="costo-monto" id="cm-c-util"></span></div>
+      <div class="costo-row"><span id="cm-label-iva">IVA</span><span class="costo-monto" id="cm-c-iva"></span></div>
+      <div class="costo-row total"><span>PRECIO FINAL</span><span class="costo-monto" id="cm-c-total"></span></div>
+    </div>
+
+    <div id="cm-diagrama-card" class="wizard-card" style="display:none;text-align:center">
+      <div class="wizard-title" style="text-align:left">📐 Diagrama</div>
+      <div id="cm-diagrama-svg" style="max-width:100%"></div>
+    </div>
+
+    <button class="btn-calcular" onclick="cmCalcular()">🍽️ Calcular cubierta</button>
+
+    <!-- ══════════ PRESUPUESTO FORMAL ══════════ -->
+    <div id="cm-presupuesto-card" class="wizard-card" style="display:none;margin-top:16px">
+      <div class="wizard-title">📄 Generar presupuesto</div>
+      <div class="form-group">
+        <label class="form-label">Cliente</label>
+        <input type="text" id="cm-p-cliente" class="form-input" placeholder="Nombre completo" list="cm-clientes-datalist">
+        <datalist id="cm-clientes-datalist"></datalist>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Teléfono <span style="color:var(--gray-400);font-weight:400">(opcional)</span></label>
+          <input type="text" id="cm-p-tel" class="form-input" placeholder="10 dígitos" inputmode="tel">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Dirección <span style="color:var(--gray-400);font-weight:400">(opcional)</span></label>
+          <input type="text" id="cm-p-dir" class="form-input" placeholder="...">
+        </div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:12px;color:var(--gray-600);cursor:pointer;background:var(--off-white);padding:10px 12px;border-radius:8px">
+        <input type="checkbox" id="cm-p-ambos" checked style="width:16px;height:16px">
+        Incluir sin templar y templado en el documento (para que el cliente elija)
+      </label>
+      <button type="button" class="btn-calcular" onclick="cmGenerarPresupuesto()">📄 Generar presupuesto (imprimible)</button>
+    </div>
+
+    <div class="wizard-card">
+      <div class="wizard-title">🔍 Presupuestos recientes <button type="button" onclick="cmCargarHistorial()" style="margin-left:auto;background:none;border:none;color:var(--blue);font-size:11px;cursor:pointer;text-decoration:underline;float:right">🔄 Actualizar</button></div>
+      <div id="cm-historial"><div style="text-align:center;padding:14px;color:var(--gray-400);font-size:12px">Cargando…</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+var APP_VERSION = 'v1.2';
+var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
+var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
+var _sbClient=null;
+function sb(){
+  if(!_sbClient&&window.supabase){
+    _sbClient=window.supabase.createClient(SB_URL,SB_KEY,{db:{schema:'barrcan'},auth:{persistSession:true,storageKey:'barrcan_auth'}});
+  }
+  return _sbClient;
+}
+window.addEventListener('online', function(){detectarConexion();});
+window.addEventListener('offline',function(){detectarConexion();});
+function detectarConexion(){var b=document.getElementById('conn-status');if(b)b.textContent=(navigator.onLine?'Online':'Offline')+' · '+APP_VERSION;}
+function esc(s){return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function fmt(n){return Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function esSupremo(){ try { var u=JSON.parse(localStorage.getItem('barrcan_usuario_activo')||'{}'); return u.id==='MAU'; } catch(e){ return false; } }
+function toast(msg,dur){
+  dur=dur||2600;
+  var el=document.getElementById('toast');
+  el.textContent=msg; el.classList.add('show');
+  clearTimeout(el._t); el._t=setTimeout(function(){el.classList.remove('show');},dur);
+}
+
+// ── Config de precios (Supabase, sincronizable) ──────────────────
+var CFG = {
+  gif:15, ga:25, utilidad:25, iva:16, ivaCompras:16,
+  vidrio_6_st:400, vidrio_6_tem:650, vidrio_9_st:750, vidrio_9_tem:1100,
+  canto_pulido:90, canto_bisel:180, canto_pecho:220,
+  recargo_circ:25, recargo_ovalo:37.5, recargo_libre:37.5
+};
+var CFG_MAPA = {
+  cfg_gif:'gif', cfg_ga:'ga', cfg_utilidad:'utilidad', cfg_iva:'iva', cfg_iva_compras:'ivaCompras',
+  cm_vidrio_6mm_st:'vidrio_6_st', cm_vidrio_6mm_tem:'vidrio_6_tem',
+  cm_vidrio_9mm_st:'vidrio_9_st', cm_vidrio_9mm_tem:'vidrio_9_tem',
+  cm_canto_pulido:'canto_pulido', cm_canto_bisel:'canto_bisel', cm_canto_pecho_paloma:'canto_pecho',
+  cm_recargo_circular_pct:'recargo_circ', cm_recargo_ovalo_pct:'recargo_ovalo', cm_recargo_libre_pct:'recargo_libre'
+};
+async function cargarConfig() {
+  if (!sb()) return;
+  try {
+    var res = await sb().from('config_precios').select('clave,valor')
+      .in('clave', Object.keys(CFG_MAPA));
+    if (res.error) throw res.error;
+    (res.data || []).forEach(function(r) {
+      var campo = CFG_MAPA[r.clave];
+      if (campo) CFG[campo] = parseFloat(r.valor) || CFG[campo];
+    });
+  } catch (e) { console.warn('[BarrCan] No se pudo cargar config_precios, usando valores por defecto:', e.message); }
+}
+
+// ── Forma ─────────────────────────────────────────────────────────
+var CM_FORMA = 'rect';
+var CM_FORMAS = [
+  { id:'rect',  icono:'▭', label:'Rectangular / Cuadrado', nota:'' },
+  { id:'circ',  icono:'⬤', label:'Circular', nota:'⚠️ Aplica recargo por corte circular' },
+  { id:'ovalo', icono:'⬭', label:'Óvalo', nota:'⚠️ Aplica recargo -- requiere plantilla (cartón/película/madera)' },
+  { id:'libre', icono:'✦', label:'Figura libre', nota:'⚠️ Aplica recargo -- requiere plantilla. Captura área y perímetro tomados directo de ella.' }
+];
+
+function renderFormaGrid() {
+  var cont = document.getElementById('cm-forma-grid');
+  cont.innerHTML = CM_FORMAS.map(function(f) {
+    return '<button type="button" class="forma-btn' + (f.id === CM_FORMA ? ' active' : '') + '" data-forma="' + f.id + '" onclick="cmSelForma(\'' + f.id + '\')">'
+      + '<span class="icono">' + f.icono + '</span>' + f.label + '</button>';
+  }).join('');
+}
+
+function cmSelForma(formaId) {
+  CM_FORMA = formaId;
+  document.querySelectorAll('.forma-btn').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.forma === formaId);
+  });
+  document.getElementById('cm-grupo-rect').style.display  = formaId === 'rect'  ? 'grid'  : 'none';
+  document.getElementById('cm-grupo-circ').style.display  = formaId === 'circ'  ? 'block' : 'none';
+  document.getElementById('cm-grupo-ovalo').style.display = formaId === 'ovalo' ? 'grid'  : 'none';
+  document.getElementById('cm-grupo-libre').style.display = formaId === 'libre' ? 'grid'  : 'none';
+  var f = CM_FORMAS.find(function(x) { return x.id === formaId; });
+  document.getElementById('cm-forma-nota').innerHTML = f.nota ? '<div class="nota-forma">' + f.nota + '</div>' : '';
+  cmActualizar();
+}
+
+// ── Medidas: área (m²) y perímetro (ml), según forma ─────────────
+function cmMedidas() {
+  if (CM_FORMA === 'rect') {
+    var L = parseFloat(document.getElementById('cm-largo').value) || 0;
+    var A = parseFloat(document.getElementById('cm-ancho').value) || 0;
+    return { m2: (L/100)*(A/100), ml: 2*((L/100)+(A/100)) };
+  }
+  if (CM_FORMA === 'circ') {
+    var D = parseFloat(document.getElementById('cm-diametro').value) || 0;
+    var r = (D/100)/2;
+    return { m2: Math.PI*r*r, ml: Math.PI*(D/100) };
+  }
+  if (CM_FORMA === 'ovalo') {
+    var a = (parseFloat(document.getElementById('cm-eje-mayor').value) || 0)/100/2;
+    var b = (parseFloat(document.getElementById('cm-eje-menor').value) || 0)/100/2;
+    var m2 = Math.PI*a*b;
+    var ml = Math.PI*(3*(a+b) - Math.sqrt((3*a+b)*(a+3*b))); // Ramanujan
+    return { m2: m2, ml: ml };
+  }
+  return {
+    m2: parseFloat(document.getElementById('cm-area-libre').value) || 0,
+    ml: parseFloat(document.getElementById('cm-perimetro-libre').value) || 0
+  };
+}
+
+function cmPrecioVidrio() {
+  var grosor = document.getElementById('cm-grosor').value;
+  var templado = document.getElementById('cm-templado').value === 'si';
+  return CFG['vidrio_' + grosor + '_' + (templado ? 'tem' : 'st')];
+}
+function cmPrecioCanto() {
+  var tipo = document.getElementById('cm-canto').value;
+  return CFG['canto_' + tipo];
+}
+function cmRecargoFormaPct() {
+  if (CM_FORMA === 'rect') return 0;
+  var mapa = { circ:'recargo_circ', ovalo:'recargo_ovalo', libre:'recargo_libre' };
+  return CFG[mapa[CM_FORMA]] / 100;
+}
+
+// Calcula el precio final completo para una combinación específica de
+// templado (true/false), usando las medidas/forma/canto ya capturados.
+// Se usa 2 veces (sin templar y templado) para la comparación, y una
+// vez más abajo para el desglose detallado de la opción elegida.
+function cmCalcularParaTemplado(d, templadoBool) {
+  var grosor = document.getElementById('cm-grosor').value;
+  var precioVidrioM2 = CFG['vidrio_' + grosor + '_' + (templadoBool ? 'tem' : 'st')];
+  var precioCantoMl  = cmPrecioCanto();
+  var mo = parseFloat(document.getElementById('cm-mo').value) || 0;
+
+  var costoVidrio = d.m2 * precioVidrioM2;
+  var costoCanto  = d.ml * precioCantoMl;
+  var baseMat     = costoVidrio + costoCanto;
+  var recargoPct  = cmRecargoFormaPct();
+  var cargoForma  = baseMat * recargoPct;
+  var totalMat    = baseMat + cargoForma;
+
+  var totalMatNeto = totalMat / (1 + CFG.ivaCompras/100);
+  var subtotal = totalMatNeto + mo;
+  var gif = subtotal * (CFG.gif/100);
+  var ga = subtotal * (CFG.ga/100);
+  var costoReal = subtotal + gif + ga;
+  var utilidad = costoReal * (CFG.utilidad/100);
+  var antesIva = costoReal + utilidad;
+  var ivaMonto = antesIva * (CFG.iva/100);
+  var total = antesIva + ivaMonto;
+
+  return { precioVidrioM2:precioVidrioM2, precioCantoMl:precioCantoMl, costoVidrio:costoVidrio, costoCanto:costoCanto,
+    cargoForma:cargoForma, mo:mo, subtotal:subtotal, gif:gif, ga:ga, utilidad:utilidad, ivaMonto:ivaMonto, total:total };
+}
+
+function cmActualizar() {
+  var d = cmMedidas();
+  if (d.m2 <= 0) { document.getElementById('cm-resultado').style.display = 'none'; document.getElementById('cm-comparacion').style.display = 'none'; return null; }
+
+  // Comparación automática: sin templar vs templado, siempre las dos.
+  var rSt = cmCalcularParaTemplado(d, false);
+  var rTem = cmCalcularParaTemplado(d, true);
+  document.getElementById('cm-comparacion').style.display = 'block';
+  document.getElementById('cm-comp-st').textContent = '$' + fmt(rSt.total);
+  document.getElementById('cm-comp-tem').textContent = '$' + fmt(rTem.total);
+  document.getElementById('cm-comp-dif').textContent = '$' + fmt(rTem.total - rSt.total);
+
+  // Desglose detallado: el que esté elegido en el selector.
+  var templadoSel = document.getElementById('cm-templado').value === 'si';
+  var r = templadoSel ? rTem : rSt;
+  var precioVidrioM2 = r.precioVidrioM2, precioCantoMl = r.precioCantoMl;
+  var costoVidrio = r.costoVidrio, costoCanto = r.costoCanto, cargoForma = r.cargoForma, mo = r.mo;
+  var subtotal = r.subtotal, gif = r.gif, ga = r.ga, utilidad = r.utilidad, ivaMonto = r.ivaMonto, total = r.total;
+  var recargoPct = cmRecargoFormaPct();
+
+  var res = document.getElementById('cm-resultado');
+  res.style.display = 'block';
+  document.getElementById('cm-diagrama-card').style.display = 'block';
+  document.getElementById('cm-presupuesto-card').style.display = 'block';
+  var grosor = document.getElementById('cm-grosor').value;
+  var templadoTxt = templadoSel ? 'Templado' : 'Sin templar';
+  var cantoTxt = { pulido:'Pulido', bisel:'Bisel', pecho:'Pecho de paloma' }[document.getElementById('cm-canto').value];
+  var formaLabel = CM_FORMAS.find(function(f){return f.id===CM_FORMA;}).label;
+  document.getElementById('cm-desc-badge').textContent = formaLabel + ' · ' + grosor + 'mm ' + templadoTxt + ' · Canto ' + cantoTxt;
+  document.getElementById('cm-m2-label').textContent = d.m2.toFixed(3) + ' m² · ' + d.ml.toFixed(2) + ' ml';
+  document.getElementById('cm-label-vidrio').textContent = 'Vidrio ' + d.m2.toFixed(3) + 'm² × $' + precioVidrioM2 + '/m²';
+  document.getElementById('cm-c-vidrio').textContent = '$' + fmt(costoVidrio);
+  document.getElementById('cm-label-canto').textContent = 'Canto ' + cantoTxt + ' ' + d.ml.toFixed(2) + 'ml × $' + precioCantoMl + '/ml';
+  document.getElementById('cm-c-canto').textContent = '$' + fmt(costoCanto);
+  var rowForma = document.getElementById('cm-row-forma');
+  if (CM_FORMA !== 'rect') {
+    rowForma.style.display = 'flex';
+    document.getElementById('cm-label-forma').textContent = 'Recargo ' + formaLabel + ' (+' + (recargoPct*100).toFixed(1) + '%)';
+    document.getElementById('cm-c-forma').textContent = '$' + fmt(cargoForma);
+  } else rowForma.style.display = 'none';
+  document.getElementById('cm-c-mo').textContent = '$' + fmt(mo);
+  document.getElementById('cm-c-sub').textContent = '$' + fmt(subtotal);
+  document.getElementById('cm-label-gif').textContent = 'GIF +' + CFG.gif + '%';
+  document.getElementById('cm-c-gif').textContent = '$' + fmt(gif);
+  document.getElementById('cm-label-ga').textContent = 'GA +' + CFG.ga + '%';
+  document.getElementById('cm-c-ga').textContent = '$' + fmt(ga);
+  document.getElementById('cm-label-util').textContent = 'Utilidad +' + CFG.utilidad + '%';
+  document.getElementById('cm-c-util').textContent = '$' + fmt(utilidad);
+  var esSup = esSupremo();
+  ['cm-row-gif','cm-row-ga','cm-row-util'].forEach(function(id) {
+    document.getElementById(id).style.display = esSup ? 'flex' : 'none';
+  });
+  document.getElementById('cm-label-iva').textContent = 'IVA +' + CFG.iva + '%';
+  document.getElementById('cm-c-iva').textContent = '$' + fmt(ivaMonto);
+  document.getElementById('cm-c-total').textContent = '$' + fmt(total);
+  cmDibujarForma(d);
+
+  return { m2:d.m2, ml:d.ml, costoVidrio:costoVidrio, costoCanto:costoCanto, cargoForma:cargoForma,
+    mo:mo, subtotal:subtotal, gif:gif, ga:ga, utilidad:utilidad, ivaMonto:ivaMonto, total:total,
+    forma:CM_FORMA, formaLabel:formaLabel, grosor:grosor, templado:templadoTxt, canto:cantoTxt };
+}
+
+function cmCalcular() {
+  var d = cmMedidas();
+  if (!d.m2 || d.m2 <= 0) { toast('⚠️ Ingresa las medidas de la cubierta'); return; }
+  var r = cmActualizar();
+  if (!r) return;
+  toast('✅ Cubierta calculada -- $' + fmt(r.total));
+  document.getElementById('cm-resultado').scrollIntoView({ behavior:'smooth', block:'center' });
+}
+
+// ── Diagrama SVG de la forma, con medidas rotuladas ───────────────
+function cmDibujarForma(d) {
+  var cont = document.getElementById('cm-diagrama-svg');
+  var svg = '';
+  var VB_W = 320, VB_H = 220, PAD = 40;
+
+  if (CM_FORMA === 'rect') {
+    var L = parseFloat(document.getElementById('cm-largo').value) || 0;
+    var A = parseFloat(document.getElementById('cm-ancho').value) || 0;
+    if (!L || !A) { cont.innerHTML = ''; return; }
+    var escala = Math.min((VB_W-PAD*2)/L, (VB_H-PAD*2)/A);
+    var w = L*escala, h = A*escala;
+    var x = (VB_W-w)/2, y = (VB_H-h)/2;
+    svg = '<svg viewBox="0 0 '+VB_W+' '+VB_H+'" style="width:100%;max-width:320px">'
+      + '<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" fill="rgba(46,109,164,.08)" stroke="var(--blue)" stroke-width="2"/>'
+      + '<line x1="'+x+'" y1="'+(y-10)+'" x2="'+(x+w)+'" y2="'+(y-10)+'" stroke="#999" stroke-width="1"/>'
+      + '<text x="'+(x+w/2)+'" y="'+(y-16)+'" text-anchor="middle" font-size="12" fill="#555">'+L+' cm</text>'
+      + '<line x1="'+(x-10)+'" y1="'+y+'" x2="'+(x-10)+'" y2="'+(y+h)+'" stroke="#999" stroke-width="1"/>'
+      + '<text x="'+(x-16)+'" y="'+(y+h/2)+'" text-anchor="middle" font-size="12" fill="#555" transform="rotate(-90,'+(x-16)+','+(y+h/2)+')">'+A+' cm</text>'
+      + '</svg>';
+  } else if (CM_FORMA === 'circ') {
+    var D = parseFloat(document.getElementById('cm-diametro').value) || 0;
+    if (!D) { cont.innerHTML = ''; return; }
+    var r = Math.min((VB_W-PAD*2), (VB_H-PAD*2))/2;
+    var cx = VB_W/2, cy = VB_H/2;
+    svg = '<svg viewBox="0 0 '+VB_W+' '+VB_H+'" style="width:100%;max-width:320px">'
+      + '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="rgba(46,109,164,.08)" stroke="var(--blue)" stroke-width="2"/>'
+      + '<line x1="'+(cx-r)+'" y1="'+cy+'" x2="'+(cx+r)+'" y2="'+cy+'" stroke="#999" stroke-width="1" stroke-dasharray="3,3"/>'
+      + '<text x="'+cx+'" y="'+(cy-6)+'" text-anchor="middle" font-size="12" fill="#555">⌀ '+D+' cm</text>'
+      + '</svg>';
+  } else if (CM_FORMA === 'ovalo') {
+    var eM = parseFloat(document.getElementById('cm-eje-mayor').value) || 0;
+    var em = parseFloat(document.getElementById('cm-eje-menor').value) || 0;
+    if (!eM || !em) { cont.innerHTML = ''; return; }
+    var escalaO = Math.min((VB_W-PAD*2)/eM, (VB_H-PAD*2)/em);
+    var rx = (eM*escalaO)/2, ry = (em*escalaO)/2;
+    var cx2 = VB_W/2, cy2 = VB_H/2;
+    svg = '<svg viewBox="0 0 '+VB_W+' '+VB_H+'" style="width:100%;max-width:320px">'
+      + '<ellipse cx="'+cx2+'" cy="'+cy2+'" rx="'+rx+'" ry="'+ry+'" fill="rgba(46,109,164,.08)" stroke="var(--blue)" stroke-width="2"/>'
+      + '<line x1="'+(cx2-rx)+'" y1="'+cy2+'" x2="'+(cx2+rx)+'" y2="'+cy2+'" stroke="#999" stroke-width="1" stroke-dasharray="3,3"/>'
+      + '<text x="'+cx2+'" y="'+(cy2-ry-8)+'" text-anchor="middle" font-size="12" fill="#555">Mayor '+eM+' cm</text>'
+      + '<text x="'+(cx2+rx+8)+'" y="'+cy2+'" font-size="12" fill="#555">Menor '+em+' cm</text>'
+      + '</svg>';
+  } else {
+    // figura libre -- no hay contorno real que dibujar, solo referencia
+    var m2libre = parseFloat(document.getElementById('cm-area-libre').value) || 0;
+    var mllibre = parseFloat(document.getElementById('cm-perimetro-libre').value) || 0;
+    svg = '<svg viewBox="0 0 '+VB_W+' '+VB_H+'" style="width:100%;max-width:320px">'
+      + '<path d="M 100 60 Q 60 100 90 140 Q 120 190 180 170 Q 240 150 230 100 Q 220 50 160 55 Q 130 45 100 60 Z" fill="rgba(200,146,58,.1)" stroke="var(--gold)" stroke-width="2" stroke-dasharray="5,4"/>'
+      + '<text x="'+VB_W/2+'" y="'+(VB_H-14)+'" text-anchor="middle" font-size="11" fill="#888">Forma libre -- según plantilla física</text>'
+      + '</svg>';
+  }
+  cont.innerHTML = svg;
+}
+
+// ── Presupuesto formal (mismo criterio que cotizador_banos.html) ──
+async function cmCargarClientesDatalist() {
+  if (!sb()) return;
+  try {
+    var res = await sb().from('presupuestos_atrasados').select('cliente').limit(300);
+    if (res.error) return;
+    var vistos = {};
+    document.getElementById('cm-clientes-datalist').innerHTML = (res.data || [])
+      .filter(function(p) { return p.cliente && !vistos[p.cliente] && (vistos[p.cliente] = true); })
+      .map(function(p) { return '<option value="' + esc(p.cliente) + '">'; }).join('');
+  } catch (e) {}
+}
+
+async function cmPedirNumeroFolio() {
+  var sugerido = null;
+  try {
+    if (sb()) {
+      var res = await sb().from('presupuestos_atrasados').select('folio').limit(1000);
+      if (!res.error && res.data) {
+        var max = 0;
+        res.data.forEach(function(r) {
+          var m = /^CACN-(\d{3})[A-Z]-/.exec(r.folio || '');
+          if (m) { var n = parseInt(m[1], 10); if (n > max && n < 900) max = n; }
+        });
+        if (max > 0) sugerido = max + 1;
+      }
+    }
+  } catch(e) {}
+  var texto = window.prompt('Número de presupuesto (folio)' + (sugerido ? ' — siguiente sugerido: ' + sugerido : ''), sugerido ? String(sugerido) : '');
+  if (texto === null) return null;
+  var num = parseInt(texto, 10);
+  if (!num || num < 1) num = sugerido || (Math.floor(Math.random()*900)+100);
+  if (num > 999) num = num % 1000;
+  return String(num).padStart(3, '0');
+}
+
+function cmGenerarDocumento(r, folio, cliente, dir, tel, fecha, rAlt) {
+  var fechaTxt = fecha.toLocaleDateString('es-MX', { day:'numeric', month:'long', year:'numeric' });
+  // rAlt = la otra opción (templado si r es sin templar, o viceversa) --
+  // si viene, se muestran las DOS para que el cliente elija del papel,
+  // en vez de imprimir solo la que estaba seleccionada en pantalla.
+  var hayComparacion = !!rAlt;
+  var filaSt, filaTem, totalRow;
+  if (hayComparacion) {
+    var rSinTemplar = r.templado === 'Sin templar' ? r : rAlt;
+    var rTemplado   = r.templado === 'Templado' ? r : rAlt;
+    filaSt = '<tr><td>Cubierta de mesa ' + esc(r.formaLabel) + ' -- ' + esc(r.grosor) + 'mm <strong>sin templar</strong>, canto ' + esc(r.canto) + '<br><span style="font-size:8pt;color:#888">' + r.m2.toFixed(3) + ' m² · ' + r.ml.toFixed(2) + ' ml de perímetro</span></td>'
+      + '<td style="text-align:right;font-weight:700">$' + fmt(rSinTemplar.total) + '</td></tr>';
+    filaTem = '<tr style="background:#FFF8F0"><td>Cubierta de mesa ' + esc(r.formaLabel) + ' -- ' + esc(r.grosor) + 'mm <strong>templado</strong>, canto ' + esc(r.canto) + '<br><span style="font-size:8pt;color:#888">' + r.m2.toFixed(3) + ' m² · ' + r.ml.toFixed(2) + ' ml de perímetro</span></td>'
+      + '<td style="text-align:right;font-weight:700">$' + fmt(rTemplado.total) + '</td></tr>';
+    totalRow = '<tr><td colspan="2" style="text-align:center;font-size:8.5pt;color:#888;font-style:italic;border:none;padding-top:8px">El precio final se define según la opción (templado o sin templar) que elija el cliente.</td></tr>';
+  } else {
+    filaSt = '<tr><td>Cubierta de mesa ' + esc(r.formaLabel) + ' -- ' + esc(r.grosor) + 'mm ' + esc(r.templado) + ', canto ' + esc(r.canto) + '<br><span style="font-size:8pt;color:#888">' + r.m2.toFixed(3) + ' m² · ' + r.ml.toFixed(2) + ' ml de perímetro</span></td>'
+      + '<td style="text-align:right;font-weight:700">$' + fmt(r.total) + '</td></tr>';
+    filaTem = '';
+    totalRow = '<tr style="background:#1B3A5C"><td style="color:#fff;font-weight:700">TOTAL</td><td style="color:#F1C40F;text-align:right;font-weight:800">$' + fmt(r.total) + '</td></tr>';
+  }
+  return '<!DOCTYPE html><html lang=es><head><meta charset=UTF-8><meta name=viewport content=width=device-width>'
+    + '<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10pt;color:#1B3A5C;background:#fff}'
+    + '.pg{max-width:620px;margin:0 auto;padding:0 0 80px}.pg-body{padding:16px 22px}'
+    + '.page-break{page-break-before:always;padding-top:28px}'
+    + 'h2{font-size:10.5pt;font-weight:700;color:#1B3A5C;border-bottom:2px solid #C8923A;padding-bottom:3px;margin:18px 0 10px;text-transform:uppercase;letter-spacing:.5px}'
+    + 'table{width:100%;border-collapse:collapse}th{background:#1B3A5C;color:#fff;padding:7px 10px;font-size:9pt;font-weight:700}td{padding:6px 10px;font-size:9pt;border:1px solid #ddd}'
+    + '.barra{position:fixed;bottom:0;left:0;right:0;background:#1B3A5C;padding:8px 14px;display:flex;gap:8px;justify-content:center;z-index:999}'
+    + '.bp{padding:9px 20px;background:#C8923A;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer}'
+    + '@media print{.barra{display:none!important}}</style></head><body>'
+    + '<div class="pg"><div class="pg-body">'
+    + '<div style="background:#1B3A5C;padding:14px 20px;border-radius:8px;margin-bottom:14px"><div style="font-family:Georgia,serif;font-size:20pt;font-weight:900;color:#fff">BarrCan</div><div style="font-size:8pt;color:#E8B96A;letter-spacing:1px">APOYÁNDOTE EN DAR CALIDEZ A TU HOGAR</div></div>'
+    + '<div style="text-align:center;font-size:9pt;color:#555;margin-bottom:14px">Priv. Santa Cruz 23, Col. San Simón Ticumac, Benito Juárez, CDMX<br>Tel: 56-15-15-84-15 · ventas@barrcan.com.mx</div>'
+    + '<h2>Presupuesto - Contrato</h2>'
+    + '<table style="margin-bottom:14px"><tr><td style="width:30%;font-weight:700;background:#f5f7fa">Folio</td><td>' + esc(folio) + '</td></tr>'
+    + '<tr><td style="font-weight:700;background:#f5f7fa">Cliente</td><td>' + esc(cliente) + '</td></tr>'
+    + (tel ? '<tr><td style="font-weight:700;background:#f5f7fa">Teléfono</td><td>' + esc(tel) + '</td></tr>' : '')
+    + (dir ? '<tr><td style="font-weight:700;background:#f5f7fa">Dirección</td><td>' + esc(dir) + '</td></tr>' : '')
+    + '<tr><td style="font-weight:700;background:#f5f7fa">Fecha</td><td>' + fechaTxt + '</td></tr></table>'
+    + '<h2>Descripción' + (hayComparacion ? ' -- Opciones a elegir' : '') + '</h2>'
+    + '<table style="margin-bottom:14px"><thead><tr><th>Concepto</th><th style="text-align:right;width:110px">Precio</th></tr></thead><tbody>'
+    + filaSt + filaTem + totalRow
+    + '</tbody></table>'
+    + '<div style="font-size:9pt;text-align:center;color:#1B3A5C;background:#F7F5F0;padding:10px;border-radius:6px">El presente presupuesto contempla los trabajos antes descritos, cualquier otro trabajo adicional se cotizará. Estos precios están sujetos a cambios sin previo aviso.</div>'
+
+    + '<div class="page-break"><h2>1. Condiciones de venta</h2>'
+    + '<ol style="padding-left:18px;font-size:9pt;line-height:1.8;color:#222">'
+    + '<li><strong>Vigencia:</strong> Este presupuesto tiene una vigencia de 10 días hábiles a partir de su fecha de emisión.</li>'
+    + '<li><strong>Tolerancia de fabricación:</strong> La tolerancia estándar es de ±5 mm en todas las dimensiones.</li>'
+    + '<li><strong>Formas no rectangulares (circular/óvalo/figura libre):</strong> requieren plantilla física (cartón/película/madera) proporcionada o confirmada por el cliente antes de fabricar -- cualquier diferencia entre la plantilla y la medida final es responsabilidad del cliente.</li>'
+    + '<li><strong>Cambios y modificaciones:</strong> Este presupuesto queda sin efecto ante cualquier cambio en forma, dimensiones, grosor, templado o tipo de canto. Toda modificación requiere un presupuesto actualizado.</li>'
+    + '<li><strong>Política de reembolso:</strong> En caso de cancelación se retendrá el 25% del costo total por gastos administrativos.</li>'
+    + '</ol></div>'
+
+    + '<div class="page-break"><h2>2. Política de pagos</h2>'
+    + (hayComparacion
+      ? '<div style="font-size:9pt;color:#555;background:#F7F5F0;padding:10px 12px;border-radius:6px;margin-bottom:10px">Los montos de pago se calculan sobre el precio final, una vez que el cliente confirme cuál de las dos opciones (templado o sin templar) elige.</div>'
+        + '<table style="margin-bottom:12px"><thead><tr><th>Concepto</th><th style="text-align:center;width:100px">%</th></tr></thead><tbody>'
+        + '<tr><td>Anticipo inicial</td><td style="text-align:center">50%</td></tr>'
+        + '<tr style="background:#f5f7fa"><td>Segundo pago (confirmar producción)</td><td style="text-align:center">35%</td></tr>'
+        + '<tr style="background:#1B3A5C"><td style="color:#fff;font-weight:700">Liquidación (entrega)</td><td style="color:#fff;text-align:center">15%</td></tr>'
+        + '</tbody></table>'
+      : '<table style="margin-bottom:12px"><thead><tr><th>Concepto</th><th style="text-align:center;width:100px">%</th><th style="text-align:right;width:110px">Monto</th></tr></thead><tbody>'
+        + '<tr><td>Anticipo inicial</td><td style="text-align:center">50%</td><td style="text-align:right;font-weight:700">$' + fmt(r.total*0.50) + '</td></tr>'
+        + '<tr style="background:#f5f7fa"><td>Segundo pago (confirmar producción)</td><td style="text-align:center">35%</td><td style="text-align:right;font-weight:700">$' + fmt(r.total*0.35) + '</td></tr>'
+        + '<tr style="background:#1B3A5C"><td style="color:#fff;font-weight:700">Liquidación (entrega)</td><td style="color:#fff;text-align:center">15%</td><td style="color:#F1C40F;text-align:right;font-weight:700">$' + fmt(r.total*0.15) + '</td></tr>'
+        + '</tbody></table>')
+    + '<div style="display:flex;gap:16px;margin-bottom:14px">'
+    + '<div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px"><div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">Banorte</div><div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div><div style="font-size:8.5pt;color:#333">Cuenta: 0672530766</div><div style="font-size:8.5pt;color:#333">CLABE: 072180006725307668</div></div>'
+    + '<div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px"><div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">BBVA</div><div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div><div style="font-size:8.5pt;color:#333">Cuenta: 1512081906</div><div style="font-size:8.5pt;color:#333">CLABE: 012180015120819061</div></div>'
+    + '</div>'
+    + '<table style="width:100%;margin-top:30px"><tr>'
+    + '<td style="width:44%;padding:50px 12px 8px;border-top:1.5px solid #999;font-size:9pt;color:#555;text-align:center">Firma y nombre del cliente<br>Fecha: ___________________</td>'
+    + '<td style="width:12%"></td>'
+    + '<td style="width:44%;padding:50px 12px 8px;border-top:1.5px solid #999;font-size:9pt;color:#555;text-align:center">Sello y firma BarrCan<br><span style="font-family:\'Courier New\',monospace;font-size:8pt;color:#1B3A5C">' + esc(folio) + '</span></td>'
+    + '</tr></table></div>'
+
+    + '</div></div>'
+    + '<div class="barra"><button class="bp" onclick="window.print()">🖨️ Imprimir</button></div>'
+    + '</body></html>';
+}
+
+async function cmGenerarPresupuesto() {
+  var r = cmActualizar();
+  if (!r) { toast('⚠️ Primero calcula la cubierta'); return; }
+  var cliente = (document.getElementById('cm-p-cliente').value || '').trim();
+  var tel = (document.getElementById('cm-p-tel').value || '').trim();
+  var dir = (document.getElementById('cm-p-dir').value || '').trim();
+  if (!cliente) { toast('⚠️ Ingresa el nombre del cliente'); return; }
+  if (!sb()) { toast('Sin conexión'); return; }
+
+  var numFolio = await cmPedirNumeroFolio();
+  if (numFolio === null) { toast('Cancelado'); return; }
+
+  // Si el checkbox está activo, calcula también la opción contraria
+  // (templado <-> sin templar) para que el documento muestre las dos.
+  var incluirAmbos = document.getElementById('cm-p-ambos').checked;
+  var rAlt = null;
+  if (incluirAmbos) {
+    var d = cmMedidas();
+    var templadoActual = document.getElementById('cm-templado').value === 'si';
+    var otro = cmCalcularParaTemplado(d, !templadoActual);
+    rAlt = Object.assign({}, r, {
+      total: otro.total, costoVidrio: otro.costoVidrio, costoCanto: otro.costoCanto, cargoForma: otro.cargoForma,
+      subtotal: otro.subtotal, gif: otro.gif, ga: otro.ga, utilidad: otro.utilidad, ivaMonto: otro.ivaMonto,
+      templado: templadoActual ? 'Sin templar' : 'Templado'
+    });
+  }
+
+  var hoy = new Date();
+  var yy = String(hoy.getFullYear()).slice(-2), mm = String(hoy.getMonth()+1).padStart(2,'0'), dd = String(hoy.getDate()).padStart(2,'0');
+  var numCliente = 'AUTO-' + String(Math.floor(Math.random()*900)+100);
+  var folio = 'CACN-' + numFolio + 'A-' + yy + mm + dd + '-' + numCliente;
+  var monto = Math.round(r.total);
+  var desc = 'Cubierta de mesa ' + r.formaLabel + ' ' + r.grosor + 'mm ' + (incluirAmbos ? '(sin templar/templado a elegir)' : r.templado) + ', canto ' + r.canto + ' -- ' + r.m2.toFixed(2) + 'm²';
+
+  var payload = {
+    folio: folio, cliente: cliente, tel: tel || null, dir: dir || null,
+    descripcion: desc, monto: monto, saldo: monto, estado: 'activo',
+    fecha: hoy.getFullYear() + '-' + mm + '-' + dd, modulo: 'cubiertas',
+    notas_internas: JSON.stringify([{ label: desc, cantidad: 1, precioUnitario: monto, precio: monto, resultado: r, resultadoAlt: rAlt }])
+  };
+
+  var htmlDoc = cmGenerarDocumento(r, folio, cliente, dir, tel, hoy, rAlt);
+  var w = window.open('', '_blank');
+  if (w) { w.document.write(htmlDoc); w.document.close(); }
+
+  try {
+    var res = await sb().from('presupuestos_atrasados').insert([payload]);
+    if (res.error) throw res.error;
+    toast('✅ Presupuesto ' + folio + ' guardado');
+    cmCargarHistorial();
+  } catch (e) { toast('Se generó el documento, pero no se pudo guardar: ' + e.message); }
+}
+
+// ── Historial + reimprimir ─────────────────────────────────────────
+var CM_HIST_CACHE = [];
+async function cmCargarHistorial() {
+  var cont = document.getElementById('cm-historial');
+  if (!sb()) { cont.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:12px">Sin conexión</div>'; return; }
+  try {
+    var res = await sb().from('presupuestos_atrasados').select('folio,cliente,dir,tel,fecha,notas_internas,monto').eq('modulo', 'cubiertas').order('created_at', { ascending:false }).limit(20);
+    if (res.error) throw res.error;
+    CM_HIST_CACHE = res.data || [];
+    if (!CM_HIST_CACHE.length) { cont.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:12px">Sin presupuestos de cubiertas todavía</div>'; return; }
+    cont.innerHTML = CM_HIST_CACHE.map(function(p, i) {
+      return '<div class="mov-row" style="cursor:pointer" onclick="cmReimprimir(' + i + ')">'
+        + '<div><div class="mov-concepto" style="font-family:monospace;font-size:11px">' + esc(p.folio) + '</div>'
+        + '<div class="mov-meta">' + esc(p.cliente) + ' · ' + (p.fecha||'') + '</div></div>'
+        + '<div style="text-align:right"><div class="mov-monto" style="color:var(--navy)">$' + fmt(p.monto) + '</div><div style="font-size:10px;color:var(--blue)">🖨️ reimprimir</div></div>'
+        + '</div>';
+    }).join('');
+  } catch (e) { cont.innerHTML = '<div style="text-align:center;padding:14px;color:var(--red);font-size:12px">Error: ' + e.message + '</div>'; }
+}
+
+function cmReimprimir(idx) {
+  var p = CM_HIST_CACHE[idx];
+  if (!p) return;
+  try {
+    var piezas = JSON.parse(p.notas_internas || '[]');
+    var r = piezas[0] && piezas[0].resultado;
+    var rAlt = piezas[0] && piezas[0].resultadoAlt;
+    if (!r) { toast('Este presupuesto no tiene datos de cubierta guardados'); return; }
+    var htmlDoc = cmGenerarDocumento(r, p.folio, p.cliente, p.dir || '', p.tel || '', p.fecha ? new Date(p.fecha + 'T00:00:00') : new Date(), rAlt || null);
+    var w = window.open('', '_blank');
+    if (w) { w.document.write(htmlDoc); w.document.close(); }
+  } catch (e) { toast('No se pudo reimprimir: ' + e.message); }
+}
+
+document.addEventListener('DOMContentLoaded', async function() {
+  detectarConexion();
+  await cargarConfig();
+  renderFormaGrid();
+  cmSelForma('rect');
+  cmCargarClientesDatalist();
+  cmCargarHistorial();
+});
+</script>
+</body>
+</html>

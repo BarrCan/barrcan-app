@@ -6,6 +6,19 @@
 <title>BarrCan · Cotizador Baños</title>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v2.6
+  FECHA   : 2026-09-02
+  v2.6 - Nueva pestaña "➕ Otro/Ampliación" -- motivada por caso real
+    (CACN-134A, ampliar un cancel ya instalado y pagado). No todo
+    trabajo cabe en una fórmula fija de Frameless/Bacalar/Escuadra/
+    Corredizo; esta pestaña es solo descripción libre + precio final
+    manual, sin cálculo automático. Se guarda con el MISMO mecanismo
+    que el resto (mismo folio-bump vía "+Piezas" en historial.html,
+    mismo documento, mismo historial) -- se refactorizó
+    cbGuardarPresupuesto para compartir la lógica de guardado
+    (cbGuardarConPieza) en vez de duplicarla. Probado con el caso
+    real: CACN-134A → CACN-134B, monto $20,600→$24,100, saldo
+    correcto en $3,500 (solo lo nuevo, no repite el total).
   VERSION : v2.5
   FECHA   : 2026-08-28
   v2.5 - Dos fixes reportados con el folio 153:
@@ -268,6 +281,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     <button class="tab-btn" onclick="cbTab(this,'bacalar')">Bacalar</button>
     <button class="tab-btn" onclick="cbTab(this,'escuadra')">Escuadra</button>
     <button class="tab-btn" onclick="cbTab(this,'corredizo')">Corredizo</button>
+    <button class="tab-btn" onclick="cbTab(this,'otro')">➕ Otro/Ampliación</button>
     <button class="tab-btn" onclick="cbTab(this,'taller')">🛠️ Taller</button>
   </div>
 
@@ -738,6 +752,25 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     </div>
   </div>
 
+  <!-- ══ TAB OTRO / AMPLIACIÓN ══ -->
+  <div id="tab-otro" style="display:none">
+    <div class="wizard-card">
+      <div class="wizard-title">➕ Otro / Ampliación</div>
+      <div style="font-size:11px;color:var(--gray-400);margin-bottom:12px">Para trabajos que no caben en una fórmula fija -- cada ampliación es distinta. Sin cálculo automático: describe el trabajo y pon el precio final que se le va a cobrar al cliente.</div>
+      <div class="form-group">
+        <label class="form-label">Descripción <span style="font-weight:400;color:var(--gray-400)">(esto es lo que va a aparecer en el recibo/pago)</span></label>
+        <textarea class="form-input" id="otro-descripcion" rows="3" placeholder="Ej: Ampliación de cancel corredizo -- agregar panel fijo de 40cm de ancho, mismo vidrio y acabado del original."></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Precio final ($, ya con todo incluido)</label>
+        <input type="number" class="form-input" id="otro-precio" min="0" step="1" placeholder="0">
+      </div>
+      <input type="text" class="form-input" id="otro-cliente" list="sn-clientes-datalist" placeholder="Nombre del cliente *" oninput="snAutocompletarCliente('otro')" style="margin-top:8px">
+      <input type="text" class="form-input" id="otro-tel" placeholder="Teléfono">
+      <button class="btn btn-gold" onclick="cbGuardarManual()">Guardar y generar folio CACN</button>
+    </div>
+  </div>
+
   <!-- ══ TAB TALLER ══ -->
   <div id="tab-taller" style="display:none">
 
@@ -1005,7 +1038,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v2.5';
+var APP_VERSION = 'v2.6';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -1173,12 +1206,12 @@ function snCargarContinuarFolio() {
   try { localStorage.removeItem('barrcan_continuar_folio'); } catch(e) {}
 
   CONTINUANDO_FOLIO = datos;
-  // No se sabe todavía qué pestaña (frameless/bacalar/escuadra) se va
-  // a usar para la pieza nueva, así que se precargan las 3.
-  ['fl-cliente','bc-cliente','esc-cliente'].forEach(function(id){
+  // No se sabe todavía qué pestaña (frameless/bacalar/escuadra/otro) se
+  // va a usar para la pieza nueva, así que se precargan todas.
+  ['fl-cliente','bc-cliente','esc-cliente','otro-cliente'].forEach(function(id){
     var el = document.getElementById(id); if (el) el.value = datos.cliente || '';
   });
-  ['fl-tel','bc-tel','esc-tel'].forEach(function(id){
+  ['fl-tel','bc-tel','esc-tel','otro-tel'].forEach(function(id){
     var el = document.getElementById(id); if (el) el.value = datos.tel || '';
   });
   toast('➕ Agregando piezas al folio ' + datos.folio + ' (ya tiene ' + fmt(datos.monto || 0) + ')');
@@ -1348,7 +1381,7 @@ var FL_BOM = {
 function cbTab(btn, tab) {
   document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
   btn.classList.add('active');
-  var tabs = ['frameless','bacalar','escuadra','corredizo','taller'];
+  var tabs = ['frameless','bacalar','escuadra','corredizo','otro','taller'];
   tabs.forEach(function(t) {
     var el = document.getElementById('tab-' + t);
     if (el) el.style.display = t === tab ? 'block' : 'none';
@@ -1915,18 +1948,40 @@ async function cbGuardarPresupuesto(tipo) {
   var tel     = document.getElementById(telId).value.trim();
   if (!cliente) { toast('Ingresa el nombre del cliente'); return; }
 
-  var hoy   = new Date();
-  var yy    = String(hoy.getFullYear()).slice(-2);
-  var mm    = String(hoy.getMonth()+1).padStart(2,'0');
-  var dd    = String(hoy.getDate()).padStart(2,'0');
-  var ini   = cliente.replace(/\s/g,'').toUpperCase().slice(0,1);
-  var rc    = 'RC' + String(Math.floor(Math.random()*900)+100);
-  var num   = String(Math.floor(Math.random()*900)+100);
-
   var descNueva = CB_RESULTADO.sistema + ' ' +
     (CB_RESULTADO.L ? CB_RESULTADO.L + 'x' + CB_RESULTADO.H + 'mm' : '') +
     (CB_RESULTADO.m2Vidrio ? ' · ' + CB_RESULTADO.m2Vidrio + ' m²' : '');
   var precioNueva = Math.round(CB_RESULTADO.precioFinal);
+
+  await cbGuardarConPieza(cliente, tel, descNueva, precioNueva, CB_RESULTADO, clienteId, telId);
+}
+
+// Concepto manual / ampliación -- sin fórmula, solo descripción +
+// precio final que ya incluye todo. Se guarda igual que cualquier
+// otra pieza (mismo folio-bump si viene de "+Piezas", mismo
+// documento, mismo historial) -- la diferencia es que no hay
+// "resultado" calculado detrás, solo texto libre.
+async function cbGuardarManual() {
+  var cliente = document.getElementById('otro-cliente').value.trim();
+  var tel = document.getElementById('otro-tel').value.trim();
+  var desc = document.getElementById('otro-descripcion').value.trim();
+  var precio = parseFloat(document.getElementById('otro-precio').value) || 0;
+  if (!cliente) { toast('Ingresa el nombre del cliente'); return; }
+  if (!desc) { toast('Falta la descripción del trabajo'); return; }
+  if (!precio || precio <= 0) { toast('Falta el precio final'); return; }
+
+  await cbGuardarConPieza(cliente, tel, desc, Math.round(precio), null, 'otro-cliente', 'otro-tel');
+  document.getElementById('otro-descripcion').value = '';
+  document.getElementById('otro-precio').value = '';
+}
+
+// ── Lógica compartida de guardado: arma el folio (nuevo o revisión),
+// genera el documento, guarda en Supabase (con respaldo offline si
+// falla), y limpia el formulario. La usan tanto las piezas calculadas
+// (Frameless/Bacalar/Escuadra/Corredizo) como el concepto manual. ──
+async function cbGuardarConPieza(cliente, tel, descNueva, precioNueva, resultadoNueva, clienteId, telId) {
+  var hoy = new Date();
+  var yy = String(hoy.getFullYear()).slice(-2), mm = String(hoy.getMonth()+1).padStart(2,'0'), dd = String(hoy.getDate()).padStart(2,'0');
 
   var esActualizacion = !!CONTINUANDO_FOLIO;
   var idActualizar = esActualizacion ? CONTINUANDO_FOLIO.id : null;
@@ -1940,14 +1995,14 @@ async function cbGuardarPresupuesto(tipo) {
   if (esActualizacion) {
     folio = snBumpRevisionFolio(CONTINUANDO_FOLIO.folio);
     var existentes = snPiezasExistentesNormalizadas(CONTINUANDO_FOLIO);
-    piezas = existentes.concat([{ label: descNueva, cantidad: 1, precioUnitario: precioNueva, precio: precioNueva, resultado: CB_RESULTADO }]);
+    piezas = existentes.concat([{ label: descNueva, cantidad: 1, precioUnitario: precioNueva, precio: precioNueva, resultado: resultadoNueva }]);
     montoFinal = Math.round((CONTINUANDO_FOLIO.monto || 0) + precioNueva);
     saldoFinal = Math.round((CONTINUANDO_FOLIO.saldo || 0) + precioNueva);
     desc = ((CONTINUANDO_FOLIO.descripcion || '') + ' + ' + descNueva).slice(0, 200);
   } else {
     var numCliente = await snObtenerNumCliente();
     folio = 'CACN-' + numFolio + 'A-' + yy + mm + dd + '-' + numCliente;
-    piezas = [{ label: descNueva, cantidad: 1, precioUnitario: precioNueva, precio: precioNueva, resultado: CB_RESULTADO }];
+    piezas = [{ label: descNueva, cantidad: 1, precioUnitario: precioNueva, precio: precioNueva, resultado: resultadoNueva }];
     montoFinal = precioNueva;
     saldoFinal = precioNueva;
     desc = descNueva;
@@ -1993,8 +2048,8 @@ async function cbGuardarPresupuesto(tipo) {
     if (local.length > 100) local.pop();
     localStorage.setItem('barrcan_presupuestos_cache', JSON.stringify(local));
     cbCargarHistorial();
-    document.getElementById(clienteId).value = '';
-    document.getElementById(telId).value = '';
+    if (clienteId) document.getElementById(clienteId).value = '';
+    if (telId) document.getElementById(telId).value = '';
   } catch(e) {
     SYNC.online = false; detectar();
     var localErr = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]');
