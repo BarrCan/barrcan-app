@@ -6,6 +6,21 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.49.0
+  FECHA   : 2026-09-02
+  v3.49.0 - Dos cosas del reporte de "Comprobante de Entrega":
+    1) Antes las fotos se mostraban en 4 rejillas separadas (una por
+       categoría: confirmación/empaque/comprobante/adicionales), sin
+       control de dónde cortaba la hoja -- podían quedar fotos
+       sueltas a la mitad de una página casi vacía. Ahora TODAS las
+       fotos se juntan en una sola secuencia, 6 por hoja (3x2,
+       ajustadas al espacio de impresión), con salto de página
+       FORZADO cada 6 -- ya no depende de que el navegador decida
+       bien solo. Probado con 10 fotos de 4 categorías distintas:
+       1-6 en hoja 1, 7-10 en hoja 2, exacto.
+    2) Compresión de fotos más agresiva para que el archivo pese
+       menos y sea más fácil de subir/ver: 1280px→1000px de lado
+       máximo, calidad 62%→55%.
   VERSION : v3.48.0
   FECHA   : 2026-08-28
   v3.48.0 - FIX crítico de pérdida de datos, mismo patrón ya corregido
@@ -2203,7 +2218,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.48.0';
+var APP_VERSION = 'v3.49.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -2223,6 +2238,37 @@ function fmt(n) { return Number(n || 0).toLocaleString('es-MX', { minimumFractio
 // Con 4 fotos o menos, una sola columna (se ven más grandes). Con más
 // de 4, dos columnas para no disparar el número de hojas del reporte.
 function entColsFotos(n) { return n === 1 ? '1fr' : '1fr 1fr 1fr'; }
+
+// Junta TODAS las fotos (de cualquier categoría) en una sola secuencia
+// y las parte en grupos de 6 -- 6 en la primera hoja, ajustadas al
+// espacio de impresión (3 columnas x 2 filas), las siguientes 6 en la
+// hoja 2, y así -- con salto de página FORZADO entre grupos, en vez de
+// dejar que el navegador decida dónde cortar (que dejaba fotos sueltas
+// a la mitad de una hoja casi vacía).
+function entArmarFotosPaginadas(grupos) {
+  // grupos = [{ titulo, fotos: [{dataUrl}] }, ...] -- solo los que tengan fotos
+  var todas = [];
+  grupos.forEach(function(g) {
+    if (!g.fotos || !g.fotos.length) return;
+    g.fotos.forEach(function(f) { todas.push({ url: f.dataUrl, titulo: g.titulo }); });
+  });
+  if (!todas.length) return '';
+
+  var html = '';
+  for (var i = 0; i < todas.length; i += 6) {
+    var lote = todas.slice(i, i + 6);
+    html += '<div' + (i > 0 ? ' style="page-break-before:always;padding-top:6mm"' : '') + '>'
+      + '<h2>Evidencia fotográfica' + (todas.length > 6 ? ' (' + (i+1) + '-' + Math.min(i+6, todas.length) + ' de ' + todas.length + ')' : ' (' + todas.length + ')') + '</h2>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;grid-template-rows:1fr 1fr;gap:6px;height:150mm">'
+      + lote.map(function(f) {
+          return '<div style="display:flex;flex-direction:column;page-break-inside:avoid">'
+            + '<img src="' + f.url + '" style="width:100%;height:100%;object-fit:cover;border-radius:4px;border:1px solid #ddd">'
+            + '</div>';
+        }).join('')
+      + '</div></div>';
+  }
+  return html;
+}
 function esc(str) {
   if (!str) return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -2687,7 +2733,7 @@ function entComprimirImagen(file, callback) {
   reader.onload = function(e) {
     var img = new Image();
     img.onload = function() {
-      var maxLado = 1280;
+      var maxLado = 1000;
       var w = img.width, h = img.height;
       if (w > maxLado || h > maxLado) {
         if (w > h) { h = Math.round(h * maxLado / w); w = maxLado; }
@@ -2698,7 +2744,7 @@ function entComprimirImagen(file, callback) {
       var ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, w, h);
       try {
-        callback(canvas.toDataURL('image/jpeg', 0.62));
+        callback(canvas.toDataURL('image/jpeg', 0.55));
       } catch (eCanvas) {
         // Si por algo falla el canvas (ej. imagen corrupta), se usa la
         // original sin comprimir en vez de perder la foto por completo.
@@ -3012,10 +3058,12 @@ async function entGenerarReporte() {
          : pagoAdminPendiente ? '<tr><td class=lbl style=color:#8E44AD>Pago pendiente</td><td style=font-weight:700;color:#8E44AD>$' + fmt(ENT_SALDO_REAL) + ' MXN &mdash; tr&aacute;mite administrativo' + (notaPagoAdmin ? ' (' + esc(notaPagoAdmin) + ')' : '') + '</td></tr>'
          : (ENT_SALDO_REAL > 0 ? '<tr><td class=lbl style=color:#C0392B>Saldo pendiente</td><td style=font-weight:700;color:#C0392B>$' + fmt(ENT_SALDO_REAL) + ' MXN &mdash; no cobrado en esta entrega</td></tr>' : ''))
       + '</table>'
-      + (ENT_FOTOS_CONF.length > 0 ? '<h2>Captura de confirmación de recepción (' + ENT_FOTOS_CONF.length + ')</h2><div style="display:grid;grid-template-columns:' + entColsFotos(ENT_FOTOS_CONF.length) + ';gap:8px">' + fotosConfHtml + '</div>' : '')
-      + (ENT_FOTOS_EMP.length > 0 ? '<h2>' + (ENT_TIPO === 'mantenimiento' ? 'Antes del mantenimiento' : 'Fotos del empaque') + ' (' + ENT_FOTOS_EMP.length + ')</h2><div style="display:grid;grid-template-columns:' + entColsFotos(ENT_FOTOS_EMP.length) + ';gap:8px">' + fotosEmpHtml + '</div>' : '')
-      + (ENT_FOTOS_COMP.length > 0 ? '<h2>' + (ENT_TIPO === 'envio' ? 'Guia de envio' : ENT_TIPO === 'mantenimiento' ? 'Trabajo terminado' : 'Comprobante de entrega') + ' (' + ENT_FOTOS_COMP.length + ')</h2><div style="display:grid;grid-template-columns:' + entColsFotos(ENT_FOTOS_COMP.length) + ';gap:8px">' + fotosCompHtml + '</div>' : '')
-      + (ENT_FOTOS_MANT.length > 0 ? '<h2>Fotos adicionales (' + ENT_FOTOS_MANT.length + ')</h2><div style="display:grid;grid-template-columns:' + entColsFotos(ENT_FOTOS_MANT.length) + ';gap:8px">' + fotosMantHtml + '</div>' : '')
+      + entArmarFotosPaginadas([
+          { titulo: 'Captura de confirmación de recepción', fotos: ENT_FOTOS_CONF },
+          { titulo: (ENT_TIPO === 'mantenimiento' ? 'Antes del mantenimiento' : 'Fotos del empaque'), fotos: ENT_FOTOS_EMP },
+          { titulo: (ENT_TIPO === 'envio' ? 'Guia de envio' : ENT_TIPO === 'mantenimiento' ? 'Trabajo terminado' : 'Comprobante de entrega'), fotos: ENT_FOTOS_COMP },
+          { titulo: 'Fotos adicionales', fotos: ENT_FOTOS_MANT }
+        ])
       + '<h2>Firmas de conformidad</h2>'
       + '<div style=display:flex;gap:10px>'
       + '<div style=flex:1>'
