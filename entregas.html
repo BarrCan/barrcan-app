@@ -6,6 +6,19 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.50.0
+  FECHA   : 2026-09-03
+  v3.50.0 - FIX: caso real -- el mismo folio (STAN-001A) se guardó DOS
+    veces con 2.5 segundos de diferencia, mismo técnico. Confirmado
+    que NO tenía relación con el fix de fotos/compresión de la
+    versión anterior -- era un doble toque real: el botón "Generar
+    reporte" no daba ninguna señal visual de que ya estaba
+    procesando, así que parecía que no había hecho nada y se
+    volvía a tocar. Ahora el botón se deshabilita y cambia a
+    "⏳ Guardando..." en cuanto se toca, hasta que termina (éxito o
+    error) -- protege los 3 tipos de reporte (instalación, entrega,
+    envío), no solo uno. Duplicado real de STAN-001A eliminado de la
+    base de datos.
   VERSION : v3.49.0
   FECHA   : 2026-09-02
   v3.49.0 - Dos cosas del reporte de "Comprobante de Entrega":
@@ -2218,7 +2231,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.49.0';
+var APP_VERSION = 'v3.50.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -2975,8 +2988,27 @@ async function entSiguienteFolioEntrega(folioPresupuesto) {
   return 'ENT-' + numPresupuesto + '-' + String(consec).padStart(2, '0');
 }
 
+var ENT_GUARDANDO = false;
+
 async function entGenerarReporte() {
-  if (ENT_TIPO === 'instalacion') { entGenerarReporteInstalacion(); return; }
+  // Candado contra doble toque -- caso real: el mismo folio se guardó
+  // 2 veces con 2.5 segundos de diferencia porque el botón no daba
+  // ninguna señal visual inmediata y parecía que no había hecho nada.
+  if (ENT_GUARDANDO) { toast('⏳ Ya se está guardando, espera un momento...'); return; }
+  ENT_GUARDANDO = true;
+  var btnG = document.getElementById('ent-btn-guardar');
+  var textoOriginalBtn = btnG ? btnG.textContent : '';
+  if (btnG) { btnG.disabled = true; btnG.style.opacity = '0.6'; btnG.style.cursor = 'not-allowed'; btnG.textContent = '⏳ Guardando...'; }
+  try {
+    await entGenerarReporteInterno();
+  } finally {
+    ENT_GUARDANDO = false;
+    if (btnG) { btnG.disabled = false; btnG.style.opacity = '1'; btnG.style.cursor = 'pointer'; btnG.textContent = textoOriginalBtn; }
+  }
+}
+
+async function entGenerarReporteInterno() {
+  if (ENT_TIPO === 'instalacion') { await entGenerarReporteInstalacion(); return; }
   var cliente = document.getElementById('ent-cliente').value.trim();
   var desc    = document.getElementById('ent-desc').value.trim();
   var errEl   = document.getElementById('ent-error');
