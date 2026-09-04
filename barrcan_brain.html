@@ -6,6 +6,9 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v2.26
+  FECHA   : 2026-09-04
+  v2.26 - Agregada tarjeta "➕ Adicionales/Extras" (adicionales.html).
   VERSION : v2.25
   FECHA   : 2026-09-01
   v2.25 - Agregada tarjeta "🔒 Mi Dinero" (finanzas_personales.html)
@@ -674,6 +677,7 @@ h1,h2,.serif{font-family:'Playfair Display',Georgia,serif}
       <a class="modulo-card" href="cotizador_banos.html"><div class="modulo-icono">🚿</div><div class="modulo-nombre">Baños</div><div class="modulo-desc">Canceles</div></a>
       <a class="modulo-card" href="cotizador_servicios.html"><div class="modulo-icono">🪞</div><div class="modulo-nombre">Servicios</div><div class="modulo-desc">Espejos y garantía</div></a>
       <a class="modulo-card" href="cotizador_cubiertas.html"><div class="modulo-icono">🍽️</div><div class="modulo-nombre">Cubiertas de Mesa</div><div class="modulo-desc">Rect/Circ/Óvalo/Libre</div></a>
+      <a class="modulo-card" href="adicionales.html"><div class="modulo-icono">➕</div><div class="modulo-nombre">Adicionales/Extras</div><div class="modulo-desc">No cabe en ningún catálogo</div></a>
       <a class="modulo-card" href="cotizador_stands.html"><div class="modulo-icono">🏗️</div><div class="modulo-nombre">Stands</div><div class="modulo-desc">Exhibición y feria</div></a>
       <a class="modulo-card" href="render_ia.html"><div class="modulo-icono">✨</div><div class="modulo-nombre">Render IA</div><div class="modulo-desc">Visualización con foto real</div></a>
       <a class="modulo-card" href="clientes.html"><div class="modulo-icono">👥</div><div class="modulo-nombre">Clientes</div><div class="modulo-desc">Directorio</div></a>
@@ -795,7 +799,7 @@ function sb(){
 }
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
-var APP_VERSION = 'v2.25';
+var APP_VERSION = 'v2.26';
 var USUARIOS = [];
 var USUARIO_SEL = null;   // el que se está tratando de loguear
 var PIN_BUFFER = '';
