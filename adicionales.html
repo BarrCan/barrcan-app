@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>BarrCan &middot; Adicionales</title>
+<!--
+  BARRCAN · MODULO: ADICIONALES / EXTRAS (standalone)
+  VERSION : v1.0
+  FECHA   : 2026-09-03
+  v1.0 - Creación inicial. Se intentó primero como tarjeta aislada
+    dentro de cotizador_servicios.html pero se rompió igual que pasó
+    antes con Cubiertas de Mesa (mismo archivo, mismo síntoma: no
+    responde al tocar). Se saca a módulo aparte, mismo criterio que
+    ya usamos con Cubiertas -- construir standalone cuando ese
+    archivo gigante da problemas, en vez de seguir peleando.
+    Para trabajos/conceptos que no caben en ningún catálogo (caso
+    real: CACN-146, "colocar repisas y mover toalleros" -- nada en
+    ningún cotizador describe eso). Descripción libre + precio final,
+    sin fórmula. Funciona con folio nuevo o continuando uno existente
+    (vía "+Piezas" en historial.html, que ya deja elegir el módulo).
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+:root {
+  --navy: #1B3A5C; --blue: #2E6DA4; --gold: #C8923A; --gold-light: #E8B96A;
+  --white: #FFFFFF; --off-white: #F7F5F0; --gray-100: #F0EDE8; --gray-200: #DDD9D2;
+  --gray-400: #9A9590; --gray-600: #5A5652; --green: #2D7D46; --red: #C0392B;
+  --shadow-sm: 0 2px 8px rgba(27,58,92,0.08); --radius: 12px; --radius-sm: 8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--off-white); color:var(--navy); overscroll-behavior:none; }
+#app { min-height:100vh; display:flex; flex-direction:column; }
+.header { background:var(--navy); padding:0 20px; height:56px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; box-shadow:0 2px 12px rgba(0,0,0,.3); position:sticky; top:0; z-index:100; }
+.header-logo { display:flex; align-items:center; gap:10px; }
+.logo-mark { width:32px; height:32px; background:linear-gradient(135deg,var(--gold),var(--gold-light)); border-radius:6px; display:flex; align-items:center; justify-content:center; font-family:'Playfair Display',serif; font-weight:900; font-size:16px; color:var(--navy); }
+.logo-text { font-family:'Playfair Display',serif; font-weight:700; font-size:18px; color:#fff; }
+.logo-sub { font-size:9px; color:var(--gold-light); letter-spacing:2px; text-transform:uppercase; display:block; margin-top:-3px; }
+.offline-badge { display:flex; align-items:center; gap:5px; background:rgba(200,146,58,.15); border:1px solid rgba(200,146,58,.3); border-radius:20px; padding:4px 10px; font-size:11px; color:var(--gold-light); font-weight:500; }
+.offline-dot { width:6px; height:6px; border-radius:50%; background:var(--gold-light); animation:pulse-dot 2s infinite; }
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
+.content { flex:1; padding:16px 16px 60px; max-width:600px; margin:0 auto; width:100%; }
+.section-title { font-family:'Playfair Display',serif; font-size:19px; font-weight:700; color:var(--navy); margin-bottom:3px; }
+.section-sub { font-size:11.5px; color:var(--gray-400); margin-bottom:14px; }
+.wizard-card { background:#fff; border-radius:var(--radius); padding:16px; margin-bottom:12px; box-shadow:var(--shadow-sm); }
+.wizard-title { font-size:13px; font-weight:700; color:var(--navy); margin-bottom:10px; }
+.form-label { display:block; font-size:11px; font-weight:600; color:var(--gray-600); margin-bottom:5px; }
+.form-input { width:100%; padding:10px 12px; border:1.5px solid var(--gray-200); border-radius:var(--radius-sm); font-family:'DM Sans',sans-serif; font-size:14px; color:var(--navy); background:var(--off-white); box-sizing:border-box; }
+.form-input:focus { outline:none; border-color:var(--blue); background:#fff; }
+.form-group { margin-bottom:10px; }
+.form-group:last-child { margin-bottom:0; }
+textarea.form-input { resize:vertical; min-height:70px; }
+.btn-guardar { width:100%; padding:14px; background:linear-gradient(135deg,var(--gold),var(--gold-light)); color:#fff; border:none; border-radius:var(--radius-sm); font-size:14px; font-weight:700; cursor:pointer; box-shadow:0 4px 16px rgba(200,146,58,.35); }
+.continuando-banner { background:rgba(200,146,58,.1); border:1.5px solid rgba(200,146,58,.35); border-radius:10px; padding:10px 12px; margin-bottom:12px; font-size:12px; color:var(--navy) }
+.mov-row { display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px solid var(--gray-100); font-size:12.5px; cursor:pointer; }
+.mov-row:last-child { border-bottom:none; }
+.mov-concepto { font-weight:700; color:var(--navy); }
+.mov-meta { font-size:10.5px; color:var(--gray-400); margin-top:2px; }
+.mov-monto { font-family:'DM Mono',monospace; font-weight:700; color:var(--gold); }
+.toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--navy); color:#fff; padding:10px 18px; border-radius:20px; font-size:13px; font-weight:600; opacity:0; transition:all .3s; z-index:999; white-space:nowrap; pointer-events:none; max-width:90vw; text-align:center; }
+.toast.show { opacity:1; transform:translateX(-50%) translateY(-6px); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="header">
+    <div class="header-logo">
+      <div class="logo-mark">B</div>
+      <div><div class="logo-text">BarrCan</div><span class="logo-sub">Adicionales</span></div>
+    </div>
+    <div class="offline-badge"><span class="offline-dot"></span><span id="conn-status">Online</span></div>
+  </div>
+
+  <div class="content">
+    <div class="section-title">➕ Adicionales / Extras</div>
+    <div class="section-sub">Para trabajos que no caben en ningún catálogo -- descripción libre + precio final, sin fórmula.</div>
+
+    <div id="ad-continuando-banner" style="display:none" class="continuando-banner"></div>
+
+    <div class="wizard-card">
+      <div class="wizard-title">Nuevo concepto</div>
+      <div class="form-group">
+        <label class="form-label">Descripción <span style="color:var(--gray-400);font-weight:400">(esto va en el recibo/pago)</span></label>
+        <textarea class="form-input" id="ad-desc" placeholder="Ej: Colocar repisas y mover toalleros existentes en baño principal"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Precio final ($, ya con todo incluido)</label>
+        <input type="number" class="form-input" id="ad-precio" min="0" step="1" placeholder="0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Cliente</label>
+        <input type="text" class="form-input" id="ad-cliente" list="ad-clientes-datalist" placeholder="Nombre completo *">
+        <datalist id="ad-clientes-datalist"></datalist>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Teléfono <span style="color:var(--gray-400);font-weight:400">(opcional)</span></label>
+        <input type="text" class="form-input" id="ad-tel" placeholder="10 dígitos" inputmode="tel">
+      </div>
+      <button type="button" class="btn-guardar" onclick="adGuardar()" style="margin-top:6px">Guardar y generar folio CACN</button>
+    </div>
+
+    <div class="wizard-card">
+      <div class="wizard-title">🔍 Adicionales recientes <button type="button" onclick="adCargarHistorial()" style="margin-left:auto;background:none;border:none;color:var(--blue);font-size:11px;cursor:pointer;text-decoration:underline;float:right">🔄 Actualizar</button></div>
+      <div id="ad-historial"><div style="text-align:center;padding:14px;color:var(--gray-400);font-size:12px">Cargando…</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+var APP_VERSION = 'v1.0';
+var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
+var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
+var _sbClient=null;
+function sb(){
+  if(!_sbClient&&window.supabase){
+    _sbClient=window.supabase.createClient(SB_URL,SB_KEY,{db:{schema:'barrcan'},auth:{persistSession:true,storageKey:'barrcan_auth'}});
+  }
+  return _sbClient;
+}
+window.addEventListener('online', function(){detectarConexion();});
+window.addEventListener('offline',function(){detectarConexion();});
+function detectarConexion(){var b=document.getElementById('conn-status');if(b)b.textContent=(navigator.onLine?'Online':'Offline')+' · '+APP_VERSION;}
+function esc(s){return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function fmt(n){return '$'+Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:0,maximumFractionDigits:2});}
+function toast(msg,dur){dur=dur||2600;var el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(function(){el.classList.remove('show');},dur);}
+function fechaLocalISO(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+
+// ── Folio: bump de revisión (A→B→C...) -- mismo criterio que el
+// resto de la app (cotizador_banos.html/servicios.html) ────────────
+function snBumpRevisionFolio(folioOriginal, hoy) {
+  var yy = String(hoy.getFullYear()).slice(-2), mm = String(hoy.getMonth()+1).padStart(2,'0'), dd = String(hoy.getDate()).padStart(2,'0');
+  var m = /^([A-Z]+-\d+)([A-Z])-\d{6}-(.+)$/.exec(folioOriginal || '');
+  if (!m) return folioOriginal;
+  var letraNueva = String.fromCharCode(m[2].charCodeAt(0) + 1);
+  return m[1] + letraNueva + '-' + yy+mm+dd + '-' + m[3];
+}
+
+async function adPedirNumeroFolio() {
+  var sugerido = null;
+  try {
+    if (sb()) {
+      var res = await sb().from('presupuestos_atrasados').select('folio').limit(1000);
+      if (!res.error && res.data) {
+        var max = 0;
+        res.data.forEach(function(r) {
+          var m = /^CACN-(\d{3})[A-Z]-/.exec(r.folio || '');
+          if (m) { var n = parseInt(m[1], 10); if (n > max && n < 900) max = n; }
+        });
+        if (max > 0) sugerido = max + 1;
+      }
+    }
+  } catch(e) {}
+  var texto = window.prompt('Número de presupuesto (folio)' + (sugerido ? ' — siguiente sugerido: ' + sugerido : ''), sugerido ? String(sugerido) : '');
+  if (texto === null) return null;
+  var num = parseInt(texto, 10);
+  if (!num || num < 1) num = sugerido || (Math.floor(Math.random()*900)+100);
+  if (num > 999) num = num % 1000;
+  return String(num).padStart(3, '0');
+}
+
+function adGenerarDocumento(piezas, folio, cliente, tel, fecha) {
+  var fechaTxt = fecha.toLocaleDateString('es-MX', { day:'numeric', month:'long', year:'numeric' });
+  var total = piezas.reduce(function(s, p) { return s + (parseFloat(p.precio) || 0); }, 0);
+  return '<!DOCTYPE html><html lang=es><head><meta charset=UTF-8><meta name=viewport content=width=device-width>'
+    + '<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10pt;color:#1B3A5C;background:#fff}'
+    + '.pg{max-width:620px;margin:0 auto;padding:0 0 80px}.pg-body{padding:16px 22px}'
+    + 'h2{font-size:10.5pt;font-weight:700;color:#1B3A5C;border-bottom:2px solid #C8923A;padding-bottom:3px;margin:18px 0 10px;text-transform:uppercase;letter-spacing:.5px}'
+    + 'table{width:100%;border-collapse:collapse}th{background:#1B3A5C;color:#fff;padding:7px 10px;font-size:9pt;font-weight:700}td{padding:6px 10px;font-size:9pt;border:1px solid #ddd}'
+    + '.barra{position:fixed;bottom:0;left:0;right:0;background:#1B3A5C;padding:8px 14px;display:flex;gap:8px;justify-content:center;z-index:999}'
+    + '.bp{padding:9px 20px;background:#C8923A;color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer}'
+    + '@media print{.barra{display:none!important}}</style></head><body>'
+    + '<div class="pg"><div class="pg-body">'
+    + '<div style="background:#1B3A5C;padding:14px 20px;border-radius:8px;margin-bottom:14px"><div style="font-family:Georgia,serif;font-size:20pt;font-weight:900;color:#fff">BarrCan</div><div style="font-size:8pt;color:#E8B96A;letter-spacing:1px">APOYÁNDOTE EN DAR CALIDEZ A TU HOGAR</div></div>'
+    + '<div style="text-align:center;font-size:9pt;color:#555;margin-bottom:14px">Priv. Santa Cruz 23, Col. San Simón Ticumac, Benito Juárez, CDMX<br>Tel: 56-15-15-84-15 · ventas@barrcan.com.mx</div>'
+    + '<h2>Presupuesto - Adicional</h2>'
+    + '<table style="margin-bottom:14px"><tr><td style="width:30%;font-weight:700;background:#f5f7fa">Folio</td><td>' + esc(folio) + '</td></tr>'
+    + '<tr><td style="font-weight:700;background:#f5f7fa">Cliente</td><td>' + esc(cliente) + '</td></tr>'
+    + (tel ? '<tr><td style="font-weight:700;background:#f5f7fa">Teléfono</td><td>' + esc(tel) + '</td></tr>' : '')
+    + '<tr><td style="font-weight:700;background:#f5f7fa">Fecha</td><td>' + fechaTxt + '</td></tr></table>'
+    + '<h2>Descripción</h2>'
+    + '<table style="margin-bottom:14px"><thead><tr><th>Concepto</th><th style="text-align:right;width:110px">Precio</th></tr></thead><tbody>'
+    + piezas.map(function(p) { return '<tr><td>' + esc(p.label) + '</td><td style="text-align:right;font-weight:700">' + fmt(p.precio) + '</td></tr>'; }).join('')
+    + '<tr style="background:#1B3A5C"><td style="color:#fff;font-weight:700">TOTAL</td><td style="color:#F1C40F;text-align:right;font-weight:800">' + fmt(total) + '</td></tr>'
+    + '</tbody></table>'
+    + '<table style="width:100%;margin-top:40px"><tr>'
+    + '<td style="width:44%;padding:50px 12px 8px;border-top:1.5px solid #999;font-size:9pt;color:#555;text-align:center">Firma y nombre del cliente<br>Fecha: ___________________</td>'
+    + '<td style="width:12%"></td>'
+    + '<td style="width:44%;padding:50px 12px 8px;border-top:1.5px solid #999;font-size:9pt;color:#555;text-align:center">Sello y firma BarrCan<br><span style="font-family:\'Courier New\',monospace;font-size:8pt;color:#1B3A5C">' + esc(folio) + '</span></td>'
+    + '</tr></table>'
+    + '</div></div>'
+    + '<div class="barra"><button class="bp" onclick="window.print()">🖨️ Imprimir</button></div>'
+    + '</body></html>';
+}
+
+// ── Continuar un folio existente (viene de "+Piezas" en historial.html) ──
+var AD_CONTINUANDO = null;
+
+function adCargarContinuarFolio() {
+  var raw = null;
+  try { raw = localStorage.getItem('barrcan_continuar_folio'); } catch(e) {}
+  if (!raw) return;
+  var datos = null;
+  try { datos = JSON.parse(raw); } catch(e) {}
+  if (!datos || !datos.folio) return;
+  if (datos.modulo && datos.modulo !== 'adicionales') return; // no era para este módulo
+  try { localStorage.removeItem('barrcan_continuar_folio'); } catch(e) {}
+
+  AD_CONTINUANDO = datos;
+  document.getElementById('ad-cliente').value = datos.cliente || '';
+  document.getElementById('ad-tel').value = datos.tel || '';
+  var banner = document.getElementById('ad-continuando-banner');
+  banner.style.display = 'block';
+  banner.innerHTML = '➕ Agregando al folio <strong>' + esc(datos.folio) + '</strong> (' + esc(datos.cliente || '') + ') -- el monto y saldo se suman al presupuesto original.';
+  toast('Agregando al folio ' + datos.folio);
+}
+
+async function adGuardar() {
+  var desc = document.getElementById('ad-desc').value.trim();
+  var precio = parseFloat(document.getElementById('ad-precio').value) || 0;
+  var cliente = document.getElementById('ad-cliente').value.trim();
+  var tel = document.getElementById('ad-tel').value.trim();
+  if (!desc) { toast('⚠️ Falta la descripción del trabajo'); return; }
+  if (!precio || precio <= 0) { toast('⚠️ Falta el precio final'); return; }
+  if (!cliente) { toast('⚠️ Ingresa el nombre del cliente'); return; }
+  if (!sb()) { toast('Sin conexión'); return; }
+
+  var hoy = new Date();
+  var yy = String(hoy.getFullYear()).slice(-2), mm = String(hoy.getMonth()+1).padStart(2,'0'), dd = String(hoy.getDate()).padStart(2,'0');
+  var precioRedondeado = Math.round(precio);
+  var itemNuevo = { label: desc, cantidad: 1, precioUnitario: precioRedondeado, precio: precioRedondeado, resultado: null };
+
+  var esActualizacion = !!AD_CONTINUANDO;
+  var folio, piezas, montoFinal, saldoFinal, descFinal;
+
+  if (esActualizacion) {
+    folio = snBumpRevisionFolio(AD_CONTINUANDO.folio, hoy);
+    var existentes = [];
+    try { existentes = JSON.parse(AD_CONTINUANDO.notas_internas || '[]'); } catch(e) {}
+    piezas = existentes.concat([itemNuevo]);
+    montoFinal = Math.round((AD_CONTINUANDO.monto || 0) + precioRedondeado);
+    saldoFinal = Math.round((AD_CONTINUANDO.saldo || 0) + precioRedondeado);
+    descFinal = ((AD_CONTINUANDO.descripcion || '') + ' + ' + desc).slice(0, 200);
+  } else {
+    var numFolio = await adPedirNumeroFolio();
+    if (numFolio === null) { toast('Cancelado'); return; }
+    var numCliente = 'AUTO-' + String(Math.floor(Math.random()*900)+100);
+    folio = 'CACN-' + numFolio + 'A-' + yy + mm + dd + '-' + numCliente;
+    piezas = [itemNuevo];
+    montoFinal = precioRedondeado;
+    saldoFinal = precioRedondeado;
+    descFinal = desc;
+  }
+
+  var payload = {
+    folio: folio, cliente: cliente, tel: tel || null, descripcion: descFinal,
+    monto: montoFinal, saldo: saldoFinal, estado: 'activo', fecha: fechaLocalISO(hoy),
+    modulo: 'adicionales', notas_internas: JSON.stringify(piezas)
+  };
+
+  var htmlDoc = adGenerarDocumento(piezas, folio, cliente, tel, hoy);
+  var w = window.open('', '_blank');
+  if (w) { w.document.write(htmlDoc); w.document.close(); }
+
+  try {
+    var res = esActualizacion
+      ? await sb().from('presupuestos_atrasados').update(payload).eq('id', AD_CONTINUANDO.id)
+      : await sb().from('presupuestos_atrasados').insert([payload]);
+    if (res.error) throw res.error;
+    toast(esActualizacion ? ('✅ Folio actualizado · ' + folio) : ('✅ Guardado · Folio: ' + folio));
+    AD_CONTINUANDO = null;
+    document.getElementById('ad-continuando-banner').style.display = 'none';
+    document.getElementById('ad-desc').value = '';
+    document.getElementById('ad-precio').value = '';
+    document.getElementById('ad-cliente').value = '';
+    document.getElementById('ad-tel').value = '';
+    adCargarHistorial();
+  } catch (e) { toast('No se pudo guardar: ' + e.message); }
+}
+
+// ── Historial + reimprimir ─────────────────────────────────────────
+var AD_HIST_CACHE = [];
+async function adCargarHistorial() {
+  var cont = document.getElementById('ad-historial');
+  if (!sb()) { cont.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:12px">Sin conexión</div>'; return; }
+  try {
+    var res = await sb().from('presupuestos_atrasados').select('folio,cliente,tel,fecha,notas_internas,monto').eq('modulo', 'adicionales').order('created_at', { ascending:false }).limit(20);
+    if (res.error) throw res.error;
+    AD_HIST_CACHE = res.data || [];
+    if (!AD_HIST_CACHE.length) { cont.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:12px">Sin adicionales todavía</div>'; return; }
+    cont.innerHTML = AD_HIST_CACHE.map(function(p, i) {
+      return '<div class="mov-row" onclick="adReimprimir(' + i + ')">'
+        + '<div><div class="mov-concepto" style="font-family:monospace;font-size:11px">' + esc(p.folio) + '</div>'
+        + '<div class="mov-meta">' + esc(p.cliente) + ' · ' + (p.fecha||'') + '</div></div>'
+        + '<div style="text-align:right"><div class="mov-monto">' + fmt(p.monto) + '</div><div style="font-size:10px;color:var(--blue)">🖨️ reimprimir</div></div>'
+        + '</div>';
+    }).join('');
+  } catch (e) { cont.innerHTML = '<div style="text-align:center;padding:14px;color:var(--red);font-size:12px">Error: ' + e.message + '</div>'; }
+}
+
+function adReimprimir(idx) {
+  var p = AD_HIST_CACHE[idx];
+  if (!p) return;
+  try {
+    var piezas = JSON.parse(p.notas_internas || '[]');
+    var htmlDoc = adGenerarDocumento(piezas, p.folio, p.cliente, p.tel || '', p.fecha ? new Date(p.fecha + 'T00:00:00') : new Date());
+    var w = window.open('', '_blank');
+    if (w) { w.document.write(htmlDoc); w.document.close(); }
+  } catch (e) { toast('No se pudo reimprimir: ' + e.message); }
+}
+
+async function adCargarClientesDatalist() {
+  if (!sb()) return;
+  try {
+    var res = await sb().from('presupuestos_atrasados').select('cliente').limit(300);
+    if (res.error) return;
+    var vistos = {};
+    document.getElementById('ad-clientes-datalist').innerHTML = (res.data || [])
+      .filter(function(p) { return p.cliente && !vistos[p.cliente] && (vistos[p.cliente] = true); })
+      .map(function(p) { return '<option value="' + esc(p.cliente) + '">'; }).join('');
+  } catch (e) {}
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  detectarConexion();
+  adCargarContinuarFolio();
+  adCargarClientesDatalist();
+  adCargarHistorial();
+});
+</script>
+</body>
+</html>
