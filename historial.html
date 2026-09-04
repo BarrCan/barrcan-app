@@ -6,6 +6,13 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.5
+  FECHA   : 2026-09-04
+  v3.5 - Agregado "adicionales" al selector de módulo (nuevo archivo
+    adicionales.html) -- para conceptos que no caben en ningún
+    catálogo de ningún cotizador. Reemplaza el intento anterior de
+    meterlo dentro de cotizador_servicios.html, que se rompió igual
+    que Cubiertas de Mesa.
   VERSIÓN : v3.4
   FECHA   : 2026-09-03
   v3.4 - FIX importante: "+Piezas" navegaba automático al módulo que
@@ -1411,7 +1418,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.4';
+var APP_VERSION = 'v3.5';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1769,7 +1776,7 @@ function presAbrirNuevo() {
 // es una revisión real (empieza en A) y ya no identifica el módulo.
 // Para presupuestos viejos que se guardaron antes de que existiera la
 // columna `modulo`, se cae de vuelta a adivinar por esa letra vieja.
-var PRES_MODULO_A_ARCHIVO = { nacional: 'cotizador_nacional.html', espanol: 'cotizador_espanol.html', eurovent: 'cotizador_eurovent.html', servicios: 'cotizador_servicios.html', banos: 'cotizador_banos.html', stands: 'cotizador_stands.html' };
+var PRES_MODULO_A_ARCHIVO = { nacional: 'cotizador_nacional.html', espanol: 'cotizador_espanol.html', eurovent: 'cotizador_eurovent.html', servicios: 'cotizador_servicios.html', banos: 'cotizador_banos.html', stands: 'cotizador_stands.html', adicionales: 'adicionales.html' };
 var PRES_SERIE_VIEJA_A_MODULO = { B: 'nacional', C: 'espanol', E: 'eurovent', S: 'servicios', A: 'banos' };
 
 function presModuloDe(datos) {
@@ -1807,13 +1814,14 @@ var PRES_MODULOS_NOMBRES = {
   eurovent: '🌬️ Eurovent',
   servicios: '🪞 Servicios (Espejos, Garantía, Mantenimiento)',
   banos: '🚿 Baños (Canceles)',
-  stands: '🏗️ Stands'
+  stands: '🏗️ Stands',
+  adicionales: '➕ Adicionales / Extras (no cabe en ningún catálogo)'
 };
 
 function presMostrarSelectorModulo(sugerido) {
   var modal = document.getElementById('modal-elegir-modulo');
   var lista = document.getElementById('lista-elegir-modulo');
-  var orden = ['nacional','espanol','eurovent','servicios','banos','stands'];
+  var orden = ['nacional','espanol','eurovent','servicios','banos','stands','adicionales'];
   lista.innerHTML = orden.map(function(m) {
     var esSugerido = m === sugerido;
     return '<button onclick="presIrModuloElegido(\'' + m + '\')" style="width:100%;text-align:left;padding:12px 14px;margin-bottom:7px;border-radius:10px;border:1.5px solid ' + (esSugerido ? 'var(--gold)' : 'var(--gray-200)') + ';background:' + (esSugerido ? 'rgba(200,146,58,.08)' : '#fff') + ';cursor:pointer;font-size:13px;color:var(--navy);display:flex;justify-content:space-between;align-items:center">'
