@@ -6,6 +6,27 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v2.27
+  FECHA   : 2026-09-04
+  v2.27 - Tres cosas relacionadas, encontradas siguiendo el mismo hilo:
+    1) Nuevos conceptos: "Colocación de película" en 🔧 Taller, y
+       "Visitas" en 📋 Admin.
+    2) La detección automática de reportes ahora también busca en
+       visitas_medicion (antes solo instalación/entrega) -- y ya no
+       fuerza todo a categoría "obra": Visitas crea su propio bloque
+       en Administración, separado del de instalación/entrega si
+       ambos se detectan el mismo día.
+    3) FIX de raíz de "solo registra un reporte al día" (caso real:
+       2/sep, Luis y Mauricio fueron a 2 lugares -- CACN-090B y
+       STAN-001 -- pero solo CACN-090B quedó capturado). La causa
+       real: STAN-001 se había guardado con fecha equivocada
+       (03/sep en vez de 02/sep, reporte llenado un día tarde sin
+       corregir la fecha), así que la detección automática nunca lo
+       encontraba al revisar el día 2. Corregida la fecha del
+       reporte real, y agregado el bloque faltante a ambos técnicos
+       para ese día. No era un límite del sistema (ya soporta varios
+       lugares/bloques por día desde hace tiempo), era este caso
+       puntual de fecha incorrecta.
   VERSION : v2.26
   FECHA   : 2026-09-04
   v2.26 - Agregada tarjeta "➕ Adicionales/Extras" (adicionales.html).
@@ -799,7 +820,7 @@ function sb(){
 }
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
-var APP_VERSION = 'v2.26';
+var APP_VERSION = 'v2.27';
 var USUARIOS = [];
 var USUARIO_SEL = null;   // el que se está tratando de loguear
 var PIN_BUFFER = '';
@@ -1603,11 +1624,11 @@ async function chGuardar() {
 // registrada pero sin cerrar (cerrado=false) -- no bloquea, tiene
 // botón "Después" que lo pospone sin perder el registro.
 var RA_LISTAS = {
-  taller: ['Corte de aluminio','Corte de vidrio','Ensamble de cancel','Colocación de vidrio','Colocación de plástico','Tela de mosquitero','Chapas','Carretillas','Bisagras','Bisagra hidráulica','Instalación de herrajes','Empaque','Preparación de pedido','Control de calidad'],
+  taller: ['Corte de aluminio','Corte de vidrio','Ensamble de cancel','Colocación de vidrio','Colocación de plástico','Colocación de película','Tela de mosquitero','Chapas','Carretillas','Bisagras','Bisagra hidráulica','Instalación de herrajes','Empaque','Preparación de pedido','Control de calidad'],
   stand: ['Carpintería','Cortar módulos de piso','Cortar módulos de pared','Lijar y preparar','Armar módulo','Armar previo/muestra','Resanar','Montar','Instalación eléctrica','Contactos'],
   compras: ['Recolección de material','Compra en ferretería/proveedor','Entrega de material a obra','Entrega de material a taller','Trámites con proveedor','Devolución de material'],
   auto: ['Limpieza','Afinación','Revisión de frenos','Cambio de aceite','Balanceo/alineación','Cambio de llantas','Revisión general'],
-  administrativo: ['Presupuesto/cotización','Pedido de material','Programar instalación','Planeación de obra','Facturación','Trámites administrativos','Seguimiento a cliente'],
+  administrativo: ['Presupuesto/cotización','Pedido de material','Programar instalación','Planeación de obra','Facturación','Trámites administrativos','Seguimiento a cliente','Visitas'],
   instalaciones: ['Portón','Herrería','Soldado','Espejos','Muebles','Pintura'],
   obra: ['Instalación','Mantenimiento','Entrega de ventanas','Entrega de puertas','Entrega de baños']
 };
@@ -1742,6 +1763,7 @@ async function raVerificarDiaPendiente() {
 
 // ── Detección automática de reportes ya generados ────────────────
 var RA_FOLIO_DETECTADO = null;
+var RA_REPORTES_DETECTADOS = [];
 
 async function raBuscarReportesDelDia(nombreBuscar, fecha) {
   if (!sb() || !nombreBuscar) return [];
@@ -1761,6 +1783,12 @@ async function raBuscarReportesDelDia(nombreBuscar, fecha) {
       if ((r.tecnico || '').toLowerCase().indexOf(nombreLower) >= 0) encontrados.push({ folio: r.folio, cliente: r.cliente_nombre, tipo: 'Entrega' });
     });
   } catch (e) { console.warn('[BarrCan] Error buscando reportes_entrega:', e.message); }
+  try {
+    var resVis = await sb().from('visitas_medicion').select('folio,cliente_nombre,tecnico').eq('fecha_visita', fecha);
+    if (!resVis.error) (resVis.data || []).forEach(function(r) {
+      if ((r.tecnico || '').toLowerCase().indexOf(nombreLower) >= 0) encontrados.push({ folio: r.folio, cliente: r.cliente_nombre, tipo: 'Visitas' });
+    });
+  } catch (e) { console.warn('[BarrCan] Error buscando visitas_medicion:', e.message); }
   return encontrados;
 }
 
@@ -1784,7 +1812,8 @@ function raMostrarBloquesExistentes(bloques) {
 
 function raMostrarDetectado(reportes) {
   var cont = document.getElementById('ra-detectado');
-  if (!reportes.length) { cont.style.display = 'none'; RA_FOLIO_DETECTADO = null; return; }
+  if (!reportes.length) { cont.style.display = 'none'; RA_REPORTES_DETECTADOS = []; RA_FOLIO_DETECTADO = null; return; }
+  RA_REPORTES_DETECTADOS = reportes;
   RA_FOLIO_DETECTADO = reportes.map(function(r) { return r.folio; }).filter(function(f, i, a) { return a.indexOf(f) === i; }).join(', ');
   cont.innerHTML = '<div style="font-size:12px;font-weight:700;color:#1B3A5C;margin-bottom:6px">✅ Encontré reporte(s) que no tienes agregados todavía:</div>'
     + reportes.map(function(r) { return '<div style="font-size:11.5px;color:#5F5E5A;padding:2px 0">· ' + esc(r.tipo) + ' — ' + esc(r.folio) + (r.cliente ? ' (' + esc(r.cliente) + ')' : '') + '</div>'; }).join('')
@@ -1797,11 +1826,25 @@ function raMostrarDetectado(reportes) {
     var etiqueta = 'Entrega de ventanas';
     if (RA_SEL.obra.indexOf(etiqueta) < 0) RA_SEL.obra.push(etiqueta);
   }
+  if (tipos.indexOf('Visitas') >= 0 && RA_SEL.administrativo.indexOf('Visitas') < 0) RA_SEL.administrativo.push('Visitas');
 }
 
+// Cada tipo detectado (Instalación/Entrega → obra; Visitas →
+// administrativo) genera SU PROPIO bloque, con la categoría real que
+// le corresponde -- antes todo se forzaba a "obra" aunque fuera una
+// visita, que va en Administración.
 async function raConfirmarDetectado() {
-  var nuevoBloque = { categoria: 'obra', actividades: RA_SEL.obra.length ? RA_SEL.obra : ['Instalación'], folio_obra: RA_FOLIO_DETECTADO, otro_detalle: null, origen: 'detectado' };
-  await raGuardarBloque(nuevoBloque);
+  var folioObra = RA_REPORTES_DETECTADOS.filter(function(r) { return r.tipo === 'Instalación' || r.tipo === 'Entrega'; })
+    .map(function(r) { return r.folio; }).filter(function(f, i, a) { return a.indexOf(f) === i; }).join(', ');
+  var folioVisita = RA_REPORTES_DETECTADOS.filter(function(r) { return r.tipo === 'Visitas'; })
+    .map(function(r) { return r.folio; }).filter(function(f, i, a) { return a.indexOf(f) === i; }).join(', ');
+
+  if (folioObra) {
+    await raGuardarBloque({ categoria: 'obra', actividades: RA_SEL.obra.length ? RA_SEL.obra : ['Instalación'], folio_obra: folioObra, otro_detalle: null, origen: 'detectado' });
+  }
+  if (folioVisita) {
+    await raGuardarBloque({ categoria: 'administrativo', actividades: ['Visitas'], folio_obra: folioVisita, otro_detalle: null, origen: 'detectado' });
+  }
 }
 
 // "Agregar esta actividad" -- guarda el bloque actual y DEJA el panel
