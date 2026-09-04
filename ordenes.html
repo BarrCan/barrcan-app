@@ -6,6 +6,23 @@
 <title>BarrCan &middot; Ordenes</title>
 <!--
   BARRCAN - MODULO: ORDENES DE TRABAJO
+  VERSION : v2.8
+  FECHA   : 2026-09-04
+  v2.8 - Dos cosas pedidas:
+    1) Nuevo rubro "📏 Visita de medición" -- para programar/asignar
+       una visita futura a un técnico usando la misma pantalla de
+       órdenes (cliente, dirección, técnico, fecha/hora), en vez de
+       que visitas.html (que solo registra visitas YA hechas) fuera
+       el único lugar relacionado con visitas.
+    2) El recordatorio de calendario (.ics, botón "🔔 Avisar" →
+       otDescargarICS) ya existía con 3 alarmas (1 día, 2 horas, 1
+       hora antes) -- se ajustó a exactamente las 2 pedidas: 1 hora
+       y 45 minutos antes.
+    De paso: la lista de técnicos de respaldo (offline) tenía nombres
+    viejos (Esaú/Miguel/Carlos/Omar/Rodrigo) que ya no son el equipo
+    activo -- se actualizó a Luis/Mauricio/Ramón. La lista real
+    (online) ya cargaba bien desde tecnicos.html, esto solo afecta
+    el caso sin conexión.
   VERSION : v2.7
   FECHA   : 2026-08-27
   v2.7 - FIX de confusión real reportada: "Saldo a pagar" aquí podía
@@ -1325,11 +1342,9 @@ body{min-height:100vh}
     <div class="form-select-wrap">
       <select id="ot-tecnico" class="form-select" onchange="otRenderApoyoCheckboxes()">
         <option value="">-- Selecciona tecnico --</option>
-        <option value="ESAU">Esau</option>
-        <option value="MIGUEL">Miguel</option>
-        <option value="CARLOS">Carlos</option>
-        <option value="OMAR">Omar</option>
-        <option value="RODRIGO">Rodrigo</option>
+        <option value="HER">Luis Enrique Barrera Espinosa</option>
+        <option value="MAU">Mauricio Barrera Espinosa</option>
+        <option value="RAM">Ramon</option>
       </select>
     </div>
 
@@ -1355,6 +1370,7 @@ body{min-height:100vh}
           <option value="domo">Domo</option>
           <option value="barandal">Barandal</option>
           <option value="taller">Taller</option>
+          <option value="visita_medicion">📏 Visita de medición</option>
           <option value="otro">Otro</option>
         </select>
       </div>
@@ -1438,7 +1454,7 @@ function sb(){
 var SYNC={online:navigator.onLine};
 window.addEventListener('online', function(){SYNC.online=true;detectarConexion();otCargar();otCargarTecnicosDinamico();var c=JSON.parse(localStorage.getItem('barrcan_ordenes_pendientes')||'[]');if(c.length)otReintentarPendientes();});
 window.addEventListener('offline',function(){SYNC.online=false;detectarConexion();});
-var APP_VERSION='v2.7';
+var APP_VERSION='v2.8';
 function detectarConexion(){var b=document.getElementById('conn-status');if(b)b.textContent=(navigator.onLine?'Online':'Offline-First')+' \u00b7 '+APP_VERSION;}
 
 // ── Lista de técnicos dinámica (desde tabla tecnicos, módulo tecnicos.html) ──
@@ -1911,7 +1927,7 @@ async function otAvisarTecnico(o, mapsUrl, yaEnCamino){
 
 // Genera un archivo .ics descargable — funciona con Google Calendar,
 // Outlook y Apple Calendar sin necesitar conectar ninguna cuenta. Trae
-// dos alarmas: 2 horas antes y 1 hora antes de la hora de instalación.
+// dos alarmas: 1 hora antes y 45 minutos antes de la hora de instalación.
 function otDescargarICS(o, mapsUrl){
   var fecha = o.fecha_instalacion || new Date().toISOString().split('T')[0];
   var hora  = o.hora_instalacion || '10:00';
@@ -1939,9 +1955,8 @@ function otDescargarICS(o, mapsUrl){
     + 'SUMMARY:Instalación BarrCan - '+(o.cliente_nombre||'')+'\r\n'
     + 'LOCATION:'+(o.dir_obra||'').replace(/,/g,'\\,')+'\r\n'
     + 'DESCRIPTION:'+desc+'\r\n'
-    + 'BEGIN:VALARM\r\nTRIGGER:-P1D\r\nACTION:DISPLAY\r\nDESCRIPTION:Instalación mañana - '+(o.cliente_nombre||'')+'\r\nEND:VALARM\r\n'
-    + 'BEGIN:VALARM\r\nTRIGGER:-PT2H\r\nACTION:DISPLAY\r\nDESCRIPTION:Instalación en 2 horas - '+(o.cliente_nombre||'')+'\r\nEND:VALARM\r\n'
     + 'BEGIN:VALARM\r\nTRIGGER:-PT1H\r\nACTION:DISPLAY\r\nDESCRIPTION:Instalación en 1 hora - '+(o.cliente_nombre||'')+'\r\nEND:VALARM\r\n'
+    + 'BEGIN:VALARM\r\nTRIGGER:-PT45M\r\nACTION:DISPLAY\r\nDESCRIPTION:Instalación en 45 minutos - '+(o.cliente_nombre||'')+'\r\nEND:VALARM\r\n'
     + 'END:VEVENT\r\nEND:VCALENDAR\r\n';
 
   var blob = new Blob([ics], {type:'text/calendar;charset=utf-8'});
