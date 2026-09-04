@@ -5,7 +5,11 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Servicios y Accesorios</title>
 <!--
-  BARRCAN SERVICIOS Y ACCESORIOS v1.16.0
+  BARRCAN SERVICIOS Y ACCESORIOS v1.17.0
+  v1.17.0 - Se QUITÓ la tarjeta "➕ Concepto libre" de v1.16.0 -- Mau
+    confirmó que se rompe igual que Cubiertas de Mesa (no responde al
+    tocar). Se movió a su propio archivo standalone
+    (adicionales.html), mismo criterio que ya funcionó con Cubiertas.
   v1.16.0 - Nueva tarjeta "➕ Concepto libre / Actividad no catalogada",
     completamente AISLADA del wizard de sistemas (no toca
     cambiarSistema, STATE.carrito, ni CB_RESULTADO) -- descripción
@@ -1622,20 +1626,6 @@ body{background:var(--off-white)}
   <div style="font-size:20px;font-weight:800;color:var(--navy);margin-bottom:2px">Servicios y Accesorios</div>
   <div style="font-size:12px;color:var(--gray-400);margin-bottom:14px">Espejos &middot; Mantenimiento &middot; Garantía Extendida</div>
 
-  <!-- CONCEPTO LIBRE -- aislado del wizard de sistemas, no toca cambiarSistema
-       ni STATE.carrito. Motivado por caso real (CACN-146, repisas y mover
-       toalleros -- no cabe en ningún catálogo, ni siquiera Mantenimiento
-       le queda exacto). -->
-  <div class="wizard-card" style="margin-bottom:12px;border:1.5px solid rgba(200,146,58,.3)">
-    <div class="wizard-title">➕ Concepto libre / Actividad no catalogada</div>
-    <div style="font-size:11px;color:var(--gray-400);margin-bottom:10px">Para trabajos que no caben en ningún catálogo -- descripción libre + precio final, sin fórmula.</div>
-    <textarea id="sv-libre-desc" placeholder="Ej: Colocar repisas y mover toalleros existentes en baño principal" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-200);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--navy);box-sizing:border-box;margin-bottom:8px;resize:vertical;min-height:60px"></textarea>
-    <input type="number" id="sv-libre-precio" placeholder="Precio final ($)" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-200);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--navy);box-sizing:border-box;margin-bottom:8px">
-    <input type="text" id="sv-libre-cliente" placeholder="Nombre del cliente *" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-200);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--navy);box-sizing:border-box;margin-bottom:8px">
-    <input type="text" id="sv-libre-tel" placeholder="Teléfono" style="width:100%;padding:10px 12px;border:1.5px solid var(--gray-200);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--navy);box-sizing:border-box;margin-bottom:10px">
-    <button onclick="svGuardarConceptoLibre()" style="width:100%;padding:12px;background:linear-gradient(135deg,var(--gold),var(--gold-light));color:#fff;border:none;border-radius:10px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer">Guardar y generar folio CACN</button>
-  </div>
-
   <!-- SELECTOR DE LÍNEA + SISTEMA -->
   <div class="wizard-card" style="margin-bottom:12px" id="sn-selector-card">
     <div class="wizard-title">1. Selecciona la línea</div>
@@ -2749,8 +2739,6 @@ function snCargarContinuarFolio() {
   setVal('sn-tel', datos.tel);
   setVal('sn-dir', datos.dir_obra || datos.dir);
   if (datos.fecha) setVal('sn-fecha', datos.fecha);
-  setVal('sv-libre-cliente', datos.cliente);
-  setVal('sv-libre-tel', datos.tel);
 
   const sub = document.getElementById('sn-presupuesto-subtitulo');
   if (sub) sub.innerHTML = '➕ Agregando piezas al folio <strong>' + esc(datos.folio) + '</strong> — el total y el saldo se suman al presupuesto original.';
@@ -4000,7 +3988,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.16.0';
+const APP_VERSION = 'v1.17.0';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -6451,75 +6439,6 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// ── Concepto libre -- TOTALMENTE AISLADO del wizard de sistemas ────
-// No usa STATE.carrito, no usa cambiarSistema, no usa CB_RESULTADO.
-// Reutiliza solo utilidades compartidas (folio, continuación,
-// documento) para no duplicar esa parte, pero el guardado es
-// independiente. Motivado por caso real: CACN-146 necesitaba agregar
-// "colocar repisas y mover toalleros" -- nada en ningún catálogo de
-// esta app describe eso, ni Mantenimiento le queda exacto.
-async function svGuardarConceptoLibre() {
-  var desc = document.getElementById('sv-libre-desc').value.trim();
-  var precio = parseFloat(document.getElementById('sv-libre-precio').value) || 0;
-  var cliente = document.getElementById('sv-libre-cliente').value.trim();
-  var tel = document.getElementById('sv-libre-tel').value.trim();
-  if (!desc) { toast('Falta la descripción del trabajo'); return; }
-  if (!precio || precio <= 0) { toast('Falta el precio final'); return; }
-  if (!cliente) { toast('Ingresa el nombre del cliente'); return; }
-  if (!sb()) { toast('Sin conexión'); return; }
-
-  var hoy = new Date();
-  var yy = String(hoy.getFullYear()).slice(-2), mm = String(hoy.getMonth()+1).padStart(2,'0'), dd = String(hoy.getDate()).padStart(2,'0');
-  var precioRedondeado = Math.round(precio);
-  var itemNuevo = { label: desc, cantidad: 1, precioUnitario: precioRedondeado, precio: precioRedondeado, resultado: null };
-
-  var esActualizacion = !!CONTINUANDO_FOLIO;
-  var folio, piezas, montoFinal, saldoFinal, descFinal;
-
-  if (esActualizacion) {
-    folio = snBumpRevisionFolio(CONTINUANDO_FOLIO.folio, hoy);
-    var existentes = [];
-    try { existentes = JSON.parse(CONTINUANDO_FOLIO.notas_internas || '[]'); } catch(e) {}
-    piezas = existentes.concat([itemNuevo]);
-    montoFinal = Math.round((CONTINUANDO_FOLIO.monto || 0) + precioRedondeado);
-    saldoFinal = Math.round((CONTINUANDO_FOLIO.saldo || 0) + precioRedondeado);
-    descFinal = ((CONTINUANDO_FOLIO.descripcion || '') + ' + ' + desc).slice(0, 200);
-  } else {
-    var numFolio = await snPedirNumeroFolio();
-    if (numFolio === null) { toast('Guardado cancelado'); return; }
-    var numCliente = await snObtenerNumCliente();
-    folio = 'CACN-' + numFolio + 'A-' + yy + mm + dd + '-' + numCliente;
-    piezas = [itemNuevo];
-    montoFinal = precioRedondeado;
-    saldoFinal = precioRedondeado;
-    descFinal = desc;
-  }
-
-  var payload = {
-    folio: folio, cliente: cliente, tel: tel || null, descripcion: descFinal,
-    monto: montoFinal, saldo: saldoFinal, estado: 'activo', fecha: fechaLocalISO(hoy),
-    modulo: MODULO_ACTUAL, notas_internas: JSON.stringify(piezas)
-  };
-
-  try {
-    var htmlDoc = snGenerarDocumentoPresupuesto(piezas, folio, cliente, '', hoy);
-    var w = window.open('', '_blank');
-    if (w) { w.document.write(htmlDoc); w.document.close(); }
-  } catch (eDoc) { console.warn('[BarrCan] No se pudo generar el documento del concepto libre:', eDoc.message); }
-
-  try {
-    var res = esActualizacion
-      ? await sb().from('presupuestos_atrasados').update(payload).eq('id', CONTINUANDO_FOLIO.id)
-      : await sb().from('presupuestos_atrasados').insert([payload]);
-    if (res.error) throw res.error;
-    toast(esActualizacion ? ('✅ Folio actualizado · ' + folio) : ('✅ Guardado · Folio: ' + folio));
-    CONTINUANDO_FOLIO = null;
-    document.getElementById('sv-libre-desc').value = '';
-    document.getElementById('sv-libre-precio').value = '';
-    document.getElementById('sv-libre-cliente').value = '';
-    document.getElementById('sv-libre-tel').value = '';
-  } catch (e) { toast('No se pudo guardar: ' + e.message); }
-}
 </script>
 
 <!-- Export bar (mismo que app base) -->
