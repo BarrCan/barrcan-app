@@ -6,6 +6,15 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.4
+  FECHA   : 2026-09-03
+  v3.4 - FIX importante: "+Piezas" navegaba automático al módulo que
+    "adivinaba" presModuloDe() -- caso real: CACN-146 es un espejo
+    (Servicios) pero usa letra "A" en el folio (normalmente Baños en
+    folios viejos), así que mandaba mal a cotizador_banos.html sin
+    dejar elegir. Ahora se muestra un selector con los 6 módulos, la
+    sugerencia marcada pero SIEMPRE editable -- Mau decide a dónde
+    va, en vez de que el sistema adivine mal en silencio.
   VERSIÓN : v3.3
   FECHA   : 2026-09-02
   v3.3 - FIX: "+Piezas" no funcionaba en folios de Stands (STAN-001A/
@@ -1238,6 +1247,19 @@ body{min-height:100vh}
 <!-- MODAL PROGRESO POR OBRA -->
 <div id="prog-modal-overlay" onclick="progCerrarModal()"
   style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:600;backdrop-filter:blur(3px)"></div>
+
+<!-- MODAL ELEGIR MÓDULO -->
+<div id="modal-elegir-modulo" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;align-items:flex-end;justify-content:center">
+  <div style="background:#fff;border-radius:20px 20px 0 0;padding:18px 16px 28px;width:100%;max-width:520px;max-height:88vh;overflow-y:auto">
+    <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 14px"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <span style="font-family:'Playfair Display',serif;font-size:16px;font-weight:700;color:var(--navy)">¿Dónde agregar la pieza?</span>
+      <button type="button" onclick="presCerrarSelectorModulo()" style="background:none;border:none;font-size:20px;color:#999;cursor:pointer">✕</button>
+    </div>
+    <div style="font-size:11px;color:var(--gray-400);margin-bottom:14px">Marcamos una sugerencia según el folio, pero elige el que realmente corresponda -- la sugerencia puede fallar en folios viejos.</div>
+    <div id="lista-elegir-modulo"></div>
+  </div>
+</div>
 <div id="prog-modal" style="display:none;position:fixed;bottom:0;left:0;right:0;background:var(--white);border-radius:20px 20px 0 0;z-index:700;max-height:92vh;overflow-y:auto;box-shadow:0 -8px 40px rgba(0,0,0,0.3)">
   <div style="padding:16px 20px 40px">
     <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 16px"></div>
@@ -1389,7 +1411,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.3';
+var APP_VERSION = 'v3.4';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1761,15 +1783,57 @@ function presModuloDe(datos) {
   return letra ? PRES_SERIE_VIEJA_A_MODULO[letra] : null;
 }
 
+// Antes se navegaba directo al módulo que "adivinaba" presModuloDe()
+// -- caso real: un folio de espejo con letra "A" (normalmente Baños)
+// mandaba mal a cotizador_banos.html. La letra/prefijo no siempre es
+// confiable con folios viejos, así que ahora se muestra la sugerencia
+// pero SIEMPRE se deja elegir a mano cuál cotizador usar.
+var PRES_AGREGAR_PIEZAS_ACTUAL = null;
+
 function presAgregarPiezas(id) {
   var p = null;
   for (var i = 0; i < PRES_CACHE.length; i++) {
     if (PRES_CACHE[i].id === id) { p = PRES_CACHE[i]; break; }
   }
   if (!p) return;
-  var modulo = presModuloDe(p);
-  var destino = modulo ? PRES_MODULO_A_ARCHIVO[modulo] : null;
-  if (!destino) { toast('No se reconoce el módulo de este folio'); return; }
+  PRES_AGREGAR_PIEZAS_ACTUAL = p;
+  var sugerido = presModuloDe(p);
+  presMostrarSelectorModulo(sugerido);
+}
+
+var PRES_MODULOS_NOMBRES = {
+  nacional: '🪟 Nacional (ventanas/puertas de aluminio)',
+  espanol: '🇪🇸 Española (Extrusiones Metálicas)',
+  eurovent: '🌬️ Eurovent',
+  servicios: '🪞 Servicios (Espejos, Garantía, Mantenimiento)',
+  banos: '🚿 Baños (Canceles)',
+  stands: '🏗️ Stands'
+};
+
+function presMostrarSelectorModulo(sugerido) {
+  var modal = document.getElementById('modal-elegir-modulo');
+  var lista = document.getElementById('lista-elegir-modulo');
+  var orden = ['nacional','espanol','eurovent','servicios','banos','stands'];
+  lista.innerHTML = orden.map(function(m) {
+    var esSugerido = m === sugerido;
+    return '<button onclick="presIrModuloElegido(\'' + m + '\')" style="width:100%;text-align:left;padding:12px 14px;margin-bottom:7px;border-radius:10px;border:1.5px solid ' + (esSugerido ? 'var(--gold)' : 'var(--gray-200)') + ';background:' + (esSugerido ? 'rgba(200,146,58,.08)' : '#fff') + ';cursor:pointer;font-size:13px;color:var(--navy);display:flex;justify-content:space-between;align-items:center">'
+      + '<span>' + PRES_MODULOS_NOMBRES[m] + '</span>'
+      + (esSugerido ? '<span style="font-size:9.5px;color:var(--gold);font-weight:700;background:rgba(200,146,58,.15);padding:3px 8px;border-radius:10px">sugerido</span>' : '')
+      + '</button>';
+  }).join('');
+  modal.style.display = 'flex';
+}
+
+function presCerrarSelectorModulo() {
+  document.getElementById('modal-elegir-modulo').style.display = 'none';
+  PRES_AGREGAR_PIEZAS_ACTUAL = null;
+}
+
+function presIrModuloElegido(modulo) {
+  var p = PRES_AGREGAR_PIEZAS_ACTUAL;
+  if (!p) return;
+  var destino = PRES_MODULO_A_ARCHIVO[modulo];
+  if (!destino) { toast('Módulo no reconocido'); return; }
   try {
     localStorage.setItem('barrcan_continuar_folio', JSON.stringify({
       id: p.id, folio: p.folio, cliente: p.cliente, tel: p.tel, dir: p.dir, dir_obra: p.dir,
