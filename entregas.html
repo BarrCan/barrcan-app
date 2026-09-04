@@ -6,19 +6,32 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.52.0
+  FECHA   : 2026-09-04
+  v3.52.0 - FIX: caso real -- clienta con 3 folios de garantía
+    (REPG-001/002/004, mismo num_cliente 26WA002), pero el buscador
+    de presupuestos en Entregas solo encontraba 2 de 3. Causa: el
+    folio 004 tenía el nombre guardado distinto ("Alma" en vez de
+    "Mayella (Alma)"), y la búsqueda solo comparaba por texto de
+    nombre. Corregido el dato inconsistente, y de raíz: ahora la
+    búsqueda también compara por num_cliente (el dato realmente
+    confiable, extraído del propio folio) además del nombre -- así
+    un nombre distinto ya no deja folios fuera. Reproducido el bug
+    real y confirmado el fix con los 3 folios reales.
   VERSION : v3.51.0
-  FECHA   : 2026-09-03
-  v3.51.0 - FIX: el respaldo offline de t&eacute;cnicos (cuando falla la
-    conexi&oacute;n a Supabase) ten&iacute;a 5 nombres quemados en el HTML
-    (Esa&uacute;, Miguel, Carlos, Omar, Rodrigo) que ya no existen en el
-    equipo real -- causaba que reportes sin conexi&oacute;n pudieran
-    guardarse con c&oacute;digos de t&eacute;cnico hu&eacute;rfanos, sin
-    dato real detr&aacute;s. Ahora la &uacute;ltima lista real que s&iacute;
-    se pudo bajar de Supabase se guarda en localStorage y esa es la que se
-    usa como respaldo offline (siempre vigente). El HTML fijo qued&oacute;
-    solo como &uacute;ltimo recurso (instalaci&oacute;n nueva, nunca hubo
-    cach&eacute;) y ya refleja al equipo actual: Luis Enrique (HER),
-    Mauricio (MAU), Ram&oacute;n (RAM).
+  FECHA   : 2026-09-04
+  v3.51.0 - Observación real de Mau: al generar un reporte para un
+    folio que ya tenía piezas entregadas antes (ej. CACN-146B con
+    espejo ya entregado + repisas/toalleros nuevo), la descripción se
+    autocompletaba con TODO el folio, repitiendo lo ya entregado.
+    Ahora, si el folio tiene piezas separadas (notas_internas), la
+    descripción solo trae lo que sigue PENDIENTE -- y al guardar el
+    reporte exitosamente, esas piezas se marcan como entregadas
+    (nuevo campo "entregado" por pieza) para que la próxima vez ya no
+    vuelvan a aparecer. Si el folio es formato viejo sin piezas
+    separadas, se comporta igual que antes (sin cambio). Verificado
+    con el caso real: descripción solo dice "repisas", ambas piezas
+    quedan marcadas entregado=true después de guardar.
   VERSION : v3.50.0
   FECHA   : 2026-09-03
   v3.50.0 - FIX: caso real -- el mismo folio (STAN-001A) se guardó DOS
@@ -1755,9 +1768,11 @@ body{min-height:100vh}
             <label class="form-label">T&eacute;cnico instalador</label>
             <select id="inst-tecnico-nombre" class="form-select" style="margin-bottom:4px">
               <option value="">-- Selecciona t&eacute;cnico --</option>
-              <option value="HER">Luis Enrique</option>
-              <option value="MAU">Mauricio</option>
-              <option value="RAM">Ram&oacute;n</option>
+              <option value="ESAU">Esa&uacute;</option>
+              <option value="MIGUEL">Miguel</option>
+              <option value="CARLOS">Carlos</option>
+              <option value="OMAR">Omar</option>
+              <option value="RODRIGO">Rodrigo</option>
             </select>
             <div style="font-size:10px;color:var(--gray-400)">Se llena solo desde el cat&aacute;logo de t&eacute;cnicos &mdash; si no ves a alguien, agr&eacute;galo en tecnicos.html</div>
           </div>
@@ -1765,18 +1780,22 @@ body{min-height:100vh}
             <label class="form-label">Asignado por</label>
             <select id="inst-asignado" class="form-select">
               <option value="">-- Selecciona --</option>
-              <option value="HER">Luis Enrique</option>
-              <option value="MAU">Mauricio</option>
-              <option value="RAM">Ram&oacute;n</option>
+              <option value="ESAU">Esa&uacute;</option>
+              <option value="MIGUEL">Miguel</option>
+              <option value="CARLOS">Carlos</option>
+              <option value="OMAR">Omar</option>
+              <option value="RODRIGO">Rodrigo</option>
             </select>
           </div>
           <div style="margin-top:8px">
             <label class="form-label">T&eacute;cnico acompa&ntilde;ante <span style="font-weight:400;color:var(--gray-400)">(opcional, si fueron 2)</span></label>
             <select id="inst-tecnico-acompanante" class="form-select">
               <option value="">-- Ninguno / trabaj&oacute; solo --</option>
-              <option value="HER">Luis Enrique</option>
-              <option value="MAU">Mauricio</option>
-              <option value="RAM">Ram&oacute;n</option>
+              <option value="ESAU">Esa&uacute;</option>
+              <option value="MIGUEL">Miguel</option>
+              <option value="CARLOS">Carlos</option>
+              <option value="OMAR">Omar</option>
+              <option value="RODRIGO">Rodrigo</option>
             </select>
             <div style="font-size:10px;color:var(--gray-400)">Para llevar estad&iacute;stica de apoyos entre t&eacute;cnicos</div>
           </div>
@@ -2233,41 +2252,12 @@ async function entCargarTecnicosDinamico() {
       if (valorPrevioAcomp) selAcomp.value = valorPrevioAcomp;
     }
     datos.forEach(function(t) { ENT_TEC_NOMBRES_DIN[t.tecnico_id_login] = t.nombre_completo; });
-    try { localStorage.setItem('ent_tecnicos_cache', JSON.stringify(datos)); } catch(eCache) {}
   } catch(e) {
-    console.warn('[BarrCan] No se pudo cargar la lista de t\u00e9cnicos desde Supabase, se usa el \u00faltimo respaldo real conocido:', e);
-    entAplicarTecnicosDesdeCache();
+    console.warn('[BarrCan] No se pudo cargar la lista de t\u00e9cnicos desde Supabase (se usa la lista fija):', e);
   }
 }
 
-// Respaldo offline: usa la \u00faltima lista REAL que s\u00ed se pudo bajar de Supabase
-// (guardada en localStorage cada vez que carga con \u00e9xito), en vez de una lista
-// fija quemada en el HTML que se vuelve obsoleta cuando cambia el equipo.
-function entAplicarTecnicosDesdeCache() {
-  var sel = document.getElementById('inst-tecnico-nombre');
-  var selAsig = document.getElementById('inst-asignado');
-  var selAcomp = document.getElementById('inst-tecnico-acompanante');
-  var raw = null;
-  try { raw = localStorage.getItem('ent_tecnicos_cache'); } catch(e) { return; }
-  if (!raw) return;
-  var datos;
-  try { datos = JSON.parse(raw); } catch(e) { return; }
-  if (!datos || !datos.length) return;
-  var opciones = '<option value="">-- Selecciona --</option>'
-    + datos.map(function(t) {
-        return '<option value="' + t.tecnico_id_login + '">' + t.nombre_completo + '</option>';
-      }).join('');
-  var opcionesAcomp = '<option value="">-- Ninguno / trabaj\u00f3 solo --</option>'
-    + datos.map(function(t) {
-        return '<option value="' + t.tecnico_id_login + '">' + t.nombre_completo + '</option>';
-      }).join('');
-  if (sel) { var vp = sel.value; sel.innerHTML = opciones; if (vp) sel.value = vp; }
-  if (selAsig) { var vpa = selAsig.value; selAsig.innerHTML = opciones; if (vpa) selAsig.value = vpa; }
-  if (selAcomp) { var vpc = selAcomp.value; selAcomp.innerHTML = opcionesAcomp; if (vpc) selAcomp.value = vpc; }
-  datos.forEach(function(t) { ENT_TEC_NOMBRES_DIN[t.tecnico_id_login] = t.nombre_completo; });
-}
-
-var APP_VERSION = 'v3.51.0';
+var APP_VERSION = 'v3.52.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -2464,10 +2454,16 @@ function entSelCliente() {
   // Si el cliente tiene dirección, pre-llenar
   var dirCliente = buscarDireccion(c, 'cliente');
   if (dirCliente) document.getElementById('inst-direccion').value = dirCliente;
-  entCargarPresupuestos(c.nombre || '');
+  entCargarPresupuestos(c.nombre || '', c.num_cliente || '');
 }
 
-function entCargarPresupuestos(nombreCliente) {
+// Caso real: el mismo cliente (26WA002) tenía 3 folios, pero uno de
+// ellos guardó el nombre distinto ("Alma" en vez de "Mayella (Alma)")
+// -- la búsqueda solo por texto de nombre lo dejaba fuera. Ahora,
+// si se conoce el num_cliente (el dato realmente confiable, no varía
+// aunque el nombre se escriba distinto), también se buscan folios
+// que terminen en ese número, sin importar qué diga el campo nombre.
+function entCargarPresupuestos(nombreCliente, numCliente) {
   var sel = document.getElementById('ent-folio-select');
   if (!sel) return;
   sel.innerHTML = '<option value="">&mdash; Selecciona presupuesto &mdash;</option>';
@@ -2476,9 +2472,11 @@ function entCargarPresupuestos(nombreCliente) {
   var estados = ['activo','aprobado','en_produccion','pendiente_entrega'];
   var local = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]')
     .filter(function(p) { return estados.indexOf(p.estado) >= 0; });
-  if (nombreCliente) {
+  if (nombreCliente || numCliente) {
     local = local.filter(function(p) {
-      return (p.cliente || '').toLowerCase().indexOf(nombreCliente.toLowerCase()) >= 0;
+      var coincideNombre = nombreCliente && (p.cliente || '').toLowerCase().indexOf(nombreCliente.toLowerCase()) >= 0;
+      var coincideNumCliente = numCliente && (p.folio || '').toUpperCase().indexOf('-' + numCliente.toUpperCase()) >= 0;
+      return coincideNombre || coincideNumCliente;
     });
   }
   local.forEach(function(p) {
@@ -2492,7 +2490,8 @@ function entCargarPresupuestos(nombreCliente) {
   var query = sb().from('presupuestos_atrasados')
     .select('*')
     .in('estado', estados).order('folio', { ascending: true }).limit(50);
-  if (nombreCliente) query = query.ilike('cliente', '%' + nombreCliente + '%');
+  if (numCliente) query = query.or('cliente.ilike.%' + nombreCliente + '%,folio.ilike.%-' + numCliente);
+  else if (nombreCliente) query = query.ilike('cliente', '%' + nombreCliente + '%');
   query.then(function(res) {
     if (res.error) {
       console.warn('[BarrCan] Error al consultar presupuestos_atrasados:', res.error);
@@ -2529,13 +2528,35 @@ function entSelPresupuesto() {
     document.getElementById('ent-saldo-info').style.display = 'none';
     document.getElementById('inst-direccion').value = '';
     document.getElementById('inst-monto').value = '';
+    ENT_PRESUPUESTO_ACTUAL = null;
+    ENT_PIEZAS_PENDIENTES_ACTUALES = [];
     return;
   }
   var opt = sel.options[sel.selectedIndex];
   var p = {};
   try { p = JSON.parse(opt.dataset.p || '{}'); } catch(e) {}
   document.getElementById('ent-folio').value = p.folio || sel.value;
-  if (p.descripcion) document.getElementById('ent-desc').value = p.descripcion;
+
+  // Si el folio tiene piezas capturadas por separado (vía +Piezas /
+  // revisiones), solo mostrar la descripción de lo que TODAVÍA está
+  // pendiente de entregar -- no repetir lo que ya se entregó en un
+  // reporte anterior. Caso real: CACN-146 con espejo (ya entregado) +
+  // repisas/toalleros (nuevo) -- antes repetía el espejo también.
+  ENT_PRESUPUESTO_ACTUAL = p;
+  var piezas = [];
+  try { piezas = JSON.parse(p.notas_internas || '[]'); } catch(e) {}
+  if (piezas.length) {
+    var pendientes = piezas.filter(function(pz) { return !pz.entregado; });
+    ENT_PIEZAS_PENDIENTES_ACTUALES = pendientes;
+    if (pendientes.length) {
+      document.getElementById('ent-desc').value = pendientes.map(function(pz) { return pz.label; }).join(' + ');
+    } else {
+      document.getElementById('ent-desc').value = p.descripcion || '';
+    }
+  } else {
+    ENT_PIEZAS_PENDIENTES_ACTUALES = [];
+    if (p.descripcion) document.getElementById('ent-desc').value = p.descripcion;
+  }
   
   // Precargar dirección y monto
   var dirAsignada = false;
@@ -2935,6 +2956,7 @@ function entToggleCobro() {
 
 function entReset() {
   ENT_FOTOS_EMP = []; ENT_FOTOS_COMP = []; ENT_FOTOS_MANT = []; ENT_FOTOS_CONF = []; ENT_TIPO = 'puerta'; ENT_FORMA = 'efectivo'; ENT_CHECKS = {}; ENT_EVIDENCIA = {}; INST_DATOS_FOLIO = null;
+  ENT_PRESUPUESTO_ACTUAL = null; ENT_PIEZAS_PENDIENTES_ACTUALES = [];
   ENT_MODO_INST = 'completo'; ENT_SIN_ENCARGADO = false;
   ENT_CHECKS_SALIDA = {};
   ENT_SIN_ENCARGADO_SIMPLE = false; ENT_SALDO_REAL = 0;
@@ -3025,6 +3047,31 @@ async function entSiguienteFolioEntrega(folioPresupuesto) {
 }
 
 var ENT_GUARDANDO = false;
+var ENT_PRESUPUESTO_ACTUAL = null;
+var ENT_PIEZAS_PENDIENTES_ACTUALES = [];
+
+// Marca como entregadas (en presupuestos_atrasados.notas_internas) las
+// piezas que estaban pendientes cuando se seleccionó el folio -- así
+// la próxima vez que alguien genere OTRO reporte para este mismo
+// folio, ya no vuelve a aparecer lo que se acaba de entregar ahora.
+// Si el folio no tiene piezas separadas (formato viejo), no hace nada.
+async function entMarcarPiezasEntregadas() {
+  if (!ENT_PRESUPUESTO_ACTUAL || !ENT_PIEZAS_PENDIENTES_ACTUALES.length || !ENT_PRESUPUESTO_ACTUAL.id) return;
+  if (!sb()) return;
+  try {
+    var piezasCompletas = [];
+    try { piezasCompletas = JSON.parse(ENT_PRESUPUESTO_ACTUAL.notas_internas || '[]'); } catch(e) {}
+    if (!piezasCompletas.length) return;
+    var labelsEntregados = {};
+    ENT_PIEZAS_PENDIENTES_ACTUALES.forEach(function(pz) { labelsEntregados[pz.label] = true; });
+    var actualizadas = piezasCompletas.map(function(pz) {
+      if (labelsEntregados[pz.label] && !pz.entregado) return Object.assign({}, pz, { entregado: true });
+      return pz;
+    });
+    var res = await sb().from('presupuestos_atrasados').update({ notas_internas: JSON.stringify(actualizadas) }).eq('id', ENT_PRESUPUESTO_ACTUAL.id);
+    if (res.error) console.warn('[BarrCan] No se pudo marcar piezas como entregadas:', res.error);
+  } catch(e) { console.warn('[BarrCan] Error marcando piezas entregadas:', e.message); }
+}
 
 async function entGenerarReporte() {
   // Candado contra doble toque -- caso real: el mismo folio se guardó
@@ -3255,6 +3302,7 @@ async function entGenerarReporteInterno() {
         if (res.error) throw res.error;
         SYNC.online = true; detectarConexion();
         toast(esEdicion ? 'Reporte actualizado - ' + folioFull : 'Reporte guardado - ' + folioFull);
+        if (!esEdicion) entMarcarPiezasEntregadas();
         entSalirModoEdicion();
         entCargarHistorial();
         entMostrarPost(folioFull, tel, reporteUrl);
@@ -4569,6 +4617,7 @@ async function entGenerarReporteInstalacion() {
             : await sb().from('entregas_instalacion').insert([payload]);
           if (opInst.error) throw opInst.error;
           SYNC.online = true; detectarConexion();
+          if (!esEdicion) entMarcarPiezasEntregadas();
           await entCargarHistorial();
           return true;
         } catch(eGuardar) {
