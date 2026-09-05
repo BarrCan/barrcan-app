@@ -6,6 +6,15 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.56.0
+  FECHA   : 2026-09-04
+  v3.56.0 - "Asignado por" ya no muestra nombres de personas. Ese campo
+    sale IMPRESO en el reporte que ve el cliente, y no se veía bien
+    que apareciera un nombre personal asignándose tareas. Ahora es
+    institucional y fijo: "Administración BarrCan" (por defecto) o
+    "Supervisión de obra". Se quitó además el código que lo
+    sobrescribía con la lista de técnicos al cargar (esa parte
+    anulaba el cambio en el HTML).
   VERSION : v3.55.0
   FECHA   : 2026-09-04
   v3.55.0 - FIX: "tuve que repetir el proceso de impresión 5 veces para
@@ -1818,13 +1827,10 @@ body{min-height:100vh}
           <div style="margin-top:8px">
             <label class="form-label">Asignado por</label>
             <select id="inst-asignado" class="form-select">
-              <option value="">-- Selecciona --</option>
-              <option value="ESAU">Esa&uacute;</option>
-              <option value="MIGUEL">Miguel</option>
-              <option value="CARLOS">Carlos</option>
-              <option value="OMAR">Omar</option>
-              <option value="RODRIGO">Rodrigo</option>
+              <option value="ADMINISTRACION" selected>Administración BarrCan</option>
+              <option value="SUPERVISION">Supervisión de obra</option>
             </select>
+            <div style="font-size:10px;color:var(--gray-400)">Se muestra al cliente en el reporte impreso — por eso es institucional, no un nombre personal</div>
           </div>
           <div style="margin-top:8px">
             <label class="form-label">T&eacute;cnico acompa&ntilde;ante <span style="font-weight:400;color:var(--gray-400)">(opcional, si fueron 2)</span></label>
@@ -2280,11 +2286,12 @@ async function entCargarTecnicosDinamico() {
       sel.innerHTML = opciones;
       if (valorPrevio) sel.value = valorPrevio;
     }
-    if (selAsig) {
-      var valorPrevioAsig = selAsig.value;
-      selAsig.innerHTML = opciones;
-      if (valorPrevioAsig) selAsig.value = valorPrevioAsig;
-    }
+    // NOTA: "Asignado por" (inst-asignado) YA NO se llena con nombres
+    // de técnicos -- ese campo sale impreso en el reporte que ve el
+    // cliente, y no se ve bien que aparezca un nombre personal
+    // asignándose tareas a sí mismo. Queda fijo en valores
+    // institucionales ("Administración BarrCan" / "Supervisión de
+    // obra"), definidos directo en el HTML.
     if (selAcomp) {
       var valorPrevioAcomp = selAcomp.value;
       selAcomp.innerHTML = opcionesAcomp;
@@ -2296,7 +2303,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.55.0';
+var APP_VERSION = 'v3.56.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -3050,7 +3057,7 @@ function entReset() {
   // Restaurar placeholder
   var dirInp = document.getElementById('inst-direccion');
   if (dirInp) dirInp.placeholder = 'Calle, número, colonia, municipio';
-  var instAsig = document.getElementById('inst-asignado'); if(instAsig) instAsig.value='';
+  var instAsig = document.getElementById('inst-asignado'); if(instAsig) instAsig.value='ADMINISTRACION';
   var numPzEl = document.getElementById('inst-num-piezas'); if (numPzEl) numPzEl.value = '1';
   _inst_pieza_seq = 0;
   INST_PIEZAS = [{ id: 'pz0', tipo: '', medidas: '', notas: '', estado: 'instalada' }];
@@ -4420,7 +4427,8 @@ async function entGenerarReporteInstalacion() {
   var TEC_NOMBRES = { ESAU:'Esa\u00fa', MIGUEL:'Miguel', CARLOS:'Carlos', OMAR:'Omar', RODRIGO:'Rodrigo' };
   var tecnico    = ENT_TEC_NOMBRES_DIN[tecnicoCod] || TEC_NOMBRES[tecnicoCod] || tecnicoCod;
   var asignadoCod = (document.getElementById('inst-asignado') || {}).value || '';
-  var asignado    = ENT_TEC_NOMBRES_DIN[asignadoCod] || { ESAU:'Esa\u00fa', MIGUEL:'Miguel', CARLOS:'Carlos', OMAR:'Omar', RODRIGO:'Rodrigo' }[asignadoCod] || asignadoCod;
+  var ASIGNADO_NOMBRES = { ADMINISTRACION: 'Administraci\u00f3n BarrCan', SUPERVISION: 'Supervisi\u00f3n de obra' };
+  var asignado    = ASIGNADO_NOMBRES[asignadoCod] || ENT_TEC_NOMBRES_DIN[asignadoCod] || { ESAU:'Esa\u00fa', MIGUEL:'Miguel', CARLOS:'Carlos', OMAR:'Omar', RODRIGO:'Rodrigo' }[asignadoCod] || asignadoCod;
   var acompCod    = (document.getElementById('inst-tecnico-acompanante') || {}).value || '';
   var acompanante = ENT_TEC_NOMBRES_DIN[acompCod] || { ESAU:'Esa\u00fa', MIGUEL:'Miguel', CARLOS:'Carlos', OMAR:'Omar', RODRIGO:'Rodrigo' }[acompCod] || acompCod;
   var direccion = (document.getElementById('inst-direccion') || {}).value || '';
