@@ -7,14 +7,14 @@
 <!--
   BARRCAN · MODULO: VISITAS DE MEDICIÓN (standalone)
   VERSION : v1.10
-  FECHA   : 2026-09-03
-  v1.10 - FIX: el dropdown de clientes no traía dirección de Supabase
-    (solo nombre/telefono/empresa/cargo), así que nunca se podía mostrar
-    ni autollenar. Ahora sí se pide direccion y dir_obra, y al elegir
-    cliente se autollena el campo "Dirección de obra" -- pero queda
-    editable, porque un cliente particular (venta ML) puede estar
-    pidiendo algo para otra parte de la casa u otra propiedad distinta
-    a la guardada.
+  v1.10 - Mismo fix de impresión que se hizo en entregas.html (v3.55.0):
+    la lógica anterior solo esperaba a las imágenes PENDIENTES en ese
+    instante -- si una foto aún no había empezado a cargar cuando se
+    tocaba el botón, no se contaba y se imprimía antes de tiempo (PDF
+    en blanco/incompleto, había que reintentar varias veces). Ahora
+    se cuentan TODAS las imágenes, se valida que hayan cargado de
+    verdad (naturalWidth > 0), se protege contra imprimir dos veces,
+    y hay red de seguridad de 8 segundos si alguna nunca responde.
   VERSION : v1.9
   v1.9 - FIX importante: mismo caso que entregas.html -- "Requiere
     seguimiento" no tenía forma de marcarse como atendido. Ahora cada
@@ -1496,7 +1496,7 @@ async function visCargarDropdownClientes(){
   if(!sel||!sb())return;
   sel.innerHTML='<option value="">— Buscar cliente —</option>';
   try{
-    var res=await sb().from('clientes').select('id,nombre,telefono,empresa,cargo,direccion,dir_obra').order('nombre');
+    var res=await sb().from('clientes').select('id,nombre,telefono,empresa,cargo').order('nombre');
     if(res.error)throw res.error;
     (res.data||[]).forEach(function(c){
       var o=document.createElement('option');
@@ -1515,14 +1515,7 @@ function visCargarCliente(){
   VISITA_CLIENTE=c;
   var info=document.getElementById('vis-cliente-info');
   info.style.display='block';
-  var dirMostrar=c.dir_obra||c.direccion||'';
-  info.innerHTML='<strong>'+esc(c.nombre)+'</strong>'+(c.telefono?' · '+esc(c.telefono):'')+(c.empresa?'<br>'+esc(c.empresa):'')+(dirMostrar?'<br>'+esc(dirMostrar):'');
-  // Autollena dirección de obra pero deja el campo editable -- clientes
-  // particulares (venta ML) suelen pedir piezas para otra parte de la
-  // casa u otra propiedad distinta a la guardada, así que esto es punto
-  // de partida, no un valor fijo.
-  var campoDir=document.getElementById('vis-dir-obra');
-  if(campoDir) campoDir.value=dirMostrar;
+  info.innerHTML='<strong>'+esc(c.nombre)+'</strong>'+(c.telefono?' · '+esc(c.telefono):'')+(c.empresa?'<br>'+esc(c.empresa):'');
 }
 function visNuevoClienteRapido(){
   document.getElementById('vis-cli-nombre').value='';
@@ -1813,7 +1806,7 @@ async function visGenerarYSubirReporte(d, winReporte){
     +(VISITA_FOTOS.length?'<div class="seccion"><div class="seccion-titulo">Fotos de Medición ('+VISITA_FOTOS.length+')</div><div class="fotos-grid">'+fotosHtml+'</div></div>':'')
     +(d.aplica_cobro?'<div class="monto-box"><div><div style="font-size:10px;color:rgba(255,255,255,0.6);text-transform:uppercase;letter-spacing:1px">Cobro por visita de medición</div><div class="monto-num">$'+fmt(d.monto)+' MXN</div><div style="font-size:10px;color:rgba(255,255,255,0.4);margin-top:4px">Este monto se aplica como anticipo al aprobar el proyecto</div></div><div style="font-size:40px">🔑</div></div>':'')
     +'<div style="display:flex;gap:24px;margin-top:32px"><div style="flex:1;border-top:1px solid #ccc;padding-top:8px;font-size:10px;color:#888;text-align:center">Técnico BarrCan<br>'+esc(d.tecnico)+'</div><div style="flex:1;border-top:1px solid #ccc;padding-top:8px;font-size:10px;color:#888;text-align:center">Cliente<br>'+(d.cliente_nombre?esc(d.cliente_nombre):'_________________')+'</div></div>'
-    +"<script>function imprimirListo(btn){if(btn){btn.disabled=true;btn.textContent='Preparando...';}var imgs=Array.prototype.slice.call(document.images);var pend=imgs.filter(function(im){return !im.complete;});if(!pend.length){if(btn){btn.disabled=false;btn.textContent='Imprimir / PDF';}setTimeout(function(){window.print();},80);return;}var listos=0;pend.forEach(function(im){im.onload=im.onerror=function(){listos++;if(listos>=pend.length){if(btn){btn.disabled=false;btn.textContent='Imprimir / PDF';}setTimeout(function(){window.print();},80);}};});}<\/script>"
+    +"<script>function imprimirListo(btn){ if(btn){btn.disabled=true;btn.textContent='Preparando...';} var imgs=Array.prototype.slice.call(document.images); var total=imgs.length, listos=0, yaImprimio=false; function lanzar(){ if(yaImprimio)return; yaImprimio=true; if(btn){btn.disabled=false;btn.textContent='Imprimir / PDF';} setTimeout(function(){window.print();},250); } if(!total){lanzar();return;} imgs.forEach(function(im){ if(im.complete && im.naturalWidth>0){listos++;if(listos>=total)lanzar();return;} im.addEventListener('load',function(){listos++;if(listos>=total)lanzar();}); im.addEventListener('error',function(){listos++;if(listos>=total)lanzar();}); }); if(listos>=total)lanzar(); setTimeout(lanzar,8000); }<\/script>"
     +'</div></body></html>';
 
   // Escribir en la ventana que YA se abrió desde visGuardar (antes de
