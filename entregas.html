@@ -6,6 +6,34 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.55.0
+  FECHA   : 2026-09-04
+  v3.55.0 - FIX: "tuve que repetir el proceso de impresión 5 veces para
+    poder generar el PDF". La lógica anterior solo esperaba a las
+    imágenes que estaban PENDIENTES en ese instante exacto -- si una
+    foto todavía no había empezado a cargar cuando se tocaba el
+    botón, no se contaba y se imprimía antes de tiempo (PDF en
+    blanco o incompleto, había que reintentar). Ahora se cuentan
+    TODAS las imágenes del documento, se valida que realmente hayan
+    cargado (naturalWidth > 0, no solo "complete"), se protege
+    contra imprimir dos veces, y hay una red de seguridad de 8
+    segundos por si alguna foto nunca responde. Probados 5
+    escenarios: fotos sin empezar a cargar, ya cargadas, una que
+    falla, sin fotos, y doble evento -- todos correctos.
+  VERSION : v3.54.0
+  FECHA   : 2026-09-04
+  v3.54.0 - FIX de la CAUSA REAL de "no me deja guardar": había DOS
+    candados peleándose. El nuevo (v3.50.0, contra doble toque)
+    deshabilita el botón antes de llamar a la función interna --
+    pero adentro seguía un candado VIEJO (`if (btn && btn.disabled)
+    return;`) que veía el botón deshabilitado y se salía EN SILENCIO,
+    sin guardar ni mostrar ningún error. Por eso el botón se quedaba
+    en "Guardando..." sin hacer nada y sin mensaje. Quitados ambos
+    candados viejos (flujo de entrega y flujo de instalación); el
+    válido es el de entGenerarReporte(). Además, los errores internos
+    ahora se muestran con un toast en vez de fallar en silencio.
+    Reproducido el bug exacto y confirmado el fix -- guarda bien y
+    sigue protegido contra doble toque.
   VERSION : v3.53.0
   FECHA   : 2026-09-04
   v3.53.0 - FIX URGENTE: el candado contra doble toque (v3.50.0) podía
@@ -2268,7 +2296,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.53.1';
+var APP_VERSION = 'v3.55.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -3085,7 +3113,6 @@ async function entMarcarPiezasEntregadas() {
 }
 
 async function entGenerarReporte() {
-  alert('🔵 BOTÓN TOCADO -- si ves esto, el toque sí llega');
   // Candado contra doble toque -- caso real: el mismo folio se guardó
   // 2 veces con 2.5 segundos de diferencia porque el botón no daba
   // ninguna señal visual inmediata y parecía que no había hecho nada.
@@ -3111,6 +3138,12 @@ async function entGenerarReporte() {
 
   try {
     await entGenerarReporteInterno();
+  } catch (errInterno) {
+    // Si algo truena adentro, avisar en pantalla en vez de fallar en
+    // silencio (que fue justo lo que hizo tan difícil encontrar el bug
+    // del doble candado).
+    console.error('[BarrCan] Error generando el reporte:', errInterno);
+    toast('❌ Error: ' + (errInterno && errInterno.message ? errInterno.message : 'no se pudo generar el reporte'));
   } finally {
     clearTimeout(timeoutSeguridad);
     if (!seLiberoPorTiempo) {
@@ -3128,9 +3161,14 @@ async function entGenerarReporteInterno() {
   errEl.style.display = 'none';
   if (!cliente) { errEl.textContent = 'Ingresa el nombre del cliente'; errEl.style.display = 'block'; return; }
   if (!desc)    { errEl.textContent = 'Describe el producto entregado'; errEl.style.display = 'block'; return; }
+  // NOTA: aquí había un segundo candado (`if (btn && btn.disabled) return;`)
+  // que chocaba con el de entGenerarReporte(): ese ya deshabilita el
+  // botón antes de llamar aquí, así que esta línea veía el botón
+  // deshabilitado y se salía en silencio SIN HACER NADA -- por eso
+  // "no deja guardar" y no aparecía ningún mensaje de error. El
+  // candado válido es el de entGenerarReporte(), este sobra.
   var btn = document.getElementById('ent-btn-guardar');
-  if (btn && btn.disabled) return;
-  if (btn) { btn.disabled = true; btn.textContent = 'Generando...'; }
+  if (btn) { btn.textContent = 'Generando...'; }
   try {
     var tel        = document.getElementById('ent-tel').value.trim();
     var folio      = document.getElementById('ent-folio').value.trim();
@@ -3231,7 +3269,7 @@ async function entGenerarReporteInterno() {
       + '</div>'
       + '<div style=font-size:7.5pt;color:#aaa;text-align:center;margin-top:14px;border-top:1px solid #eee;padding-top:8px>'
       + esc(folioFull) + ' - BarrCan - ' + fd(fecha)
-      + '<script>function imprimirListo(btn){if(btn){btn.disabled=true;btn.textContent=\'Preparando...\';}var imgs=Array.prototype.slice.call(document.images);var pend=imgs.filter(function(im){return !im.complete;});if(!pend.length){if(btn){btn.disabled=false;btn.textContent=\'Imprimir / PDF\';}setTimeout(function(){window.print();},80);return;}var listos=0;pend.forEach(function(im){im.onload=im.onerror=function(){listos++;if(listos>=pend.length){if(btn){btn.disabled=false;btn.textContent=\'Imprimir / PDF\';}setTimeout(function(){window.print();},80);}};});}<\/script></div></div></div></body></html>';
+      + '<script>function imprimirListo(btn){ if(btn){btn.disabled=true;btn.textContent=\'Preparando...\';} var imgs=Array.prototype.slice.call(document.images); var total=imgs.length, listos=0, yaImprimio=false; function lanzar(){ if(yaImprimio)return; yaImprimio=true; if(btn){btn.disabled=false;btn.textContent=\'Imprimir / PDF\';} setTimeout(function(){window.print();},250); } if(!total){lanzar();return;} imgs.forEach(function(im){ if(im.complete && im.naturalWidth>0){listos++;if(listos>=total)lanzar();return;} im.addEventListener(\'load\',function(){listos++;if(listos>=total)lanzar();}); im.addEventListener(\'error\',function(){listos++;if(listos>=total)lanzar();}); }); if(listos>=total)lanzar(); setTimeout(lanzar,8000); }<\/script></div></div></div></body></html>';
 
     try { sessionStorage.setItem('barrcan_entrega_html', _ENT_HTML); } catch(e) {}
     var win = window.open('', '_blank');
@@ -3608,7 +3646,7 @@ function entVerReporteFallback(r) {
     + '</table>'
     + '<div style=font-size:7.5pt;color:#aaa;text-align:center;margin-top:12px;border-top:1px solid #eee;padding-top:8px>'
     + esc(r.folio || '') + ' - BarrCan - ' + new Date().toLocaleDateString('es-MX') + '</div>'
-    + "<script>function imprimirListo(btn){if(btn){btn.disabled=true;btn.textContent='Preparando...';}var imgs=Array.prototype.slice.call(document.images);var pend=imgs.filter(function(im){return !im.complete;});if(!pend.length){if(btn){btn.disabled=false;btn.textContent='Imprimir / PDF';}setTimeout(function(){window.print();},80);return;}var listos=0;pend.forEach(function(im){im.onload=im.onerror=function(){listos++;if(listos>=pend.length){if(btn){btn.disabled=false;btn.textContent='Imprimir / PDF';}setTimeout(function(){window.print();},80);}};});}<\/script>"
+    + "<script>function imprimirListo(btn){ if(btn){btn.disabled=true;btn.textContent='Preparando...';} var imgs=Array.prototype.slice.call(document.images); var total=imgs.length, listos=0, yaImprimio=false; function lanzar(){ if(yaImprimio)return; yaImprimio=true; if(btn){btn.disabled=false;btn.textContent='Imprimir / PDF';} setTimeout(function(){window.print();},250); } if(!total){lanzar();return;} imgs.forEach(function(im){ if(im.complete && im.naturalWidth>0){listos++;if(listos>=total)lanzar();return;} im.addEventListener('load',function(){listos++;if(listos>=total)lanzar();}); im.addEventListener('error',function(){listos++;if(listos>=total)lanzar();}); }); if(listos>=total)lanzar(); setTimeout(lanzar,8000); }<\/script>"
     + '</div></div></body></html>';
     
   var win = window.open('', '_blank');
@@ -4418,9 +4456,12 @@ async function entGenerarReporteInstalacion() {
     }
   }
 
+  // Mismo caso que en entGenerarReporteInterno: el candado válido vive
+  // en entGenerarReporte(), que ya deshabilitó el botón antes de llegar
+  // aquí -- si volviéramos a checar `btn.disabled` nos saldríamos en
+  // silencio sin guardar nada.
   var btn = document.getElementById('ent-btn-guardar');
-  if (btn && btn.disabled) return;
-  if (btn) { btn.disabled=true; btn.textContent='Generando...'; }
+  if (btn) { btn.textContent='Generando...'; }
 
   try {
     var canvTec = document.getElementById('ent-canvas-tecnico');
