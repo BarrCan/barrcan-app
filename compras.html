@@ -6,6 +6,19 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.14
+  FECHA   : 2026-09-05
+  v1.14 - Cancelaciones y notas de crédito. Caso real: material mal
+    enviado -> se devuelve. Según el proveedor, (a) cancelan la
+    factura y emiten otra, o (b) dejan la original y emiten nota de
+    crédito por la diferencia. Antes TODO se sumaba parejo, inflando
+    el gasto del periodo (ya había pasado también meses atrás).
+    Nuevo botón "🚫 Cancelar / N.C." por factura (solo supremo) para
+    marcar: vigente | cancelada (NO suma) | nota de crédito (RESTA),
+    con folio relacionado y motivo obligatorio para dejar registro.
+    Las canceladas se ven tachadas y atenuadas; las notas de crédito
+    con etiqueta azul. Los totales de periodo y por mes ya respetan
+    estos estados.
   VERSION : v1.13
   FECHA   : 2026-08-28
   v1.13 - Segunda pieza de "Compra rápida" (la primera está en
@@ -592,6 +605,35 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 <!-- Editar factura -- SOLO visible/usable para Mau (esSupremo()).
      Aplica igual a facturas con comprobante XML y a las "sin
      comprobante" (captura libre) -- ambas comparten la misma tabla. -->
+<div id="modal-fiscal" class="modal-ov">
+  <div class="modal-box">
+    <div class="modal-titulo">🚫 Cancelación / Nota de crédito</div>
+    <div id="fisc-titulo" style="font-size:11.5px;color:var(--navy);font-weight:700;margin-bottom:2px"></div>
+    <div style="font-size:11px;color:var(--gray-400);margin-bottom:12px">Monto: <span id="fisc-monto" style="font-weight:700"></span></div>
+
+    <label class="form-label">Estado fiscal</label>
+    <select class="form-input" id="fisc-estado" onchange="cmpFiscalCambioEstado()">
+      <option value="vigente">✅ Vigente (cuenta normal)</option>
+      <option value="cancelada">🚫 Cancelada (se emitió otra en su lugar)</option>
+      <option value="nota_credito">↩️ Nota de crédito (devolución/ajuste)</option>
+    </select>
+    <div id="fisc-ayuda" style="font-size:10.5px;margin:6px 0 12px;line-height:1.5"></div>
+
+    <div id="fisc-relacionado-wrap" style="display:none">
+      <label class="form-label" id="fisc-relacionado-label">Folio relacionado</label>
+      <input type="text" class="form-input" id="fisc-relacionado" placeholder="Ej: A-1234">
+    </div>
+
+    <label class="form-label">Motivo *</label>
+    <textarea class="form-input" id="fisc-nota" rows="2" placeholder="Ej: material equivocado, se devolvió y emitieron nueva factura"></textarea>
+
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn btn-primary" style="flex:1.3" onclick="cmpGuardarEstadoFiscal()">Guardar</button>
+      <button class="btn" style="border:1.5px solid var(--gray-200);color:var(--gray-600)" onclick="cmpCerrarEstadoFiscal()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <div id="modal-editar-factura" class="modal-ov">
   <div class="modal-box">
     <div class="modal-titulo">✏️ Editar factura</div>
@@ -652,7 +694,7 @@ var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
 
-var APP_VERSION = 'v1.13';
+var APP_VERSION = 'v1.14';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -780,6 +822,82 @@ function esSupremo() {
 
 var ME_ID = null;
 
+// ── Estado fiscal: cancelaciones y notas de crédito ───────────────
+// Caso real: material mal enviado -> se devuelve. Según el proveedor,
+// (a) cancelan la factura y emiten otra, o (b) dejan la original y
+// emiten una nota de crédito por la diferencia. En ambos casos, si
+// todo se suma parejo, el gasto del periodo sale inflado.
+// Aquí: cancelada = NO suma | nota de crédito = RESTA.
+var CMP_FACTURA_FISCAL_ID = null;
+
+function cmpAbrirEstadoFiscal(id) {
+  var f = null;
+  for (var i = 0; i < FACT_CACHE.length; i++) { if (FACT_CACHE[i].id === id) { f = FACT_CACHE[i]; break; } }
+  if (!f) { toast('No se encontró la factura'); return; }
+  CMP_FACTURA_FISCAL_ID = id;
+  document.getElementById('fisc-titulo').textContent = (f.folio_factura || '—') + ' · ' + (f.proveedor || '');
+  document.getElementById('fisc-monto').textContent = fmt(f.total);
+  document.getElementById('fisc-estado').value = f.estado_fiscal || 'vigente';
+  document.getElementById('fisc-relacionado').value = f.folio_relacionado || '';
+  document.getElementById('fisc-nota').value = f.nota_fiscal || '';
+  cmpFiscalCambioEstado();
+  document.getElementById('modal-fiscal').style.display = 'flex';
+}
+
+function cmpCerrarEstadoFiscal() {
+  document.getElementById('modal-fiscal').style.display = 'none';
+  CMP_FACTURA_FISCAL_ID = null;
+}
+
+function cmpFiscalCambioEstado() {
+  var estado = document.getElementById('fisc-estado').value;
+  var ayuda = document.getElementById('fisc-ayuda');
+  var wrapRel = document.getElementById('fisc-relacionado-wrap');
+  if (estado === 'vigente') {
+    ayuda.textContent = 'Cuenta normal en los totales.';
+    ayuda.style.color = 'var(--gray-400)';
+    wrapRel.style.display = 'none';
+  } else if (estado === 'cancelada') {
+    ayuda.textContent = '🚫 NO va a sumar en ningún total. Úsalo cuando el proveedor canceló esta factura y emitió otra en su lugar.';
+    ayuda.style.color = '#C0392B';
+    wrapRel.style.display = 'block';
+    document.getElementById('fisc-relacionado-label').textContent = 'Folio de la factura que la reemplaza (opcional)';
+  } else {
+    ayuda.textContent = '↩️ Su monto se va a RESTAR de los totales. Úsalo para notas de crédito por devolución o ajuste de material.';
+    ayuda.style.color = '#2980B9';
+    wrapRel.style.display = 'block';
+    document.getElementById('fisc-relacionado-label').textContent = 'Folio de la factura que ampara (opcional)';
+  }
+}
+
+async function cmpGuardarEstadoFiscal() {
+  if (!CMP_FACTURA_FISCAL_ID) return;
+  var estado = document.getElementById('fisc-estado').value;
+  var relacionado = document.getElementById('fisc-relacionado').value.trim();
+  var nota = document.getElementById('fisc-nota').value.trim();
+  if (estado !== 'vigente' && !nota) { toast('⚠️ Escribe el motivo, para que quede el registro de por qué'); return; }
+  if (!sb()) { toast('Sin conexión'); return; }
+  try {
+    var res = await sb().from('facturas_recibidas').update({
+      estado_fiscal: estado,
+      folio_relacionado: relacionado || null,
+      nota_fiscal: nota || null
+    }).eq('id', CMP_FACTURA_FISCAL_ID);
+    if (res.error) throw res.error;
+    for (var i = 0; i < FACT_CACHE.length; i++) {
+      if (FACT_CACHE[i].id === CMP_FACTURA_FISCAL_ID) {
+        FACT_CACHE[i].estado_fiscal = estado;
+        FACT_CACHE[i].folio_relacionado = relacionado || null;
+        FACT_CACHE[i].nota_fiscal = nota || null;
+        break;
+      }
+    }
+    toast(estado === 'vigente' ? '✅ Marcada como vigente' : (estado === 'cancelada' ? '🚫 Marcada como cancelada — ya no suma' : '↩️ Marcada como nota de crédito — ahora resta'));
+    cmpCerrarEstadoFiscal();
+    factRender();
+  } catch (e) { toast('No se pudo guardar: ' + e.message); }
+}
+
 function cmpAbrirEditarFactura(id) {
   if (!esSupremo()) { toast('Esta opción es solo para Mau'); return; } // doble candado, aunque el botón ya está oculto
   var f = FACT_CACHE.filter(function(x) { return x.id === id; })[0];
@@ -902,7 +1020,15 @@ function cmpFiltrarFacturas() {
   });
 
   // Resumen del periodo (sobre lo filtrado)
-  var totalPeriodo = filtrado.reduce(function(a, f) { return a + (parseFloat(f.total) || 0); }, 0);
+  // Las canceladas NO suman (se emitió otra factura en su lugar) y las
+  // notas de crédito RESTAN (devolución/ajuste de material) -- antes
+  // todo se sumaba parejo e inflaba el gasto real del periodo.
+  var totalPeriodo = filtrado.reduce(function(a, f) {
+    var monto = parseFloat(f.total) || 0;
+    if (f.estado_fiscal === 'cancelada') return a;
+    if (f.estado_fiscal === 'nota_credito') return a - monto;
+    return a + monto;
+  }, 0);
   document.getElementById('fact-resumen-total').textContent = fmt(totalPeriodo);
   document.getElementById('fact-resumen-count').textContent = filtrado.length;
 
@@ -927,14 +1053,19 @@ function cmpFiltrarFacturas() {
 
   function renderFactura(f) {
     var esPnd = f.categoria === 'POR CLASIFICAR';
-    return '<div class="row-item">'
+    var esCancelada = f.estado_fiscal === 'cancelada';
+    var esNotaCredito = f.estado_fiscal === 'nota_credito';
+    return '<div class="row-item"' + (esCancelada ? ' style="opacity:.55"' : '') + '>'
       + '<div class="row-main">'
       + '<div>'
-      + '<div class="row-folio">' + esc(f.folio_factura||'—') + '</div>'
+      + '<div class="row-folio"' + (esCancelada ? ' style="text-decoration:line-through"' : '') + '>' + esc(f.folio_factura||'—') + '</div>'
       + '<div class="row-prov">' + esc(f.proveedor||'—') + '</div>'
       + (f.descripcion ? '<div style="font-size:11px;color:var(--gray-600);margin-top:2px">📝 ' + esc(f.descripcion) + '</div>' : '')
+      + (f.nota_fiscal ? '<div style="font-size:10.5px;color:#C0392B;margin-top:2px">⚠️ ' + esc(f.nota_fiscal) + (f.folio_relacionado ? ' (rel. ' + esc(f.folio_relacionado) + ')' : '') + '</div>' : '')
       + '<div style="margin-top:3px">'
       + '<span class="badge-cat ' + catClass(f.categoria) + '">' + esc(f.categoria||'—') + '</span>'
+      + (esCancelada ? ' <span style="display:inline-block;background:rgba(192,57,43,.12);color:#C0392B;font-size:9px;font-weight:800;padding:2px 6px;border-radius:8px;vertical-align:middle">🚫 CANCELADA — NO SUMA</span>' : '')
+      + (esNotaCredito ? ' <span style="display:inline-block;background:rgba(41,128,185,.12);color:#2980B9;font-size:9px;font-weight:800;padding:2px 6px;border-radius:8px;vertical-align:middle">↩️ NOTA DE CRÉDITO — RESTA</span>' : '')
       + (f.con_comprobante === false ? ' <span style="display:inline-block;background:rgba(142,68,173,.12);color:#8E44AD;font-size:9px;font-weight:800;padding:2px 6px;border-radius:8px;vertical-align:middle">SIN COMPROBANTE</span>' : '')
       + (f.borrador ? ' <span style="display:inline-block;background:rgba(230,126,34,.12);color:#E67E22;font-size:9px;font-weight:800;padding:2px 6px;border-radius:8px;vertical-align:middle">⏳ COMPLETAR CON FACTURA REAL</span>' : '')
       + (function() {
@@ -957,6 +1088,7 @@ function cmpFiltrarFacturas() {
       + '<div class="row-monto">' + fmt(f.total) + (f.moneda && f.moneda !== 'MXN' ? ' <span style="font-size:10px;font-weight:800;color:#8E44AD">' + esc(f.moneda) + '</span>' : '') + '</div>'
       + '<div class="row-fecha">' + (f.fecha||'—') + '</div>'
       + (esSupremo() ? '<div onclick="cmpAbrirEditarFactura(\'' + f.id + '\')" style="margin-top:4px;font-size:10px;color:var(--navy);font-weight:700;cursor:pointer;text-decoration:underline">✏️ Editar</div>' : '')
+      + (esSupremo() ? '<div onclick="cmpAbrirEstadoFiscal(\'' + f.id + '\')" style="margin-top:3px;font-size:10px;color:#C0392B;font-weight:700;cursor:pointer;text-decoration:underline">🚫 Cancelar / N.C.</div>' : '')
       + '</div>'
       + '</div>'
       + '</div>';
@@ -966,7 +1098,12 @@ function cmpFiltrarFacturas() {
   if (agrupar) {
     ordenGrupos.forEach(function(key) {
       var items = grupos[key];
-      var subtotal = items.reduce(function(a, f) { return a + (parseFloat(f.total) || 0); }, 0);
+      var subtotal = items.reduce(function(a, f) {
+        var monto = parseFloat(f.total) || 0;
+        if (f.estado_fiscal === 'cancelada') return a;
+        if (f.estado_fiscal === 'nota_credito') return a - monto;
+        return a + monto;
+      }, 0);
       html += '<div style="display:flex;justify-content:space-between;align-items:center;margin:14px 0 6px;padding:6px 4px;border-bottom:2px solid var(--navy)">'
         + '<span style="font-weight:700;color:var(--navy);font-size:13px">' + key + '</span>'
         + '<span style="font-weight:700;color:var(--gray-600);font-size:12px">' + fmt(subtotal) + ' · ' + items.length + ' fact.</span>'
