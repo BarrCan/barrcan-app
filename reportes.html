@@ -6,6 +6,14 @@
 <title>BarrCan · Reportes</title>
 <!--
   BARRCAN · MODULO: REPORTES (standalone)
+  VERSION : v2.9
+  FECHA   : 2026-09-05
+  v2.9 - Acompaña a compras.html v1.14 (cancelaciones y notas de
+    crédito): todas las consultas de facturas ahora excluyen las
+    CANCELADAS, y el material por obra RESTA las notas de crédito en
+    vez de sumarlas. Antes una factura cancelada + su reemplazo
+    contaban doble en el gasto de la obra. Las 401 facturas viejas
+    (sin estado_fiscal) siguen contando normal, sin cambio.
   VERSION : v2.8
   FECHA   : 2026-08-31
   v2.8 - FIX: "🖨️ Imprimir reporte de gasto" (en Ganancia, por obra)
@@ -464,7 +472,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 </div>
 </body>
 <script>
-var APP_VERSION = 'v2.8';
+var APP_VERSION = 'v2.9';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb=null;
@@ -573,7 +581,8 @@ async function rpCargarFlujo() {
     // Facturas de compra del periodo
     var resFact = await sb().from('facturas_recibidas')
       .select('categoria,subtotal,total')
-      .gte('fecha',desde).lte('fecha',hasta);
+      .gte('fecha',desde).lte('fecha',hasta)
+      .or('estado_fiscal.is.null,estado_fiscal.neq.cancelada');
     if(!resFact.error){
       var gastosCat = {};
       (resFact.data||[]).forEach(function(f){
@@ -600,6 +609,7 @@ async function rpCargarFlujo() {
         .select('folio_obra,proveedor,total,fecha')
         .gte('fecha',desde).lte('fecha',hasta)
         .eq('desglosada', false)
+        .or('estado_fiscal.is.null,estado_fiscal.neq.cancelada')
         .not('folio_obra','is',null);
       var consumoObra = {};
       if (!resFactObra.error) {
@@ -664,8 +674,9 @@ async function rpImprimirReporteObra(folio) {
   toast('Generando reporte...');
   try {
     var resFact = await sb().from('facturas_recibidas')
-      .select('proveedor,fecha,folio_factura,total,moneda')
-      .eq('folio_obra', folio).eq('desglosada', false);
+      .select('proveedor,fecha,folio_factura,total,moneda,estado_fiscal')
+      .eq('folio_obra', folio).eq('desglosada', false)
+      .or('estado_fiscal.is.null,estado_fiscal.neq.cancelada');
     var resConc = await sb().from('facturas_conceptos')
       .select('descripcion,cantidad,precio_unitario,importe,factura_id')
       .eq('folio_obra', folio);
@@ -788,10 +799,14 @@ async function rpCargarGanancia() {
 
     // 2) Material — facturas simples (una sola obra)
     var resFact = await sb().from('facturas_recibidas')
-      .select('folio_obra,total').eq('desglosada', false).not('folio_obra', 'is', null);
+      .select('folio_obra,total,estado_fiscal').eq('desglosada', false).not('folio_obra', 'is', null)
+      .or('estado_fiscal.is.null,estado_fiscal.neq.cancelada');
     if (!resFact.error) (resFact.data || []).forEach(function(f) {
       if (!obras[f.folio_obra]) obras[f.folio_obra] = { cliente: '(sin presupuesto ligado)', contratado: 0, saldo: 0, material: 0, manoObra: 0, eventuales: 0, tecnicos: 0 };
-      obras[f.folio_obra].material += parseFloat(f.total || 0);
+      // Las notas de crédito (devolución/ajuste de material) restan en
+      // vez de sumar -- si no, el material de la obra sale inflado.
+      var montoF = parseFloat(f.total || 0);
+      obras[f.folio_obra].material += (f.estado_fiscal === 'nota_credito' ? -montoF : montoF);
     });
 
     // 3) Material — artículos de facturas desglosadas (varias obras)
@@ -1108,8 +1123,9 @@ async function rpMostrarDetalleObra(folioOFolios) {
   try {
     // Fuente 1: facturas simples (una sola obra, categoría directa en la factura)
     var resSimples = await sb().from('facturas_recibidas')
-      .select('proveedor,categoria,total,fecha,descripcion')
-      .in('folio_obra', folios).eq('desglosada', false);
+      .select('proveedor,categoria,total,fecha,descripcion,estado_fiscal')
+      .in('folio_obra', folios).eq('desglosada', false)
+      .or('estado_fiscal.is.null,estado_fiscal.neq.cancelada');
     if (resSimples.error) throw resSimples.error;
 
     // Fuente 2: artículos individuales de facturas desglosadas (varias
