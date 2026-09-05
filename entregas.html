@@ -6,6 +6,17 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.53.0
+  FECHA   : 2026-09-04
+  v3.53.0 - FIX URGENTE: el candado contra doble toque (v3.50.0) podía
+    quedarse trabado para siempre -- "no me deja guardar", botón
+    pegado en "Guardando...". Causa probable: algo tardó de más o se
+    quedó esperando sin terminar nunca dentro del guardado, y el
+    candado nunca se soltaba. Ahora tiene un seguro de tiempo máximo
+    (20 segundos) -- si no ha terminado para entonces, se libera
+    solo y avisa que revises tu conexión, en vez de quedar bloqueado
+    de forma permanente. Probado simulando una función que nunca
+    resuelve -- el candado sí se libera.
   VERSION : v3.52.0
   FECHA   : 2026-09-04
   v3.52.0 - FIX: caso real -- clienta con 3 folios de garantía
@@ -2257,7 +2268,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.52.0';
+var APP_VERSION = 'v3.53.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -3082,11 +3093,29 @@ async function entGenerarReporte() {
   var btnG = document.getElementById('ent-btn-guardar');
   var textoOriginalBtn = btnG ? btnG.textContent : '';
   if (btnG) { btnG.disabled = true; btnG.style.opacity = '0.6'; btnG.style.cursor = 'not-allowed'; btnG.textContent = '⏳ Guardando...'; }
+
+  // Seguro de tiempo máximo -- caso real: el botón se quedó trabado
+  // sin dejar volver a guardar. Si algo se queda esperando adentro sin
+  // terminar (una subida de foto sin respuesta, por ejemplo), el
+  // candado NUNCA debe quedar pegado para siempre -- a los 20
+  // segundos se libera solo, avisando que algo tardó de más.
+  var seLiberoPorTiempo = false;
+  var timeoutSeguridad = setTimeout(function() {
+    if (!ENT_GUARDANDO) return;
+    seLiberoPorTiempo = true;
+    ENT_GUARDANDO = false;
+    if (btnG) { btnG.disabled = false; btnG.style.opacity = '1'; btnG.style.cursor = 'pointer'; btnG.textContent = textoOriginalBtn; }
+    toast('⚠️ Tardó demasiado -- se liberó el botón. Revisa tu conexión e inténtalo de nuevo.');
+  }, 20000);
+
   try {
     await entGenerarReporteInterno();
   } finally {
-    ENT_GUARDANDO = false;
-    if (btnG) { btnG.disabled = false; btnG.style.opacity = '1'; btnG.style.cursor = 'pointer'; btnG.textContent = textoOriginalBtn; }
+    clearTimeout(timeoutSeguridad);
+    if (!seLiberoPorTiempo) {
+      ENT_GUARDANDO = false;
+      if (btnG) { btnG.disabled = false; btnG.style.opacity = '1'; btnG.style.cursor = 'pointer'; btnG.textContent = textoOriginalBtn; }
+    }
   }
 }
 
