@@ -2268,7 +2268,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.53.0';
+var APP_VERSION = 'v3.53.1';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -3085,6 +3085,7 @@ async function entMarcarPiezasEntregadas() {
 }
 
 async function entGenerarReporte() {
+  alert('🔵 BOTÓN TOCADO -- si ves esto, el toque sí llega');
   // Candado contra doble toque -- caso real: el mismo folio se guardó
   // 2 veces con 2.5 segundos de diferencia porque el botón no daba
   // ninguna señal visual inmediata y parecía que no había hecho nada.
