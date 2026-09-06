@@ -6,6 +6,15 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.57.0
+  FECHA   : 2026-09-05
+  v3.57.0 - FIX: caso real -- instalación de CACN-158 hecha el 4/sep a
+    las 8pm quedó guardada con fecha 5/sep. Causa: 3 lugares usaban
+    new Date().toISOString().split('T')[0] para "hoy", que da la
+    fecha en UTC -- después de las 6pm hora CDMX (UTC-6) ya cayó al
+    día siguiente. Nuevo helper fechaHoyLocal() que calcula la fecha
+    correcta en local, usado en los 3 puntos. Reproducido el bug
+    exacto y confirmado el fix.
   VERSION : v3.56.0
   FECHA   : 2026-09-04
   v3.56.0 - "Asignado por" ya no muestra nombres de personas. Ese campo
@@ -2303,7 +2312,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.56.0';
+var APP_VERSION = 'v3.57.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -2354,6 +2363,15 @@ function entArmarFotosPaginadas(grupos) {
   }
   return html;
 }
+// Fecha de HOY en local (CDMX), nunca en UTC -- toISOString() siempre
+// da la fecha UTC, que después de las 6pm hora local ya cayó al día
+// siguiente (UTC-6). Caso real: instalación real hecha el 4/sep a las
+// 8pm quedó guardada como si fuera del 5/sep.
+function fechaHoyLocal() {
+  var d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
 function esc(str) {
   if (!str) return '';
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
@@ -2760,7 +2778,7 @@ function entSelTipo(btn) {
     }
     // Fecha de hoy
     var fInst = document.getElementById('inst-fecha');
-    if (fInst && !fInst.value) fInst.value = new Date().toISOString().split('T')[0];
+    if (fInst && !fInst.value) fInst.value = fechaHoyLocal();
 
     // Sincronización automática: si ya hay un folio seleccionado, rellenar los campos de obra
     var folioSel = document.getElementById('ent-folio-select');
@@ -3031,7 +3049,7 @@ function entReset() {
   var folioSel = document.getElementById('ent-folio-select');
   if (folioSel) folioSel.innerHTML = '<option value="">&mdash; Selecciona presupuesto &mdash;</option>';
   document.getElementById('ent-saldo-info').style.display = 'none';
-  var fechaEl = document.getElementById('ent-fecha'); if (fechaEl) fechaEl.value = new Date().toISOString().split('T')[0];
+  var fechaEl = document.getElementById('ent-fecha'); if (fechaEl) fechaEl.value = fechaHoyLocal();
   var piezasEl = document.getElementById('ent-piezas'); if (piezasEl) piezasEl.value = '1';
   document.getElementById('ent-aplica-cobro').value = 'no';
   document.getElementById('ent-monto-group').style.display = 'none';
@@ -4652,7 +4670,7 @@ async function entGenerarReporteInstalacion() {
       cliente: cliente.trim(),
       tel: (document.getElementById('ent-tel')||{}).value || null,
       descripcion: desc.trim() || ('Instalaci\u00f3n - ' + cliente.trim()),
-      fecha: fecha || new Date().toISOString().split('T')[0],
+      fecha: fecha || fechaHoyLocal(),
       reporte_url: reporteUrl,
       datos_url: datosUrl,
       checklist_ok: ENT_MODO_INST === 'completo' ? ENT_CHECKLIST_ITEMS.filter(function(it){return ENT_CHECKS[it.id]===true;}).length : null,
