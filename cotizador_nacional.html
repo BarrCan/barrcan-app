@@ -1622,6 +1622,14 @@ body{background:var(--off-white)}
           style="width:100%;margin:4px 0"
           oninput="document.getElementById('inp-descuento-label').textContent=this.value+'%'">
       </div>
+      <div class="form-group" style="border-top:1px solid var(--gray-200);padding-top:10px;margin-top:6px">
+        <label class="form-label">🏷️ Código promocional <span style="font-weight:400;color:var(--gray-400)">(opcional -- puede superar el 10% de arriba)</span></label>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="promo-codigo" class="form-input" placeholder="Ej: SEPTMX26" style="text-transform:uppercase;flex:1" oninput="this.value=this.value.toUpperCase()">
+          <button type="button" onclick="promoValidar()" style="padding:0 16px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Aplicar</button>
+        </div>
+        <div id="promo-resultado" style="font-size:11.5px;margin-top:6px"></div>
+      </div>
     </div>
 
     <!-- LOGÍSTICA -->
@@ -5344,6 +5352,49 @@ const SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 // fecha en UTC, así que después de las 6pm hora de México (UTC-6)
 // se adelantaba un día (el folio usaba fecha local correctamente,
 // pero el campo `fecha` guardado usaba UTC -- por eso no coincidían).
+// ── Código promocional -- compartido con Baños y con Shopify (mismo
+// código allá vía su descuento nativo). Se valida contra la tabla
+// codigos_promocionales, y si es válido SUSTITUYE al slider manual
+// de descuento (puede superar el 10% de tope).
+var PROMO_APLICADO = null;
+
+async function promoValidar() {
+  var codigo = document.getElementById('promo-codigo').value.trim().toUpperCase();
+  var resDiv = document.getElementById('promo-resultado');
+  if (!codigo) { resDiv.innerHTML = ''; PROMO_APLICADO = null; return; }
+  if (!sb()) { resDiv.innerHTML = '<span style="color:var(--red)">Sin conexión</span>'; return; }
+  try {
+    var res = await sb().from('codigos_promocionales').select('*').eq('codigo', codigo).eq('activo', true).limit(1);
+    if (res.error) throw res.error;
+    var promo = res.data && res.data[0];
+    var hoy = fechaLocalISO(new Date());
+    // Si el código tiene candado por cliente, el nombre capturado debe
+    // coincidir (comparación flexible, sin distinguir mayúsculas).
+    if (promo && promo.cliente_asignado) {
+      var clienteActual = (document.getElementById('sn-cliente') || {}).value || '';
+      var normalizar = function(s) { return (s||'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); };
+      var caN = normalizar(clienteActual), caiN = normalizar(promo.cliente_asignado);
+      var coincide = caN.indexOf(caiN) >= 0 || caiN.indexOf(caN) >= 0;
+      if (!clienteActual.trim() || !coincide) {
+        resDiv.innerHTML = '<span style="color:var(--red)">❌ Este código es exclusivo de ' + esc(promo.cliente_asignado) + ' -- escribe primero el nombre del cliente arriba</span>';
+        PROMO_APLICADO = null;
+        return;
+      }
+    }
+    if (!promo) {
+      resDiv.innerHTML = '<span style="color:var(--red)">❌ Código no válido</span>';
+      PROMO_APLICADO = null;
+    } else if (hoy < promo.fecha_inicio || hoy > promo.fecha_fin) {
+      resDiv.innerHTML = '<span style="color:var(--red)">❌ Este código ya expiró o aún no inicia (vigente ' + promo.fecha_inicio + ' a ' + promo.fecha_fin + ')</span>';
+      PROMO_APLICADO = null;
+    } else {
+      PROMO_APLICADO = { codigo: promo.codigo, descuento_pct: parseFloat(promo.descuento_pct) };
+      resDiv.innerHTML = '<span style="color:#27AE60;font-weight:700">✅ ' + promo.codigo + ' aplicado -- ' + promo.descuento_pct + '% de descuento</span>';
+      if (typeof calcular === 'function') calcular();
+    }
+  } catch (e) { resDiv.innerHTML = '<span style="color:var(--red)">Error: ' + e.message + '</span>'; }
+}
+
 function fechaLocalISO(d) {
   d = d || new Date();
   const yy = d.getFullYear();
@@ -5363,7 +5414,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v3.7.1';
+const APP_VERSION = 'v3.7.3';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -5835,7 +5886,10 @@ function calcular() {
   const precioBase = precioSinUtilidad * (1 + utilidadPct) + costoVisita;
 
   // ─── 6. Descuento ───
-  const descuentoPct = parseFloat(document.getElementById('inp-descuento')?.value || 0) / 100;
+  // Si hay un código promocional válido aplicado, manda sobre el
+  // slider manual (que tiene tope de 10%) -- los códigos son una
+  // decisión de negocio deliberada, no un descuento discrecional.
+  const descuentoPct = PROMO_APLICADO ? (PROMO_APLICADO.descuento_pct / 100) : (parseFloat(document.getElementById('inp-descuento')?.value || 0) / 100);
   const descuentoMonto = precioBase * descuentoPct;
 
   // ─── 7. Película / Vinilo (opcional) ───
