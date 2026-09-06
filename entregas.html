@@ -6,6 +6,15 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.58.0
+  FECHA   : 2026-09-05
+  v3.58.0 - Segunda mitad de "programado -> confirmado" (junto con
+    ordenes.html v2.9): cuando se guarda el reporte real de
+    instalación, se busca si esa orden ya estaba programada de
+    antemano (mismo folio, técnico y fecha) y se marca confirmado:true
+    -- la agenda sola nunca prueba que se hizo, el reporte sí.
+    Probado: bloque programado pasa a confirmado, sin tocar otros
+    bloques de otros folios ese mismo día.
   VERSION : v3.57.0
   FECHA   : 2026-09-05
   v3.57.0 - FIX: caso real -- instalación de CACN-158 hecha el 4/sep a
@@ -2312,7 +2321,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.57.0';
+var APP_VERSION = 'v3.58.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -3108,6 +3117,39 @@ async function entSiguienteFolioEntrega(folioPresupuesto) {
     }
   } catch(e) { console.warn('[BarrCan] No se pudo consultar el consecutivo de entrega:', e); }
   return 'ENT-' + numPresupuesto + '-' + String(consec).padStart(2, '0');
+}
+
+var ENT_ROSTER_TECNICOS = [
+  { id: 'HER', clave: 'luis' }, { id: 'MAU', clave: 'mauricio' }, { id: 'RAM', clave: 'ramon' }
+];
+
+// Cuando sube el reporte REAL de instalación, se busca si esta orden
+// ya estaba "programada" (creada desde ordenes.html de antemano) y,
+// si existe, se marca como confirmado:true -- la agenda por sí sola
+// nunca prueba que se hizo, el reporte real sí.
+async function entConfirmarActividadProgramada(folio, fecha, nombresTecnicos) {
+  if (!sb() || !folio || !fecha) return;
+  var codigos = [];
+  (nombresTecnicos || []).forEach(function(nombre) {
+    var texto = (nombre || '').toLowerCase();
+    ENT_ROSTER_TECNICOS.forEach(function(t) { if (texto.indexOf(t.clave) >= 0 && codigos.indexOf(t.id) < 0) codigos.push(t.id); });
+  });
+  for (var i = 0; i < codigos.length; i++) {
+    try {
+      var res = await sb().from('tecnico_entradas_dia').select('id,bloques').eq('tecnico_id', codigos[i]).eq('fecha', fecha).limit(1);
+      if (res.error || !res.data || !res.data[0]) continue;
+      var reg = res.data[0];
+      var huboCambio = false;
+      var bloquesActualizados = (reg.bloques || []).map(function(b) {
+        if (b.folio_obra === folio && b.origen === 'programado' && !b.confirmado) {
+          huboCambio = true;
+          return Object.assign({}, b, { confirmado: true });
+        }
+        return b;
+      });
+      if (huboCambio) await sb().from('tecnico_entradas_dia').update({ bloques: bloquesActualizados }).eq('id', reg.id);
+    } catch (e) { console.warn('[BarrCan] Error confirmando actividad programada para', codigos[i], ':', e.message); }
+  }
 }
 
 var ENT_GUARDANDO = false;
@@ -4714,7 +4756,10 @@ async function entGenerarReporteInstalacion() {
             : await sb().from('entregas_instalacion').insert([payload]);
           if (opInst.error) throw opInst.error;
           SYNC.online = true; detectarConexion();
-          if (!esEdicion) entMarcarPiezasEntregadas();
+          if (!esEdicion) {
+            entMarcarPiezasEntregadas();
+            entConfirmarActividadProgramada(payload.folio, payload.fecha, [payload.tecnico, payload.tecnico_acompanante]);
+          }
           await entCargarHistorial();
           return true;
         } catch(eGuardar) {
