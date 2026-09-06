@@ -6,6 +6,16 @@
 <title>BarrCan &middot; Ordenes</title>
 <!--
   BARRCAN - MODULO: ORDENES DE TRABAJO
+  VERSION : v2.9
+  FECHA   : 2026-09-05
+  v2.9 - Primera mitad de "programado -> confirmado" (junto con
+    entregas.html v3.58.0): al guardar una orden, se refleja de
+    inmediato en el check-in diario del técnico asignado (y sus
+    apoyos) para esa fecha -- pero marcada origen:'programado',
+    confirmado:false. Que se agende no prueba que se hizo; la prueba
+    real es cuando sube el reporte, que la confirma por separado.
+    Probado con encargado+apoyo y con rubro de visita (categoría
+    administrativo en vez de obra).
   VERSION : v2.8
   FECHA   : 2026-09-04
   v2.8 - Dos cosas pedidas:
@@ -1454,7 +1464,7 @@ function sb(){
 var SYNC={online:navigator.onLine};
 window.addEventListener('online', function(){SYNC.online=true;detectarConexion();otCargar();otCargarTecnicosDinamico();var c=JSON.parse(localStorage.getItem('barrcan_ordenes_pendientes')||'[]');if(c.length)otReintentarPendientes();});
 window.addEventListener('offline',function(){SYNC.online=false;detectarConexion();});
-var APP_VERSION='v2.8';
+var APP_VERSION='v2.9';
 function detectarConexion(){var b=document.getElementById('conn-status');if(b)b.textContent=(navigator.onLine?'Online':'Offline-First')+' \u00b7 '+APP_VERSION;}
 
 // ── Lista de técnicos dinámica (desde tabla tecnicos, módulo tecnicos.html) ──
@@ -1820,12 +1830,62 @@ async function otGuardar(){
       console.warn('[BarrCan] No se pudo sincronizar el equipo de la orden (no crítico):', eEquipo);
     }
     otGuardarCache(OT_CACHE);otCerrar();otRender();
+    // Reflejar la actividad PROGRAMADA en el check-in diario del
+    // técnico (y sus apoyos) -- pero marcada como "no confirmada"
+    // todavía. Que se agende no prueba que se hizo; la prueba real es
+    // cuando sube el reporte de entrega/instalación, que la marca
+    // como confirmada por separado (ver entregas.html).
+    try { await otSincronizarActividad(payload, [tecnico].concat(apoyoSeleccionado)); }
+    catch(eAct) { console.warn('[BarrCan] No se pudo reflejar la actividad programada (no crítico):', eAct); }
   }catch(e){
     var esRed=/failed to fetch|network|fetch/i.test(e.message||'');
     if(!esEdicion&&!payload.id)payload.id=crypto.randomUUID();
     if(esRed)SYNC.online=false;
     otGuardarOffline(payload,esEdicion);
   }finally{if(btn)btn.disabled=false;}
+}
+
+// ── Reflejar en tecnico_entradas_dia la actividad PROGRAMADA de esta
+// orden, para cada técnico asignado (encargado + apoyo). Se marca con
+// confirmado:false -- entregas.html es quien la pasa a confirmado:true
+// cuando sube el reporte real de esa fecha/folio/técnico. Evita
+// duplicar si la orden se edita y ya existía el bloque.
+async function otSincronizarActividad(orden, tecnicosIds) {
+  if (!sb() || !orden.fecha_instalacion || !tecnicosIds.length) return;
+  var esVisita = orden.rubro === 'visita_medicion';
+  var categoria = esVisita ? 'administrativo' : 'obra';
+  var actividad = esVisita ? 'Visitas' : 'Instalación';
+  var folioRef = orden.folio_cotizacion || orden.visita_folio || null;
+
+  for (var i = 0; i < tecnicosIds.length; i++) {
+    var tecId = tecnicosIds[i];
+    if (!tecId) continue;
+    try {
+      var res = await sb().from('tecnico_entradas_dia').select('id,bloques,tecnico_nombre').eq('tecnico_id', tecId).eq('fecha', orden.fecha_instalacion).limit(1);
+      if (res.error) continue;
+      var reg = res.data && res.data[0];
+      var bloquesActuales = reg ? (reg.bloques || []) : [];
+      // Si ya hay un bloque de ESTA orden (mismo folio) para este
+      // técnico y fecha, no duplicar -- ni programado ni confirmado.
+      var yaExiste = bloquesActuales.some(function(b) { return b.folio_obra === folioRef && folioRef; });
+      if (yaExiste) continue;
+
+      var nuevoBloque = { categoria: categoria, actividades: [actividad], folio_obra: folioRef, otro_detalle: (orden.cliente_nombre ? 'Programado: ' + orden.cliente_nombre : null), origen: 'programado', confirmado: false };
+      var bloquesFinal = bloquesActuales.concat([nuevoBloque]);
+
+      if (reg) {
+        await sb().from('tecnico_entradas_dia').update({ bloques: bloquesFinal }).eq('id', reg.id);
+      } else {
+        var nombreTec = ENT_TEC_NOMBRES_LOOKUP(tecId);
+        await sb().from('tecnico_entradas_dia').insert([{ tecnico_id: tecId, tecnico_nombre: nombreTec, fecha: orden.fecha_instalacion, bloques: bloquesFinal, cerrado: true }]);
+      }
+    } catch (e) { console.warn('[BarrCan] Error sincronizando actividad programada para', tecId, ':', e.message); }
+  }
+}
+
+function ENT_TEC_NOMBRES_LOOKUP(id) {
+  var conocidos = { HER: 'Luis Enrique Barrera Espinosa', MAU: 'Mauricio Barrera Espinosa', RAM: 'Ramon' };
+  return conocidos[id] || id;
 }
 
 function otCambiarEstado(id){
