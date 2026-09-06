@@ -6,6 +6,21 @@
 <title>BarrCan · Cotizador Baños</title>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v2.8
+  FECHA   : 2026-09-05
+  v2.8 - Candado por cliente en el código promocional -- de paso, candado por cliente: si el código tiene un cliente asignado (nuevo módulo codigos_promocionales.html), solo aplica si el nombre capturado coincide (sin distinguir mayúsculas ni acentos).
+  VERSION : v2.7
+  FECHA   : 2026-09-05
+  v2.7 - Código promocional (nueva tabla codigos_promocionales,
+    compartida con los demás cotizadores y con la tienda Shopify vía
+    su descuento nativo). Caja "🏷️ Código promocional" visible arriba
+    de las pestañas -- se valida contra la tabla (vigencia + activo)
+    y se aplica al precio final de la pieza que se guarde, venga de
+    la pestaña que venga (Frameless/Bacalar/Escuadra/Corredizo/Otro).
+    La descripción del presupuesto deja explícito el código, el % y
+    el precio original, para que quede transparente. Código real de
+    septiembre 2026: SEPTMX26, 13.5%. Probado: $10,000 -> $8,650
+    exacto, con la nota correcta en el documento.
   VERSION : v2.6
   FECHA   : 2026-09-02
   v2.6 - Nueva pestaña "➕ Otro/Ampliación" -- motivada por caso real
@@ -273,6 +288,19 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 
 <div class="content">
   <p class="section-title">Cotizador de Ba&ntilde;os</p>
+
+  <!-- CÓDIGO PROMOCIONAL -- aplica al precio final de cualquier pestaña
+       (Frameless/Bacalar/Escuadra/Corredizo/Otro), se valida contra
+       codigos_promocionales en Supabase. Mismo código que se usa en
+       Shopify (vía su sistema nativo de descuentos). -->
+  <div class="wizard-card" style="margin-bottom:12px;border:1.5px solid rgba(200,146,58,.3)">
+    <div class="wizard-title">🏷️ Código promocional <span style="font-weight:400;color:var(--gray-400);font-size:11px">(opcional)</span></div>
+    <div style="display:flex;gap:8px">
+      <input type="text" id="promo-codigo" class="form-input" placeholder="Ej: SEPTMX26" style="text-transform:uppercase;flex:1" oninput="this.value=this.value.toUpperCase()">
+      <button type="button" onclick="promoValidar()" style="padding:0 16px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">Aplicar</button>
+    </div>
+    <div id="promo-resultado" style="font-size:11.5px;margin-top:8px"></div>
+  </div>
   <p class="section-sub">Canceles frameless &middot; Bacalar &middot; Escuadra aluminio</p>
 
   <!-- TABS DE LÍNEA -->
@@ -1038,7 +1066,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v2.6';
+var APP_VERSION = 'v2.7';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -1979,7 +2007,70 @@ async function cbGuardarManual() {
 // genera el documento, guarda en Supabase (con respaldo offline si
 // falla), y limpia el formulario. La usan tanto las piezas calculadas
 // (Frameless/Bacalar/Escuadra/Corredizo) como el concepto manual. ──
+// ── Código promocional -- compartido con Shopify (mismo código allá,
+// vía su sistema nativo de descuentos). Se valida contra la tabla
+// codigos_promocionales y se aplica al precio final de la pieza que
+// se esté guardando, sin importar de qué pestaña venga.
+var PROMO_APLICADO = null; // { codigo, descuento_pct }
+
+async function promoValidar() {
+  var codigo = document.getElementById('promo-codigo').value.trim().toUpperCase();
+  var resDiv = document.getElementById('promo-resultado');
+  if (!codigo) { resDiv.innerHTML = ''; PROMO_APLICADO = null; return; }
+  if (!sb()) { resDiv.innerHTML = '<span style="color:var(--red)">Sin conexión</span>'; return; }
+  try {
+    var res = await sb().from('codigos_promocionales').select('*').eq('codigo', codigo).eq('activo', true).limit(1);
+    if (res.error) throw res.error;
+    var promo = res.data && res.data[0];
+    var hoy = fechaLocalISO(new Date());
+    // Si el código tiene candado por cliente, el nombre capturado en
+    // CUALQUIERA de las pestañas (Frameless/Bacalar/Escuadra/
+    // Corredizo/Otro) debe coincidir -- solo una está activa a la vez,
+    // así que se revisan todas y se usa la que tenga texto.
+    if (promo && promo.cliente_asignado) {
+      var camposCliente = ['fl-cliente','bc-cliente','esc-cliente','corredizo-cliente','otro-cliente'];
+      var clienteActual = '';
+      camposCliente.forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el && el.value && el.value.trim()) clienteActual = el.value.trim();
+      });
+      var normalizar = function(s) { return (s||'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); };
+      var caN = normalizar(clienteActual), caiN = normalizar(promo.cliente_asignado);
+      var coincide = caN.indexOf(caiN) >= 0 || caiN.indexOf(caN) >= 0;
+      if (!clienteActual || !coincide) {
+        resDiv.innerHTML = '<span style="color:var(--red)">❌ Este código es exclusivo de ' + esc(promo.cliente_asignado) + ' -- escribe primero el nombre del cliente</span>';
+        PROMO_APLICADO = null;
+        return;
+      }
+    }
+    if (!promo) {
+      resDiv.innerHTML = '<span style="color:var(--red)">❌ Código no válido</span>';
+      PROMO_APLICADO = null;
+    } else if (hoy < promo.fecha_inicio || hoy > promo.fecha_fin) {
+      resDiv.innerHTML = '<span style="color:var(--red)">❌ Este código ya expiró o aún no inicia (vigente ' + promo.fecha_inicio + ' a ' + promo.fecha_fin + ')</span>';
+      PROMO_APLICADO = null;
+    } else {
+      PROMO_APLICADO = { codigo: promo.codigo, descuento_pct: parseFloat(promo.descuento_pct) };
+      resDiv.innerHTML = '<span style="color:#27AE60;font-weight:700">✅ ' + promo.codigo + ' aplicado -- ' + promo.descuento_pct + '% de descuento</span>' + (promo.descripcion ? '<br><span style="color:var(--gray-400);font-weight:400">' + esc(promo.descripcion) + '</span>' : '');
+    }
+  } catch (e) { resDiv.innerHTML = '<span style="color:var(--red)">Error: ' + e.message + '</span>'; }
+}
+
 async function cbGuardarConPieza(cliente, tel, descNueva, precioNueva, resultadoNueva, clienteId, telId) {
+  // Si hay un código promocional válido aplicado, se descuenta del
+  // precio final ANTES de armar el folio -- así monto/saldo/documento
+  // ya reflejan el precio real que va a pagar el cliente, con la
+  // rebaja explicada en la descripción para que quede claro por qué.
+  var precioOriginal = precioNueva;
+  if (PROMO_APLICADO) {
+    precioNueva = Math.round(precioNueva * (1 - PROMO_APLICADO.descuento_pct / 100));
+    descNueva = descNueva + ' [Código ' + PROMO_APLICADO.codigo + ': -' + PROMO_APLICADO.descuento_pct + '% -- antes $' + fmt(precioOriginal) + ']';
+    if (sb()) sb().from('codigos_promocionales').select('veces_usado').eq('codigo', PROMO_APLICADO.codigo).limit(1).then(function(r) {
+      var actual = (r.data && r.data[0] && r.data[0].veces_usado) || 0;
+      sb().from('codigos_promocionales').update({ veces_usado: actual + 1 }).eq('codigo', PROMO_APLICADO.codigo);
+    });
+  }
+
   var hoy = new Date();
   var yy = String(hoy.getFullYear()).slice(-2), mm = String(hoy.getMonth()+1).padStart(2,'0'), dd = String(hoy.getDate()).padStart(2,'0');
 
