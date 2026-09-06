@@ -6,6 +6,26 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v2.28
+  FECHA   : 2026-09-05
+  v2.28 - Caso real: visita del 4/sep en Cda Rufina (Mauricio) y
+    reporte de garantía no aparecían ni en el datalist de "Folio/obra"
+    ni en la detección automática (ni la diaria ni "Importar
+    automático"). Tres causas encontradas:
+    1) El datalist de folios solo jalaba de presupuestos_atrasados --
+       nunca de visitas_medicion ni garantias. Agregadas las 3
+       fuentes juntas.
+    2) "Importar automático de reportes" (chImportarDeReportes) solo
+       revisaba entregas_instalacion y reportes_entrega -- nunca
+       visitas ni garantías. Agregadas ambas, con la categoría
+       correcta (Visitas -> administrativo, Garantía -> obra, no todo
+       forzado a "obra" como antes).
+    3) BUG real de fondo: visitas_medicion guarda el CÓDIGO del
+       técnico (MAU/HER/RAM), no el nombre completo como las demás
+       tablas -- por eso el comparador (que buscaba el nombre
+       completo como substring) nunca hacía match, ni en la
+       detección diaria ni en el importador manual. Corregido en
+       ambos lugares para reconocer también el código.
   VERSION : v2.27
   FECHA   : 2026-09-04
   v2.27 - Tres cosas relacionadas, encontradas siguiendo el mismo hilo:
@@ -820,7 +840,7 @@ function sb(){
 }
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
-var APP_VERSION = 'v2.27';
+var APP_VERSION = 'v2.28';
 var USUARIOS = [];
 var USUARIO_SEL = null;   // el que se está tratando de loguear
 var PIN_BUFFER = '';
@@ -1155,7 +1175,20 @@ async function chCargarSugerencias() {
   } catch (e) { console.warn('[BarrCan] No se pudieron cargar sugerencias de eventuales:', e.message); }
   try {
     var resFol = await sb().from('presupuestos_atrasados').select('folio').order('created_at', { ascending: false }).limit(150);
-    if (!resFol.error) document.getElementById('ch-folios-datalist').innerHTML = (resFol.data || []).map(function(p) { return '<option value="' + esc(p.folio) + '">'; }).join('');
+    var folios = {};
+    if (!resFol.error) (resFol.data || []).forEach(function(p) { if (p.folio) folios[p.folio] = true; });
+    // Antes solo se mostraban folios de presupuestos -- las visitas
+    // (VIS-XXX) y los tickets de garantía (folio_contrato) nunca
+    // aparecían, aunque sí eran actividad real del día.
+    try {
+      var resVisFol = await sb().from('visitas_medicion').select('folio').order('created_at', { ascending: false }).limit(80);
+      if (!resVisFol.error) (resVisFol.data || []).forEach(function(v) { if (v.folio) folios[v.folio] = true; });
+    } catch (eVis) {}
+    try {
+      var resGtiaFol = await sb().from('garantias').select('folio_contrato').order('created_at', { ascending: false }).limit(80);
+      if (!resGtiaFol.error) (resGtiaFol.data || []).forEach(function(g) { if (g.folio_contrato) folios[g.folio_contrato] = true; });
+    } catch (eGtia) {}
+    document.getElementById('ch-folios-datalist').innerHTML = Object.keys(folios).map(function(f) { return '<option value="' + esc(f) + '">'; }).join('');
   } catch (e) { console.warn('[BarrCan] No se pudieron cargar sugerencias de folios:', e.message); }
 }
 
@@ -1229,6 +1262,8 @@ async function chImportarDeReportes() {
   try {
     var resInst = await sb().from('entregas_instalacion').select('folio,fecha,tecnico,tecnico_acompanante');
     var resEnt = await sb().from('reportes_entrega').select('folio,fecha_entrega,tecnico');
+    var resVis = await sb().from('visitas_medicion').select('folio,fecha_visita,tecnico');
+    var resGtia = await sb().from('garantias').select('folio_contrato,fecha_visita_agendada,tecnico_asignado').not('fecha_visita_agendada', 'is', null);
     if (resInst.error) throw resInst.error;
     if (resEnt.error) throw resEnt.error;
 
@@ -1246,6 +1281,26 @@ async function chImportarDeReportes() {
       var textoCompleto = (r.tecnico || '').toLowerCase();
       CH_ROSTER_TECNICOS.forEach(function(t) {
         if (textoCompleto.indexOf(t.clave) >= 0) hallazgos.push({ tecnico_id: t.id, tecnico_nombre: t.nombre, fecha: r.fecha_entrega, folio: r.folio, tipo: 'Entrega' });
+      });
+    });
+    // Antes solo se revisaban entregas/instalaciones -- las visitas de
+    // medición y las visitas agendadas de garantía nunca se
+    // consideraban, aunque sí eran actividad real del técnico ese día.
+    if (!resVis.error) (resVis.data || []).forEach(function(r) {
+      if (!r.fecha_visita || !r.folio) return;
+      // visitas_medicion guarda el CÓDIGO del técnico (MAU/HER/RAM),
+      // no el nombre completo como las demás tablas -- por eso nunca
+      // hacía match comparando solo contra el nombre.
+      var textoCompleto = (r.tecnico || '').toLowerCase();
+      CH_ROSTER_TECNICOS.forEach(function(t) {
+        if (textoCompleto === t.id.toLowerCase() || textoCompleto.indexOf(t.clave) >= 0) hallazgos.push({ tecnico_id: t.id, tecnico_nombre: t.nombre, fecha: r.fecha_visita, folio: r.folio, tipo: 'Visitas' });
+      });
+    });
+    if (!resGtia.error) (resGtia.data || []).forEach(function(r) {
+      if (!r.fecha_visita_agendada || !r.folio_contrato) return;
+      var textoCompleto = (r.tecnico_asignado || '').toLowerCase();
+      CH_ROSTER_TECNICOS.forEach(function(t) {
+        if (textoCompleto.indexOf(t.clave) >= 0) hallazgos.push({ tecnico_id: t.id, tecnico_nombre: t.nombre, fecha: r.fecha_visita_agendada, folio: r.folio_contrato, tipo: 'Garantía' });
       });
     });
 
@@ -1273,7 +1328,8 @@ async function chImportarDeReportes() {
       var bloquesNuevos = [];
       d.items.forEach(function(it) {
         if (foliosYaGuardados.indexOf(it.folio) >= 0) { yaExistian++; return; }
-        bloquesNuevos.push({ categoria: 'obra', actividades: [it.tipo], folio_obra: it.folio, otro_detalle: null, origen: 'importado_automatico' });
+        var categoria = it.tipo === 'Visitas' ? 'administrativo' : 'obra';
+        bloquesNuevos.push({ categoria: categoria, actividades: [it.tipo], folio_obra: it.folio, otro_detalle: null, origen: 'importado_automatico' });
         agregados++;
       });
       if (!bloquesNuevos.length) continue;
@@ -1630,7 +1686,7 @@ var RA_LISTAS = {
   auto: ['Limpieza','Afinación','Revisión de frenos','Cambio de aceite','Balanceo/alineación','Cambio de llantas','Revisión general'],
   administrativo: ['Presupuesto/cotización','Pedido de material','Programar instalación','Planeación de obra','Facturación','Trámites administrativos','Seguimiento a cliente','Visitas'],
   instalaciones: ['Portón','Herrería','Soldado','Espejos','Muebles','Pintura'],
-  obra: ['Instalación','Mantenimiento','Entrega de ventanas','Entrega de puertas','Entrega de baños']
+  obra: ['Instalación','Mantenimiento','Garantía','Entrega de ventanas','Entrega de puertas','Entrega de baños']
 };
 var RA_SEL = { taller: [], stand: [], compras: [], auto: [], administrativo: [], instalaciones: [], obra: [] };
 var RA_CATEGORIA_ACTIVA = 'taller';
@@ -1737,7 +1793,7 @@ async function raVerificarDiaPendiente() {
       var dia = res.data[j];
       var bloquesActuales = dia.bloques || [];
       var foliosYaGuardados = bloquesActuales.map(function(b) { return b.folio_obra; }).filter(Boolean);
-      var reportes = await raBuscarReportesDelDia(USUARIO_SEL.nombre || USUARIO_SEL.apodo, dia.fecha);
+      var reportes = await raBuscarReportesDelDia(USUARIO_SEL.nombre || USUARIO_SEL.apodo, dia.fecha, USUARIO_SEL.id);
       var reportesFaltantes = reportes.filter(function(r) { return foliosYaGuardados.indexOf(r.folio) < 0; });
 
       if (!dia.cerrado || reportesFaltantes.length > 0) {
@@ -1765,9 +1821,10 @@ async function raVerificarDiaPendiente() {
 var RA_FOLIO_DETECTADO = null;
 var RA_REPORTES_DETECTADOS = [];
 
-async function raBuscarReportesDelDia(nombreBuscar, fecha) {
+async function raBuscarReportesDelDia(nombreBuscar, fecha, codigoTecnico) {
   if (!sb() || !nombreBuscar) return [];
   var nombreLower = nombreBuscar.toLowerCase();
+  var codigoLower = (codigoTecnico || '').toLowerCase();
   var encontrados = [];
   try {
     var resInst = await sb().from('entregas_instalacion').select('folio,cliente,tecnico,tecnico_acompanante').eq('fecha', fecha);
@@ -1784,11 +1841,21 @@ async function raBuscarReportesDelDia(nombreBuscar, fecha) {
     });
   } catch (e) { console.warn('[BarrCan] Error buscando reportes_entrega:', e.message); }
   try {
+    // visitas_medicion guarda el CÓDIGO del técnico (MAU/HER/RAM), no
+    // el nombre completo -- por eso se compara también contra el
+    // código, no solo contra el nombre buscado.
     var resVis = await sb().from('visitas_medicion').select('folio,cliente_nombre,tecnico').eq('fecha_visita', fecha);
     if (!resVis.error) (resVis.data || []).forEach(function(r) {
-      if ((r.tecnico || '').toLowerCase().indexOf(nombreLower) >= 0) encontrados.push({ folio: r.folio, cliente: r.cliente_nombre, tipo: 'Visitas' });
+      var tecVis = (r.tecnico || '').toLowerCase();
+      if (tecVis.indexOf(nombreLower) >= 0 || (codigoLower && tecVis === codigoLower)) encontrados.push({ folio: r.folio, cliente: r.cliente_nombre, tipo: 'Visitas' });
     });
   } catch (e) { console.warn('[BarrCan] Error buscando visitas_medicion:', e.message); }
+  try {
+    var resGtia = await sb().from('garantias').select('folio_contrato,cliente_nombre,tecnico_asignado').eq('fecha_visita_agendada', fecha);
+    if (!resGtia.error) (resGtia.data || []).forEach(function(r) {
+      if ((r.tecnico_asignado || '').toLowerCase().indexOf(nombreLower) >= 0) encontrados.push({ folio: r.folio_contrato, cliente: r.cliente_nombre, tipo: 'Garantía' });
+    });
+  } catch (e) { console.warn('[BarrCan] Error buscando garantias:', e.message); }
   return encontrados;
 }
 
@@ -1826,6 +1893,7 @@ function raMostrarDetectado(reportes) {
     var etiqueta = 'Entrega de ventanas';
     if (RA_SEL.obra.indexOf(etiqueta) < 0) RA_SEL.obra.push(etiqueta);
   }
+  if (tipos.indexOf('Garantía') >= 0 && RA_SEL.obra.indexOf('Garantía') < 0) RA_SEL.obra.push('Garantía');
   if (tipos.indexOf('Visitas') >= 0 && RA_SEL.administrativo.indexOf('Visitas') < 0) RA_SEL.administrativo.push('Visitas');
 }
 
@@ -1834,7 +1902,7 @@ function raMostrarDetectado(reportes) {
 // le corresponde -- antes todo se forzaba a "obra" aunque fuera una
 // visita, que va en Administración.
 async function raConfirmarDetectado() {
-  var folioObra = RA_REPORTES_DETECTADOS.filter(function(r) { return r.tipo === 'Instalación' || r.tipo === 'Entrega'; })
+  var folioObra = RA_REPORTES_DETECTADOS.filter(function(r) { return r.tipo === 'Instalación' || r.tipo === 'Entrega' || r.tipo === 'Garantía'; })
     .map(function(r) { return r.folio; }).filter(function(f, i, a) { return a.indexOf(f) === i; }).join(', ');
   var folioVisita = RA_REPORTES_DETECTADOS.filter(function(r) { return r.tipo === 'Visitas'; })
     .map(function(r) { return r.folio; }).filter(function(f, i, a) { return a.indexOf(f) === i; }).join(', ');
