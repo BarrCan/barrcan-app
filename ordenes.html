@@ -6,6 +6,30 @@
 <title>BarrCan &middot; Ordenes</title>
 <!--
   BARRCAN - MODULO: ORDENES DE TRABAJO
+  VERSION : v2.11
+  FECHA   : 2026-09-06
+  v2.11 - Agregada la opción "🛡️ Garantía" al menú de Rubro -- ya se
+    detectaba automáticamente en la actividad diaria, pero faltaba
+    poder capturar una orden nueva de este tipo desde aquí. Aclarado
+    también (Mau preguntó): "Folio de referencia" NO es obligatorio,
+    se puede dejar vacío para visitas de medición (que aún no tienen
+    presupuesto) o escribir a mano el folio original para garantías.
+  VERSION : v2.10
+  FECHA   : 2026-09-06
+  v2.10 - Conexión REAL con Google Calendar (ya no solo el .ics para
+    reenviar) -- Client ID configurado en Google Cloud (proyecto
+    "BarrCan App", pantalla de consentimiento tipo Interno, solo
+    cuentas @barrcan.com.mx). Botón "Conectar" arriba de la pantalla
+    (dura ~1 hora la sesión, después pide reconectar con un clic). Al
+    tocar "Avisar" en una orden, si ya está conectado, ofrece crear el
+    evento directo en el calendario con el técnico invitado por email
+    (nuevo campo en tecnicos.html) -- Google le manda la notificación
+    solo, sin tener que reenviar nada por WhatsApp. Mismas 2 alarmas
+    de siempre (1 hora y 45 minutos antes). Si el técnico no tiene
+    Gmail capturado, el evento se crea igual pero sin invitado.
+    De paso: corregido el mismo bug de fecha UTC que ya se arregló en
+    entregas.html (después de las 6pm local, la fecha por defecto
+    saltaba al día siguiente).
   VERSION : v2.9
   FECHA   : 2026-09-05
   v2.9 - Primera mitad de "programado -> confirmado" (junto con
@@ -1247,6 +1271,7 @@ body{min-height:100vh}
 .ot-filtro.active{border-color:var(--blue);background:rgba(46,109,164,0.08);color:var(--blue)}
 .estado-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700}
 </style>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 <div id="app">
@@ -1267,6 +1292,11 @@ body{min-height:100vh}
   <div class="content">
     <p class="section-title">Ordenes de Trabajo</p>
     <p class="section-sub">Asigna instalaciones a tecnicos</p>
+
+    <div id="google-conectar-card" style="background:#fff;border-radius:10px;padding:12px 14px;margin-bottom:12px;box-shadow:0 2px 8px rgba(27,58,92,.08);display:flex;justify-content:space-between;align-items:center;gap:10px">
+      <div style="font-size:11.5px;color:var(--gray-600)">📅 Conecta tu Google Calendar para agendar directo al técnico (con invitación real, no solo un archivo para reenviar).</div>
+      <button type="button" id="btn-google-conectar" onclick="otConectarGoogleCalendar()" style="flex-shrink:0;padding:8px 14px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">Conectar</button>
+    </div>
 
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px">
       <button class="ot-filtro active" onclick="otSetFiltro(this,'')">Todas</button>
@@ -1381,6 +1411,7 @@ body{min-height:100vh}
           <option value="barandal">Barandal</option>
           <option value="taller">Taller</option>
           <option value="visita_medicion">📏 Visita de medición</option>
+          <option value="garantia">🛡️ Garantía</option>
           <option value="otro">Otro</option>
         </select>
       </div>
@@ -1464,7 +1495,7 @@ function sb(){
 var SYNC={online:navigator.onLine};
 window.addEventListener('online', function(){SYNC.online=true;detectarConexion();otCargar();otCargarTecnicosDinamico();var c=JSON.parse(localStorage.getItem('barrcan_ordenes_pendientes')||'[]');if(c.length)otReintentarPendientes();});
 window.addEventListener('offline',function(){SYNC.online=false;detectarConexion();});
-var APP_VERSION='v2.9';
+var APP_VERSION='v2.11';
 function detectarConexion(){var b=document.getElementById('conn-status');if(b)b.textContent=(navigator.onLine?'Online':'Offline-First')+' \u00b7 '+APP_VERSION;}
 
 // ── Lista de técnicos dinámica (desde tabla tecnicos, módulo tecnicos.html) ──
@@ -1541,6 +1572,14 @@ function otApoyoSeleccionActual() {
   return out;
 }
 function fmt(n){return Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:0,maximumFractionDigits:2});}
+// Fecha de HOY en local (CDMX), nunca en UTC -- mismo fix que ya se
+// hizo en entregas.html. toISOString() da la fecha UTC, que después
+// de las 6pm hora local ya cayó al día siguiente.
+function fechaHoyLocal() {
+  var d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
 var OT_CACHE=[];
@@ -1725,7 +1764,7 @@ function otAbrir(id){
     if(btnDel)btnDel.style.display='none';
     if(btnHoja)btnHoja.style.display='none';
     ['ot-folio','ot-cliente','ot-tel','ot-dir','ot-desc','ot-notas'].forEach(function(cid){var el=document.getElementById(cid);if(el)el.value='';});
-    var fs=document.getElementById('ot-fecha');if(fs)fs.value=new Date().toISOString().split('T')[0];
+    var fs=document.getElementById('ot-fecha');if(fs)fs.value=fechaHoyLocal();
     var hs=document.getElementById('ot-hora');if(hs)hs.value='08:00';
     var ts=document.getElementById('ot-tecnico');if(ts)ts.value='';
     var ps=document.getElementById('ot-piezas');if(ps)ps.value='1';
@@ -1853,8 +1892,9 @@ async function otGuardar(){
 async function otSincronizarActividad(orden, tecnicosIds) {
   if (!sb() || !orden.fecha_instalacion || !tecnicosIds.length) return;
   var esVisita = orden.rubro === 'visita_medicion';
+  var esGarantia = orden.rubro === 'garantia';
   var categoria = esVisita ? 'administrativo' : 'obra';
-  var actividad = esVisita ? 'Visitas' : 'Instalación';
+  var actividad = esVisita ? 'Visitas' : (esGarantia ? 'Garantía' : 'Instalación');
   var folioRef = orden.folio_cotizacion || orden.visita_folio || null;
 
   for (var i = 0; i < tecnicosIds.length; i++) {
@@ -1916,6 +1956,83 @@ function otMapsLink(direccion){
 // Botón independiente "Avisar" en cada tarjeta — igual que se dispara al
 // marcar "En camino", pero se puede usar en cualquier momento (ej. la
 // tarde anterior a la instalación), sin tener que tocar el estado.
+// ── Google Calendar -- conexión real, no solo archivo .ics ─────────
+// Client ID de barrcan-app en Google Cloud (pantalla de consentimiento
+// tipo "Interno", solo cuentas @barrcan.com.mx pueden autorizar).
+// El token dura ~1 hora -- después de eso hay que volver a tocar
+// "Conectar" (un clic, no vuelve a pedir contraseña).
+var GOOGLE_CLIENT_ID = '530062848574-dv9fn3gd8d5m9e1i8onk4tmrdvdbag1d.apps.googleusercontent.com';
+var GOOGLE_TOKEN_CLIENT = null;
+var GOOGLE_ACCESS_TOKEN = null;
+
+function otInicializarGoogleAuth() {
+  if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) { setTimeout(otInicializarGoogleAuth, 400); return; }
+  GOOGLE_TOKEN_CLIENT = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: 'https://www.googleapis.com/auth/calendar.events',
+    callback: function(resp) {
+      if (resp && resp.access_token) {
+        GOOGLE_ACCESS_TOKEN = resp.access_token;
+        var btn = document.getElementById('btn-google-conectar');
+        if (btn) { btn.textContent = '✅ Conectado'; btn.style.background = '#27AE60'; }
+        toast('✅ Google Calendar conectado -- dura ~1 hora');
+      } else {
+        toast('No se pudo conectar con Google');
+      }
+    }
+  });
+}
+
+function otConectarGoogleCalendar() {
+  if (!GOOGLE_TOKEN_CLIENT) { toast('Espera un momento, cargando Google...'); return; }
+  GOOGLE_TOKEN_CLIENT.requestAccessToken();
+}
+
+// Crea el evento REAL en Google Calendar (no un archivo .ics para
+// reenviar) -- si el técnico tiene Gmail capturado (tecnicos.html),
+// lo agrega como invitado y Google le manda la notificación sola.
+async function otCrearEventoGoogleCalendar(o, mapsUrl) {
+  if (!GOOGLE_ACCESS_TOKEN) { toast('⚠️ Primero conecta tu Google Calendar (botón arriba)'); return; }
+  if (!o.fecha_instalacion) { toast('Falta la fecha de la orden'); return; }
+
+  var hora = o.hora_instalacion || '09:00';
+  var inicio = o.fecha_instalacion + 'T' + hora + ':00';
+  var finDate = new Date(inicio);
+  finDate.setHours(finDate.getHours() + 1);
+  var pad = function(n) { return String(n).padStart(2, '0'); };
+  var fin = finDate.getFullYear() + '-' + pad(finDate.getMonth()+1) + '-' + pad(finDate.getDate()) + 'T' + pad(finDate.getHours()) + ':' + pad(finDate.getMinutes()) + ':00';
+
+  var tec = null;
+  try {
+    var res = await sb().from('tecnicos').select('nombre_completo,email').eq('tecnico_id_login', o.tecnico_id).eq('activo', true).limit(1).single();
+    if (!res.error && res.data) tec = res.data;
+  } catch(e) {}
+  var attendees = (tec && tec.email) ? [{ email: tec.email }] : [];
+
+  var evento = {
+    summary: (o.rubro === 'visita_medicion' ? '📏 Visita de medición' : '🔧 Instalación') + ' -- ' + (o.cliente_nombre || ''),
+    location: o.dir_obra || '',
+    description: (o.descripcion_trabajo || '') + (o.cliente_tel ? '\nTel. cliente: ' + o.cliente_tel : '') + (mapsUrl ? '\nMapa: ' + mapsUrl : ''),
+    start: { dateTime: inicio, timeZone: 'America/Mexico_City' },
+    end: { dateTime: fin, timeZone: 'America/Mexico_City' },
+    attendees: attendees,
+    reminders: { useDefault: false, overrides: [ { method: 'popup', minutes: 60 }, { method: 'popup', minutes: 45 } ] }
+  };
+
+  try {
+    var resp = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + GOOGLE_ACCESS_TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify(evento)
+    });
+    var data = await resp.json();
+    if (!resp.ok) throw new Error((data.error && data.error.message) || 'Error desconocido');
+    toast(attendees.length ? ('✅ Evento creado -- invitación enviada a ' + (tec.nombre_completo || tec.email)) : '✅ Evento creado en tu Google Calendar (el técnico no tiene Gmail capturado, no se le pudo invitar)');
+  } catch (e) {
+    toast('❌ Error creando el evento: ' + e.message);
+  }
+}
+
 function otProgramarRecordatorio(id){
   var o=null;for(var i=0;i<OT_CACHE.length;i++){if(OT_CACHE[i].id===id){o=OT_CACHE[i];break;}}
   if(!o)return;
@@ -1980,6 +2097,14 @@ async function otAvisarTecnico(o, mapsUrl, yaEnCamino){
   }
 
   setTimeout(function(){
+    // Si ya está conectado Google Calendar, ofrecer el evento REAL
+    // primero -- es mejor que el .ics (invita directo, sin reenviar).
+    if (GOOGLE_ACCESS_TOKEN) {
+      if (confirm('¿Crear el evento directo en tu Google Calendar' + (tec && tec.email ? ' e invitar a ' + (tec.nombre_completo||o.tecnico_id) : '') + '?')) {
+        otCrearEventoGoogleCalendar(o, mapsUrl);
+        return;
+      }
+    }
     if(!confirm('¿Descargar el recordatorio de calendario para '+(tec ? (tec.nombre_completo||o.tecnico_id) : 'el técnico')+'? (Se descarga aquí — reenvíaselo por WhatsApp como archivo si quieres que le quede en su calendario)'))return;
     otDescargarICS(o, mapsUrl);
   },400);
@@ -1989,7 +2114,7 @@ async function otAvisarTecnico(o, mapsUrl, yaEnCamino){
 // Outlook y Apple Calendar sin necesitar conectar ninguna cuenta. Trae
 // dos alarmas: 1 hora antes y 45 minutos antes de la hora de instalación.
 function otDescargarICS(o, mapsUrl){
-  var fecha = o.fecha_instalacion || new Date().toISOString().split('T')[0];
+  var fecha = o.fecha_instalacion || fechaHoyLocal();
   var hora  = o.hora_instalacion || '10:00';
   var inicio = new Date(fecha+'T'+hora+':00');
   if (isNaN(inicio.getTime())) { toast('Fecha/hora de instalación no válida'); return; }
@@ -2154,6 +2279,7 @@ async function otReintentarPendientes(){
 
 document.addEventListener('DOMContentLoaded',function(){
   detectarConexion();
+  otInicializarGoogleAuth();
   var local=otCargarCache();
   if(local.length){OT_CACHE=local;otRender();}
   otCargar();
