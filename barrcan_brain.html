@@ -6,6 +6,15 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v2.30
+  FECHA   : 2026-09-06
+  v2.30 - Roster de técnicos ahora DINÁMICO -- ya no está escrito a mano
+    en el código. Se carga solo desde la tabla tecnicos (la misma de
+    tecnicos.html); agregar a alguien nuevo ahí ya es TODO lo que hace
+    falta para que la detección automática, el reparto de sueldo y el
+    reparto de actividad lo reconozcan, sin volver a tocar código.
+    Probado: un técnico nuevo se agrega solo al roster con su clave de
+    coincidencia derivada automáticamente del nombre.
   VERSION : v2.29
   FECHA   : 2026-09-05
   v2.29 - Agregada tarjeta "🏷️ Códigos Promo" (codigos_promocionales.html,
@@ -846,7 +855,7 @@ function sb(){
 }
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
-var APP_VERSION = 'v2.29';
+var APP_VERSION = 'v2.30';
 var USUARIOS = [];
 var USUARIO_SEL = null;   // el que se está tratando de loguear
 var PIN_BUFFER = '';
@@ -1252,11 +1261,29 @@ var CH_REGISTRO_ID_EXISTENTE = null;
 // capturarlas una por una en Captura histórica. No duplica: si un
 // bloque con ese mismo folio ya existe ese día para ese técnico, lo
 // salta.
+// Antes esta lista vivía escrita a mano -- si entraba alguien nuevo al
+// equipo, había que venir a tocar código en 2 archivos distintos para
+// que la detección automática lo reconociera. Ahora se carga sola
+// desde la tabla tecnicos (la misma que ya llenas en tecnicos.html) --
+// agregar a alguien ahí es TODO lo que hace falta. El array de abajo
+// solo es respaldo por si no hay conexión al cargar la página.
 var CH_ROSTER_TECNICOS = [
   { id: 'HER', nombre: 'Luis Enrique Barrera Espinosa', clave: 'luis' },
   { id: 'MAU', nombre: 'Mauricio Barrera Espinosa', clave: 'mauricio' },
   { id: 'RAM', nombre: 'Ramon', clave: 'ramon' }
 ];
+
+async function chCargarRosterDinamico() {
+  if (!sb()) return;
+  try {
+    var res = await sb().from('tecnicos').select('tecnico_id_login,nombre_completo').eq('activo', true).not('tecnico_id_login', 'is', null);
+    if (res.error || !res.data || !res.data.length) return;
+    CH_ROSTER_TECNICOS = res.data.map(function(t) {
+      var primerNombre = (t.nombre_completo || '').trim().split(/\s+/)[0].toLowerCase();
+      return { id: t.tecnico_id_login, nombre: t.nombre_completo, clave: primerNombre };
+    });
+  } catch (e) { console.warn('[BarrCan] No se pudo cargar el roster dinámico de técnicos, se usa el de respaldo:', e.message); }
+}
 
 async function chImportarDeReportes() {
   if (!USUARIO_SEL || USUARIO_SEL.id !== 'MAU') { alert('Esta opción es solo para Mau.'); return; }
@@ -2147,6 +2174,7 @@ async function resetearPinUsuario() {
 // ── Si ya había sesión guardada (de otro módulo, o de antes), entra directo ──
 document.addEventListener('DOMContentLoaded', function() {
   cargarUsuarios();
+  chCargarRosterDinamico();
   try {
     var guardado = JSON.parse(localStorage.getItem('barrcan_usuario_activo') || 'null');
     // Sesión expira cada día -- si el celular se queda sin bloquear o lo
