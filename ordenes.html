@@ -6,6 +6,15 @@
 <title>BarrCan &middot; Ordenes</title>
 <!--
   BARRCAN - MODULO: ORDENES DE TRABAJO
+  VERSION : v2.12
+  FECHA   : 2026-09-06
+  v2.12 - Roster de técnicos ahora DINÁMICO -- ya no está escrito a mano
+    en el código. Se carga solo desde la tabla tecnicos (la misma de
+    tecnicos.html); agregar a alguien nuevo ahí ya es TODO lo que hace
+    falta para que la detección automática, el reparto de sueldo y el
+    reparto de actividad lo reconozcan, sin volver a tocar código.
+    Probado: un técnico nuevo se agrega solo al roster con su clave de
+    coincidencia derivada automáticamente del nombre.
   VERSION : v2.11
   FECHA   : 2026-09-06
   v2.11 - Agregada la opción "🛡️ Garantía" al menú de Rubro -- ya se
@@ -1495,7 +1504,7 @@ function sb(){
 var SYNC={online:navigator.onLine};
 window.addEventListener('online', function(){SYNC.online=true;detectarConexion();otCargar();otCargarTecnicosDinamico();var c=JSON.parse(localStorage.getItem('barrcan_ordenes_pendientes')||'[]');if(c.length)otReintentarPendientes();});
 window.addEventListener('offline',function(){SYNC.online=false;detectarConexion();});
-var APP_VERSION='v2.11';
+var APP_VERSION='v2.12';
 function detectarConexion(){var b=document.getElementById('conn-status');if(b)b.textContent=(navigator.onLine?'Online':'Offline-First')+' \u00b7 '+APP_VERSION;}
 
 // ── Lista de técnicos dinámica (desde tabla tecnicos, módulo tecnicos.html) ──
@@ -1916,16 +1925,25 @@ async function otSincronizarActividad(orden, tecnicosIds) {
       if (reg) {
         await sb().from('tecnico_entradas_dia').update({ bloques: bloquesFinal }).eq('id', reg.id);
       } else {
-        var nombreTec = ENT_TEC_NOMBRES_LOOKUP(tecId);
+        var nombreTec = await otNombreTecnico(tecId);
         await sb().from('tecnico_entradas_dia').insert([{ tecnico_id: tecId, tecnico_nombre: nombreTec, fecha: orden.fecha_instalacion, bloques: bloquesFinal, cerrado: true }]);
       }
     } catch (e) { console.warn('[BarrCan] Error sincronizando actividad programada para', tecId, ':', e.message); }
   }
 }
 
-function ENT_TEC_NOMBRES_LOOKUP(id) {
-  var conocidos = { HER: 'Luis Enrique Barrera Espinosa', MAU: 'Mauricio Barrera Espinosa', RAM: 'Ramon' };
-  return conocidos[id] || id;
+// Antes esto era un mapa fijo (HER/MAU/RAM) -- si entraba alguien
+// nuevo, había que venir a agregarlo aquí a mano. Ahora se consulta
+// directo la tabla de técnicos (misma que llenas en tecnicos.html).
+async function otNombreTecnico(id) {
+  if (sb()) {
+    try {
+      var res = await sb().from('tecnicos').select('nombre_completo').eq('tecnico_id_login', id).limit(1).single();
+      if (!res.error && res.data && res.data.nombre_completo) return res.data.nombre_completo;
+    } catch (e) {}
+  }
+  var conocidosRespaldo = { HER: 'Luis Enrique Barrera Espinosa', MAU: 'Mauricio Barrera Espinosa', RAM: 'Ramon' };
+  return conocidosRespaldo[id] || id;
 }
 
 function otCambiarEstado(id){
