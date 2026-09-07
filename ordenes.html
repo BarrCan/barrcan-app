@@ -6,6 +6,20 @@
 <title>BarrCan &middot; Ordenes</title>
 <!--
   BARRCAN - MODULO: ORDENES DE TRABAJO
+  VERSION : v2.13
+  FECHA   : 2026-09-06
+  v2.13 - Dos cosas reportadas:
+    1) "Folio de referencia" era texto libre -- un error de dedo ahí
+       no se notaba hasta después. Ahora sugiere folios reales
+       (presupuestos + visitas + garantías) en un datalist, sin dejar
+       de aceptar texto libre por si el folio no aparece.
+    2) FIX real de expectativa: guardar una orden ya reflejaba la
+       actividad programada sola, pero el evento de Google Calendar
+       se quedaba esperando el clic aparte en "🔔 Avisar" -- que no
+       era obvio que hiciera falta. Ahora, si ya está conectado
+       Google Calendar, el evento se crea automático al guardar,
+       igual que la actividad programada, sin depender de un segundo
+       paso manual.
   VERSION : v2.12
   FECHA   : 2026-09-06
   v2.12 - Roster de técnicos ahora DINÁMICO -- ya no está escrito a mano
@@ -1350,7 +1364,8 @@ body{min-height:100vh}
     </select>
 
     <label class="form-label">Folio de referencia</label>
-    <input type="text" id="ot-folio" class="form-input" placeholder="CACN-094B-260610-32J" style="font-family:'DM Mono',monospace;font-size:13px">
+    <input type="text" id="ot-folio" list="ot-folio-datalist" class="form-input" placeholder="CACN-094B-260610-32J -- déjalo vacío si aplica" style="font-family:'DM Mono',monospace;font-size:13px">
+    <datalist id="ot-folio-datalist"></datalist>
 
     <label class="form-label">Cliente *</label>
     <input type="text" id="ot-cliente" class="form-input" placeholder="Nombre del cliente">
@@ -1504,7 +1519,7 @@ function sb(){
 var SYNC={online:navigator.onLine};
 window.addEventListener('online', function(){SYNC.online=true;detectarConexion();otCargar();otCargarTecnicosDinamico();var c=JSON.parse(localStorage.getItem('barrcan_ordenes_pendientes')||'[]');if(c.length)otReintentarPendientes();});
 window.addEventListener('offline',function(){SYNC.online=false;detectarConexion();});
-var APP_VERSION='v2.12';
+var APP_VERSION='v2.13';
 function detectarConexion(){var b=document.getElementById('conn-status');if(b)b.textContent=(navigator.onLine?'Online':'Offline-First')+' \u00b7 '+APP_VERSION;}
 
 // ── Lista de técnicos dinámica (desde tabla tecnicos, módulo tecnicos.html) ──
@@ -1533,6 +1548,25 @@ async function otCargarVisitasDatalist() {
       return '<option value="' + v.folio + '">' + (v.cliente_nombre || '') + ' \u2014 ' + (v.dir_obra || '') + '</option>';
     }).join('');
   } catch(e) { console.warn('[BarrCan] No se pudo cargar la lista de visitas:', e); }
+}
+
+// "Folio de referencia" antes era texto libre -- un error de dedo ahí
+// no se nota hasta después. Ahora sugiere folios reales de las 3
+// fuentes (presupuestos, visitas, garantías) -- sigue aceptando texto
+// libre por si el folio no aparece (garantías viejas, por ejemplo).
+async function otCargarFolioDatalist() {
+  var dl = document.getElementById('ot-folio-datalist');
+  if (!dl || !sb()) return;
+  try {
+    var opciones = [];
+    var resP = await sb().from('presupuestos_atrasados').select('folio,cliente').order('created_at', { ascending: false }).limit(150);
+    if (!resP.error) (resP.data || []).forEach(function(p) { opciones.push('<option value="' + p.folio + '">' + (p.cliente || '') + '</option>'); });
+    var resV = await sb().from('visitas_medicion').select('folio,cliente_nombre').order('created_at', { ascending: false }).limit(80);
+    if (!resV.error) (resV.data || []).forEach(function(v) { opciones.push('<option value="' + v.folio + '">' + (v.cliente_nombre || '') + ' (visita)</option>'); });
+    var resG = await sb().from('garantias').select('folio_contrato,cliente_nombre').order('created_at', { ascending: false }).limit(80);
+    if (!resG.error) (resG.data || []).forEach(function(g) { if (g.folio_contrato) opciones.push('<option value="' + g.folio_contrato + '">' + (g.cliente_nombre || '') + ' (garantía)</option>'); });
+    dl.innerHTML = opciones.join('');
+  } catch(e) { console.warn('[BarrCan] No se pudo cargar la lista de folios:', e); }
 }
 
 async function otCargarTecnicosDinamico() {
@@ -1885,6 +1919,15 @@ async function otGuardar(){
     // como confirmada por separado (ver entregas.html).
     try { await otSincronizarActividad(payload, [tecnico].concat(apoyoSeleccionado)); }
     catch(eAct) { console.warn('[BarrCan] No se pudo reflejar la actividad programada (no crítico):', eAct); }
+    // Si ya está conectado Google Calendar, crear el evento AQUÍ
+    // directo, sin depender de que además se toque "Avisar" -- ese
+    // era el hueco real: guardar la orden ya reflejaba la actividad
+    // programada sola, pero el evento de calendario se quedaba
+    // esperando un segundo clic que no era obvio que hiciera falta.
+    if (GOOGLE_ACCESS_TOKEN && !esEdicion) {
+      try { await otCrearEventoGoogleCalendar(payload, null); }
+      catch (eCal) { console.warn('[BarrCan] No se pudo crear el evento de Google Calendar (no crítico):', eCal); }
+    }
   }catch(e){
     var esRed=/failed to fetch|network|fetch/i.test(e.message||'');
     if(!esEdicion&&!payload.id)payload.id=crypto.randomUUID();
@@ -2303,6 +2346,7 @@ document.addEventListener('DOMContentLoaded',function(){
   otCargar();
   otCargarTecnicosDinamico();
   otCargarVisitasDatalist();
+  otCargarFolioDatalist();
   otAplicarPermisos();
   if(navigator.onLine)otReintentarPendientes();
 });
