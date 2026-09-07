@@ -6,6 +6,15 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.59.0
+  FECHA   : 2026-09-06
+  v3.59.0 - Roster de técnicos ahora DINÁMICO -- ya no está escrito a mano
+    en el código. Se carga solo desde la tabla tecnicos (la misma de
+    tecnicos.html); agregar a alguien nuevo ahí ya es TODO lo que hace
+    falta para que la detección automática, el reparto de sueldo y el
+    reparto de actividad lo reconozcan, sin volver a tocar código.
+    Probado: un técnico nuevo se agrega solo al roster con su clave de
+    coincidencia derivada automáticamente del nombre.
   VERSION : v3.58.0
   FECHA   : 2026-09-05
   v3.58.0 - Segunda mitad de "programado -> confirmado" (junto con
@@ -2321,7 +2330,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.58.0';
+var APP_VERSION = 'v3.59.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -3119,9 +3128,25 @@ async function entSiguienteFolioEntrega(folioPresupuesto) {
   return 'ENT-' + numPresupuesto + '-' + String(consec).padStart(2, '0');
 }
 
+// Mismo criterio que en barrcan_brain.html: se carga solo desde la
+// tabla tecnicos -- agregar a alguien en tecnicos.html es todo lo que
+// hace falta, sin tocar código aquí. El array de abajo es respaldo
+// por si no hay conexión al cargar la página.
 var ENT_ROSTER_TECNICOS = [
   { id: 'HER', clave: 'luis' }, { id: 'MAU', clave: 'mauricio' }, { id: 'RAM', clave: 'ramon' }
 ];
+
+async function entCargarRosterDinamico() {
+  if (!sb()) return;
+  try {
+    var res = await sb().from('tecnicos').select('tecnico_id_login,nombre_completo').eq('activo', true).not('tecnico_id_login', 'is', null);
+    if (res.error || !res.data || !res.data.length) return;
+    ENT_ROSTER_TECNICOS = res.data.map(function(t) {
+      var primerNombre = (t.nombre_completo || '').trim().split(/\s+/)[0].toLowerCase();
+      return { id: t.tecnico_id_login, clave: primerNombre };
+    });
+  } catch (e) { console.warn('[BarrCan] No se pudo cargar el roster dinámico de técnicos, se usa el de respaldo:', e.message); }
+}
 
 // Cuando sube el reporte REAL de instalación, se busca si esta orden
 // ya estaba "programada" (creada desde ordenes.html de antemano) y,
@@ -4142,6 +4167,7 @@ document.addEventListener('DOMContentLoaded', function() {
   entCargarClientes();
   entCargarHistorial();
   entCargarTecnicosDinamico();
+  entCargarRosterDinamico();
   setTimeout(entPrecargarDesdeOrden, 400);
   var cola = JSON.parse(localStorage.getItem('barrcan_entregas_pendientes') || '[]');
   if (cola.length) setTimeout(entReintentarPendientes, 1500);
