@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>BarrCan &middot; Estado de Cuenta</title>
+<!--
+  BARRCAN · MODULO: ESTADO DE CUENTA POR CLIENTE (standalone)
+  VERSION : v1.1
+  FECHA   : 2026-09-09
+  v1.1 - FIX de fondo: "Factura" no era un dato nuevo que había que
+    capturar -- ya existía, capturado en pagos.html ("Núm. de
+    factura" al registrar un pago), pero guardado mezclado dentro de
+    "notas" como una etiqueta de texto ("FAC:1422"), no en una
+    columna aparte. Corregido para extraerlo de ahí (misma lógica que
+    usa pagos.html) y mostrarlo junto al anticipo correspondiente, no
+    a nivel de toda la obra -- tiene más sentido así, ya que cada
+    anticipo puede tener su propia factura. Quitados los campos que
+    había agregado de más (factura_cliente/fecha_factura en
+    presupuestos_atrasados), ya no se usan.
+  VERSION : v1.0
+  FECHA   : 2026-09-09
+  v1.0 - Creación inicial, a partir de un Excel real que Mau ya usaba
+    para llevar cuentas por cliente (columnas: No. Presup, Fecha,
+    Nombre, Monto, Factura, Fecha Fact., Fecha Ant, Anticipos,
+    Diferencia, Modo Pago). Se eligió UN cliente a la vez, con todas
+    sus obras y el desglose de anticipos (tabla "pagos", ya existía
+    pero no se usaba en ningún reporte). "Factura"/"Fecha Fact." son
+    campos nuevos (nunca se habían capturado en el sistema) -- se
+    pueden llenar aquí mismo. El cliente se busca por num_cliente
+    cuando está disponible (más confiable que el nombre, que puede
+    variar de escritura entre folios del mismo cliente -- lección de
+    varios casos reales esta temporada).
+-->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+:root {
+  --navy: #1B3A5C; --blue: #2E6DA4; --gold: #C8923A; --gold-light: #E8B96A;
+  --white: #FFFFFF; --off-white: #F7F5F0; --gray-100: #F0EDE8; --gray-200: #DDD9D2;
+  --gray-400: #9A9590; --gray-600: #5A5652; --green: #2D7D46; --red: #C0392B;
+  --shadow-sm: 0 2px 8px rgba(27,58,92,0.08); --radius: 12px; --radius-sm: 8px;
+}
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--off-white); color:var(--navy); overscroll-behavior:none; }
+#app { min-height:100vh; display:flex; flex-direction:column; }
+.header { background:var(--navy); padding:0 20px; height:56px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; box-shadow:0 2px 12px rgba(0,0,0,.3); position:sticky; top:0; z-index:100; }
+.header-logo { display:flex; align-items:center; gap:10px; }
+.logo-mark { width:32px; height:32px; background:linear-gradient(135deg,var(--gold),var(--gold-light)); border-radius:6px; display:flex; align-items:center; justify-content:center; font-family:'Playfair Display',serif; font-weight:900; font-size:16px; color:var(--navy); }
+.logo-text { font-family:'Playfair Display',serif; font-weight:700; font-size:18px; color:#fff; }
+.logo-sub { font-size:9px; color:var(--gold-light); letter-spacing:2px; text-transform:uppercase; display:block; margin-top:-3px; }
+.offline-badge { display:flex; align-items:center; gap:5px; background:rgba(200,146,58,.15); border:1px solid rgba(200,146,58,.3); border-radius:20px; padding:4px 10px; font-size:11px; color:var(--gold-light); font-weight:500; }
+.offline-dot { width:6px; height:6px; border-radius:50%; background:var(--gold-light); animation:pulse-dot 2s infinite; }
+@keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
+.content { flex:1; padding:16px 16px 60px; max-width:1000px; margin:0 auto; width:100%; }
+.section-title { font-family:'Playfair Display',serif; font-size:19px; font-weight:700; color:var(--navy); margin-bottom:3px; }
+.section-sub { font-size:11.5px; color:var(--gray-400); margin-bottom:14px; }
+.wizard-card { background:#fff; border-radius:var(--radius); padding:16px; margin-bottom:12px; box-shadow:var(--shadow-sm); }
+.form-input { width:100%; padding:10px 12px; border:1.5px solid var(--gray-200); border-radius:var(--radius-sm); font-family:'DM Sans',sans-serif; font-size:14px; color:var(--navy); background:var(--off-white); box-sizing:border-box; }
+.form-input:focus { outline:none; border-color:var(--blue); background:#fff; }
+.btn-buscar { width:100%; padding:14px; background:linear-gradient(135deg,var(--navy),#2A4F7A); color:#fff; border:none; border-radius:var(--radius-sm); font-size:14px; font-weight:700; cursor:pointer; margin-top:10px; }
+.btn-imprimir { padding:10px 18px; background:linear-gradient(135deg,var(--gold),var(--gold-light)); color:#fff; border:none; border-radius:var(--radius-sm); font-size:13px; font-weight:700; cursor:pointer; }
+.toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--navy); color:#fff; padding:10px 18px; border-radius:20px; font-size:13px; font-weight:600; opacity:0; transition:all .3s; z-index:999; white-space:nowrap; pointer-events:none; max-width:90vw; text-align:center; }
+.toast.show { opacity:1; transform:translateX(-50%) translateY(-6px); }
+
+.ec-tabla { width:100%; border-collapse:collapse; font-size:12px; background:#fff; }
+.ec-tabla th { background:var(--navy); color:#fff; padding:8px 6px; text-align:left; font-size:10.5px; font-weight:700; white-space:nowrap; }
+.ec-tabla td { padding:7px 6px; border-bottom:1px solid var(--gray-100); vertical-align:top; }
+.ec-tabla tr.obra-fila > td { background:#fff; font-weight:600; }
+.ec-tabla tr.anticipo-fila > td { background:var(--off-white); font-size:11px; color:var(--gray-600); }
+.ec-tabla tr.subtotal-fila > td { background:rgba(200,146,58,.1); font-weight:800; border-top:2px solid var(--gold); }
+.ec-tabla input.editable { border:1px dashed var(--gray-200); background:transparent; font-size:11px; width:100%; padding:2px 4px; font-family:'DM Sans',sans-serif; color:var(--navy); }
+.ec-tabla input.editable:focus { outline:none; border-color:var(--blue); background:#fff; }
+.chip-vencido { display:inline-block; background:rgba(192,57,43,.12); color:var(--red); font-size:9px; font-weight:800; padding:1px 6px; border-radius:8px; margin-left:4px; }
+
+@media print {
+  .no-print { display:none !important; }
+  body { background:#fff; }
+  .content { max-width:100%; padding:0; }
+  .wizard-card { box-shadow:none; border:1px solid #ccc; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="header no-print">
+    <div class="header-logo">
+      <div class="logo-mark">B</div>
+      <div><div class="logo-text">BarrCan</div><span class="logo-sub">Estado de Cuenta</span></div>
+    </div>
+    <div class="offline-badge"><span class="offline-dot"></span><span id="conn-status">Online</span></div>
+  </div>
+
+  <div class="content">
+    <div class="section-title no-print">📋 Estado de Cuenta por Cliente</div>
+    <div class="section-sub no-print">Elige un cliente para ver todas sus obras, anticipos y saldo pendiente.</div>
+
+    <div class="wizard-card no-print">
+      <label style="font-size:11px;font-weight:700;color:var(--gray-600);display:block;margin-bottom:6px">Buscar cliente</label>
+      <input type="text" id="ec-buscar" list="ec-clientes-lista" class="form-input" placeholder="Nombre o número de cliente (ej: Alberto González, o 26RC020)">
+      <datalist id="ec-clientes-lista"></datalist>
+      <button type="button" class="btn-buscar" onclick="ecBuscar()">Buscar</button>
+    </div>
+
+    <div id="ec-resultado"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+var APP_VERSION = 'v1.1';
+var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
+var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
+var _sbClient=null;
+function sb(){
+  if(!_sbClient&&window.supabase){
+    _sbClient=window.supabase.createClient(SB_URL,SB_KEY,{db:{schema:'barrcan'},auth:{persistSession:true,storageKey:'barrcan_auth'}});
+  }
+  return _sbClient;
+}
+window.addEventListener('online', function(){detectarConexion();});
+window.addEventListener('offline',function(){detectarConexion();});
+function detectarConexion(){var b=document.getElementById('conn-status');if(b)b.textContent=(navigator.onLine?'Online':'Offline')+' · '+APP_VERSION;}
+function esc(s){return (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function toast(msg,dur){dur=dur||2600;var el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');clearTimeout(el._t);el._t=setTimeout(function(){el.classList.remove('show');},dur);}
+function fmt(n){return Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function fechaCorta(f){ if(!f) return '—'; var p=f.split('-'); return p[2]+'/'+p[1]+'/'+p[0].slice(2); }
+
+// Extrae el num_cliente del sufijo del folio (mismo patrón que en
+// entregas.html) -- ej. "CACN-090B-260611-07RC012" -> "07RC012".
+function numClienteDeFolio(folio) {
+  var m = /-([0-9A-Z]+)$/.exec(folio || '');
+  return m ? m[1] : null;
+}
+
+async function ecCargarClientesDatalist() {
+  var dl = document.getElementById('ec-clientes-lista');
+  if (!sb()) return;
+  try {
+    var res = await sb().from('presupuestos_atrasados').select('cliente,folio').order('created_at', { ascending: false }).limit(300);
+    if (res.error) throw res.error;
+    var vistos = {};
+    var opciones = [];
+    (res.data || []).forEach(function(p) {
+      var key = (p.cliente || '').trim();
+      if (!key || vistos[key]) return;
+      vistos[key] = true;
+      var num = numClienteDeFolio(p.folio);
+      opciones.push('<option value="' + esc(p.cliente) + (num ? ' (' + num + ')' : '') + '">');
+    });
+    dl.innerHTML = opciones.join('');
+  } catch (e) { console.warn('[BarrCan] No se pudo cargar la lista de clientes:', e.message); }
+}
+
+// El número de factura NO vive en una columna aparte -- pagos.html lo
+// guarda mezclado dentro de "notas", como una de varias partes unidas
+// con " | " (ej: "CACN-087A | Cliente X | FAC:1422 | RECIBO:RB-003").
+// Aquí se extrae igual que ahí: buscar la parte que empieza con "FAC:".
+function extraerFacturaDeNotas(notas) {
+  if (!notas) return null;
+  var partes = notas.split(' | ');
+  for (var i = 0; i < partes.length; i++) {
+    if (partes[i].indexOf('FAC:') === 0) return partes[i].replace('FAC:', '').trim();
+  }
+  return null;
+}
+
+var EC_PRESUPUESTOS_CACHE = [];
+
+async function ecBuscar() {
+  var texto = document.getElementById('ec-buscar').value.trim();
+  if (!texto) { toast('Escribe un nombre o número de cliente'); return; }
+  var numClienteBuscado = null;
+  var nombreBuscado = texto;
+  var m = /^(.*)\s\(([0-9A-Z]+)\)$/.exec(texto);
+  if (m) { nombreBuscado = m[1].trim(); numClienteBuscado = m[2]; }
+
+  var resDiv = document.getElementById('ec-resultado');
+  resDiv.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">Buscando...</div>';
+  if (!sb()) { resDiv.innerHTML = ''; toast('Sin conexión'); return; }
+
+  try {
+    var query = sb().from('presupuestos_atrasados').select('*').eq('eliminado', false).order('fecha', { ascending: true });
+    if (numClienteBuscado) {
+      query = query.ilike('folio', '%-' + numClienteBuscado);
+    } else {
+      query = query.ilike('cliente', '%' + nombreBuscado + '%');
+    }
+    var res = await query;
+    if (res.error) throw res.error;
+
+    var presupuestos = res.data || [];
+    if (!presupuestos.length && numClienteBuscado) {
+      var res2 = await sb().from('presupuestos_atrasados').select('*').eq('eliminado', false).ilike('cliente', '%' + nombreBuscado + '%').order('fecha', { ascending: true });
+      if (!res2.error) presupuestos = res2.data || [];
+    }
+
+    if (!presupuestos.length) {
+      resDiv.innerHTML = '<div class="wizard-card" style="text-align:center;color:var(--gray-400)">No se encontraron obras para "' + esc(texto) + '"</div>';
+      return;
+    }
+
+    var ids = presupuestos.map(function(p) { return p.id; });
+    var resPagos = await sb().from('pagos').select('*').in('presupuesto_id', ids).order('fecha_pago', { ascending: true });
+    var pagosPorObra = {};
+    (resPagos.data || []).forEach(function(pg) {
+      if (!pagosPorObra[pg.presupuesto_id]) pagosPorObra[pg.presupuesto_id] = [];
+      pagosPorObra[pg.presupuesto_id].push(pg);
+    });
+
+    EC_PRESUPUESTOS_CACHE = presupuestos;
+    ecRenderTabla(presupuestos, pagosPorObra, texto);
+  } catch (e) {
+    resDiv.innerHTML = '<div class="wizard-card" style="color:var(--red)">Error: ' + esc(e.message) + '</div>';
+  }
+}
+
+function ecRenderTabla(presupuestos, pagosPorObra, tituloCliente) {
+  var totalMonto = 0, totalAnticipos = 0, totalSaldo = 0;
+  var filasHtml = presupuestos.map(function(p) {
+    var pagos = pagosPorObra[p.id] || [];
+    var anticiposObra = pagos.reduce(function(a, pg) { return a + (parseFloat(pg.monto) || 0); }, 0);
+    var monto = parseFloat(p.monto) || 0;
+    var saldo = parseFloat(p.saldo) || 0;
+    totalMonto += monto; totalAnticipos += anticiposObra; totalSaldo += saldo;
+
+    var filaObra = '<tr class="obra-fila">'
+      + '<td>' + esc(p.folio) + '</td>'
+      + '<td>' + fechaCorta(p.fecha) + '</td>'
+      + '<td>' + esc((p.descripcion || '').slice(0, 40)) + '</td>'
+      + '<td>$' + fmt(monto) + '</td>'
+      + '<td>—</td>'
+      + '<td>—</td>'
+      + '<td>$' + fmt(anticiposObra) + '</td>'
+      + '<td style="font-weight:800;color:' + (saldo > 0 ? 'var(--red)' : 'var(--green)') + '">$' + fmt(saldo) + '</td>'
+      + '<td>—</td>'
+      + '</tr>';
+
+    var filasAnticipos = pagos.map(function(pg) {
+      var factura = extraerFacturaDeNotas(pg.notas);
+      return '<tr class="anticipo-fila">'
+        + '<td colspan="3" style="text-align:right;padding-right:10px">↳ Anticipo</td>'
+        + '<td>$' + fmt(pg.monto) + '</td>'
+        + '<td>' + (factura ? esc(factura) : '—') + '</td>'
+        + '<td>' + fechaCorta(pg.fecha_pago) + '</td>'
+        + '<td></td>'
+        + '<td></td>'
+        + '<td>' + esc(pg.forma_pago || '—') + '</td>'
+        + '</tr>';
+    }).join('');
+
+    return filaObra + filasAnticipos;
+  }).join('');
+
+  var html = '<div class="wizard-card" id="ec-imprimir">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px" class="no-print">'
+    + '<div style="font-weight:700;color:var(--navy)">Estado de Cuenta de ' + esc(tituloCliente) + '</div>'
+    + '<button class="btn-imprimir" onclick="window.print()">🖨️ Imprimir / PDF</button>'
+    + '</div>'
+    + '<div style="overflow-x:auto">'
+    + '<table class="ec-tabla">'
+    + '<thead><tr><th>Folio</th><th>Fecha</th><th>Descripción</th><th>Monto / Anticipo</th><th>Factura</th><th>Fecha Pago</th><th>Anticipos (total)</th><th>Diferencia</th><th>Modo Pago</th></tr></thead>'
+    + '<tbody>' + filasHtml
+    + '<tr class="subtotal-fila"><td colspan="3">TOTAL</td><td>$' + fmt(totalMonto) + '</td><td colspan="2"></td><td>$' + fmt(totalAnticipos) + '</td><td>$' + fmt(totalSaldo) + '</td><td></td></tr>'
+    + '</tbody></table></div></div>';
+
+  document.getElementById('ec-resultado').innerHTML = html;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  detectarConexion();
+  ecCargarClientesDatalist();
+});
+</script>
+</body>
+</html>
