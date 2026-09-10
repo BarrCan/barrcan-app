@@ -6,6 +6,19 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.16
+  FECHA   : 2026-09-10
+  v1.16 - Nueva pestaña "🏗️ Asignar a obra": conecta el desglose
+    automático del motor de facturas (inventario_materiales,
+    origen='apps_script_xml') con el destino real del material, sin
+    volver a subir el XML. Por cada artículo ya comprado se puede
+    asignar una cantidad (parcial o total) a un folio de obra
+    específico -- si se asigna menos del total, el renglón original
+    se queda con el remanente como stock de bodega general y se crea
+    uno nuevo con la porción asignada (folio_obra). Requiere columna
+    nueva inventario_materiales.folio_obra (migración aplicada). No
+    usa cantidad_reservada -- esa se deja para cuando Bodega/Taller
+    retiren el material de verdad; aquí solo se aparta la intención.
   VERSION : v1.15
   FECHA   : 2026-09-09
   v1.15 - Gastos recurrentes de verdad automáticos -- pedido: seguros
@@ -309,6 +322,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     <button class="tab-btn" onclick="cmpTab(this,'precios')">Precios hist.</button>
     <button class="tab-btn" onclick="cmpTab(this,'proveedores')">Proveedores</button>
     <button class="tab-btn" onclick="cmpTab(this,'recurrentes')">🔁 Recurrentes</button>
+    <button class="tab-btn" onclick="cmpTab(this,'asignar')">🏗️ Asignar a obra</button>
   </div>
 
   <!-- TAB: FACTURAS -->
@@ -402,6 +416,24 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
       <div class="card-title">Historial de precios por material</div>
       <input type="text" class="form-input" id="prec-busca" placeholder="Clave o descripción..." oninput="cmpFiltrarPrecios()">
       <div id="prec-lista"><div style="text-align:center;padding:20px;color:var(--gray-400)">Ingresa una clave para buscar</div></div>
+    </div>
+  </div>
+
+  <!-- TAB: ASIGNAR MATERIAL A OBRA -->
+  <div id="tab-asignar" style="display:none">
+    <div class="card">
+      <div class="card-title">
+        Material sin asignar
+        <button class="btn btn-sm btn-primary" onclick="cmpCargarAsignar()">Actualizar</button>
+      </div>
+      <div style="font-size:11px;color:var(--gray-400);margin-bottom:10px">
+        Artículos ya desglosados por el motor de facturas, listos para separar entre una obra específica o dejarlos en bodega general.
+      </div>
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" class="form-input" id="asg-busca" placeholder="Clave, descripción, factura, proveedor..." oninput="cmpFiltrarAsignar()" style="margin-bottom:0">
+      </div>
+      <div id="asg-lista"><div style="text-align:center;padding:20px;color:var(--gray-400)">Cargando...</div></div>
     </div>
   </div>
 
@@ -648,6 +680,31 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
   </div>
 </div>
 
+<!-- Asignar un artículo de inventario (ya comprado) a una obra específica,
+     o dejarlo en bodega general. Permite asignar solo una parte de la
+     cantidad disponible -- el resto se queda como stock general. -->
+<div id="modal-asignar" class="modal-ov">
+  <div class="modal-box">
+    <div class="modal-titulo">🏗️ Asignar a obra</div>
+    <div id="asg-item-titulo" style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:2px"></div>
+    <div id="asg-item-sub" style="font-size:11px;color:var(--gray-400);margin-bottom:14px"></div>
+
+    <label class="form-label">Folio de la obra</label>
+    <input type="text" class="form-input" id="asg-folio" placeholder="Ej: B-1042 (déjalo vacío = bodega general)">
+
+    <label class="form-label">Cantidad a asignar (de <span id="asg-cant-max"></span> disponibles)</label>
+    <input type="number" class="form-input" id="asg-cantidad" min="0.01" step="0.01" inputmode="decimal">
+    <div style="font-size:10px;color:var(--gray-400);margin-top:-4px;margin-bottom:8px">
+      Si asignas menos del total, el resto se queda como stock de bodega sin obra.
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:8px">
+      <button class="btn btn-primary" style="flex:1" onclick="cmpGuardarAsignacion()">Asignar</button>
+      <button class="btn" style="border:1.5px solid var(--gray-200);color:var(--gray-600)" onclick="document.getElementById('modal-asignar').style.display='none'">Cancelar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Editar factura -- SOLO visible/usable para Mau (esSupremo()).
      Aplica igual a facturas con comprobante XML y a las "sin
      comprobante" (captura libre) -- ambas comparten la misma tabla. -->
@@ -740,7 +797,7 @@ var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
 
-var APP_VERSION = 'v1.15';
+var APP_VERSION = 'v1.16';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -781,7 +838,7 @@ var MC_PDF_FILE = null;     // archivo PDF seleccionado en modo manual
 function cmpTab(btn, tab) {
   document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
   btn.classList.add('active');
-  var tabs = ['facturas','inventario','herramientas','precios','proveedores','recurrentes'];
+  var tabs = ['facturas','inventario','herramientas','precios','proveedores','recurrentes','asignar'];
   tabs.forEach(function(t) {
     var el = document.getElementById('tab-' + t);
     if (el) el.style.display = t === tab ? 'block' : 'none';
@@ -790,6 +847,7 @@ function cmpTab(btn, tab) {
   if (tab === 'herramientas' && !HRR_CACHE.length)   cmpCargarHerramientas();
   if (tab === 'proveedores' && !PROV_CACHE.length)   cmpCargarProveedores();
   if (tab === 'recurrentes')                         cmpCargarRecurrentes();
+  if (tab === 'asignar')                             cmpCargarAsignar();
 }
 
 // ── Catbadge ─────────────────────────────────────────────────
@@ -1776,6 +1834,149 @@ function cmpFiltrarInventario() {
     filtrado.forEach(function(m) { html += renderItem(m); });
   }
   lista.innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════════════
+// ASIGNAR MATERIAL A OBRA — v1.16
+// Toma los artículos que el motor de facturas ya desglosó
+// (origen='apps_script_xml', sin obra asignada todavía) y permite
+// separar cuánto va a una obra específica vs. cuánto se queda en
+// bodega general, sin volver a subir el XML ni recapturar nada.
+// ══════════════════════════════════════════════════════════════
+var ASG_CACHE = [];
+var ASG_ITEM_ACTUAL = null;
+
+async function cmpCargarAsignar() {
+  var lista = document.getElementById('asg-lista');
+  lista.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">Cargando...</div>';
+  if (!sb()) return;
+  try {
+    var res = await sb().from('inventario_materiales')
+      .select('id,fecha_compra,proveedor,factura,clave_base,clave_cuprum,descripcion,color,tipo,cantidad,tipo_tramo,precio_compra,precio_inventario,margen_aplicado')
+      .eq('estado', 'Disponible')
+      .eq('origen', 'apps_script_xml')
+      .is('folio_obra', null)
+      .order('fecha_compra', { ascending: false })
+      .limit(300);
+    if (res.error) throw res.error;
+    SYNC.online = true; detectar();
+    ASG_CACHE = res.data || [];
+    cmpFiltrarAsignar();
+  } catch(e) {
+    SYNC.online = false; detectar();
+    lista.innerHTML = '<div style="text-align:center;padding:20px;color:var(--red)">Error al cargar</div>';
+  }
+}
+
+function cmpFiltrarAsignar() {
+  var busca = (document.getElementById('asg-busca').value || '').toLowerCase();
+  var lista = document.getElementById('asg-lista');
+  var filtrado = ASG_CACHE.filter(function(m) {
+    return !busca ||
+      (m.clave_base||'').toLowerCase().indexOf(busca) >= 0 ||
+      (m.descripcion||'').toLowerCase().indexOf(busca) >= 0 ||
+      (m.factura||'').toLowerCase().indexOf(busca) >= 0 ||
+      (m.proveedor||'').toLowerCase().indexOf(busca) >= 0;
+  });
+
+  if (!filtrado.length) {
+    lista.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">Sin material pendiente de asignar</div>';
+    return;
+  }
+
+  // Agrupar por factura+proveedor, igual que se recibieron
+  var grupos = {}; var orden = [];
+  filtrado.forEach(function(m) {
+    var key = m.proveedor + '|' + m.factura;
+    if (!grupos[key]) { grupos[key] = { proveedor: m.proveedor, factura: m.factura, fecha: m.fecha_compra, items: [] }; orden.push(key); }
+    grupos[key].items.push(m);
+  });
+
+  var html = '';
+  orden.forEach(function(key) {
+    var g = grupos[key];
+    html += '<div style="margin:14px 0 6px;padding:6px 4px;border-bottom:2px solid var(--navy)">'
+      + '<div style="font-weight:700;color:var(--navy);font-size:12px">' + esc(g.proveedor) + ' · ' + esc(g.factura) + '</div>'
+      + '<div style="font-size:10px;color:var(--gray-400)">' + esc(g.fecha||'') + ' · ' + g.items.length + ' artículo(s)</div>'
+      + '</div>';
+    g.items.forEach(function(m) {
+      var cant = parseFloat(m.cantidad||0);
+      var unidad = m.tipo_tramo && m.tipo_tramo !== '-' ? 'barras' : 'pza';
+      html += '<div class="inv-row">'
+        + '<div style="flex:1">'
+        + '<div class="inv-clave">' + esc(m.clave_base||'—') + ' <span class="badge-cat ' + catClass(m.tipo) + '">' + esc(m.tipo||'') + '</span></div>'
+        + '<div class="inv-desc">' + esc((m.descripcion||'').slice(0,55)) + '</div>'
+        + '<div class="inv-desc" style="color:var(--gray-400)">' + esc(m.color||'') + '</div>'
+        + '</div>'
+        + '<div style="text-align:right;min-width:70px">'
+        + '<div class="inv-cant stock-ok">' + fmtNum(cant) + ' ' + unidad + '</div>'
+        + '<button class="btn btn-sm btn-primary" style="margin-top:4px" onclick=\'cmpAbrirAsignar(' + JSON.stringify(m).replace(/'/g,"&#39;") + ')\'>Asignar</button>'
+        + '</div>'
+        + '</div>';
+    });
+  });
+  lista.innerHTML = html;
+}
+
+function cmpAbrirAsignar(item) {
+  ASG_ITEM_ACTUAL = item;
+  document.getElementById('asg-item-titulo').textContent = item.clave_base + ' — ' + (item.descripcion||'').slice(0,45);
+  document.getElementById('asg-item-sub').textContent = item.proveedor + ' · ' + item.factura + ' · ' + (item.color||'');
+  document.getElementById('asg-cant-max').textContent = fmtNum(item.cantidad) + (item.tipo_tramo && item.tipo_tramo !== '-' ? ' barras' : ' pza');
+  document.getElementById('asg-cantidad').value = item.cantidad;
+  document.getElementById('asg-cantidad').max  = item.cantidad;
+  document.getElementById('asg-folio').value = '';
+  document.getElementById('modal-asignar').style.display = 'flex';
+}
+
+async function cmpGuardarAsignacion() {
+  var item  = ASG_ITEM_ACTUAL;
+  if (!item) return;
+  var folio = document.getElementById('asg-folio').value.trim();
+  var cant  = parseFloat(document.getElementById('asg-cantidad').value) || 0;
+  var total = parseFloat(item.cantidad || 0);
+
+  if (!folio) { toast('Ingresa el folio de la obra (o cancela si es para bodega)'); return; }
+  if (cant <= 0 || cant > total) { toast('Cantidad inválida — máximo ' + fmtNum(total)); return; }
+  if (!sb()) { toast('Sin conexión'); return; }
+
+  try {
+    if (cant >= total) {
+      // Se asigna completo -- solo actualiza el renglón existente
+      var res = await sb().from('inventario_materiales')
+        .update({ folio_obra: folio })
+        .eq('id', item.id);
+      if (res.error) throw res.error;
+    } else {
+      // Asignación parcial -- se divide en dos renglones:
+      // el original se queda con el remanente (sigue en bodega general),
+      // uno nuevo se crea con la cantidad asignada a la obra.
+      var restante = total - cant;
+      var resUpd = await sb().from('inventario_materiales')
+        .update({ cantidad: restante })
+        .eq('id', item.id);
+      if (resUpd.error) throw resUpd.error;
+
+      var nuevo = {
+        fecha_compra: item.fecha_compra, proveedor: item.proveedor, factura: item.factura,
+        clave_base: item.clave_base, clave_cuprum: item.clave_cuprum || 'N/A',
+        descripcion: item.descripcion, color: item.color, tipo: item.tipo,
+        cantidad: cant, tipo_tramo: item.tipo_tramo, estado: 'Disponible',
+        precio_compra: item.precio_compra || null, precio_inventario: item.precio_inventario || null,
+        margen_aplicado: item.margen_aplicado || null,
+        origen: 'apps_script_xml', folio_obra: folio
+      };
+      var resIns = await sb().from('inventario_materiales').insert([nuevo]);
+      if (resIns.error) throw resIns.error;
+    }
+
+    toast('Asignado a ' + folio + ': ' + fmtNum(cant) + ' de ' + esc(item.clave_base));
+    document.getElementById('modal-asignar').style.display = 'none';
+    ASG_ITEM_ACTUAL = null;
+    cmpCargarAsignar();
+  } catch(e) {
+    toast('Error: ' + e.message);
+  }
 }
 
 // ── PRECIOS HISTÓRICOS ────────────────────────────────────────
