@@ -6,6 +6,18 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.15
+  FECHA   : 2026-09-09
+  v1.15 - Gastos recurrentes de verdad automáticos -- pedido: seguros
+    (hospitalario, auto, personal) que el banco ya cobra solo cada
+    mes, sin tener que capturarlos a mano cada vez. La casilla vieja
+    "es gasto recurrente" solo era una etiqueta, no generaba nada
+    solo -- ahora sí: nueva pestaña "🔁 Recurrentes" para dar de alta
+    la plantilla (proveedor, monto, día del mes), y un job en el
+    servidor (pg_cron, corre diario 9am) genera la factura real en
+    "Facturas recibidas" automáticamente el día que toca, sin
+    depender de que nadie abra la app. Probado: se genera una sola
+    vez por mes, no se duplica si el job corre varias veces.
   VERSION : v1.14
   FECHA   : 2026-09-05
   v1.14 - Cancelaciones y notas de crédito. Caso real: material mal
@@ -296,6 +308,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     <button class="tab-btn" onclick="cmpTab(this,'herramientas')">🧰 Herramientas</button>
     <button class="tab-btn" onclick="cmpTab(this,'precios')">Precios hist.</button>
     <button class="tab-btn" onclick="cmpTab(this,'proveedores')">Proveedores</button>
+    <button class="tab-btn" onclick="cmpTab(this,'recurrentes')">🔁 Recurrentes</button>
   </div>
 
   <!-- TAB: FACTURAS -->
@@ -436,6 +449,39 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
         <option value="HERRAMIENTAS">Herramientas</option>
       </select>
       <button class="btn btn-primary" style="width:100%" onclick="cmpGuardarProveedor()">Guardar proveedor</button>
+    </div>
+  </div>
+
+  <!-- TAB: RECURRENTES -->
+  <div id="tab-recurrentes" style="display:none">
+    <div class="card">
+      <div class="card-title">🔁 Gastos recurrentes activos</div>
+      <div style="font-size:11px;color:var(--gray-400);margin-bottom:10px">Se generan solos cada mes en "Facturas recibidas" -- no necesitas capturarlos a mano cada vez.</div>
+      <div id="rec-lista"><div style="text-align:center;padding:20px;color:var(--gray-400)">Cargando...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title" id="rec-form-titulo">Agregar gasto recurrente</div>
+      <input type="text" class="form-input" id="rec-proveedor" placeholder="Ej: Seguro Hospitalario, GNP">
+      <input type="text" class="form-input" id="rec-descripcion" placeholder="Descripción (opcional)">
+      <div class="form-row">
+        <input type="number" class="form-input" id="rec-monto" placeholder="Monto" step="0.01">
+        <select class="form-select" id="rec-moneda">
+          <option value="MXN">MXN</option>
+          <option value="USD">USD</option>
+        </select>
+      </div>
+      <select class="form-select" id="rec-categoria">
+        <option value="Suscripciones / Software">Suscripciones / Software</option>
+        <option value="Seguros">Seguros</option>
+        <option value="SERVICIOS">Servicios</option>
+        <option value="GASOLINA">Gasolina</option>
+      </select>
+      <label style="font-size:11px;color:var(--gray-600);display:block;margin-bottom:4px">Día del mes en que se cobra (1-28)</label>
+      <input type="number" class="form-input" id="rec-dia" placeholder="Ej: 5" min="1" max="28" value="1">
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-primary" style="flex:1.3" onclick="cmpGuardarRecurrente()">Guardar</button>
+        <button class="btn" id="rec-btn-cancelar" style="display:none;border:1.5px solid var(--gray-200);color:var(--gray-600)" onclick="cmpCancelarEdicionRecurrente()">Cancelar</button>
+      </div>
     </div>
   </div>
 </div>
@@ -694,7 +740,7 @@ var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
 
-var APP_VERSION = 'v1.14';
+var APP_VERSION = 'v1.15';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -735,7 +781,7 @@ var MC_PDF_FILE = null;     // archivo PDF seleccionado en modo manual
 function cmpTab(btn, tab) {
   document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
   btn.classList.add('active');
-  var tabs = ['facturas','inventario','herramientas','precios','proveedores'];
+  var tabs = ['facturas','inventario','herramientas','precios','proveedores','recurrentes'];
   tabs.forEach(function(t) {
     var el = document.getElementById('tab-' + t);
     if (el) el.style.display = t === tab ? 'block' : 'none';
@@ -743,6 +789,7 @@ function cmpTab(btn, tab) {
   if (tab === 'inventario' && !INV_CACHE.length)     cmpCargarInventario();
   if (tab === 'herramientas' && !HRR_CACHE.length)   cmpCargarHerramientas();
   if (tab === 'proveedores' && !PROV_CACHE.length)   cmpCargarProveedores();
+  if (tab === 'recurrentes')                         cmpCargarRecurrentes();
 }
 
 // ── Catbadge ─────────────────────────────────────────────────
@@ -1975,6 +2022,104 @@ async function cmpGuardarProveedor() {
   } catch(e) {
     toast('Error: ' + e.message);
   }
+}
+
+// ── GASTOS RECURRENTES ──────────────────────────────────────────
+// Plantillas que generan la factura real sola cada mes vía un job en
+// el servidor (pg_cron, corre diario a las 9am) -- no depende de que
+// alguien abra la app ese día. Aquí solo se administran las
+// plantillas (crear/editar/activar/desactivar), la generación real
+// vive en la función barrcan.generar_gastos_recurrentes_del_mes().
+var REC_EDITANDO_ID = null;
+var REC_CACHE = [];
+
+function cmpLimpiarFormRecurrente() {
+  REC_EDITANDO_ID = null;
+  document.getElementById('rec-form-titulo').textContent = 'Agregar gasto recurrente';
+  document.getElementById('rec-btn-cancelar').style.display = 'none';
+  document.getElementById('rec-proveedor').value = '';
+  document.getElementById('rec-descripcion').value = '';
+  document.getElementById('rec-monto').value = '';
+  document.getElementById('rec-moneda').value = 'MXN';
+  document.getElementById('rec-categoria').value = 'Suscripciones / Software';
+  document.getElementById('rec-dia').value = '1';
+}
+
+function cmpCancelarEdicionRecurrente() { cmpLimpiarFormRecurrente(); }
+
+async function cmpGuardarRecurrente() {
+  var proveedor = document.getElementById('rec-proveedor').value.trim();
+  var descripcion = document.getElementById('rec-descripcion').value.trim();
+  var monto = parseFloat(document.getElementById('rec-monto').value);
+  var moneda = document.getElementById('rec-moneda').value;
+  var categoria = document.getElementById('rec-categoria').value;
+  var dia = parseInt(document.getElementById('rec-dia').value, 10);
+
+  if (!proveedor) { toast('Falta el nombre del proveedor'); return; }
+  if (!monto || monto <= 0) { toast('Falta el monto'); return; }
+  if (!dia || dia < 1 || dia > 28) { toast('El día debe ser entre 1 y 28'); return; }
+  if (!sb()) return;
+
+  var payload = { proveedor: proveedor, descripcion: descripcion || null, monto: monto, moneda: moneda, categoria: categoria, dia_del_mes: dia };
+  try {
+    var res = REC_EDITANDO_ID
+      ? await sb().from('gastos_recurrentes').update(payload).eq('id', REC_EDITANDO_ID)
+      : await sb().from('gastos_recurrentes').insert([payload]);
+    if (res.error) throw res.error;
+    toast(REC_EDITANDO_ID ? '✅ Gasto recurrente actualizado' : '✅ Gasto recurrente agregado -- se generará solo cada mes');
+    cmpLimpiarFormRecurrente();
+    cmpCargarRecurrentes();
+  } catch (e) { toast('Error: ' + e.message); }
+}
+
+function cmpEditarRecurrente(id) {
+  var r = REC_CACHE.find(function(x) { return x.id === id; });
+  if (!r) return;
+  REC_EDITANDO_ID = id;
+  document.getElementById('rec-form-titulo').textContent = 'Editando: ' + r.proveedor;
+  document.getElementById('rec-btn-cancelar').style.display = 'inline-block';
+  document.getElementById('rec-proveedor').value = r.proveedor;
+  document.getElementById('rec-descripcion').value = r.descripcion || '';
+  document.getElementById('rec-monto').value = r.monto;
+  document.getElementById('rec-moneda').value = r.moneda;
+  document.getElementById('rec-categoria').value = r.categoria;
+  document.getElementById('rec-dia').value = r.dia_del_mes;
+  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+}
+
+async function cmpToggleActivoRecurrente(id, nuevoValor) {
+  if (!sb()) return;
+  try {
+    var res = await sb().from('gastos_recurrentes').update({ activo: nuevoValor }).eq('id', id);
+    if (res.error) throw res.error;
+    toast(nuevoValor ? '✅ Reactivado' : '🚫 Pausado -- ya no se va a generar solo');
+    cmpCargarRecurrentes();
+  } catch (e) { toast('Error: ' + e.message); }
+}
+
+async function cmpCargarRecurrentes() {
+  var cont = document.getElementById('rec-lista');
+  if (!sb()) return;
+  try {
+    var res = await sb().from('gastos_recurrentes').select('*').order('proveedor', { ascending: true });
+    if (res.error) throw res.error;
+    REC_CACHE = res.data || [];
+    if (!REC_CACHE.length) { cont.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:12px">Sin gastos recurrentes todavía</div>'; return; }
+    cont.innerHTML = REC_CACHE.map(function(r) {
+      var ultimaGen = r.ultima_generacion ? ('Generado por última vez: ' + r.ultima_generacion) : 'Aún no se ha generado';
+      return '<div style="background:#fff;border-radius:8px;padding:10px 12px;margin-bottom:8px;border-left:4px solid ' + (r.activo ? 'var(--green)' : 'var(--gray-200)') + (r.activo ? '' : ';opacity:.6') + '">'
+        + '<div style="display:flex;justify-content:space-between;align-items:flex-start">'
+        + '<div>'
+        + '<div style="font-weight:700;font-size:13px">' + r.proveedor + (r.activo ? '' : ' <span style="font-size:9.5px;color:var(--red);font-weight:800">PAUSADO</span>') + '</div>'
+        + '<div style="font-size:11px;color:var(--gray-600)">' + (r.moneda === 'USD' ? '$' + r.monto + ' USD' : '$' + r.monto + ' MXN') + ' · día ' + r.dia_del_mes + ' de cada mes · ' + r.categoria + '</div>'
+        + '<div style="font-size:10px;color:var(--gray-400);margin-top:2px">' + ultimaGen + '</div>'
+        + '</div></div>'
+        + '<div style="display:flex;gap:8px;margin-top:8px">'
+        + '<button class="btn" style="flex:1;padding:6px;font-size:10.5px;border:1.5px solid var(--gray-200)" onclick="cmpEditarRecurrente(\'' + r.id + '\')">✏️ Editar</button>'
+        + '<button class="btn" style="flex:1;padding:6px;font-size:10.5px;border:1.5px solid var(--gray-200)" onclick="cmpToggleActivoRecurrente(\'' + r.id + '\', ' + (!r.activo) + ')">' + (r.activo ? '⏸️ Pausar' : '▶️ Reactivar') + '</button>'
+        + '</div></div>';
+    }).join('');
+  } catch (e) { cont.innerHTML = '<div style="text-align:center;padding:14px;color:var(--red);font-size:12px">Error: ' + e.message + '</div>'; }
 }
 
 // ── INIT ──────────────────────────────────────────────────────
