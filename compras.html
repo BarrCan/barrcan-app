@@ -6,7 +6,7 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
-  VERSION : v1.16
+  VERSION : v1.17
   FECHA   : 2026-09-10
   v1.16 - Nueva pestaña "🏗️ Asignar a obra": conecta el desglose
     automático del motor de facturas (inventario_materiales,
@@ -690,8 +690,8 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     <div id="asg-item-sub" style="font-size:11px;color:var(--gray-400);margin-bottom:14px"></div>
 
     <label class="form-label">Folio de la obra</label>
-    <input type="text" class="form-input" id="asg-folio" placeholder="Ej: B-1042 (déjalo vacío = bodega general)">
-
+    <input type="text" class="form-input" id="asg-folio" list="asg-folio-lista" placeholder="Ej: B-1042 (déjalo vacío = bodega general)">
+    <datalist id="asg-folio-lista"></datalist>
     <label class="form-label">Cantidad a asignar (de <span id="asg-cant-max"></span> disponibles)</label>
     <input type="number" class="form-input" id="asg-cantidad" min="0.01" step="0.01" inputmode="decimal">
     <div style="font-size:10px;color:var(--gray-400);margin-top:-4px;margin-bottom:8px">
@@ -1930,6 +1930,7 @@ function cmpAbrirAsignar(item) {
 }
 
 async function cmpGuardarAsignacion() {
+async function cmpGuardarAsignacion() {
   var item  = ASG_ITEM_ACTUAL;
   if (!item) return;
   var folio = document.getElementById('asg-folio').value.trim();
@@ -1947,6 +1948,11 @@ async function cmpGuardarAsignacion() {
         .update({ folio_obra: folio })
         .eq('id', item.id);
       if (res.error) throw res.error;
+
+      // Actualizar caché local para que se refleje de inmediato
+      var idx = ASG_CACHE.findIndex(function(x){ return x.id === item.id; });
+      if (idx >= 0) ASG_CACHE[idx].folio_obra = folio;
+
     } else {
       // Asignación parcial -- se divide en dos renglones:
       // el original se queda con el remanente (sigue en bodega general),
@@ -1966,14 +1972,23 @@ async function cmpGuardarAsignacion() {
         margen_aplicado: item.margen_aplicado || null,
         origen: 'apps_script_xml', folio_obra: folio
       };
-      var resIns = await sb().from('inventario_materiales').insert([nuevo]);
+      var resIns = await sb().from('inventario_materiales').insert([nuevo]).select().single();
       if (resIns.error) throw resIns.error;
+
+      // Actualizar caché local: el original reduce su cantidad, y se agrega el nuevo renglón
+      var idx2 = ASG_CACHE.findIndex(function(x){ return x.id === item.id; });
+      if (idx2 >= 0) ASG_CACHE[idx2].cantidad = restante;
+      if (resIns.data) ASG_CACHE.push(resIns.data); // Agrega el nuevo renglón al caché
+
     }
 
     toast('Asignado a ' + folio + ': ' + fmtNum(cant) + ' de ' + esc(item.clave_base));
     document.getElementById('modal-asignar').style.display = 'none';
     ASG_ITEM_ACTUAL = null;
-    cmpCargarAsignar();
+    
+    // ¡Aquí estaba el problema! Faltaba refrescar la lista
+    cmpFiltrarAsignar(); 
+
   } catch(e) {
     toast('Error: ' + e.message);
   }
@@ -2332,10 +2347,18 @@ async function cmpCargarFoliosObra() {
   try {
     var res = await sb().from('presupuestos_atrasados').select('folio,cliente').order('folio', { ascending: false }).limit(300);
     if (res.error) throw res.error;
-    var dl = document.getElementById('mc-obra-lista');
-    if (dl) dl.innerHTML = (res.data || []).map(function(p) {
+    var opciones = (res.data || []).map(function(p) {
       return '<option value="' + esc(p.folio) + '">' + esc(p.cliente || '') + '</option>';
     }).join('');
+
+    // Llenar el datalist del modal de clasificación
+    var dlClasificar = document.getElementById('mc-obra-lista');
+    if (dlClasificar) dlClasificar.innerHTML = opciones;
+
+    // Llenar el datalist del modal de asignación
+    var dlAsignar = document.getElementById('asg-folio-lista');
+    if (dlAsignar) dlAsignar.innerHTML = opciones;
+
   } catch(e) { console.warn('[BarrCan] No se pudo cargar la lista de folios:', e); }
 }
 
