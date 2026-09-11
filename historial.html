@@ -6,6 +6,14 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.6
+  FECHA   : 2026-09-10
+  v3.6 - Se agrega el año junto al folio en la lista (ej. "200A · 2025")
+    sacado de p.fecha, que ya existía por presupuesto -- puramente
+    visual, no toca el folio real en ningún lado ni afecta a pagos.html,
+    entregas.html, garantias.html ni ordenes.html, que siguen buscando
+    por el folio tal cual. Resuelve confundir folios cortos que se
+    repiten de un año a otro sin necesidad de renombrar nada.
   VERSIÓN : v3.5
   FECHA   : 2026-09-04
   v3.5 - Agregado "adicionales" al selector de módulo (nuevo archivo
@@ -1418,7 +1426,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.5';
+var APP_VERSION = 'v3.6';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1627,11 +1635,19 @@ function presRenderLista(datos) {
       ? '<div style="font-size:10px;color:var(--gray-400)">Total $' + fmt(p.monto) + '</div>'
       : '';
     var idStr = (p.id || '').replace(/'/g, '');
+    // Año junto al folio -- solo visual, no toca el folio real en
+    // ningún lado. Ayuda a distinguir folios cortos (ej. "200A") que
+    // se repiten de un año a otro sin tener que renombrar nada.
+    var anioStr = '';
+    if (p.fecha) {
+      var anioM = String(p.fecha).match(/^(\d{4})/);
+      if (anioM) anioStr = ' <span style="color:var(--gray-400);font-weight:600">· ' + anioM[1] + '</span>';
+    }
     html += '<div style="padding:10px 0;border-bottom:1px solid var(--gray-200);' + bgPend + '">'
       + sincTag
       + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">'
       + '<div>'
-      + '<div style="font-size:12px;font-weight:700;color:var(--navy)">' + (p.folio || '&mdash;') + '</div>'
+      + '<div style="font-size:12px;font-weight:700;color:var(--navy)">' + (p.folio || '&mdash;') + anioStr + '</div>'
       + '<div style="font-size:13px;font-weight:600;color:var(--navy)">' + (p.cliente || '') + '</div>'
       + '<div style="font-size:10px;color:var(--gray-400)">' + (p.fecha || '') + telStr + '</div>'
       + '</div>'
