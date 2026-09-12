@@ -6,6 +6,19 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.18
+  FECHA   : 2026-09-12
+  v1.18 - Unificación de fuentes en la lista de Facturas: el badge y
+    la vista expandible ("Desglosada (varias obras)") ahora priorizan
+    inventario_materiales (lo que el motor de facturas ya desglosó
+    solo, sin subir XML) sobre el desglose manual viejo
+    (facturas_conceptos). El desglose manual se conserva como
+    respaldo únicamente para facturas que el motor no haya podido
+    procesar todavía. Nueva función cmpIrAsignarObra(): al dar clic
+    en el badge de una factura ya procesada por el motor, salta
+    directo a la pestaña "Asignar a obra" filtrada a esa factura --
+    ya no depende de resubir el XML para ver o corregir a qué obra
+    va cada artículo.
   VERSION : v1.17
   FECHA   : 2026-09-11
   v1.17 - Rediseño de "Asignar a obra" a pedido: la vista anterior
@@ -782,7 +795,7 @@ var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
 
-var APP_VERSION = 'v1.17';
+var APP_VERSION = 'v1.18';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -1080,6 +1093,31 @@ async function cmpCargarFacturas() {
       } catch(eItems) { console.warn('[BarrCan] No se pudo precargar el desglose de artículos:', eItems); }
     }
 
+    // FIX v1.18: unificación de fuentes -- el motor de facturas (Apps
+    // Script) ya desglosa automáticamente por artículo en
+    // inventario_materiales cada vez que llega un correo nuevo, sin
+    // que nadie suba el XML a mano. Se precarga aquí también, agrupado
+    // igual por factura+proveedor, para que la lista lo muestre solo,
+    // sin depender del desglose manual salvo como respaldo.
+    try {
+      var resAuto = await sb().from('inventario_materiales')
+        .select('id,factura,proveedor,clave_base,descripcion,cantidad,folio_obra')
+        .eq('origen', 'apps_script_xml')
+        .limit(3000);
+      if (!resAuto.error && resAuto.data) {
+        var porFacturaAuto = {};
+        resAuto.data.forEach(function(it) {
+          var key = it.proveedor + '|' + it.factura;
+          if (!porFacturaAuto[key]) porFacturaAuto[key] = [];
+          porFacturaAuto[key].push(it);
+        });
+        FACT_CACHE.forEach(function(f) {
+          var key = f.proveedor + '|' + f.folio_factura;
+          if (porFacturaAuto[key]) f.items_auto = porFacturaAuto[key];
+        });
+      }
+    } catch(eAuto) { console.warn('[BarrCan] No se pudo precargar el desglose automático:', eAuto); }
+
     // Stats
     var pnd = FACT_CACHE.filter(function(f) { return f.categoria === 'POR CLASIFICAR'; }).length;
     document.getElementById('stat-facturas').textContent = FACT_CACHE.length;
@@ -1161,12 +1199,27 @@ function cmpFiltrarFacturas() {
       + (function() {
           var args = "'" + f.id + "','" + esc(f.proveedor).replace(/'/g,"\\'") + "','" + esc(f.folio_factura).replace(/'/g,"\\'") + "','" + esc(f.categoria||'').replace(/'/g,"\\'") + "','" + esc(f.folio_obra||'').replace(/'/g,"\\'") + "'," + (f.desglosada?'true':'false') + "," + (parseFloat(f.total)||0) + ",'" + esc(f.rfc_emisor||'').replace(/'/g,"\\'") + "'";
           if (esPnd) return ' <span class="chip-pnd" onclick="cmpAbrirClasificar(' + args + ')">Clasificar →</span>';
+          // FIX v1.18: si el motor de facturas ya desglosó esto solo
+          // (inventario_materiales), se prioriza sobre el desglose
+          // manual -- ya no depende de resubir el XML.
+          if (f.items_auto && f.items_auto.length) {
+            var sinAsignar = f.items_auto.filter(function(it){ return !it.folio_obra; }).length;
+            var folioArg = "'" + esc(f.folio_factura).replace(/'/g,"\\'") + "'";
+            if (!sinAsignar) return ' <span class="chip-pnd" style="background:rgba(39,174,96,0.1);color:var(--green)" onclick="cmpIrAsignarObra(' + folioArg + ')">✓ Asignado (' + f.items_auto.length + ')</span>';
+            return ' <span class="chip-pnd" style="background:rgba(142,68,173,0.1);color:#8E44AD" onclick="cmpIrAsignarObra(' + folioArg + ')">&#127959; ' + sinAsignar + ' de ' + f.items_auto.length + ' sin asignar</span>';
+          }
           if (f.desglosada) return ' <span class="chip-pnd" style="background:rgba(142,68,173,0.1);color:#8E44AD" onclick="cmpAbrirClasificar(' + args + ')">&#127959; Desglosada (varias obras)</span>';
           if (f.folio_obra) return ' <span class="chip-pnd" style="background:rgba(46,109,164,0.1);color:var(--blue)" onclick="cmpAbrirClasificar(' + args + ')">&#127959; ' + esc(f.folio_obra) + '</span>';
           return ' <span class="chip-pnd" style="background:rgba(0,0,0,0.04);color:var(--gray-400)" onclick="cmpAbrirClasificar(' + args + ')">+ Asignar obra</span>';
         })()
       + '</div>'
-      + (f.desglosada && f.items_cache && f.items_cache.length
+      + (f.items_auto && f.items_auto.length
+          ? '<div style="margin-top:6px;padding:6px 8px;background:#F8F9FA;border-radius:6px;font-size:10px;color:var(--gray-600);line-height:1.6">'
+            + f.items_auto.map(function(it){
+                return '<div>' + esc(it.clave_base||it.descripcion) + ' (' + fmtNum(it.cantidad) + ') ' + (it.folio_obra ? ' <span style="color:var(--blue);font-weight:700">&#8594; ' + esc(it.folio_obra) + '</span>' : ' <span style="color:var(--gold)">(sin obra)</span>') + '</div>';
+              }).join('')
+            + '</div>'
+          : f.desglosada && f.items_cache && f.items_cache.length
           ? '<div style="margin-top:6px;padding:6px 8px;background:#F8F9FA;border-radius:6px;font-size:10px;color:var(--gray-600);line-height:1.6">'
             + f.items_cache.map(function(it){
                 return '<div>' + esc(it.descripcion) + (it.folio_obra ? ' <span style="color:var(--blue);font-weight:700">&#8594; ' + esc(it.folio_obra) + '</span>' : ' <span style="color:var(--gold)">(sin obra)</span>') + ' — ' + fmt(it.importe) + '</div>';
@@ -1830,18 +1883,32 @@ function cmpFiltrarInventario() {
 // ══════════════════════════════════════════════════════════════
 var ASG_CACHE = [];
 
-async function cmpCargarAsignar() {
+// NUEVO v1.18: salta desde la lista de Facturas directo a la pestaña
+// "Asignar a obra", filtrada a esta factura -- une las dos vistas en
+// un solo flujo en vez de abrir el modal viejo de captura manual.
+function cmpIrAsignarObra(folioFactura) {
+  var btn = document.querySelector('.tab-btn[onclick*="\'asignar\'"]');
+  if (btn) cmpTab(btn, 'asignar');
+  setTimeout(function() {
+    var input = document.getElementById('asg-busca');
+    if (input) input.value = folioFactura;
+    cmpCargarAsignar(folioFactura);
+  }, 50);
+}
+
+async function cmpCargarAsignar(soloFactura) {
   var lista = document.getElementById('asg-lista');
   lista.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">Cargando...</div>';
   if (!sb()) return;
   try {
-    var res = await sb().from('inventario_materiales')
-      .select('id,fecha_compra,proveedor,factura,clave_base,clave_cuprum,descripcion,color,tipo,cantidad,tipo_tramo,precio_compra,precio_inventario,margen_aplicado')
+    var q = sb().from('inventario_materiales')
+      .select('id,fecha_compra,proveedor,factura,clave_base,clave_cuprum,descripcion,color,tipo,cantidad,tipo_tramo,precio_compra,precio_inventario,margen_aplicado,folio_obra')
       .eq('estado', 'Disponible')
       .eq('origen', 'apps_script_xml')
-      .is('folio_obra', null)
       .order('fecha_compra', { ascending: false })
       .limit(300);
+    q = soloFactura ? q.eq('factura', soloFactura) : q.is('folio_obra', null);
+    var res = await q;
     if (res.error) throw res.error;
     SYNC.online = true; detectar();
     ASG_CACHE = res.data || [];
@@ -1888,22 +1955,23 @@ function cmpFiltrarAsignar() {
       var unidad = m.tipo_tramo && m.tipo_tramo !== '-' ? 'barras' : 'pza';
       var precioU = parseFloat(m.precio_compra||0);
       var idJson = JSON.stringify(m).replace(/'/g, "&#39;").replace(/"/g,'&quot;');
+      var yaAsignado = !!m.folio_obra;
       // Misma tarjeta que se usa al clasificar un XML (cmpRenderItems)
       // -- descripción completa, precio/importe visibles, folio y
       // cantidad editables ahí mismo, sin modal aparte.
-      html += '<div class="asg-card" style="border:1px solid var(--gray-200);border-radius:8px;padding:8px;margin-top:6px;background:#F8F9FA">'
+      html += '<div class="asg-card" style="border:1px solid ' + (yaAsignado?'var(--green)':'var(--gray-200)') + ';border-radius:8px;padding:8px;margin-top:6px;background:#F8F9FA">'
         + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
         + '<span style="font-size:10px;font-weight:700;color:var(--blue)">' + esc(m.clave_base||'—') + ' <span class="badge-cat ' + catClass(m.tipo) + '">' + esc(m.tipo||'') + '</span></span>'
-        + '<span style="font-size:10px;color:var(--gray-400)">' + fmtNum(cant) + ' ' + unidad + ' disponibles</span>'
+        + '<span style="font-size:10px;color:var(--gray-400)">' + fmtNum(cant) + ' ' + unidad + (yaAsignado?' (asignadas)':' disponibles') + '</span>'
         + '</div>'
         + '<div style="font-size:12px;color:var(--navy);margin-bottom:2px">' + esc(m.descripcion||'') + '</div>'
         + '<div style="font-size:10px;color:var(--gray-400);margin-bottom:6px">' + esc(m.color||'') + ' · $' + fmt(precioU) + ' c/u</div>'
         + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:5px">'
-        + '<input type="text" class="form-input asg-folio-input" list="mc-obra-lista" placeholder="Folio de la obra" style="font-size:12px;margin-bottom:0">'
+        + '<input type="text" class="form-input asg-folio-input" list="mc-obra-lista" placeholder="Folio de la obra" value="' + esc(m.folio_obra||'') + '" style="font-size:12px;margin-bottom:0">'
         + '<input type="number" class="form-input asg-cant-input" placeholder="Cantidad" value="' + cant + '" max="' + cant + '" min="0.01" step="0.01" style="font-size:12px;margin-bottom:0">'
         + '</div>'
         + '<div style="font-size:9px;color:var(--gray-400);margin-bottom:6px">Si asignas menos del total, el resto se queda como stock de bodega sin obra.</div>'
-        + '<button type="button" class="btn btn-sm btn-primary" style="width:100%" onclick=\'cmpGuardarAsignacionCard(this,' + idJson + ')\'>Asignar</button>'
+        + '<button type="button" class="btn btn-sm ' + (yaAsignado?'':'btn-primary') + '" style="width:100%' + (yaAsignado?';border:1.5px solid var(--green);color:var(--green)':'') + '" onclick=\'cmpGuardarAsignacionCard(this,' + idJson + ')\'>' + (yaAsignado?'Reasignar / cambiar folio':'Asignar') + '</button>'
         + '</div>';
     });
   });
