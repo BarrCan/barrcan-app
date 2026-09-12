@@ -6,6 +6,17 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.20
+  FECHA   : 2026-09-12
+  v1.20 - Ya no hace falta refrescar la hoja después de asignar:
+    (1) cmpCargarAsignar() recuerda si estabas viendo una factura
+    específica (ASG_FACTURA_ACTUAL) y vuelve a esa misma vista al
+    guardar, en vez de resetear siempre a "todo lo pendiente".
+    (2) Nueva cmpActualizarFacturaCacheLocal(): al guardar una
+    asignación, se refleja de inmediato en la caché de la pestaña
+    Facturas (FACT_CACHE) -- el badge y la lista expandible quedan
+    correctos aunque no vuelvas a abrir esa pestaña ni recargues la
+    página.
   VERSION : v1.19
   FECHA   : 2026-09-12
   v1.19 - Corrige dos problemas reales detectados en producción:
@@ -812,7 +823,7 @@ var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
 
-var APP_VERSION = 'v1.19';
+var APP_VERSION = 'v1.20';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -1903,6 +1914,7 @@ function cmpFiltrarInventario() {
 // bodega general, sin volver a subir el XML ni recapturar nada.
 // ══════════════════════════════════════════════════════════════
 var ASG_CACHE = [];
+var ASG_FACTURA_ACTUAL = null;
 
 // NUEVO v1.18: salta desde la lista de Facturas directo a la pestaña
 // "Asignar a obra", filtrada a esta factura -- une las dos vistas en
@@ -1918,6 +1930,7 @@ function cmpIrAsignarObra(folioFactura) {
 }
 
 async function cmpCargarAsignar(soloFactura) {
+  ASG_FACTURA_ACTUAL = soloFactura || null;
   var lista = document.getElementById('asg-lista');
   lista.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">Cargando...</div>';
   if (!sb()) return;
@@ -2014,6 +2027,7 @@ async function cmpGuardarAsignacionCard(btn, item) {
     if (cant >= total) {
       var res = await sb().from('inventario_materiales').update({ folio_obra: folio }).eq('id', item.id);
       if (res.error) throw res.error;
+      cmpActualizarFacturaCacheLocal(item, folio, cant, false);
     } else {
       var restante = total - cant;
       var resUpd = await sb().from('inventario_materiales').update({ cantidad: restante }).eq('id', item.id);
@@ -2028,15 +2042,41 @@ async function cmpGuardarAsignacionCard(btn, item) {
         margen_aplicado: item.margen_aplicado || null,
         origen: 'apps_script_xml', folio_obra: folio
       };
-      var resIns = await sb().from('inventario_materiales').insert([nuevo]);
+      var resIns = await sb().from('inventario_materiales').insert([nuevo]).select();
       if (resIns.error) throw resIns.error;
+      cmpActualizarFacturaCacheLocal(item, folio, cant, true, (resIns.data && resIns.data[0]) || nuevo, restante);
     }
     toast('Asignado a ' + folio + ': ' + fmtNum(cant) + ' de ' + esc(item.clave_base));
-    cmpCargarAsignar();
+    // FIX v1.20: ya no depende de refrescar la hoja -- se refresca la
+    // vista de Asignar (respetando si estabas viendo una factura
+    // específica) y se actualiza el badge de Facturas en caliente,
+    // aunque no estés viendo esa pestaña en este momento.
+    cmpCargarAsignar(ASG_FACTURA_ACTUAL);
   } catch(e) {
     toast('Error: ' + e.message);
     btn.disabled = false;
   }
+}
+
+// NUEVO v1.20: refleja de inmediato en FACT_CACHE (la pestaña Facturas)
+// lo que se acaba de guardar en inventario_materiales, sin esperar a
+// que alguien recargue la página o vuelva a abrir esa pestaña.
+function cmpActualizarFacturaCacheLocal(item, folio, cantAsignada, huboSplit, nuevoRegistro, cantidadRestante) {
+  var f = FACT_CACHE.filter(function(x) { return x.proveedor === item.proveedor && x.folio_factura === item.factura; })[0];
+  if (!f || !f.items_auto) return;
+  var idx = f.items_auto.findIndex(function(it) { return it.id === item.id; });
+  if (idx === -1) return;
+  if (!huboSplit) {
+    f.items_auto[idx].folio_obra = folio;
+  } else {
+    f.items_auto[idx].cantidad = cantidadRestante;
+    f.items_auto.push({
+      id: nuevoRegistro.id || ('local-' + Date.now()),
+      clave_base: item.clave_base, descripcion: item.descripcion,
+      cantidad: cantAsignada, folio_obra: folio
+    });
+  }
+  cmpFiltrarFacturas();
 }
 
 // ── PRECIOS HISTÓRICOS ────────────────────────────────────────
