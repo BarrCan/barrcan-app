@@ -6,6 +6,23 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.19
+  FECHA   : 2026-09-12
+  v1.19 - Corrige dos problemas reales detectados en producción:
+    1. inventario_materiales nunca tuvo política RLS de escritura
+       para el rol anon (el que usa el navegador) -- por eso
+       "Asignar a obra" (v1.16-1.18) parecía no guardar nada: Postgres
+       bloqueaba el UPDATE en silencio, sin error visible. Se agregó
+       la política en Supabase (mismo patrón que ya tenían
+       facturas_conceptos/facturas_recibidas/presupuestos_atrasados).
+    2. FIX del propio v1.18: la vista automática (inventario_materiales)
+       tapaba el desglose manual viejo (facturas_conceptos) aunque ese
+       ya tuviera folios de obra reales guardados -- daba la impresión
+       de que se había borrado un registro que en realidad seguía
+       intacto en la base, solo oculto por la prioridad equivocada.
+       Ahora el desglose manual existente manda si ya hay uno; lo
+       automático solo aparece cuando la factura no tiene ningún
+       desglose manual todavía.
   VERSION : v1.18
   FECHA   : 2026-09-12
   v1.18 - Unificación de fuentes en la lista de Facturas: el badge y
@@ -795,7 +812,7 @@ var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
 
-var APP_VERSION = 'v1.18';
+var APP_VERSION = 'v1.19';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -1199,30 +1216,34 @@ function cmpFiltrarFacturas() {
       + (function() {
           var args = "'" + f.id + "','" + esc(f.proveedor).replace(/'/g,"\\'") + "','" + esc(f.folio_factura).replace(/'/g,"\\'") + "','" + esc(f.categoria||'').replace(/'/g,"\\'") + "','" + esc(f.folio_obra||'').replace(/'/g,"\\'") + "'," + (f.desglosada?'true':'false') + "," + (parseFloat(f.total)||0) + ",'" + esc(f.rfc_emisor||'').replace(/'/g,"\\'") + "'";
           if (esPnd) return ' <span class="chip-pnd" onclick="cmpAbrirClasificar(' + args + ')">Clasificar →</span>';
-          // FIX v1.18: si el motor de facturas ya desglosó esto solo
-          // (inventario_materiales), se prioriza sobre el desglose
-          // manual -- ya no depende de resubir el XML.
+          // FIX v1.19: si esta factura YA tenía desglose manual guardado
+          // (facturas_conceptos, el sistema viejo), eso manda -- es
+          // trabajo real ya hecho, no se tapa con la vista automática
+          // aunque exista. Lo automático solo aparece cuando no hay
+          // nada manual todavía (caso normal para facturas nuevas).
+          if (f.desglosada && f.items_cache && f.items_cache.length) {
+            return ' <span class="chip-pnd" style="background:rgba(142,68,173,0.1);color:#8E44AD" onclick="cmpAbrirClasificar(' + args + ')">&#127959; Desglosada (varias obras)</span>';
+          }
           if (f.items_auto && f.items_auto.length) {
             var sinAsignar = f.items_auto.filter(function(it){ return !it.folio_obra; }).length;
             var folioArg = "'" + esc(f.folio_factura).replace(/'/g,"\\'") + "'";
             if (!sinAsignar) return ' <span class="chip-pnd" style="background:rgba(39,174,96,0.1);color:var(--green)" onclick="cmpIrAsignarObra(' + folioArg + ')">✓ Asignado (' + f.items_auto.length + ')</span>';
             return ' <span class="chip-pnd" style="background:rgba(142,68,173,0.1);color:#8E44AD" onclick="cmpIrAsignarObra(' + folioArg + ')">&#127959; ' + sinAsignar + ' de ' + f.items_auto.length + ' sin asignar</span>';
           }
-          if (f.desglosada) return ' <span class="chip-pnd" style="background:rgba(142,68,173,0.1);color:#8E44AD" onclick="cmpAbrirClasificar(' + args + ')">&#127959; Desglosada (varias obras)</span>';
           if (f.folio_obra) return ' <span class="chip-pnd" style="background:rgba(46,109,164,0.1);color:var(--blue)" onclick="cmpAbrirClasificar(' + args + ')">&#127959; ' + esc(f.folio_obra) + '</span>';
           return ' <span class="chip-pnd" style="background:rgba(0,0,0,0.04);color:var(--gray-400)" onclick="cmpAbrirClasificar(' + args + ')">+ Asignar obra</span>';
         })()
       + '</div>'
-      + (f.items_auto && f.items_auto.length
-          ? '<div style="margin-top:6px;padding:6px 8px;background:#F8F9FA;border-radius:6px;font-size:10px;color:var(--gray-600);line-height:1.6">'
-            + f.items_auto.map(function(it){
-                return '<div>' + esc(it.clave_base||it.descripcion) + ' (' + fmtNum(it.cantidad) + ') ' + (it.folio_obra ? ' <span style="color:var(--blue);font-weight:700">&#8594; ' + esc(it.folio_obra) + '</span>' : ' <span style="color:var(--gold)">(sin obra)</span>') + '</div>';
-              }).join('')
-            + '</div>'
-          : f.desglosada && f.items_cache && f.items_cache.length
+      + (f.desglosada && f.items_cache && f.items_cache.length
           ? '<div style="margin-top:6px;padding:6px 8px;background:#F8F9FA;border-radius:6px;font-size:10px;color:var(--gray-600);line-height:1.6">'
             + f.items_cache.map(function(it){
                 return '<div>' + esc(it.descripcion) + (it.folio_obra ? ' <span style="color:var(--blue);font-weight:700">&#8594; ' + esc(it.folio_obra) + '</span>' : ' <span style="color:var(--gold)">(sin obra)</span>') + ' — ' + fmt(it.importe) + '</div>';
+              }).join('')
+            + '</div>'
+          : f.items_auto && f.items_auto.length
+          ? '<div style="margin-top:6px;padding:6px 8px;background:#F8F9FA;border-radius:6px;font-size:10px;color:var(--gray-600);line-height:1.6">'
+            + f.items_auto.map(function(it){
+                return '<div>' + esc(it.clave_base||it.descripcion) + ' (' + fmtNum(it.cantidad) + ') ' + (it.folio_obra ? ' <span style="color:var(--blue);font-weight:700">&#8594; ' + esc(it.folio_obra) + '</span>' : ' <span style="color:var(--gold)">(sin obra)</span>') + '</div>';
               }).join('')
             + '</div>'
           : '')
