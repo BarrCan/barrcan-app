@@ -6,6 +6,17 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.7
+  FECHA   : 2026-09-12
+  v3.7 - Nuevo campo opcional "Año a mostrar" (anio_referencia) en el
+    modal Editar, separado de "Fecha". Cuando se captura, gana sobre
+    el año sacado de fecha para el badge junto al folio (v3.6) -- útil
+    para un folio viejo (ej. "200A" de 2025) que el cliente retoma
+    este año: puedes actualizar costos y fecha de actividad sin que
+    el año mostrado cambie, o viceversa. No afecta fecha real ni los
+    reportes de "Por periodo" en costos.html, que siguen usando fecha
+    tal cual. Requiere columna nueva
+    presupuestos_atrasados.anio_referencia (migración aplicada).
   VERSIÓN : v3.6
   FECHA   : 2026-09-10
   v3.6 - Se agrega el año junto al folio en la lista (ej. "200A · 2025")
@@ -1335,6 +1346,14 @@ body{min-height:100vh}
       </div>
     </div>
 
+    <div class="form-row">
+      <div class="form-group" style="flex:1">
+        <label class="form-label">Año a mostrar (opcional)</label>
+        <input type="number" id="pres-anio-ref" class="form-input" placeholder="Solo si difiere del año de la fecha" min="2000" max="2100" inputmode="numeric">
+        <div style="font-size:10px;color:var(--gray-400);margin-top:2px">Para distinguir un folio que se sigue atendiendo en otro año (ej. "200A" de 2025 retomado en 2026). No afecta la fecha real ni los reportes de Costos.</div>
+      </div>
+    </div>
+
     <label class="form-label">Direccion de obra</label>
     <input type="text" id="pres-dir" class="form-input" placeholder="Calle, colonia, municipio">
 
@@ -1426,7 +1445,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.6';
+var APP_VERSION = 'v3.7';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1516,7 +1535,7 @@ async function presCargar() {
 
   try {
     var result = await sb().from('presupuestos_atrasados')
-      .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,fecha,estado,notas_internas,modulo,created_at')
+      .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,fecha,anio_referencia,estado,notas_internas,modulo,created_at')
       .order('folio', { ascending: true })
       .range(0, 499);
 
@@ -1636,13 +1655,16 @@ function presRenderLista(datos) {
       : '';
     var idStr = (p.id || '').replace(/'/g, '');
     // Año junto al folio -- solo visual, no toca el folio real en
-    // ningún lado. Ayuda a distinguir folios cortos (ej. "200A") que
-    // se repiten de un año a otro sin tener que renombrar nada.
+    // ningún lado. Si hay anio_referencia capturado a mano, gana sobre
+    // el año de "fecha" (permite distinguir un folio viejo que se
+    // sigue atendiendo en otro año sin mover la fecha real).
     var anioStr = '';
-    if (p.fecha) {
+    var anioMostrar = p.anio_referencia || null;
+    if (!anioMostrar && p.fecha) {
       var anioM = String(p.fecha).match(/^(\d{4})/);
-      if (anioM) anioStr = ' <span style="color:var(--gray-400);font-weight:600">· ' + anioM[1] + '</span>';
+      if (anioM) anioMostrar = anioM[1];
     }
+    if (anioMostrar) anioStr = ' <span style="color:var(--gray-400);font-weight:600">· ' + anioMostrar + '</span>';
     html += '<div style="padding:10px 0;border-bottom:1px solid var(--gray-200);' + bgPend + '">'
       + sincTag
       + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">'
@@ -1751,7 +1773,7 @@ function presAbrirNuevo() {
 
   var hoy = new Date().toISOString().split('T')[0];
   var campos = ['pres-num','pres-cliente','pres-tel','pres-dir','pres-desc','pres-notas',
-                'pres-monto','pres-saldo','pres-numcli'];
+                'pres-monto','pres-saldo','pres-numcli','pres-anio-ref'];
   campos.forEach(function(id) {
     var el = document.getElementById(id);
     if (el) el.value = '';
@@ -2093,6 +2115,7 @@ function presEditar(id) {
   setVal('pres-saldo',   p.saldo);
   setVal('pres-desc',    p.descripcion);
   setVal('pres-fecha',   p.fecha);
+  setVal('pres-anio-ref', p.anio_referencia);
   setVal('pres-estado',  p.estado || 'activo');
   setVal('pres-notas',   '');
   presRenderConceptos(p.notas_internas);
@@ -2223,7 +2246,8 @@ async function presGuardar() {
     saldo:       parseFloat(getVal('pres-saldo')) || 0,
     descripcion: getVal('pres-desc')   || null,
     estado:      getVal('pres-estado') || 'activo',
-    fecha:       getVal('pres-fecha')  || null
+    fecha:       getVal('pres-fecha')  || null,
+    anio_referencia: getVal('pres-anio-ref') ? parseInt(getVal('pres-anio-ref'), 10) : null
   };
   if (PRES_CONCEPTOS.length) {
     datos.notas_internas = JSON.stringify(PRES_CONCEPTOS.map(function(p) {
