@@ -6,6 +6,13 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.19
+  FECHA   : 2026-09-13
+  v4.19 — "Por Facturar" ahora muestra el número de recibo (extraído
+    de "RECIBO:RB-xxx" dentro de notas) en cada tarjeta -- con fecha y
+    monto no bastaba para identificar a qué pago corresponde. Si un
+    pago no tiene ese patrón en sus notas, simplemente no muestra la
+    línea (no rompe nada).
   VERSIÓN : v4.18
   FECHA   : 2026-09-13
   v4.18 — En "Por Facturar", el campo de folio fiscal se separó en
@@ -1153,7 +1160,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.18';
+var APP_VERSION = 'v4.19';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -1703,7 +1710,7 @@ async function porFacturarCargar() {
   if (!sb()) return;
   try {
     var res = await sb().from('pagos')
-      .select('id,monto,fecha_pago,cliente_nombre_ref,folio_referencia,concepto')
+      .select('id,monto,fecha_pago,cliente_nombre_ref,folio_referencia,concepto,notas')
       .eq('facturado', false)
       .order('fecha_pago', { ascending: true })
       .limit(200);
@@ -1719,11 +1726,14 @@ async function porFacturarCargar() {
 
     lista.innerHTML = pagosPend.map(function(p) {
       var idJs = "'" + p.id + "'";
+      var mRecibo = (p.notas || '').match(/RECIBO:\s*([A-Za-z0-9\-]+)/);
+      var recibo = mRecibo ? mRecibo[1] : null;
       return '<div style="border:1px solid var(--gray-200);border-radius:8px;padding:8px;margin-bottom:6px;background:#F8F9FA">'
         + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
         + '<span style="font-size:12px;font-weight:700;color:var(--navy)">' + esc(p.cliente_nombre_ref || '\u2014') + '</span>'
         + '<span style="font-size:11px;color:var(--gray-400)">' + (p.fecha_pago || '') + '</span>'
         + '</div>'
+        + (recibo ? '<div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:2px">\u2022 ' + esc(recibo) + '</div>' : '')
         + '<div style="font-size:10.5px;color:var(--gray-600);margin-bottom:6px">' + esc(p.folio_referencia || '') + (p.concepto ? ' · ' + esc(p.concepto) : '') + ' · <b>$' + fmt(p.monto) + '</b></div>'
         + '<div style="display:flex;gap:5px">'
         + '<select class="form-input pf-serie-select" style="font-size:11px;margin-bottom:0;flex:0 0 auto;width:auto;padding:7px 4px">'
