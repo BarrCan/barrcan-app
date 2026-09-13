@@ -6,6 +6,22 @@
 <title>BarrCan · Reportes</title>
 <!--
   BARRCAN · MODULO: REPORTES (standalone)
+  VERSION : v3.0
+  FECHA   : 2026-09-13
+  v3.0 - Nueva pestaña "🧾 Balance Fiscal", a pedido: estimado
+    PRELIMINAR de IVA (mes en curso) e ISR provisional acumulado
+    (Actividad Empresarial, Régimen General, persona física) --
+    banner de aviso fijo en pantalla: no sustituye el cálculo de un
+    contador. IVA: cobrado del mes (de pagos, asumiendo 16% incluido)
+    menos acreditable de facturas_recibidas. ISR: ingresos acumulados
+    desde enero (flujo de efectivo, sin IVA) menos deducciones
+    acumuladas (subtotal de facturas_recibidas), tarifa oficial Art.
+    96 LISR 2026 (Anexo 8 RMF, DOF 28-12-2025) escalada por el número
+    de meses transcurridos, menos el ISR provisional ya pagado este
+    año -- este último dato se captura a mano (no vive en ningún
+    lado del sistema) y se guarda en la tabla nueva fiscal_config
+    para no perderlo entre sesiones/dispositivos (a diferencia del
+    error de localStorage en costos.html).
   VERSION : v2.9
   FECHA   : 2026-09-05
   v2.9 - Acompaña a compras.html v1.14 (cancelaciones y notas de
@@ -328,6 +344,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     <button class="tab-btn" onclick="rpTab(this,'material')">📦 Material</button>
     <button class="tab-btn" onclick="rpTab(this,'clientes')">👥 Clientes</button>
     <button class="tab-btn" onclick="rpTab(this,'internos')">🏠 Gastos Internos</button>
+    <button class="tab-btn" onclick="rpTab(this,'fiscal')">🧾 Balance Fiscal</button>
   </div>
 
   <!-- TAB: FLUJO DE CAJA -->
@@ -469,10 +486,33 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
       <div id="rp-int-lista"></div>
     </div>
   </div>
+
+  <!-- TAB: BALANCE FISCAL -->
+  <div id="tab-fiscal" style="display:none">
+    <div style="font-size:11px;color:var(--red);background:rgba(192,57,43,0.06);border:1px solid rgba(192,57,43,0.25);border-radius:8px;padding:10px;margin-bottom:12px;line-height:1.5">
+      ⚠️ <b>Estimado preliminar para tu propia estrategia, NO es un cálculo fiscal definitivo.</b> No sustituye a tu contador ni la declaración oficial ante el SAT — úsalo solo para saber cómo vas, no para presentar nada.
+    </div>
+
+    <div class="card">
+      <div class="card-title">IVA del mes en curso</div>
+      <div id="rp-fiscal-iva"><div style="text-align:center;padding:14px;color:var(--gray-400)">Cargando...</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">ISR provisional acumulado (Actividad Empresarial — Régimen General)</div>
+      <div style="font-size:10px;color:var(--gray-400);margin-bottom:8px">Ingresos acumulados (enero al mes actual, ya cobrados) − Deducciones autorizadas acumuladas = Utilidad fiscal. Se aplica la tarifa del Art. 96 LISR 2026 multiplicada por el número de meses transcurridos, menos lo que ya pagaste este año.</div>
+      <label class="form-label" style="font-size:10.5px">ISR provisional ya pagado este año (enero al mes anterior)</label>
+      <div style="display:flex;gap:6px;margin-bottom:10px">
+        <input type="number" id="fiscal-isr-pagado" class="form-input" placeholder="0.00" style="margin-bottom:0;flex:1">
+        <button class="btn btn-sm btn-primary" onclick="fiscalGuardarISRPagado()">Guardar</button>
+      </div>
+      <div id="rp-fiscal-isr"><div style="text-align:center;padding:14px;color:var(--gray-400)">Cargando...</div></div>
+    </div>
+  </div>
 </div>
 </body>
 <script>
-var APP_VERSION = 'v2.9';
+var APP_VERSION = 'v3.0';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb=null;
@@ -511,7 +551,7 @@ var RP_OBRAS_CACHE = {};
 function rpTab(btn,tab) {
   document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active');});
   btn.classList.add('active');
-  ['flujo','obras','ganancia','material','clientes','internos'].forEach(function(t){
+  ['flujo','obras','ganancia','material','clientes','internos','fiscal'].forEach(function(t){
     var el=document.getElementById('tab-'+t);
     if(el) el.style.display=t===tab?'block':'none';
   });
@@ -525,6 +565,7 @@ function rpCargarTab(tab) {
   if(tab==='material') rpCargarMaterial();
   if(tab==='clientes') rpCargarClientes();
   if(tab==='internos') rpCargarInternos();
+  if(tab==='fiscal') fiscalCargar();
 }
 
 // ── Init periodo ──────────────────────────────────────────────
@@ -1415,6 +1456,128 @@ async function rpCargarInternos() {
     SYNC.online = true; detectar();
   } catch(e) {
     SYNC.online = false; detectar();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// BALANCE FISCAL — v3.0
+// Estimado preliminar de IVA e ISR provisional (Actividad
+// Empresarial, Régimen General, persona física). NO sustituye el
+// cálculo de un contador ni la declaración oficial -- ver aviso en
+// pantalla. Metodología: tarifa oficial Art. 96 LISR vigente 2026
+// (Anexo 8 RMF, DOF 28-12-2025), aplicada de forma acumulada desde
+// enero y multiplicada por el número de meses transcurridos, menos
+// los pagos provisionales ya hechos este año (capturados a mano,
+// porque no viven en ningún lado del sistema).
+// ══════════════════════════════════════════════════════════════
+var TARIFA_ART96_2026 = [
+  { min: 0.01,      max: 844.59,      cuota: 0.00,      tasa: 0.0192 },
+  { min: 844.60,    max: 7168.51,     cuota: 16.22,     tasa: 0.0640 },
+  { min: 7168.52,   max: 12598.02,    cuota: 420.95,    tasa: 0.1088 },
+  { min: 12598.03,  max: 14644.64,    cuota: 1011.68,   tasa: 0.1600 },
+  { min: 14644.65,  max: 17533.64,    cuota: 1339.14,   tasa: 0.1792 },
+  { min: 17533.65,  max: 35362.83,    cuota: 1856.84,   tasa: 0.2136 },
+  { min: 35362.84,  max: 55736.68,    cuota: 5665.16,   tasa: 0.2352 },
+  { min: 55736.69,  max: 106410.50,   cuota: 10457.09,  tasa: 0.3000 },
+  { min: 106410.51, max: 141880.66,   cuota: 25659.23,  tasa: 0.3200 },
+  { min: 141880.67, max: 425641.99,   cuota: 37009.69,  tasa: 0.3400 },
+  { min: 425642.00, max: Infinity,    cuota: 133488.54, tasa: 0.3500 }
+];
+
+function calcularISRAcumulado(baseGravable, numMeses) {
+  if (baseGravable <= 0) return 0;
+  // Se escala cada renglón de la tarifa mensual por el número de
+  // meses transcurridos -- así es como el Art. 96 se aplica a un
+  // periodo acumulado, no solo a un mes suelto.
+  for (var i = 0; i < TARIFA_ART96_2026.length; i++) {
+    var r = TARIFA_ART96_2026[i];
+    var minEsc = r.min * numMeses;
+    var maxEsc = r.max === Infinity ? Infinity : r.max * numMeses;
+    if (baseGravable >= minEsc && baseGravable <= maxEsc) {
+      var cuotaEsc = r.cuota * numMeses;
+      return (baseGravable - minEsc) * r.tasa + cuotaEsc;
+    }
+  }
+  return 0;
+}
+
+async function fiscalCargar() {
+  var divIva = document.getElementById('rp-fiscal-iva');
+  var divIsr = document.getElementById('rp-fiscal-isr');
+  divIva.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400)">Cargando...</div>';
+  divIsr.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400)">Cargando...</div>';
+  if (!sb()) return;
+
+  try {
+    var hoy = new Date();
+    var inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0];
+    var inicioAnio = hoy.getFullYear() + '-01-01';
+    var numMeses = hoy.getMonth() + 1;
+
+    // ── IVA del mes ──
+    var resPagosMes = await sb().from('pagos').select('monto').gte('fecha_pago', inicioMes);
+    var cobradoMes = (resPagosMes.data || []).reduce(function(a, p) { return a + (parseFloat(p.monto) || 0); }, 0);
+    var ivaTrasladado = cobradoMes - (cobradoMes / 1.16);
+
+    var resFacturasMes = await sb().from('facturas_recibidas').select('iva').gte('fecha', inicioMes);
+    var ivaAcreditable = (resFacturasMes.data || []).reduce(function(a, f) { return a + (parseFloat(f.iva) || 0); }, 0);
+    var ivaResultado = ivaTrasladado - ivaAcreditable;
+
+    divIva.innerHTML = '<div class="kpi-grid">'
+      + '<div class="kpi"><div class="kpi-num" style="font-size:14px;color:var(--green)">' + fmt(ivaTrasladado) + '</div><div class="kpi-lbl">IVA cobrado (trasladado)</div></div>'
+      + '<div class="kpi"><div class="kpi-num" style="font-size:14px;color:var(--blue)">' + fmt(ivaAcreditable) + '</div><div class="kpi-lbl">IVA de compras (acreditable)</div></div>'
+      + '</div>'
+      + '<div class="kpi-grid"><div class="kpi" style="background:' + (ivaResultado > 0 ? 'var(--red)' : 'var(--green)') + '">'
+      + '<div class="kpi-num" style="font-size:16px;color:#fff">' + fmt(Math.abs(ivaResultado)) + '</div>'
+      + '<div class="kpi-lbl" style="color:rgba(255,255,255,.8)">' + (ivaResultado > 0 ? 'IVA a cargo (a pagar)' : 'IVA a favor') + '</div></div></div>'
+      + '<div style="font-size:10px;color:var(--gray-400);margin-top:6px">Ingresos del mes: ' + fmt(cobradoMes) + ' (IVA incluido) · Supone que todos tus cobros llevan 16% de IVA. Revisa si tienes ventas exentas o tasa 0% que deban excluirse.</div>';
+
+    // ── ISR acumulado ──
+    var resPagosAnio = await sb().from('pagos').select('monto').gte('fecha_pago', inicioAnio);
+    var ingresosBrutosAnio = (resPagosAnio.data || []).reduce(function(a, p) { return a + (parseFloat(p.monto) || 0); }, 0);
+    var ingresosAcumulados = ingresosBrutosAnio / 1.16;
+
+    var resFacturasAnio = await sb().from('facturas_recibidas').select('subtotal').gte('fecha', inicioAnio);
+    var deduccionesAcumuladas = (resFacturasAnio.data || []).reduce(function(a, f) { return a + (parseFloat(f.subtotal) || 0); }, 0);
+
+    var utilidadFiscal = ingresosAcumulados - deduccionesAcumuladas;
+    var isrCausado = calcularISRAcumulado(utilidadFiscal, numMeses);
+
+    var resFiscal = await sb().from('fiscal_config').select('isr_provisional_pagado').eq('id', 'default').single();
+    var isrPagado = resFiscal.data ? parseFloat(resFiscal.data.isr_provisional_pagado) || 0 : 0;
+    document.getElementById('fiscal-isr-pagado').value = isrPagado;
+
+    var isrAPagar = isrCausado - isrPagado;
+
+    divIsr.innerHTML = '<div class="kpi-grid">'
+      + '<div class="kpi"><div class="kpi-num" style="font-size:13px">' + fmt(ingresosAcumulados) + '</div><div class="kpi-lbl">Ingresos acum. (sin IVA)</div></div>'
+      + '<div class="kpi"><div class="kpi-num" style="font-size:13px">' + fmt(deduccionesAcumuladas) + '</div><div class="kpi-lbl">Deducciones acum.</div></div>'
+      + '</div>'
+      + '<div class="kpi-grid">'
+      + '<div class="kpi"><div class="kpi-num" style="font-size:13px;color:' + (utilidadFiscal >= 0 ? 'var(--navy)' : 'var(--red)') + '">' + fmt(utilidadFiscal) + '</div><div class="kpi-lbl">Utilidad fiscal acumulada</div></div>'
+      + '<div class="kpi"><div class="kpi-num" style="font-size:13px">' + fmt(isrCausado) + '</div><div class="kpi-lbl">ISR causado acumulado</div></div>'
+      + '</div>'
+      + '<div class="kpi-grid"><div class="kpi" style="background:' + (isrAPagar > 0 ? 'var(--red)' : 'var(--green)') + '">'
+      + '<div class="kpi-num" style="font-size:16px;color:#fff">' + fmt(Math.max(0, isrAPagar)) + '</div>'
+      + '<div class="kpi-lbl" style="color:rgba(255,255,255,.8)">' + (isrAPagar > 0 ? 'ISR estimado a pagar este mes' : 'Sin ISR a cargo este mes') + '</div></div></div>'
+      + '<div style="font-size:10px;color:var(--gray-400);margin-top:6px">Tarifa Art. 96 LISR 2026 × ' + numMeses + ' mes(es) transcurrido(s). Deducciones = subtotal de tus compras (sin IVA) -- algunos gastos tienen topes de deducibilidad (comidas, ciertos combustibles) que este estimado no aplica.</div>';
+
+  } catch(e) {
+    divIva.innerHTML = '<div style="text-align:center;padding:14px;color:var(--red)">Error: ' + esc(e.message) + '</div>';
+    divIsr.innerHTML = '';
+  }
+}
+
+async function fiscalGuardarISRPagado() {
+  var val = parseFloat(document.getElementById('fiscal-isr-pagado').value) || 0;
+  if (!sb()) { toast('Sin conexión'); return; }
+  try {
+    var res = await sb().from('fiscal_config').update({ isr_provisional_pagado: val, updated_at: new Date().toISOString() }).eq('id', 'default');
+    if (res.error) throw res.error;
+    toast('Guardado');
+    fiscalCargar();
+  } catch(e) {
+    toast('Error: ' + e.message);
   }
 }
 
