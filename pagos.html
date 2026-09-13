@@ -6,6 +6,29 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.18
+  FECHA   : 2026-09-13
+  v4.18 — En "Por Facturar", el campo de folio fiscal se separó en
+    dos: un desplegable con tus 5 series por actividad (C=Aluminio/
+    Vidrio, D=ML/Tienda, E=Stand, A=Mantenimiento PC, B=Servicios
+    Admin -- mostrando a qué corresponde cada una, no solo la letra)
+    y un campo aparte solo para el número. Se combinan como
+    "C-1450" al marcar. "C" queda preseleccionado por ser el caso más
+    común (trabajos CACN de aluminio/vidrio).
+  VERSIÓN : v4.17
+  FECHA   : 2026-09-13
+  v4.17 — Nueva sección "📋 Por Facturar": lista automática de pagos
+    sin factura fiscal registrada, para dejar de perder el rastro de
+    cuáles ya se facturaron y cuáles no cada mes. Antes esto vivía
+    como texto libre "FAC:xxx" dentro de notas -- no se podía filtrar
+    ni contar. Ahora son dos campos reales en pagos: `facturado`
+    (booleano) y `folio_fiscal` (texto). Cada pago nuevo nace
+    pendiente por default; se marca escribiendo el número de factura
+    y dando "Marcar facturado" -- desaparece solo de la lista.
+    Migración uno-a-uno aplicada sobre datos existentes: los 38 pagos
+    que ya tenían "FAC:" en sus notas se marcaron automáticamente
+    como facturados (con ese folio extraído); quedaron 49 genuinamente
+    pendientes -- ese es el backlog real, no un error de conteo.
   VERSIÓN : v4.16
   FECHA   : 2026-09-12
   v4.16 — A pedido: el campo que antes se autollenaba con la
@@ -888,6 +911,16 @@ select.form-select { padding-right: 36px; cursor: pointer; }
       <div id="pagos-lista"><div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">Cargando...</div></div>
     </div>
 
+    <!-- POR FACTURAR -->
+    <div class="wizard-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div class="wizard-title" style="margin:0">📋 Por Facturar</div>
+        <button onclick="porFacturarCargar()" class="btn-refresh">Actualizar</button>
+      </div>
+      <div id="porfacturar-contador" style="font-size:11px;color:var(--gray-400);margin-bottom:6px"></div>
+      <div id="porfacturar-lista"><div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">Cargando...</div></div>
+    </div>
+
     <!-- FORMULARIO -->
     <div class="wizard-card">
       <div class="wizard-title">Registrar pago</div>
@@ -1120,7 +1153,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.16';
+var APP_VERSION = 'v4.18';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -1655,6 +1688,78 @@ function esc(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// ══════════════════════════════════════════════════════════════
+// POR FACTURAR — v4.17
+// Lista de pagos sin factura fiscal registrada todavía (facturado=
+// false). Antes esto se rastreaba con texto libre "FAC:xxx" dentro
+// de notas, imposible de filtrar o contar. Ahora es un campo real.
+// ══════════════════════════════════════════════════════════════
+async function porFacturarCargar() {
+  var cont = document.getElementById('porfacturar-contador');
+  var lista = document.getElementById('porfacturar-lista');
+  lista.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">Cargando...</div>';
+  if (!sb()) return;
+  try {
+    var res = await sb().from('pagos')
+      .select('id,monto,fecha_pago,cliente_nombre_ref,folio_referencia,concepto')
+      .eq('facturado', false)
+      .order('fecha_pago', { ascending: true })
+      .limit(200);
+    if (res.error) throw res.error;
+    var pagosPend = res.data || [];
+    var totalMonto = pagosPend.reduce(function(a, p) { return a + (parseFloat(p.monto) || 0); }, 0);
+    cont.textContent = pagosPend.length + ' pago(s) pendiente(s) de facturar · $' + fmt(totalMonto) + ' en total';
+
+    if (!pagosPend.length) {
+      lista.innerHTML = '<div style="text-align:center;padding:14px;color:var(--green);font-size:13px">✓ Todo facturado, no hay pendientes</div>';
+      return;
+    }
+
+    lista.innerHTML = pagosPend.map(function(p) {
+      var idJs = "'" + p.id + "'";
+      return '<div style="border:1px solid var(--gray-200);border-radius:8px;padding:8px;margin-bottom:6px;background:#F8F9FA">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
+        + '<span style="font-size:12px;font-weight:700;color:var(--navy)">' + esc(p.cliente_nombre_ref || '\u2014') + '</span>'
+        + '<span style="font-size:11px;color:var(--gray-400)">' + (p.fecha_pago || '') + '</span>'
+        + '</div>'
+        + '<div style="font-size:10.5px;color:var(--gray-600);margin-bottom:6px">' + esc(p.folio_referencia || '') + (p.concepto ? ' · ' + esc(p.concepto) : '') + ' · <b>$' + fmt(p.monto) + '</b></div>'
+        + '<div style="display:flex;gap:5px">'
+        + '<select class="form-input pf-serie-select" style="font-size:11px;margin-bottom:0;flex:0 0 auto;width:auto;padding:7px 4px">'
+        + '<option value="C">C \u2014 Aluminio/Vidrio</option>'
+        + '<option value="D">D \u2014 ML/Tienda</option>'
+        + '<option value="E">E \u2014 Stand</option>'
+        + '<option value="A">A \u2014 Mantenimiento PC</option>'
+        + '<option value="B">B \u2014 Serv. Admin</option>'
+        + '</select>'
+        + '<input type="text" inputmode="numeric" class="form-input pf-folio-input" placeholder="N\u00famero (ej. 1450)" style="font-size:12px;margin-bottom:0;flex:1">'
+        + '<button type="button" onclick="porFacturarMarcar(this,' + idJs + ')" style="padding:7px 12px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">Marcar facturado</button>'
+        + '</div>'
+        + '</div>';
+    }).join('');
+  } catch(e) {
+    lista.innerHTML = '<div style="text-align:center;padding:14px;color:var(--red);font-size:13px">Error al cargar</div>';
+  }
+}
+
+async function porFacturarMarcar(btn, id) {
+  var cont = btn.parentElement;
+  var serie = cont.querySelector('.pf-serie-select').value;
+  var numero = cont.querySelector('.pf-folio-input').value.trim();
+  if (!numero) { toast('Escribe el n\u00famero de factura antes de marcarlo'); return; }
+  var folioFiscal = serie + '-' + numero;
+  if (!sb()) { toast('Sin conexi\u00f3n'); return; }
+  btn.disabled = true;
+  try {
+    var res = await sb().from('pagos').update({ facturado: true, folio_fiscal: folioFiscal }).eq('id', id);
+    if (res.error) throw res.error;
+    toast('Marcado como facturado: ' + folioFiscal);
+    porFacturarCargar();
+  } catch(e) {
+    toast('Error: ' + e.message);
+    btn.disabled = false;
+  }
 }
 
 // ── Historial de pagos ───────────────────────────────────────────
@@ -2612,6 +2717,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   pagosCargar();
+  porFacturarCargar();
   cargarPresDropdown();
   cargarComisionMLDefault();
 
