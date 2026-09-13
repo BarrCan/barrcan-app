@@ -6,6 +6,15 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.20
+  FECHA   : 2026-09-13
+  v4.20 — Nuevo botón "💵 Efectivo (sin factura)" en cada tarjeta de
+    "Por Facturar", para pagos en efectivo que nunca van a llevar
+    CFDI -- antes se quedaban pegados en pendientes para siempre, sin
+    forma de resolverlos. Pide confirmación antes de marcar (para no
+    tocarlo por accidente), y usa un marcador distinto a un folio
+    fiscal real ("EFECTIVO / SIN FACTURA") para que no se confunda
+    con una factura de verdad si alguna vez revisas el historial.
   VERSIÓN : v4.19
   FECHA   : 2026-09-13
   v4.19 — "Por Facturar" ahora muestra el número de recibo (extraído
@@ -1160,7 +1169,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.19';
+var APP_VERSION = 'v4.20';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -1746,10 +1755,29 @@ async function porFacturarCargar() {
         + '<input type="text" inputmode="numeric" class="form-input pf-folio-input" placeholder="N\u00famero (ej. 1450)" style="font-size:12px;margin-bottom:0;flex:1">'
         + '<button type="button" onclick="porFacturarMarcar(this,' + idJs + ')" style="padding:7px 12px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">Marcar facturado</button>'
         + '</div>'
+        + '<button type="button" onclick="porFacturarMarcarEfectivo(this,' + idJs + ')" style="width:100%;margin-top:5px;padding:6px;background:none;border:1.5px dashed var(--gray-300);color:var(--gray-600);border-radius:8px;font-size:10.5px;font-weight:700;cursor:pointer">\uD83D\uDCB5 Efectivo (sin factura)</button>'
         + '</div>';
     }).join('');
   } catch(e) {
     lista.innerHTML = '<div style="text-align:center;padding:14px;color:var(--red);font-size:13px">Error al cargar</div>';
+  }
+}
+
+// Pagos en efectivo que nunca van a llevar factura -- se sacan de
+// "pendientes" con un marcador distinto a un folio fiscal real, para
+// no confundirlos con uno de verdad ni perderlos de vista.
+async function porFacturarMarcarEfectivo(btn, id) {
+  if (!confirm('¿Confirmas que este pago fue en efectivo y NO se va a facturar?')) return;
+  if (!sb()) { toast('Sin conexión'); return; }
+  btn.disabled = true;
+  try {
+    var res = await sb().from('pagos').update({ facturado: true, folio_fiscal: 'EFECTIVO / SIN FACTURA' }).eq('id', id);
+    if (res.error) throw res.error;
+    toast('Marcado como efectivo, sin factura');
+    porFacturarCargar();
+  } catch(e) {
+    toast('Error: ' + e.message);
+    btn.disabled = false;
   }
 }
 
