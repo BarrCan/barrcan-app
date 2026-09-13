@@ -6,6 +6,16 @@
 <title>BarrCan &middot; Estado de Cuenta</title>
 <!--
   BARRCAN · MODULO: ESTADO DE CUENTA POR CLIENTE (standalone)
+  VERSION : v1.3
+  FECHA   : 2026-09-13
+  v1.3 - La columna "Descripción" mostraba la descripción técnica
+    completa recortada a 45 caracteres, sin importar dónde cayera el
+    corte -- se veía cortada a media palabra. Ahora muestra la
+    dirección de la obra (columna `dir`, ya venía en el select('*'),
+    no requirió tocar la consulta), igual que ya se corrigió en
+    pagos.html v4.16. Si un presupuesto no tiene dirección capturada,
+    cae de respaldo a la descripción como antes. Columna renombrada a
+    "Dirección".
   VERSION : v1.2
   FECHA   : 2026-09-09
   v1.2 - Formato de reporte formal, igual al resto de la app: se abre
@@ -98,7 +108,7 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--off
 <div class="toast" id="toast"></div>
 
 <script>
-var APP_VERSION = 'v1.2';
+var APP_VERSION = 'v1.3';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sbClient=null;
@@ -220,7 +230,7 @@ function ecRenderTabla(presupuestos, pagosPorObra, tituloCliente) {
     var filaObra = '<tr style="background:#F7F5F0;font-weight:700">'
       + '<td>' + esc(p.folio) + '</td>'
       + '<td>' + fechaCorta(p.fecha) + '</td>'
-      + '<td>' + esc((p.descripcion || '').slice(0, 45)) + '</td>'
+      + '<td>' + esc((p.dir || p.descripcion || '').slice(0, 45)) + '</td>'
       + '<td style="text-align:right">$' + fmt(monto) + '</td>'
       + '<td>—</td><td>—</td>'
       + '<td style="text-align:right">$' + fmt(anticiposObra) + '</td>'
@@ -265,7 +275,7 @@ function ecRenderTabla(presupuestos, pagosPorObra, tituloCliente) {
     + '</div>'
     + '<div style="margin-left:auto;font-size:9pt;color:#9A9590;text-align:right">Generado el<br>' + hoy + '</div>'
     + '</div>'
-    + '<table><thead><tr><th>Folio</th><th>Fecha</th><th>Descripción</th><th>Monto / Anticipo</th><th>Factura</th><th>Fecha Pago</th><th>Anticipos (total)</th><th>Diferencia</th><th>Modo Pago</th></tr></thead>'
+    + '<table><thead><tr><th>Folio</th><th>Fecha</th><th>Dirección</th><th>Monto / Anticipo</th><th>Factura</th><th>Fecha Pago</th><th>Anticipos (total)</th><th>Diferencia</th><th>Modo Pago</th></tr></thead>'
     + '<tbody>' + filasHtml
     + '<tr style="background:rgba(200,146,58,.15);font-weight:800;border-top:2px solid #C8923A">'
     + '<td colspan="3">TOTAL</td><td style="text-align:right">$' + fmt(totalMonto) + '</td><td colspan="2"></td>'
