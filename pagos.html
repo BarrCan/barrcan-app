@@ -6,6 +6,20 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.16
+  FECHA   : 2026-09-12
+  v4.16 — A pedido: el campo que antes se autollenaba con la
+    descripción técnica completa del presupuesto (párrafos largos,
+    se veían "mochos" en el recibo angosto de impresora térmica)
+    ahora se autollena con la DIRECCIÓN de la obra (columna `dir` de
+    presupuestos_atrasados) -- más corto, más fácil de identificar
+    tanto para el cliente como para nosotros. Si un presupuesto no
+    tiene dirección capturada, cae de respaldo a la descripción como
+    antes, para no dejar el campo vacío. Etiqueta y placeholder
+    actualizados en el formulario y en el recibo impreso. Sigue
+    siendo editable a mano en cada pago, como siempre. NO afecta
+    recibos ya guardados/reimpresos -- esos conservan lo que se
+    capturó en su momento.
   VERSIÓN : v4.15
   FECHA   : 2026-08-25
   v4.15 — Corrección de alcance: los adicionales (v4.13/v4.14) solo
@@ -901,8 +915,8 @@ select.form-select { padding-right: 36px; cursor: pointer; }
       <input type="text" id="pago-cliente" class="form-input" placeholder="Nombre del cliente">
       <label class="form-label">Tel&eacute;fono</label>
       <input type="tel" id="pago-tel" class="form-input" placeholder="55 1234 5678" inputmode="tel">
-      <label class="form-label">Descripci&oacute;n de la obra</label>
-      <input type="text" id="pago-desc" class="form-input" placeholder="Ej: Cancel ba&ntilde;o frameless 9mm...">
+      <label class="form-label">Direcci&oacute;n de la obra</label>
+      <input type="text" id="pago-desc" class="form-input" placeholder="Ej: Calle Reforma 123, Col. Centro">
 
       <div class="form-row">
         <div class="form-group">
@@ -1106,7 +1120,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.15';
+var APP_VERSION = 'v4.16';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -1340,7 +1354,7 @@ async function seleccionarPres() {
     s('pago-folio',   p.folio);
     s('pago-cliente', p.cliente);
     s('pago-tel',     p.tel);
-    s('pago-desc',    p.descripcion);
+    s('pago-desc',    p.dir || p.descripcion);
     s('pago-total',   p.monto || 0);
     PAGO_MONTO_ORIGINAL = p.monto || 0;
     PAGO_ADICIONALES = [];
@@ -2170,7 +2184,7 @@ function generarRecibo(d) {
     + '<tr><td class=lbl>Cliente</td><td><strong>' + esc(d.cliente || '\u2014') + '</strong></td></tr>'
     + (d.tel ? '<tr><td class=lbl>Tel\u00e9fono</td><td>' + esc(d.tel) + '</td></tr>' : '')
     + (d.folio ? '<tr><td class=lbl>Presupuesto</td><td style="font-family:monospace;color:#2E6DA4;font-size:7.5pt">' + esc(d.folio) + '</td></tr>' : '')
-    + (d.desc ? '<tr><td class=lbl>Descripci\u00f3n</td><td>' + esc(d.desc) + '</td></tr>' : '')
+    + (d.desc ? '<tr><td class=lbl>Direcci\u00f3n</td><td>' + esc(d.desc) + '</td></tr>' : '')
     + '<tr><td class=lbl>Fecha</td><td>' + fd(d.fecha) + '</td></tr>'
     + '<tr><td class=lbl>Forma</td><td>' + esc(d.formaLabel || d.forma) + '</td></tr>'
     + '<tr><td class=lbl>Concepto</td><td>' + esc((d.concepto || '').replace('_', ' ')) + '</td></tr>'
