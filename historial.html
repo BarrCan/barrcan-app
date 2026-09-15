@@ -6,6 +6,16 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.9
+  FECHA   : 2026-09-13
+  v3.9 - Se agrega el estado "Liquidado — cerrado" al selector de
+    Editar, entre "Entregado" y "Declinado" -- antes el flujo se
+    quedaba en "Entregado — pendiente liquidar" sin ningún estado
+    final para marcar que ya se cobró todo. Se agregó también a
+    ESTADO_LABELS y ESTADO_COLORS (verde, igual que "Aprobado") para
+    que se vea bien en la lista. No afecta la lógica de ocultar
+    declinados/pagados, que ya usa saldo real <= 0 en vez del texto
+    del estado (fix de v2.3).
   VERSIÓN : v3.8
   FECHA   : 2026-09-13
   v3.8 - Nueva función "Reimprimir presupuesto": botón debajo de las
@@ -1411,6 +1421,7 @@ body{min-height:100vh}
         <option value="en_produccion">En produccion</option>
         <option value="pendiente_entrega">Pendiente de entrega</option>
         <option value="entregado">Entregado &mdash; pendiente liquidar</option>
+        <option value="liquidado">Liquidado &mdash; cerrado</option>
         <option value="declinado">Declinado &mdash; cliente no acept&oacute;</option>
       </select>
     </div>
@@ -1461,7 +1472,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.8';
+var APP_VERSION = 'v3.9';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1506,6 +1517,7 @@ var ESTADO_LABELS = {
   en_produccion: 'En producci\u00f3n',
   pendiente_entrega: 'Pend. entrega',
   entregado: 'Entregado',
+  liquidado: 'Liquidado',
   declinado: 'Declinado'
 };
 var ESTADO_COLORS = {
@@ -1514,6 +1526,7 @@ var ESTADO_COLORS = {
   en_produccion: 'var(--gold)',
   pendiente_entrega: '#E67E22',
   entregado: 'var(--gray-400)',
+  liquidado: 'var(--green)',
   declinado: 'var(--red)'
 };
 

@@ -6,6 +6,40 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.23
+  FECHA   : 2026-09-15
+  v4.23 — La lista de pagos ahora ordena por número de recibo (RB-N,
+    extraído de notas) de mayor a menor, no por fecha de creación del
+    registro en la base. Con las correcciones manuales de ayer/hoy
+    (RB-103, RB-175/176) el orden por fecha ya no coincidía con el
+    orden real de los recibos. Los pagos sin número de recibo
+    reconocible se quedan al final, ordenados por fecha como antes.
+  VERSIÓN : v4.22
+  FECHA   : 2026-09-15
+  v4.22 — FIX: nextFolioRB() ya no confía solo en el contador de
+    localStorage -- consulta el máximo RB-N real en la base antes de
+    asignar el siguiente número (usa el mayor entre local y real).
+    Esto evita que un recibo repita número si el celular se congela
+    y el pago se reintenta después, o si algún día se usa otro
+    dispositivo / se limpia el navegador -- exactamente lo que pasó
+    con RB-175 duplicado el 14-sep (corregido a mano esa vez: se
+    borró el duplicado y se renumeró a RB-176).
+  VERSIÓN : v4.21
+  FECHA   : 2026-09-13
+  v4.21 — FIX URGENTE (riesgo real de perder pagos): cada vez que la
+    app cargaba la lista de pagos, guardaba en localStorage del
+    teléfono las fotos de comprobante COMPLETAS de los 200 pagos más
+    recientes -- eso llenaba la cuota de almacenamiento (5-10MB) casi
+    de inmediato, y cuando un pago nuevo no lograba guardarse en el
+    servidor, tampoco cabía la copia de respaldo local -> se podía
+    perder de verdad, como le pasó a Mau con un pago de $5,469.
+    Ahora la lista NO carga las fotos (solo texto: monto, fecha,
+    notas, etc. -- ocupa una fracción del espacio). La foto de un
+    pago específico se trae bajo demanda, una sola vez, solo cuando
+    se abre ESE pago para editarlo o reimprimirlo -- nunca se guarda
+    de más en el teléfono. Pendiente confirmar con Mau si el pago de
+    $5,469 que disparó el error ya quedó capturado en la base o sigue
+    pendiente de registrar a mano.
   VERSIÓN : v4.20
   FECHA   : 2026-09-13
   v4.20 — Nuevo botón "💵 Efectivo (sin factura)" en cada tarjeta de
@@ -1169,7 +1203,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.20';
+var APP_VERSION = 'v4.23';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -1250,8 +1284,28 @@ function resetPaginacion() {
 }
 
 // ── Folio RB ──────────────────────────────────────────────────────
-function nextFolioRB() {
-  var n = parseInt(localStorage.getItem('barrcan_folio_rb') || '99') + 1;
+// FIX v4.22: antes esto solo leía/escribía localStorage -- si el
+// celular se congelaba y el pago se reenviaba, o si algún día se usa
+// otro dispositivo/se limpia el navegador, el contador local queda
+// desincronizado del real y puede repetir un número ya usado (pasó
+// con RB-175 el 14-sep). Ahora consulta el máximo RB-N real en la
+// base antes de asignar -- localStorage queda solo como respaldo si
+// no hay conexión, y siempre se usa el mayor de los dos valores.
+async function nextFolioRB() {
+  var localN = parseInt(localStorage.getItem('barrcan_folio_rb') || '99');
+  var dbN = 0;
+  if (sb()) {
+    try {
+      var res = await sb().from('pagos').select('notas').order('created_at', { ascending: false }).limit(300);
+      if (!res.error && res.data) {
+        res.data.forEach(function(p) {
+          var m = (p.notas || '').match(/RECIBO:\s*RB-(\d+)/);
+          if (m) { var num = parseInt(m[1], 10); if (num > dbN) dbN = num; }
+        });
+      }
+    } catch(e) { console.warn('[BarrCan] No se pudo verificar el último recibo en la base:', e); }
+  }
+  var n = Math.max(localN, dbN) + 1;
   localStorage.setItem('barrcan_folio_rb', String(n));
   localStorage.setItem('barrcan_ultimo_folio_recibo', String(n));
   return 'RB-' + n;
@@ -1801,22 +1855,41 @@ async function porFacturarMarcar(btn, id) {
 }
 
 // ── Historial de pagos ───────────────────────────────────────────
+// NUEVO v4.23: el orden real que importa es el número de recibo
+// (RB-N dentro de notas), no la fecha en que se guardó el registro
+// -- con las correcciones manuales de hoy (RB-103, RB-175/176) el
+// orden por fecha de creación ya no coincidía con el orden real.
+function extraerNumRB(p) {
+  var m = (p.notas || '').match(/RECIBO:\s*RB-(\d+)/);
+  return m ? parseInt(m[1], 10) : -1;
+}
+function ordenarPagosCache() {
+  PAGOS_CACHE.sort(function(a, b) {
+    var na = extraerNumRB(a), nb = extraerNumRB(b);
+    if (na >= 0 && nb >= 0) return nb - na;       // ambos con número -- el más alto primero
+    if (na >= 0) return -1;                        // con número va antes que sin número
+    if (nb >= 0) return 1;
+    return new Date(b.created_at || b.fecha_pago || 0) - new Date(a.created_at || a.fecha_pago || 0);
+  });
+}
+
 async function pagosCargar() {
   resetPaginacion();
   var div = document.getElementById('pagos-lista');
   var local = JSON.parse(localStorage.getItem('barrcan_pagos_cache') || '[]');
-  if (local.length) { PAGOS_CACHE = local; pagosRender(); }
+  if (local.length) { PAGOS_CACHE = local; ordenarPagosCache(); pagosRender(); }
   else div.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">Sin pagos registrados</div>';
 
   if (!sb()) return;
   try {
     var result = await sb().from('pagos')
-      .select('id,monto,fecha_pago,forma_pago,concepto,notas,descripcion,adicionales,comprobante_img,created_at,presupuesto_id')
+      .select('id,monto,fecha_pago,forma_pago,concepto,notas,descripcion,adicionales,created_at,presupuesto_id')
       .order('created_at', { ascending: false }).limit(200);
     if (result.error) throw result.error;
     SYNC.online = true; detectarConexion();
     var pendientes = PAGOS_CACHE.filter(function(p) { return p._pendiente; });
     PAGOS_CACHE = pendientes.concat(result.data || []);
+    ordenarPagosCache();
     localStorage.setItem('barrcan_pagos_cache', JSON.stringify(PAGOS_CACHE));
     pagosRender();
   } catch(e) {
@@ -1952,7 +2025,7 @@ async function pagoGuardarMultiple() {
   if (btn && btn.disabled) return;
   if (btn) { btn.disabled = true; btn.textContent = 'Generando recibo...'; }
 
-  var folioRB = nextFolioRB();
+  var folioRB = await nextFolioRB();
   var lineas = [];
 
   for (var i = 0; i < ids.length; i++) {
@@ -2103,7 +2176,7 @@ async function pagoGuardar() {
   if (btn && btn.disabled) return;
   if (btn) { btn.disabled = true; btn.textContent = 'Generando recibo...'; }
 
-  var folioRB = nextFolioRB();
+  var folioRB = await nextFolioRB();
   var notaPartes = [folio, cliente, notas];
   if (factura) notaPartes.push('FAC:' + factura);
   if (descAdicionales) notaPartes.push('ADICIONALES: ' + descAdicionales);
@@ -2153,6 +2226,7 @@ async function pagoGuardar() {
     var newPago = Object.assign({}, db, { created_at: new Date().toISOString() });
     if (result.data && result.data[0]) newPago.id = result.data[0].id;
     PAGOS_CACHE.unshift(newPago);
+    ordenarPagosCache();
     localStorage.setItem('barrcan_pagos_cache', JSON.stringify(PAGOS_CACHE));
     resetPaginacion();
 
@@ -2208,6 +2282,7 @@ function guardarOffline(db) {
     cola.push({ datos: db, ts: new Date().toISOString() });
     localStorage.setItem('barrcan_pagos_pend', JSON.stringify(cola));
     PAGOS_CACHE.unshift(Object.assign({}, db, { _pendiente: true, created_at: new Date().toISOString() }));
+    ordenarPagosCache();
     localStorage.setItem('barrcan_pagos_cache', JSON.stringify(PAGOS_CACHE));
     resetPaginacion();
     pagosRender();
@@ -2240,6 +2315,7 @@ async function pagoReintentarPendientes() {
   localStorage.setItem('barrcan_pagos_pend', JSON.stringify(rest));
   if (ok.length) {
     PAGOS_CACHE.forEach(function(p) { if (p._pendiente) delete p._pendiente; });
+    ordenarPagosCache();
     localStorage.setItem('barrcan_pagos_cache', JSON.stringify(PAGOS_CACHE));
     resetPaginacion();
     toast(ok.length + ' pago(s) sincronizado(s)');
@@ -2502,7 +2578,9 @@ function editRenderAdicionales() {
 }
 
 // ── Editar pago ──────────────────────────────────────────────────
-function pagoAbrirEdicion(id) {
+var _EDIT_FOTO_ORIGINAL = null; // foto ya guardada de este pago, traída bajo demanda (ya no vive en el caché de la lista)
+
+async function pagoAbrirEdicion(id) {
   var p = null;
   for (var i = 0; i < PAGOS_CACHE.length; i++) {
     if (PAGOS_CACHE[i].id === id) { p = PAGOS_CACHE[i]; break; }
@@ -2528,16 +2606,26 @@ function pagoAbrirEdicion(id) {
   }
 
   _EDIT_FOTO = undefined; // undefined = sin cambios; null = se quitó; string = nueva foto
+  _EDIT_FOTO_ORIGINAL = null;
   var editImg  = document.getElementById('edit-foto-img');
   var editPrev = document.getElementById('edit-foto-preview');
   var editInput = document.getElementById('edit-foto-input');
   if (editInput) editInput.value = '';
-  if (p.comprobante_img) {
-    if (editImg)  editImg.src = p.comprobante_img;
-    if (editPrev) editPrev.classList.add('visible');
-  } else {
-    if (editImg)  editImg.src = '';
-    if (editPrev) editPrev.classList.remove('visible');
+  if (editImg)  editImg.src = '';
+  if (editPrev) editPrev.classList.remove('visible');
+
+  // FIX v4.21: la foto ya NO vive en PAGOS_CACHE (eso llenaba el
+  // localStorage del teléfono) -- se trae aquí, una sola vez, solo
+  // para el pago que de verdad se está editando.
+  if (sb()) {
+    try {
+      var resFoto = await sb().from('pagos').select('comprobante_img').eq('id', id).single();
+      if (!resFoto.error && resFoto.data && resFoto.data.comprobante_img) {
+        _EDIT_FOTO_ORIGINAL = resFoto.data.comprobante_img;
+        if (editImg)  editImg.src = _EDIT_FOTO_ORIGINAL;
+        if (editPrev) editPrev.classList.add('visible');
+      }
+    } catch(e) { console.warn('[BarrCan] No se pudo traer la foto del comprobante:', e); }
   }
 
   document.getElementById('pago-edit-ov').classList.add('visible');
@@ -2627,6 +2715,7 @@ async function pagoEditarGuardar() {
       break;
     }
   }
+  ordenarPagosCache();
   localStorage.setItem('barrcan_pagos_cache', JSON.stringify(PAGOS_CACHE));
   resetPaginacion();
   pagosRender();
@@ -2693,7 +2782,7 @@ function pagoEditarReimprimir() {
     formaLabel: fLabels[p.forma_pago] || p.forma_pago || '',
     notas:      notaLimpia,
     factura:    factura,
-    foto:       p.comprobante_img || null
+    foto:       (_EDIT_FOTO !== undefined ? _EDIT_FOTO : _EDIT_FOTO_ORIGINAL) || null
   });
 
   _RECIBO = html;
