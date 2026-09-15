@@ -6,6 +6,17 @@
 <title>BarrCan &middot; Estado de Cuenta</title>
 <!--
   BARRCAN · MODULO: ESTADO DE CUENTA POR CLIENTE (standalone)
+  VERSION : v1.4
+  FECHA   : 2026-09-16
+  v1.4 - FIX: la búsqueda por número de cliente (el "(N)" junto al
+    nombre en el buscador) sacaba ese número del sufijo del folio
+    (todo lo que sigue al último guion) -- pero no todos los folios
+    de un mismo cliente llevan ese sufijo parejo (Juan Manuel Espejel:
+    5 de 10 sí, 5 no), así que la búsqueda dejaba fuera presupuestos
+    reales sin avisar. Ahora la búsqueda siempre es por nombre
+    (campo "cliente", 100% consistente); si se escribe un
+    número/código, se resuelve primero contra la tabla clientes
+    (num_cliente) para sacar el nombre real, nunca contra el folio.
   VERSION : v1.3
   FECHA   : 2026-09-13
   v1.3 - La columna "Descripción" mostraba la descripción técnica
@@ -108,7 +119,7 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--off
 <div class="toast" id="toast"></div>
 
 <script>
-var APP_VERSION = 'v1.3';
+var APP_VERSION = 'v1.4';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sbClient=null;
@@ -127,18 +138,18 @@ var _LOGO_ICONO_B64 = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAA
 function fmt(n){return Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function fechaCorta(f){ if(!f) return '—'; var p=f.split('-'); return p[2]+'/'+p[1]+'/'+p[0].slice(2); }
 
-// Extrae el num_cliente del sufijo del folio (mismo patrón que en
-// entregas.html) -- ej. "CACN-090B-260611-07RC012" -> "07RC012".
-function numClienteDeFolio(folio) {
-  var m = /-([0-9A-Z]+)$/.exec(folio || '');
-  return m ? m[1] : null;
-}
-
+// FIX v1.4: antes se anotaba un número junto al nombre, extraído del
+// sufijo del folio (numClienteDeFolio) -- pero no todos los folios de
+// un mismo cliente llevan ese sufijo de forma consistente (le pasó a
+// Juan Manuel Espejel: 5 de 10 folios sí, 5 no), así que buscar por
+// ese número dejaba fuera presupuestos reales. Ahora el datalist solo
+// lista nombres, y la búsqueda siempre es por nombre -- el campo
+// "cliente" sí es 100% consistente.
 async function ecCargarClientesDatalist() {
   var dl = document.getElementById('ec-clientes-lista');
   if (!sb()) return;
   try {
-    var res = await sb().from('presupuestos_atrasados').select('cliente,folio').order('created_at', { ascending: false }).limit(300);
+    var res = await sb().from('presupuestos_atrasados').select('cliente').order('created_at', { ascending: false }).limit(300);
     if (res.error) throw res.error;
     var vistos = {};
     var opciones = [];
@@ -146,8 +157,7 @@ async function ecCargarClientesDatalist() {
       var key = (p.cliente || '').trim();
       if (!key || vistos[key]) return;
       vistos[key] = true;
-      var num = numClienteDeFolio(p.folio);
-      opciones.push('<option value="' + esc(p.cliente) + (num ? ' (' + num + ')' : '') + '">');
+      opciones.push('<option value="' + esc(key) + '">');
     });
     dl.innerHTML = opciones.join('');
   } catch (e) { console.warn('[BarrCan] No se pudo cargar la lista de clientes:', e.message); }
@@ -171,30 +181,33 @@ var EC_PRESUPUESTOS_CACHE = [];
 async function ecBuscar() {
   var texto = document.getElementById('ec-buscar').value.trim();
   if (!texto) { toast('Escribe un nombre o número de cliente'); return; }
-  var numClienteBuscado = null;
   var nombreBuscado = texto;
-  var m = /^(.*)\s\(([0-9A-Z]+)\)$/.exec(texto);
-  if (m) { nombreBuscado = m[1].trim(); numClienteBuscado = m[2]; }
+  // Si escribió/seleccionó "Nombre (algo)", nos quedamos solo con el nombre.
+  var m = /^(.*)\s\([^)]+\)$/.exec(texto);
+  if (m) nombreBuscado = m[1].trim();
 
   var resDiv = document.getElementById('ec-resultado');
   resDiv.innerHTML = '<div style="text-align:center;padding:20px;color:var(--gray-400)">Buscando...</div>';
   if (!sb()) { resDiv.innerHTML = ''; toast('Sin conexión'); return; }
 
   try {
-    var query = sb().from('presupuestos_atrasados').select('*').eq('eliminado', false).order('fecha', { ascending: true });
-    if (numClienteBuscado) {
-      query = query.ilike('folio', '%-' + numClienteBuscado);
-    } else {
-      query = query.ilike('cliente', '%' + nombreBuscado + '%');
+    // FIX v1.4: si lo escrito es puramente un número/código de
+    // cliente (ej. "32"), lo resolvemos contra la tabla clientes
+    // (num_cliente es un campo real y confiable ahí) para sacar el
+    // nombre real, y buscamos SIEMPRE por nombre -- nunca por un
+    // sufijo de folio, que no todos los presupuestos llevan parejo.
+    if (/^[0-9A-Z]+$/i.test(nombreBuscado)) {
+      var resCli = await sb().from('clientes').select('nombre').eq('num_cliente', nombreBuscado).limit(1);
+      if (!resCli.error && resCli.data && resCli.data.length) nombreBuscado = resCli.data[0].nombre;
     }
-    var res = await query;
+
+    var res = await sb().from('presupuestos_atrasados').select('*')
+      .eq('eliminado', false)
+      .ilike('cliente', '%' + nombreBuscado + '%')
+      .order('fecha', { ascending: true });
     if (res.error) throw res.error;
 
     var presupuestos = res.data || [];
-    if (!presupuestos.length && numClienteBuscado) {
-      var res2 = await sb().from('presupuestos_atrasados').select('*').eq('eliminado', false).ilike('cliente', '%' + nombreBuscado + '%').order('fecha', { ascending: true });
-      if (!res2.error) presupuestos = res2.data || [];
-    }
 
     if (!presupuestos.length) {
       resDiv.innerHTML = '<div class="wizard-card" style="text-align:center;color:var(--gray-400)">No se encontraron obras para "' + esc(texto) + '"</div>';
