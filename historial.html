@@ -6,6 +6,25 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.11
+  FECHA   : 2026-09-16
+  v3.11 - Etiqueta "Activo — en proceso" cambiada a "Activo — en
+    revisión" en el selector de estado (a pedido) -- el valor
+    guardado sigue siendo "activo", solo cambia el texto que se ve.
+  VERSIÓN : v3.10
+  FECHA   : 2026-09-16
+  v3.10 - A pedido: el saldo ahora se recalcula solo de verdad al
+    editar el Monto de un presupuesto, contemplando los pagos ya
+    realizados -- antes, editar un presupuesto EXISTENTE apagaba el
+    auto-cálculo de inmediato (se quedaba con el saldo que ya había,
+    sin tocarlo aunque cambiaras el monto). Ahora: nuevo saldo =
+    Monto nuevo − suma de pagos reales de ese presupuesto (0 si es
+    nuevo, sin pagos todavía). Si escribes directo en el campo
+    Saldo, se apaga el auto-cálculo para esa edición (para casos
+    especiales), igual que antes.
+    De paso: se reconciliaron 6 presupuestos cuyo saldo no
+    coincidía con sus pagos reales (STAN-001B, CACN-161A/090B/164A/
+    200B/163A) -- corregidos directo en la base.
   VERSIÓN : v3.9
   FECHA   : 2026-09-13
   v3.9 - Se agrega el estado "Liquidado — cerrado" al selector de
@@ -1416,7 +1435,7 @@ body{min-height:100vh}
     <label class="form-label">Estado actual</label>
     <div class="form-select-wrap">
       <select id="pres-estado" class="form-select">
-        <option value="activo">Activo &mdash; en proceso</option>
+        <option value="activo">Activo &mdash; en revisi&oacute;n</option>
         <option value="aprobado">Aprobado &mdash; con anticipo</option>
         <option value="en_produccion">En produccion</option>
         <option value="pendiente_entrega">Pendiente de entrega</option>
@@ -1472,7 +1491,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.9';
+var APP_VERSION = 'v3.11';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1793,6 +1812,7 @@ function presCargarClientesDropdown() {
 function presAbrirNuevo() {
   PRES_EDITANDO_ID = null;
   PRES_SALDO_TOCADO_MANUAL = false;
+  PRES_PAGADO_REAL_EDICION = 0;
   var titulo = document.getElementById('pres-modal-titulo');
   var btnDel = document.getElementById('pres-btn-eliminar');
   var errEl  = document.getElementById('pres-error');
@@ -2179,8 +2199,21 @@ function presConceptoQuitar(idx) {
   presDibujarConceptos();
 }
 
-function presEditar(id) {
-  PRES_SALDO_TOCADO_MANUAL = true;
+async function presEditar(id) {
+  // FIX v3.10 -- a pedido: antes, editar un presupuesto EXISTENTE
+  // desactivaba de inmediato el auto-cálculo (se quedaba con lo que
+  // ya había en "Saldo", sin tocarlo aunque cambiaras el Monto).
+  // Ahora se activa el auto-cálculo real: al cambiar el Monto, el
+  // Saldo se recalcula solo como Monto − pagos ya realizados (no
+  // solo copia el monto como para un presupuesto nuevo).
+  PRES_SALDO_TOCADO_MANUAL = false;
+  PRES_PAGADO_REAL_EDICION = 0;
+  if (sb()) {
+    try {
+      var resPag = await sb().from('pagos').select('monto').eq('presupuesto_id', id);
+      if (!resPag.error) PRES_PAGADO_REAL_EDICION = (resPag.data || []).reduce(function(s, p) { return s + (parseFloat(p.monto) || 0); }, 0);
+    } catch (e) { console.warn('[BarrCan] No se pudo traer los pagos reales para el auto-cálculo de saldo:', e); }
+  }
   var p = null;
   for (var i = 0; i < PRES_CACHE.length; i++) {
     if (PRES_CACHE[i].id === id) { p = PRES_CACHE[i]; break; }
@@ -2323,11 +2356,15 @@ async function presVerificarFolioExiste(folio, idExcluir) {
 // En cuanto el usuario edita Saldo directamente, deja de sincronizarse
 // -- así si de verdad ya dieron un anticipo, se respeta lo que escriba.
 var PRES_SALDO_TOCADO_MANUAL = false;
+var PRES_PAGADO_REAL_EDICION = 0; // pagos ya reales del presupuesto que se está editando (0 si es nuevo)
 function presMontoCambio() {
   if (PRES_SALDO_TOCADO_MANUAL) return;
   var montoEl = document.getElementById('pres-monto');
   var saldoEl = document.getElementById('pres-saldo');
-  if (montoEl && saldoEl) saldoEl.value = montoEl.value;
+  if (montoEl && saldoEl) {
+    var nuevoSaldo = (parseFloat(montoEl.value) || 0) - PRES_PAGADO_REAL_EDICION;
+    saldoEl.value = Math.max(0, nuevoSaldo);
+  }
 }
 
 async function presGuardar() {
