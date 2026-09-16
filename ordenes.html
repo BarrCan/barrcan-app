@@ -6,6 +6,17 @@
 <title>BarrCan &middot; Ordenes</title>
 <!--
   BARRCAN - MODULO: ORDENES DE TRABAJO
+  VERSION : v2.14
+  FECHA   : 2026-09-16
+  v2.14 - Dos fixes sobre Google Calendar, a raíz de una orden del
+    jueves que nunca notificó al técnico:
+    1) Cuando Google Calendar no está conectado (el token dura ~1h y
+       no se guarda entre sesiones), el evento se saltaba en SILENCIO
+       TOTAL al guardar una orden nueva -- ni error, ni log, nada.
+       Ahora avisa con un toast claro de 6 segundos.
+    2) Mau (esmasbarrera@gmail.com) ahora se agrega siempre como
+       invitado al evento, además del técnico si tiene Gmail
+       capturado -- antes solo se invitaba al técnico.
   VERSION : v2.13
   FECHA   : 2026-09-06
   v2.13 - Dos cosas reportadas:
@@ -1519,7 +1530,7 @@ function sb(){
 var SYNC={online:navigator.onLine};
 window.addEventListener('online', function(){SYNC.online=true;detectarConexion();otCargar();otCargarTecnicosDinamico();var c=JSON.parse(localStorage.getItem('barrcan_ordenes_pendientes')||'[]');if(c.length)otReintentarPendientes();});
 window.addEventListener('offline',function(){SYNC.online=false;detectarConexion();});
-var APP_VERSION='v2.13';
+var APP_VERSION='v2.14';
 function detectarConexion(){var b=document.getElementById('conn-status');if(b)b.textContent=(navigator.onLine?'Online':'Offline-First')+' \u00b7 '+APP_VERSION;}
 
 // ── Lista de técnicos dinámica (desde tabla tecnicos, módulo tecnicos.html) ──
@@ -1927,6 +1938,12 @@ async function otGuardar(){
     if (GOOGLE_ACCESS_TOKEN && !esEdicion) {
       try { await otCrearEventoGoogleCalendar(payload, null); }
       catch (eCal) { console.warn('[BarrCan] No se pudo crear el evento de Google Calendar (no crítico):', eCal); }
+    } else if (!esEdicion) {
+      // FIX: antes esto se saltaba en silencio total -- ni toast ni
+      // log, así que no había forma de darse cuenta de que la orden
+      // se guardó pero el evento de calendario (y su notificación al
+      // técnico) nunca se creó. Ahora sí avisa.
+      toast('⚠️ Orden guardada, pero el evento de Google Calendar NO se creó -- conecta Google Calendar (botón arriba) y vuelve a intentar', 6000);
     }
   }catch(e){
     var esRed=/failed to fetch|network|fetch/i.test(e.message||'');
@@ -2068,7 +2085,8 @@ async function otCrearEventoGoogleCalendar(o, mapsUrl) {
     var res = await sb().from('tecnicos').select('nombre_completo,email').eq('tecnico_id_login', o.tecnico_id).eq('activo', true).limit(1).single();
     if (!res.error && res.data) tec = res.data;
   } catch(e) {}
-  var attendees = (tec && tec.email) ? [{ email: tec.email }] : [];
+  var attendees = [{ email: 'esmasbarrera@gmail.com' }];
+  if (tec && tec.email) attendees.push({ email: tec.email });
 
   var evento = {
     summary: (o.rubro === 'visita_medicion' ? '📏 Visita de medición' : '🔧 Instalación') + ' -- ' + (o.cliente_nombre || ''),
@@ -2088,7 +2106,7 @@ async function otCrearEventoGoogleCalendar(o, mapsUrl) {
     });
     var data = await resp.json();
     if (!resp.ok) throw new Error((data.error && data.error.message) || 'Error desconocido');
-    toast(attendees.length ? ('✅ Evento creado -- invitación enviada a ' + (tec.nombre_completo || tec.email)) : '✅ Evento creado en tu Google Calendar (el técnico no tiene Gmail capturado, no se le pudo invitar)');
+    toast((tec && tec.email) ? ('✅ Evento creado -- invitación enviada a ti y a ' + (tec.nombre_completo || tec.email)) : '✅ Evento creado -- te invitó a ti (el técnico no tiene Gmail capturado, no se le pudo invitar)');
   } catch (e) {
     toast('❌ Error creando el evento: ' + e.message);
   }
