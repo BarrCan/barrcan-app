@@ -6,6 +6,15 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.25
+  FECHA   : 2026-09-19
+  v4.25 — Nueva vista "🧾 Ya Facturados" dentro de la sección Por
+    Facturar (toggle Pendientes/Ya facturados). Muestra, por mes,
+    todas las facturas ya emitidas: cliente, folio fiscal, obra y
+    monto, con el total del mes -- el reporte que faltaba para
+    verificar/cuadrar contra tu sistema real de facturación. Los
+    pagos marcados "Efectivo (sin factura)" aparecen también, mostrando
+    su etiqueta en gris para distinguirlos de una factura real.
   VERSIÓN : v4.24
   FECHA   : 2026-09-19
   v4.24 — Nueva forma de pago "Liga de retiro" (botón en el
@@ -969,8 +978,15 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     <!-- POR FACTURAR -->
     <div class="wizard-card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div class="wizard-title" style="margin:0">📋 Por Facturar</div>
+        <div class="wizard-title" style="margin:0" id="porfacturar-titulo">📋 Por Facturar</div>
         <button onclick="porFacturarCargar()" class="btn-refresh">Actualizar</button>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:8px">
+        <button type="button" id="pf-tab-pend" class="btn btn-sm btn-primary" style="flex:1" onclick="porFacturarCambiarVista('pendientes')">Pendientes</button>
+        <button type="button" id="pf-tab-fact" class="btn btn-sm" style="flex:1;border:1.5px solid var(--gray-300);color:var(--gray-600)" onclick="porFacturarCambiarVista('facturados')">Ya facturados</button>
+      </div>
+      <div id="porfacturar-mes-wrap" style="display:none;margin-bottom:8px">
+        <input type="month" id="pf-mes" class="form-input" style="margin-bottom:0" onchange="porFacturarCargar()">
       </div>
       <div id="porfacturar-contador" style="font-size:11px;color:var(--gray-400);margin-bottom:6px"></div>
       <div id="porfacturar-lista"><div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">Cargando...</div></div>
@@ -1210,7 +1226,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.24';
+var APP_VERSION = 'v4.25';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -1768,16 +1784,90 @@ function esc(str) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// POR FACTURAR — v4.17
+// POR FACTURAR — v4.17, con vista "Ya facturados" agregada en v4.25
 // Lista de pagos sin factura fiscal registrada todavía (facturado=
 // false). Antes esto se rastreaba con texto libre "FAC:xxx" dentro
 // de notas, imposible de filtrar o contar. Ahora es un campo real.
+// La vista "Ya facturados" es el reporte que faltaba: qué se
+// facturó, a quién, por cuánto y con qué folio -- para poder
+// verificar/cuadrar contra tu sistema real de facturación.
 // ══════════════════════════════════════════════════════════════
+var PF_VISTA = 'pendientes';
+
+function porFacturarCambiarVista(vista) {
+  PF_VISTA = vista;
+  var btnPend = document.getElementById('pf-tab-pend');
+  var btnFact = document.getElementById('pf-tab-fact');
+  var mesWrap = document.getElementById('porfacturar-mes-wrap');
+  var titulo  = document.getElementById('porfacturar-titulo');
+  if (vista === 'pendientes') {
+    btnPend.className = 'btn btn-sm btn-primary';
+    btnFact.className = 'btn btn-sm';
+    btnFact.style.cssText = 'flex:1;border:1.5px solid var(--gray-300);color:var(--gray-600)';
+    btnPend.style.cssText = 'flex:1';
+    mesWrap.style.display = 'none';
+    titulo.textContent = '📋 Por Facturar';
+  } else {
+    btnFact.className = 'btn btn-sm btn-primary';
+    btnPend.className = 'btn btn-sm';
+    btnPend.style.cssText = 'flex:1;border:1.5px solid var(--gray-300);color:var(--gray-600)';
+    btnFact.style.cssText = 'flex:1';
+    mesWrap.style.display = 'block';
+    titulo.textContent = '🧾 Ya Facturados';
+    var mesInput = document.getElementById('pf-mes');
+    if (!mesInput.value) {
+      var hoy = new Date();
+      mesInput.value = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0');
+    }
+  }
+  porFacturarCargar();
+}
+
 async function porFacturarCargar() {
   var cont = document.getElementById('porfacturar-contador');
   var lista = document.getElementById('porfacturar-lista');
   lista.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">Cargando...</div>';
   if (!sb()) return;
+
+  if (PF_VISTA === 'facturados') {
+    try {
+      var mesVal = document.getElementById('pf-mes').value; // 'YYYY-MM'
+      var inicio = mesVal + '-01';
+      var finD = new Date(parseInt(mesVal.slice(0,4)), parseInt(mesVal.slice(5,7)), 0).getDate();
+      var fin = mesVal + '-' + String(finD).padStart(2,'0');
+
+      var resF = await sb().from('pagos')
+        .select('id,monto,fecha_pago,cliente_nombre_ref,folio_referencia,folio_fiscal,notas')
+        .eq('facturado', true)
+        .gte('fecha_pago', inicio).lte('fecha_pago', fin)
+        .order('fecha_pago', { ascending: true })
+        .limit(300);
+      if (resF.error) throw resF.error;
+      var facturados = resF.data || [];
+      var totalF = facturados.reduce(function(a, p) { return a + (parseFloat(p.monto) || 0); }, 0);
+      cont.textContent = facturados.length + ' factura(s) este mes · $' + fmt(totalF) + ' en total';
+
+      if (!facturados.length) {
+        lista.innerHTML = '<div style="text-align:center;padding:14px;color:var(--gray-400);font-size:13px">Sin facturas registradas en ese mes</div>';
+        return;
+      }
+      lista.innerHTML = facturados.map(function(p) {
+        var esEfectivo = (p.folio_fiscal || '').indexOf('EFECTIVO') >= 0;
+        return '<div style="border:1px solid var(--gray-200);border-radius:8px;padding:8px;margin-bottom:6px;background:#F8F9FA">'
+          + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">'
+          + '<span style="font-size:12px;font-weight:700;color:var(--navy)">' + esc(p.cliente_nombre_ref || '\u2014') + '</span>'
+          + '<span style="font-size:11px;color:var(--gray-400)">' + (p.fecha_pago || '') + '</span>'
+          + '</div>'
+          + '<div style="font-size:11px;font-weight:700;color:' + (esEfectivo?'var(--gray-400)':'var(--gold)') + '">' + esc(p.folio_fiscal || '\u2014') + '</div>'
+          + '<div style="font-size:10.5px;color:var(--gray-600)">' + esc(p.folio_referencia || '') + ' · <b>$' + fmt(p.monto) + '</b></div>'
+          + '</div>';
+      }).join('');
+    } catch(e) {
+      lista.innerHTML = '<div style="text-align:center;padding:14px;color:var(--red);font-size:13px">Error al cargar</div>';
+    }
+    return;
+  }
+
   try {
     var res = await sb().from('pagos')
       .select('id,monto,fecha_pago,cliente_nombre_ref,folio_referencia,concepto,notas')
