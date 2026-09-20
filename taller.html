@@ -6,6 +6,35 @@
 <title>BarrCan · Taller</title>
 <!--
   BARRCAN · MODULO: TALLER (standalone)
+  VERSION : v1.2
+  FECHA   : 2026-09-19
+  v1.2 - Ampliación grande del Modo Manual, a pedido:
+    1) Color por corte (Blanco/Natural de acceso rápido + "otro"
+       libre, ya que son los más solicitados pero se puede pedir
+       cualquiera).
+    2) Sugerencia de herrajes en vivo contra inventario_materiales
+       real (no un catálogo estático) -- muestra clave, descripción y
+       precio real al escribir.
+    3) Costo estimado de material: por cada corte y herraje, busca el
+       precio de compra más reciente en inventario_materiales (por
+       clave_cuprum en aluminio, clave_base en herrajes) y si
+       encuentra sobrante disponible SIN obra asignada, lo marca como
+       "📦 sobrante" (costo marginal $0) en vez de asumir compra
+       nueva -- así se puede comparar después estimado vs. real y
+       sacar la ganancia real considerando si había material o se
+       tuvo que comprar. El total se guarda en
+       resultado.costoEstimadoMaterial.
+    4) El desglose ahora es editable de verdad: el botón "✏️ Editar
+       desglose" abre el Modo Manual precargado con lo que ya había
+       (de cotizador o manual), para agregar/quitar/corregir líneas.
+    5) Control de revisión: cada guardado incrementa
+       resultado._revision y guarda resultado._ultimaEdicion -- se ve
+       en la ficha ("Rev. 3 · 19/09/2026 11:45 p.m.") para no
+       confundir cuál es la versión vigente.
+    Nota: se había creado de paso una tabla herrajes_catalogo con 47
+    herrajes de muestra -- ya no se usa (se prefirió inventario_
+    materiales por traer precio y stock real), se queda sin uso, no
+    estorba.
   VERSION : v1.1
   FECHA   : 2026-09-19
   v1.1 - Modo Manual: para piezas sin datos de fabricación (cotizadas
@@ -37,6 +66,10 @@
     inválido y tronaba en silencio antes de llegar siquiera a abrir
     el panel de detalle. Este bug ya existía en v1.0, desde la
     construcción original -- no era nada de lo agregado hoy. Corregido.
+    FIX 4: el panel de "Modo Manual" se abría con z-index 201, por
+    debajo del panel de detalle (z-index 700) -- quedaba tapado hasta
+    que cerrabas el detalle. Subido a 800/801 para que quede encima,
+    como corresponde a una pantalla abierta desde el detalle.
   VERSION : v1.0
   FECHA   : 2026-08-16
   v1.0 - Construcción inicial desde cero.
@@ -217,13 +250,13 @@ input[type=text]:focus { outline:none; border-color:var(--blue); }
 <div id="ficha-imprimible"></div>
 
 <!-- MODO MANUAL: desglose de material a mano, con sugerencia de -->
-<!-- equivalencia Alucentro↔Cuprum -->
-<div id="mm-overlay" onclick="tlCerrarModoManual()" style="display:none;position:fixed;inset:0;background:rgba(27,58,92,0.55);z-index:200"></div>
-<div id="mm-panel" style="display:none;position:fixed;inset:0;z-index:201;background:var(--white);overflow-y:auto">
+<!-- equivalencia Alucentro↔Cuprum y catálogo de herrajes -->
+<div id="mm-overlay" onclick="tlCerrarModoManual()" style="display:none;position:fixed;inset:0;background:rgba(27,58,92,0.55);z-index:800"></div>
+<div id="mm-panel" style="display:none;position:fixed;inset:0;z-index:801;background:var(--white);overflow-y:auto">
   <div class="det-header">
     <button class="det-back" onclick="tlCerrarModoManual()">←</button>
     <div class="det-titulo">
-      <div class="det-folio">Desglose manual</div>
+      <div class="det-folio" id="mm-rev-txt">Desglose manual</div>
       <div class="det-cliente" id="mm-pieza-nombre">—</div>
     </div>
   </div>
@@ -238,6 +271,13 @@ input[type=text]:focus { outline:none; border-color:var(--blue); }
       </div>
       <div id="mm-c-sugerencia" style="font-size:11px;color:var(--gold);min-height:16px;margin:4px 0"></div>
       <input type="text" id="mm-c-desc" placeholder="Descripción de la pieza" class="form-input" style="margin-bottom:6px">
+      <label class="form-label" style="font-size:10.5px">Color</label>
+      <div style="display:flex;gap:6px;margin-bottom:6px" id="mm-c-color-btns">
+        <button type="button" class="color-btn-mm activo" data-color="Blanco" onclick="tlSelColorCorte(this)" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid var(--navy);background:var(--navy);color:#fff;font-size:11px;font-weight:700;cursor:pointer">Blanco</button>
+        <button type="button" class="color-btn-mm" data-color="Natural" onclick="tlSelColorCorte(this)" style="flex:1;padding:8px;border-radius:8px;border:1.5px solid var(--gray-300);background:none;color:var(--gray-600);font-size:11px;font-weight:700;cursor:pointer">Natural</button>
+      </div>
+      <input type="text" id="mm-c-color-otro" placeholder="Otro color (ej. Negro, Champagne...)" class="form-input" style="margin-bottom:6px">
+      <div style="font-size:10px;color:var(--gray-400);margin:-4px 0 6px">Si capturas "Otro color", ese es el que se usa -- Blanco/Natural son solo acceso rápido.</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
         <input type="number" id="mm-c-cant" placeholder="Cantidad de piezas" class="form-input" style="margin-bottom:0">
         <input type="number" id="mm-c-mm" placeholder="Largo (mm) c/u" class="form-input" style="margin-bottom:0">
@@ -247,8 +287,10 @@ input[type=text]:focus { outline:none; border-color:var(--blue); }
 
     <div class="ficha-sec">
       <div class="ficha-sec-header">🔩 Herrajes</div>
+      <div style="font-size:10px;color:var(--gray-400);margin-bottom:6px">Normalmente comprados en: Distribuidora de Herrajes para Aluminio, Alucentro, Dublin, Superfil.</div>
       <div id="mm-herrajes-lista"></div>
-      <input type="text" id="mm-h-cod" placeholder="Código / clave" class="form-input" style="margin-bottom:6px">
+      <input type="text" id="mm-h-cod" placeholder="Código / clave" class="form-input" oninput="tlBuscarHerraje()" style="margin-bottom:0">
+      <div id="mm-h-sugerencias" style="font-size:11px;color:var(--gold);margin:4px 0"></div>
       <input type="text" id="mm-h-desc" placeholder="Descripción" class="form-input" style="margin-bottom:6px">
       <input type="number" id="mm-h-cant" placeholder="Cantidad" class="form-input">
       <button class="btn-imprimir" style="margin-top:8px" onclick="tlAgregarHerraje()">+ Agregar herraje</button>
@@ -274,7 +316,7 @@ function sb() {
 }
 
 // ── Conexión ─────────────────────────────────────────────────────
-var APP_VERSION = 'v1.1';
+var APP_VERSION = 'v1.2';
 var SYNC = { online: navigator.onLine };
 function detectarConexion() {
   var b = document.getElementById('conn-status');
@@ -332,6 +374,7 @@ function tlModuloLabel(row) {
 var TL_CACHE = [];   // filas crudas de presupuestos_atrasados
 var TL_FILTRO = '';
 var EQUIV_CACHE = []; // tabla Alucentro↔Cuprum, cargada una sola vez
+var INV_CACHE = []; // inventario_materiales (aluminio + herrajes): precio real y sobrante disponible
 
 async function tlCargarEquivalencias() {
   if (!sb()) return;
@@ -346,6 +389,41 @@ async function tlCargarEquivalencias() {
 function tlCargarEquivalenciasLocal() {
   try { EQUIV_CACHE = JSON.parse(localStorage.getItem('barrcan_equiv_cache') || '[]'); }
   catch (e) { EQUIV_CACHE = []; }
+}
+async function tlCargarInventario() {
+  if (!sb()) return;
+  try {
+    var res = await sb().from('inventario_materiales')
+      .select('clave_base,clave_cuprum,descripcion,color,tipo,cantidad,cantidad_reservada,estado,precio_compra,folio_obra,longitud_m,fecha_compra')
+      .order('fecha_compra', { ascending: false })
+      .limit(3000);
+    if (!res.error) {
+      INV_CACHE = res.data || [];
+      try { localStorage.setItem('barrcan_inv_cache', JSON.stringify(INV_CACHE)); } catch(e) {}
+    }
+  } catch (e) { console.warn('[Taller] No se pudo cargar inventario_materiales:', e); }
+}
+function tlCargarInventarioLocal() {
+  try { INV_CACHE = JSON.parse(localStorage.getItem('barrcan_inv_cache') || '[]'); }
+  catch (e) { INV_CACHE = []; }
+}
+// Precio real más reciente para una clave (aluminio por clave_cuprum,
+// herrajes por clave_base), y si hay sobrante disponible sin obra
+// asignada -- para poder decir "ya lo tienes" vs "hay que comprarlo".
+function tlBuscarPrecioReal(clave, esAluminio, color) {
+  var campo = esAluminio ? 'clave_cuprum' : 'clave_base';
+  var candidatos = INV_CACHE.filter(function(r) { return (r[campo] || '') === clave; });
+  if (!candidatos.length) return null;
+  var sobrante = candidatos.filter(function(r) {
+    return r.estado === 'Disponible' && !r.folio_obra &&
+      (parseFloat(r.cantidad) || 0) > (parseFloat(r.cantidad_reservada) || 0) &&
+      (!color || !r.color || r.color === '-' || r.color.toUpperCase() === color.toUpperCase());
+  })[0];
+  if (sobrante) return { precio: parseFloat(sobrante.precio_compra) || 0, sobrante: true };
+  // Sin sobrante -- usar el precio de compra más reciente para esa clave (ya viene ordenado por fecha desc)
+  var conColor = color ? candidatos.filter(function(r) { return (r.color || '').toUpperCase() === color.toUpperCase(); })[0] : null;
+  var ref = conColor || candidatos[0];
+  return { precio: parseFloat(ref.precio_compra) || 0, sobrante: false };
 }
 
 // ── Carga ────────────────────────────────────────────────────────
@@ -501,6 +579,17 @@ function tlRenderFichaPieza(pz, idx) {
       '<div class="pieza-precio">$' + fmt(precio) + '</div>' +
     '</div>';
 
+  if (r._revision) {
+    html += '<div style="padding:6px 16px;background:#F0F4F8;font-size:10.5px;color:var(--gray-400);display:flex;justify-content:space-between">' +
+      '<span>Rev. ' + r._revision + (r._manual ? ' · capturado a mano' : '') + '</span>' +
+      (r._ultimaEdicion ? '<span>' + new Date(r._ultimaEdicion).toLocaleString('es-MX', {dateStyle:'short',timeStyle:'short'}) + '</span>' : '') +
+    '</div>';
+  }
+  if (r.costoEstimadoMaterial != null) {
+    html += '<div style="padding:8px 16px;background:rgba(200,146,58,0.08);font-size:12px;color:var(--navy);display:flex;justify-content:space-between;font-weight:700">' +
+      '<span>💰 Costo estimado de material</span><span>$' + fmt(r.costoEstimadoMaterial) + '</span></div>';
+  }
+
   if (!tlTieneFabricacion(r)) {
     html += '<div class="ficha-sinDatos">Sin datos de fabricación para esta pieza (servicio, mantenimiento o partida manual).</div>' +
       '<div style="padding:0 16px 14px"><button class="btn-imprimir" style="background:var(--gold)" onclick="tlAbrirModoManual(' + idx + ')">➕ Agregar desglose manual</button></div></div>';
@@ -512,9 +601,9 @@ function tlRenderFichaPieza(pz, idx) {
     html += '<div class="ficha-sec"><div class="ficha-sec-header">✂️ Cortes de aluminio</div>';
     r.cortesCalc.forEach(function(c) {
       html += '<div class="ficha-row">' +
-        '<span class="ficha-clave">' + esc(c.clave) + '</span>' +
+        '<span class="ficha-clave">' + esc(c.clave) + (c.color ? '<br><small style="color:var(--gray-400)">' + esc(c.color) + '</small>' : '') + '</span>' +
         '<span class="ficha-desc">' + esc(c.nombre) + '<br><small style="color:var(--gray-400)">' + c.cant + '× pzas</small></span>' +
-        '<span class="ficha-val">' + Math.round(c.mm) + ' mm<small>' + (c.pesoKg ? c.pesoKg.toFixed(2) + ' kg' : '') + '</small></span>' +
+        '<span class="ficha-val">' + Math.round(c.mm) + ' mm<small>' + (c.pesoKg ? c.pesoKg.toFixed(2) + ' kg' : (c.costoEstimado != null ? (c.deSobrante ? '📦 sobrante' : '$' + fmt(c.costoEstimado)) : '')) + '</small></span>' +
       '</div>';
     });
     html += '</div>';
@@ -562,7 +651,10 @@ function tlRenderFichaPieza(pz, idx) {
     '</div>';
   }
 
-  html += '<div style="padding:10px 16px 14px"><button class="btn-imprimir" onclick="tlImprimirFicha(' + idx + ')">🖨️ Imprimir esta ficha</button></div>';
+  html += '<div style="padding:10px 16px 14px;display:flex;gap:8px">' +
+    '<button class="btn-imprimir" style="flex:1" onclick="tlImprimirFicha(' + idx + ')">🖨️ Imprimir</button>' +
+    '<button class="btn-imprimir" style="flex:1;background:var(--blue)" onclick="tlAbrirModoManual(' + idx + ')">✏️ Editar desglose</button>' +
+  '</div>';
   html += '</div>';
   return html;
 }
@@ -618,15 +710,38 @@ function tlImprimirFicha(idx) {
 var MM_IDX_ACTUAL = null;
 var MM_CORTES = [];
 var MM_HERRAJES = [];
+var MM_COLOR_SEL = 'Blanco';
+var MM_REVISION = 0;
+
+function tlSelColorCorte(btn) {
+  document.querySelectorAll('#mm-c-color-btns .color-btn-mm').forEach(function(b) {
+    b.classList.remove('activo');
+    b.style.background = 'none'; b.style.color = 'var(--gray-600)'; b.style.borderColor = 'var(--gray-300)';
+  });
+  btn.classList.add('activo');
+  btn.style.background = 'var(--navy)'; btn.style.color = '#fff'; btn.style.borderColor = 'var(--navy)';
+  MM_COLOR_SEL = btn.dataset.color;
+  document.getElementById('mm-c-color-otro').value = '';
+}
 
 function tlAbrirModoManual(idx) {
   if (!TL_ROW_ACTUAL) return;
   MM_IDX_ACTUAL = idx;
   MM_CORTES = [];
   MM_HERRAJES = [];
+  MM_COLOR_SEL = 'Blanco';
   var piezas = tlPiezasDe(TL_ROW_ACTUAL);
   var pz = piezas[idx]; // puede no existir todavía si el presupuesto tenía 0 piezas
+  var r = pz && pz.resultado;
+
+  // Si ya tiene desglose (manual o de cotizador), lo precarga para
+  // poder editarlo -- agregar, quitar o corregir cualquier línea.
+  if (r && r.cortesCalc) MM_CORTES = JSON.parse(JSON.stringify(r.cortesCalc));
+  if (r && r.herrajesCalc) MM_HERRAJES = JSON.parse(JSON.stringify(r.herrajesCalc));
+  MM_REVISION = (r && r._revision) || 0;
+
   document.getElementById('mm-pieza-nombre').textContent = (pz && pz.label) || TL_ROW_ACTUAL.descripcion || 'Pieza ' + (idx + 1);
+  document.getElementById('mm-rev-txt').textContent = MM_REVISION > 0 ? ('Editando · Rev. ' + MM_REVISION) : 'Desglose manual · nuevo';
   tlRenderMMCortes();
   tlRenderMMHerrajes();
   document.getElementById('mm-overlay').style.display = 'block';
@@ -668,15 +783,39 @@ function tlBuscarEquivCup() {
     sug.textContent = 'Sin equivalencia registrada para esa clave todavía';
   }
 }
+// Sugerencia de herrajes -- busca en el inventario real (no un
+// catálogo aparte), por clave o por texto de la descripción.
+function tlBuscarHerraje() {
+  var v = document.getElementById('mm-h-cod').value.trim().toUpperCase();
+  var box = document.getElementById('mm-h-sugerencias');
+  if (v.length < 2) { box.innerHTML = ''; return; }
+  var m = INV_CACHE.filter(function(r) {
+    return r.tipo === 'HERRAJES' && (
+      (r.clave_base || '').toUpperCase().indexOf(v) >= 0 ||
+      (r.descripcion || '').toUpperCase().indexOf(v) >= 0
+    );
+  }).slice(0, 5);
+  if (!m.length) { box.innerHTML = 'Sin coincidencias en inventario para "' + esc(v) + '"'; return; }
+  box.innerHTML = m.map(function(r) {
+    return '<div style="cursor:pointer;padding:4px 0;border-bottom:1px solid var(--gray-100)" onclick="tlElegirHerraje(\'' +
+      esc(r.clave_base).replace(/'/g,"\\'") + '\',\'' + esc(r.descripcion).replace(/'/g,"\\'") + '\')">' +
+      '<b>' + esc(r.clave_base) + '</b> — ' + esc(r.descripcion) + ' <span style="color:var(--gold)">$' + fmt(r.precio_compra) + '</span></div>';
+  }).join('');
+}
+function tlElegirHerraje(clave, desc) {
+  document.getElementById('mm-h-cod').value = clave;
+  document.getElementById('mm-h-desc').value = desc;
+  document.getElementById('mm-h-sugerencias').innerHTML = '';
+}
 
 function tlRenderMMCortes() {
   var el = document.getElementById('mm-cortes-lista');
   if (!MM_CORTES.length) { el.innerHTML = ''; return; }
   el.innerHTML = MM_CORTES.map(function(c, i) {
     return '<div class="ficha-row">' +
-      '<span class="ficha-clave">' + esc(c.clave) + '</span>' +
+      '<span class="ficha-clave">' + esc(c.clave) + '<br><small style="color:var(--gray-400)">' + esc(c.color || '') + '</small></span>' +
       '<span class="ficha-desc">' + esc(c.nombre) + '<br><small style="color:var(--gray-400)">' + c.cant + '× pzas</small></span>' +
-      '<span class="ficha-val">' + c.mm + ' mm' +
+      '<span class="ficha-val">' + c.mm + ' mm' + (c.costoEstimado != null ? '<br><small style="color:' + (c.deSobrante ? 'var(--green)' : 'var(--gold)') + '">' + (c.deSobrante ? '📦 sobrante' : '$' + fmt(c.costoEstimado)) + '</small>' : '') +
       '<br><button onclick="tlQuitarCorte(' + i + ')" style="border:none;background:none;color:var(--red);font-size:10px;cursor:pointer">quitar</button></span>' +
     '</div>';
   }).join('');
@@ -688,7 +827,7 @@ function tlRenderMMHerrajes() {
     return '<div class="ficha-row">' +
       '<span class="ficha-clave">' + esc(h.cod) + '</span>' +
       '<span class="ficha-desc">' + esc(h.desc) + '</span>' +
-      '<span class="ficha-val">' + h.cant +
+      '<span class="ficha-val">' + h.cant + (h.costoEstimado != null ? '<br><small style="color:' + (h.deSobrante ? 'var(--green)' : 'var(--gold)') + '">' + (h.deSobrante ? '📦 sobrante' : '$' + fmt(h.costoEstimado)) + '</small>' : '') +
       '<br><button onclick="tlQuitarHerraje(' + i + ')" style="border:none;background:none;color:var(--red);font-size:10px;cursor:pointer">quitar</button></span>' +
     '</div>';
   }).join('');
@@ -700,13 +839,28 @@ function tlAgregarCorte() {
   var alu = document.getElementById('mm-c-alu').value.trim();
   var cup = document.getElementById('mm-c-cup').value.trim();
   var desc = document.getElementById('mm-c-desc').value.trim();
+  var colorOtro = document.getElementById('mm-c-color-otro').value.trim();
+  var color = colorOtro || MM_COLOR_SEL;
   var cant = parseFloat(document.getElementById('mm-c-cant').value) || 0;
   var mm = parseFloat(document.getElementById('mm-c-mm').value) || 0;
   if (!desc || !cant || !mm) { toast('Faltan datos del corte (descripción, cantidad, mm)'); return; }
-  MM_CORTES.push({ clave: cup || alu || '—', claveAlucentro: alu || null, claveCuprum: cup || null, nombre: desc, cant: cant, mm: mm });
+
+  // Costo estimado: precio real más reciente para esa clave_cuprum y
+  // color en inventario_materiales, prorrateado por barra de 6.10m --
+  // si hay sobrante disponible sin obra asignada, se marca así (costo
+  // marginal $0) en vez de asumir compra nueva.
+  var precioInfo = cup ? tlBuscarPrecioReal(cup, true, color) : null;
+  var costoEstimado = null, deSobrante = false;
+  if (precioInfo) {
+    deSobrante = precioInfo.sobrante;
+    costoEstimado = deSobrante ? 0 : (precioInfo.precio * mm / 6100) * cant;
+  }
+
+  MM_CORTES.push({ clave: cup || alu || '—', claveAlucentro: alu || null, claveCuprum: cup || null, nombre: desc, color: color, cant: cant, mm: mm, costoEstimado: costoEstimado, deSobrante: deSobrante });
   document.getElementById('mm-c-alu').value = '';
   document.getElementById('mm-c-cup').value = '';
   document.getElementById('mm-c-desc').value = '';
+  document.getElementById('mm-c-color-otro').value = '';
   document.getElementById('mm-c-cant').value = '';
   document.getElementById('mm-c-mm').value = '';
   document.getElementById('mm-c-sugerencia').textContent = '';
@@ -717,10 +871,19 @@ function tlAgregarHerraje() {
   var desc = document.getElementById('mm-h-desc').value.trim();
   var cant = parseFloat(document.getElementById('mm-h-cant').value) || 0;
   if (!desc || !cant) { toast('Faltan datos del herraje (descripción, cantidad)'); return; }
-  MM_HERRAJES.push({ cod: cod || '—', desc: desc, cant: cant });
+
+  var precioInfo = cod ? tlBuscarPrecioReal(cod, false, null) : null;
+  var costoEstimado = null, deSobrante = false;
+  if (precioInfo) {
+    deSobrante = precioInfo.sobrante;
+    costoEstimado = deSobrante ? 0 : precioInfo.precio * cant;
+  }
+
+  MM_HERRAJES.push({ cod: cod || '—', desc: desc, cant: cant, costoEstimado: costoEstimado, deSobrante: deSobrante });
   document.getElementById('mm-h-cod').value = '';
   document.getElementById('mm-h-desc').value = '';
   document.getElementById('mm-h-cant').value = '';
+  document.getElementById('mm-h-sugerencias').innerHTML = '';
   tlRenderMMHerrajes();
 }
 
@@ -738,19 +901,26 @@ async function tlGuardarModoManual() {
     piezas[MM_IDX_ACTUAL] = pz;
   }
   if (!pz.resultado) pz.resultado = {};
-  if (MM_CORTES.length) pz.resultado.cortesCalc = MM_CORTES;
-  if (MM_HERRAJES.length) pz.resultado.herrajesCalc = MM_HERRAJES;
+  pz.resultado.cortesCalc = MM_CORTES;
+  pz.resultado.herrajesCalc = MM_HERRAJES;
   pz.resultado.sistema = pz.resultado.sistema || (pz.label || 'Desglose manual');
   pz.resultado._manual = true; // marca que este desglose se capturó a mano, no vía cotizador
+
+  // Costo estimado total + control de revisión, para poder comparar
+  // después contra el costo real (compras/pagos ligados a esta obra).
+  var totalCortes = MM_CORTES.reduce(function(s, c) { return s + (c.costoEstimado || 0); }, 0);
+  var totalHerrajes = MM_HERRAJES.reduce(function(s, h) { return s + (h.costoEstimado || 0); }, 0);
+  pz.resultado.costoEstimadoMaterial = totalCortes + totalHerrajes;
+  pz.resultado._revision = (pz.resultado._revision || 0) + 1;
+  pz.resultado._ultimaEdicion = new Date().toISOString();
 
   try {
     var res = await sb().from('presupuestos_atrasados')
       .update({ notas_internas: JSON.stringify(piezas) })
       .eq('id', TL_ROW_ACTUAL.id);
     if (res.error) throw res.error;
-    toast('✅ Desglose guardado');
+    toast('✅ Desglose guardado -- Rev. ' + pz.resultado._revision);
     TL_ROW_ACTUAL.notas_internas = JSON.stringify(piezas);
-    // Actualizar también la copia en TL_CACHE para que la lista refleje "Ficha" de una vez
     var idxCache = TL_CACHE.findIndex(function(r) { return r.id === TL_ROW_ACTUAL.id; });
     if (idxCache >= 0) TL_CACHE[idxCache].notas_internas = TL_ROW_ACTUAL.notas_internas;
     localStorage.setItem('barrcan_taller_cache', JSON.stringify(TL_CACHE));
@@ -767,9 +937,11 @@ document.addEventListener('DOMContentLoaded', function() {
   detectarConexion();
   tlCargarLocal();
   tlCargarEquivalenciasLocal();
+  tlCargarInventarioLocal();
   tlRender();
   tlCargar();
   tlCargarEquivalencias();
+  tlCargarInventario();
 });
 
 if ('serviceWorker' in navigator) {
