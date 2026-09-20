@@ -6,6 +6,14 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.26
+  FECHA   : 2026-09-19
+  v4.26 — FIX en "Por Facturar" (ambas vistas): muchos pagos no
+    tienen cliente_nombre_ref capturado y salían con "—" en vez del
+    nombre. Ahora, si falta, se saca de las notas ("FOLIO | Cliente |
+    ...") como respaldo -- mismo criterio que ya se usaba para sacar
+    el número de recibo. De paso, "Ya Facturados" ahora también
+    muestra el número de recibo (antes solo aparecía en Pendientes).
   VERSIÓN : v4.25
   FECHA   : 2026-09-19
   v4.25 — Nueva vista "🧾 Ya Facturados" dentro de la sección Por
@@ -1226,7 +1234,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.25';
+var APP_VERSION = 'v4.26';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -1853,11 +1861,22 @@ async function porFacturarCargar() {
       }
       lista.innerHTML = facturados.map(function(p) {
         var esEfectivo = (p.folio_fiscal || '').indexOf('EFECTIVO') >= 0;
+        // FIX: varios pagos no traen cliente_nombre_ref capturado --
+        // se saca de las notas ("FOLIO | Cliente | ...") como respaldo,
+        // igual que ya se hacía para el número de recibo.
+        var clienteMostrar = p.cliente_nombre_ref;
+        if (!clienteMostrar && p.notas) {
+          var partes = p.notas.split('|');
+          if (partes[1]) clienteMostrar = partes[1].trim();
+        }
+        var mRecibo = (p.notas || '').match(/RECIBO:\s*([A-Za-z0-9\-]+)/);
+        var recibo = mRecibo ? mRecibo[1] : null;
         return '<div style="border:1px solid var(--gray-200);border-radius:8px;padding:8px;margin-bottom:6px;background:#F8F9FA">'
           + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">'
-          + '<span style="font-size:12px;font-weight:700;color:var(--navy)">' + esc(p.cliente_nombre_ref || '\u2014') + '</span>'
+          + '<span style="font-size:12px;font-weight:700;color:var(--navy)">' + esc(clienteMostrar || '\u2014') + '</span>'
           + '<span style="font-size:11px;color:var(--gray-400)">' + (p.fecha_pago || '') + '</span>'
           + '</div>'
+          + (recibo ? '<div style="font-size:10.5px;color:var(--gold);font-weight:700">\u2022 ' + esc(recibo) + '</div>' : '')
           + '<div style="font-size:11px;font-weight:700;color:' + (esEfectivo?'var(--gray-400)':'var(--gold)') + '">' + esc(p.folio_fiscal || '\u2014') + '</div>'
           + '<div style="font-size:10.5px;color:var(--gray-600)">' + esc(p.folio_referencia || '') + ' · <b>$' + fmt(p.monto) + '</b></div>'
           + '</div>';
@@ -1888,9 +1907,14 @@ async function porFacturarCargar() {
       var idJs = "'" + p.id + "'";
       var mRecibo = (p.notas || '').match(/RECIBO:\s*([A-Za-z0-9\-]+)/);
       var recibo = mRecibo ? mRecibo[1] : null;
+      var clienteMostrar = p.cliente_nombre_ref;
+      if (!clienteMostrar && p.notas) {
+        var partesN = p.notas.split('|');
+        if (partesN[1]) clienteMostrar = partesN[1].trim();
+      }
       return '<div style="border:1px solid var(--gray-200);border-radius:8px;padding:8px;margin-bottom:6px;background:#F8F9FA">'
         + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
-        + '<span style="font-size:12px;font-weight:700;color:var(--navy)">' + esc(p.cliente_nombre_ref || '\u2014') + '</span>'
+        + '<span style="font-size:12px;font-weight:700;color:var(--navy)">' + esc(clienteMostrar || '\u2014') + '</span>'
         + '<span style="font-size:11px;color:var(--gray-400)">' + (p.fecha_pago || '') + '</span>'
         + '</div>'
         + (recibo ? '<div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:2px">\u2022 ' + esc(recibo) + '</div>' : '')
