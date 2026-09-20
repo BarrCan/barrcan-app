@@ -6,6 +6,21 @@
 <title>BarrCan · Taller</title>
 <!--
   BARRCAN · MODULO: TALLER (standalone)
+  VERSION : v1.1
+  FECHA   : 2026-09-19
+  v1.1 - Modo Manual: para piezas sin datos de fabricación (cotizadas
+    a mano, sin cotizador), nuevo botón "➕ Agregar desglose manual"
+    que abre un formulario para capturar cortes de aluminio y
+    herrajes pieza por pieza. Al escribir una clave (Alucentro o
+    Cuprum), sugiere la equivalencia real -- se cargó la tabla
+    completa (845 pares) desde la hoja Equivalencias_Claves a la
+    tabla equivalencias_claves en Supabase. Se guarda en
+    notas_internas con el mismo formato (cortesCalc/herrajesCalc) que
+    ya usa el resto de Taller -- queda cotejable contra el sobrante
+    real de inventario_materiales, e imprimible con la misma ficha
+    que las piezas de cotizador. Marca internamente _manual:true para
+    diferenciarlo de un cálculo real de cotizador, sin ocultarlo del
+    usuario.
   VERSION : v1.0
   FECHA   : 2026-08-16
   v1.0 - Construcción inicial desde cero.
@@ -185,6 +200,48 @@ input[type=text]:focus { outline:none; border-color:var(--blue); }
 
 <div id="ficha-imprimible"></div>
 
+<!-- MODO MANUAL: desglose de material a mano, con sugerencia de -->
+<!-- equivalencia Alucentro↔Cuprum -->
+<div id="mm-overlay" onclick="tlCerrarModoManual()" style="display:none;position:fixed;inset:0;background:rgba(27,58,92,0.55);z-index:200"></div>
+<div id="mm-panel" style="display:none;position:fixed;inset:0;z-index:201;background:var(--white);overflow-y:auto">
+  <div class="det-header">
+    <button class="det-back" onclick="tlCerrarModoManual()">←</button>
+    <div class="det-titulo">
+      <div class="det-folio">Desglose manual</div>
+      <div class="det-cliente" id="mm-pieza-nombre">—</div>
+    </div>
+  </div>
+  <div style="padding:14px 16px 100px">
+
+    <div class="ficha-sec">
+      <div class="ficha-sec-header">✂️ Cortes de aluminio</div>
+      <div id="mm-cortes-lista"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
+        <input type="text" id="mm-c-alu" placeholder="Clave Alucentro" class="form-input" oninput="tlBuscarEquivAlu()" style="margin-bottom:0">
+        <input type="text" id="mm-c-cup" placeholder="Clave Cuprum" class="form-input" oninput="tlBuscarEquivCup()" style="margin-bottom:0">
+      </div>
+      <div id="mm-c-sugerencia" style="font-size:11px;color:var(--gold);min-height:16px;margin:4px 0"></div>
+      <input type="text" id="mm-c-desc" placeholder="Descripción de la pieza" class="form-input" style="margin-bottom:6px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+        <input type="number" id="mm-c-cant" placeholder="Cantidad de piezas" class="form-input" style="margin-bottom:0">
+        <input type="number" id="mm-c-mm" placeholder="Largo (mm) c/u" class="form-input" style="margin-bottom:0">
+      </div>
+      <button class="btn-imprimir" style="margin-top:8px" onclick="tlAgregarCorte()">+ Agregar corte</button>
+    </div>
+
+    <div class="ficha-sec">
+      <div class="ficha-sec-header">🔩 Herrajes</div>
+      <div id="mm-herrajes-lista"></div>
+      <input type="text" id="mm-h-cod" placeholder="Código / clave" class="form-input" style="margin-bottom:6px">
+      <input type="text" id="mm-h-desc" placeholder="Descripción" class="form-input" style="margin-bottom:6px">
+      <input type="number" id="mm-h-cant" placeholder="Cantidad" class="form-input">
+      <button class="btn-imprimir" style="margin-top:8px" onclick="tlAgregarHerraje()">+ Agregar herraje</button>
+    </div>
+
+    <button class="btn-imprimir" style="background:var(--navy);color:#fff;margin-top:10px" onclick="tlGuardarModoManual()">💾 Guardar desglose</button>
+  </div>
+</div>
+
 <script>
 // ── Supabase ─────────────────────────────────────────────────────
 var SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co';
@@ -258,6 +315,22 @@ function tlModuloLabel(row) {
 // ── Estado ───────────────────────────────────────────────────────
 var TL_CACHE = [];   // filas crudas de presupuestos_atrasados
 var TL_FILTRO = '';
+var EQUIV_CACHE = []; // tabla Alucentro↔Cuprum, cargada una sola vez
+
+async function tlCargarEquivalencias() {
+  if (!sb()) return;
+  try {
+    var res = await sb().from('equivalencias_claves').select('clave_alucentro,clave_cuprum,descripcion').limit(1000);
+    if (!res.error) {
+      EQUIV_CACHE = res.data || [];
+      try { localStorage.setItem('barrcan_equiv_cache', JSON.stringify(EQUIV_CACHE)); } catch(e) {}
+    }
+  } catch (e) { console.warn('[Taller] No se pudo cargar equivalencias:', e); }
+}
+function tlCargarEquivalenciasLocal() {
+  try { EQUIV_CACHE = JSON.parse(localStorage.getItem('barrcan_equiv_cache') || '[]'); }
+  catch (e) { EQUIV_CACHE = []; }
+}
 
 // ── Carga ────────────────────────────────────────────────────────
 async function tlCargar() {
@@ -412,7 +485,8 @@ function tlRenderFichaPieza(pz, idx) {
     '</div>';
 
   if (!tlTieneFabricacion(r)) {
-    html += '<div class="ficha-sinDatos">Sin datos de fabricación para esta pieza (servicio, mantenimiento o partida manual).</div></div>';
+    html += '<div class="ficha-sinDatos">Sin datos de fabricación para esta pieza (servicio, mantenimiento o partida manual).</div>' +
+      '<div style="padding:0 16px 14px"><button class="btn-imprimir" style="background:var(--gold)" onclick="tlAbrirModoManual(' + idx + ')">➕ Agregar desglose manual</button></div></div>';
     return html;
   }
 
@@ -516,12 +590,163 @@ function tlImprimirFicha(idx) {
   setTimeout(function() { window.print(); }, 150);
 }
 
+// ══════════════════════════════════════════════════════════════
+// MODO MANUAL — sep-2026
+// Para presupuestos capturados a mano (sin cotizador), permite
+// armar el desglose de material pieza por pieza, con sugerencia de
+// equivalencia Alucentro↔Cuprum, y lo guarda en notas_internas con
+// el mismo formato (cortesCalc/herrajesCalc) que ya usa el resto de
+// Taller -- así queda cotejable contra el sobrante real.
+// ══════════════════════════════════════════════════════════════
+var MM_IDX_ACTUAL = null;
+var MM_CORTES = [];
+var MM_HERRAJES = [];
+
+function tlAbrirModoManual(idx) {
+  if (!TL_ROW_ACTUAL) return;
+  MM_IDX_ACTUAL = idx;
+  MM_CORTES = [];
+  MM_HERRAJES = [];
+  var piezas = tlPiezasDe(TL_ROW_ACTUAL);
+  var pz = piezas[idx];
+  document.getElementById('mm-pieza-nombre').textContent = (pz && pz.label) || 'Pieza ' + (idx + 1);
+  tlRenderMMCortes();
+  tlRenderMMHerrajes();
+  document.getElementById('mm-overlay').style.display = 'block';
+  document.getElementById('mm-panel').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+}
+function tlCerrarModoManual() {
+  document.getElementById('mm-overlay').style.display = 'none';
+  document.getElementById('mm-panel').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+// Búsqueda local de equivalencia -- escribes una clave (Alucentro o
+// Cuprum) y sugiere la otra + descripción, sin llamar a la base cada
+// vez que tecleas.
+function tlBuscarEquivAlu() {
+  var v = document.getElementById('mm-c-alu').value.trim();
+  var sug = document.getElementById('mm-c-sugerencia');
+  if (!v) { sug.textContent = ''; return; }
+  var m = EQUIV_CACHE.filter(function(e) { return (e.clave_alucentro || '') === v; })[0];
+  if (m) {
+    sug.textContent = '✓ Equivale a Cuprum ' + (m.clave_cuprum || 's/equivalencia') + ' — ' + (m.descripcion || '');
+    if (m.clave_cuprum) document.getElementById('mm-c-cup').value = m.clave_cuprum;
+    if (m.descripcion && !document.getElementById('mm-c-desc').value) document.getElementById('mm-c-desc').value = m.descripcion;
+  } else {
+    sug.textContent = 'Sin equivalencia registrada para esa clave todavía';
+  }
+}
+function tlBuscarEquivCup() {
+  var v = document.getElementById('mm-c-cup').value.trim();
+  var sug = document.getElementById('mm-c-sugerencia');
+  if (!v) { sug.textContent = ''; return; }
+  var m = EQUIV_CACHE.filter(function(e) { return (e.clave_cuprum || '') === v; })[0];
+  if (m) {
+    sug.textContent = '✓ Equivale a Alucentro ' + (m.clave_alucentro || 's/equivalencia') + ' — ' + (m.descripcion || '');
+    if (m.clave_alucentro) document.getElementById('mm-c-alu').value = m.clave_alucentro;
+    if (m.descripcion && !document.getElementById('mm-c-desc').value) document.getElementById('mm-c-desc').value = m.descripcion;
+  } else {
+    sug.textContent = 'Sin equivalencia registrada para esa clave todavía';
+  }
+}
+
+function tlRenderMMCortes() {
+  var el = document.getElementById('mm-cortes-lista');
+  if (!MM_CORTES.length) { el.innerHTML = ''; return; }
+  el.innerHTML = MM_CORTES.map(function(c, i) {
+    return '<div class="ficha-row">' +
+      '<span class="ficha-clave">' + esc(c.clave) + '</span>' +
+      '<span class="ficha-desc">' + esc(c.nombre) + '<br><small style="color:var(--gray-400)">' + c.cant + '× pzas</small></span>' +
+      '<span class="ficha-val">' + c.mm + ' mm' +
+      '<br><button onclick="tlQuitarCorte(' + i + ')" style="border:none;background:none;color:var(--red);font-size:10px;cursor:pointer">quitar</button></span>' +
+    '</div>';
+  }).join('');
+}
+function tlRenderMMHerrajes() {
+  var el = document.getElementById('mm-herrajes-lista');
+  if (!MM_HERRAJES.length) { el.innerHTML = ''; return; }
+  el.innerHTML = MM_HERRAJES.map(function(h, i) {
+    return '<div class="ficha-row">' +
+      '<span class="ficha-clave">' + esc(h.cod) + '</span>' +
+      '<span class="ficha-desc">' + esc(h.desc) + '</span>' +
+      '<span class="ficha-val">' + h.cant +
+      '<br><button onclick="tlQuitarHerraje(' + i + ')" style="border:none;background:none;color:var(--red);font-size:10px;cursor:pointer">quitar</button></span>' +
+    '</div>';
+  }).join('');
+}
+function tlQuitarCorte(i) { MM_CORTES.splice(i, 1); tlRenderMMCortes(); }
+function tlQuitarHerraje(i) { MM_HERRAJES.splice(i, 1); tlRenderMMHerrajes(); }
+
+function tlAgregarCorte() {
+  var alu = document.getElementById('mm-c-alu').value.trim();
+  var cup = document.getElementById('mm-c-cup').value.trim();
+  var desc = document.getElementById('mm-c-desc').value.trim();
+  var cant = parseFloat(document.getElementById('mm-c-cant').value) || 0;
+  var mm = parseFloat(document.getElementById('mm-c-mm').value) || 0;
+  if (!desc || !cant || !mm) { toast('Faltan datos del corte (descripción, cantidad, mm)'); return; }
+  MM_CORTES.push({ clave: cup || alu || '—', claveAlucentro: alu || null, claveCuprum: cup || null, nombre: desc, cant: cant, mm: mm });
+  document.getElementById('mm-c-alu').value = '';
+  document.getElementById('mm-c-cup').value = '';
+  document.getElementById('mm-c-desc').value = '';
+  document.getElementById('mm-c-cant').value = '';
+  document.getElementById('mm-c-mm').value = '';
+  document.getElementById('mm-c-sugerencia').textContent = '';
+  tlRenderMMCortes();
+}
+function tlAgregarHerraje() {
+  var cod = document.getElementById('mm-h-cod').value.trim();
+  var desc = document.getElementById('mm-h-desc').value.trim();
+  var cant = parseFloat(document.getElementById('mm-h-cant').value) || 0;
+  if (!desc || !cant) { toast('Faltan datos del herraje (descripción, cantidad)'); return; }
+  MM_HERRAJES.push({ cod: cod || '—', desc: desc, cant: cant });
+  document.getElementById('mm-h-cod').value = '';
+  document.getElementById('mm-h-desc').value = '';
+  document.getElementById('mm-h-cant').value = '';
+  tlRenderMMHerrajes();
+}
+
+async function tlGuardarModoManual() {
+  if (MM_IDX_ACTUAL === null || !TL_ROW_ACTUAL) return;
+  if (!MM_CORTES.length && !MM_HERRAJES.length) { toast('Agrega al menos un corte o un herraje antes de guardar'); return; }
+  if (!sb()) { toast('Sin conexión -- no se puede guardar'); return; }
+
+  var piezas = tlPiezasDe(TL_ROW_ACTUAL);
+  var pz = piezas[MM_IDX_ACTUAL];
+  if (!pz.resultado) pz.resultado = {};
+  if (MM_CORTES.length) pz.resultado.cortesCalc = MM_CORTES;
+  if (MM_HERRAJES.length) pz.resultado.herrajesCalc = MM_HERRAJES;
+  pz.resultado.sistema = pz.resultado.sistema || (pz.label || 'Desglose manual');
+  pz.resultado._manual = true; // marca que este desglose se capturó a mano, no vía cotizador
+
+  try {
+    var res = await sb().from('presupuestos_atrasados')
+      .update({ notas_internas: JSON.stringify(piezas) })
+      .eq('id', TL_ROW_ACTUAL.id);
+    if (res.error) throw res.error;
+    toast('✅ Desglose guardado');
+    TL_ROW_ACTUAL.notas_internas = JSON.stringify(piezas);
+    // Actualizar también la copia en TL_CACHE para que la lista refleje "Ficha" de una vez
+    var idxCache = TL_CACHE.findIndex(function(r) { return r.id === TL_ROW_ACTUAL.id; });
+    if (idxCache >= 0) TL_CACHE[idxCache].notas_internas = TL_ROW_ACTUAL.notas_internas;
+    localStorage.setItem('barrcan_taller_cache', JSON.stringify(TL_CACHE));
+    tlCerrarModoManual();
+    tlAbrirDetalle(TL_ROW_ACTUAL.id);
+    tlRender();
+  } catch (e) {
+    toast('Error al guardar: ' + e.message);
+  }
+}
+
 // ── Init ─────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
   detectarConexion();
   tlCargarLocal();
+  tlCargarEquivalenciasLocal();
   tlRender();
   tlCargar();
+  tlCargarEquivalencias();
 });
 
 if ('serviceWorker' in navigator) {
