@@ -30,6 +30,13 @@
     sin pasar por ningún cotizador), Taller no mostraba nada más que
     "sin piezas guardadas". Ahora también ofrece el botón ahí,
     creando la primera pieza desde cero.
+    FIX 3 (el real, el que causaba "no aparece nada" desde el
+    principio): al armar el clic de cada tarjeta, el ID del
+    presupuesto (un UUID, con letras y guiones) se insertaba SIN
+    comillas en el onclick -- el navegador lo leía como JavaScript
+    inválido y tronaba en silencio antes de llegar siquiera a abrir
+    el panel de detalle. Este bug ya existía en v1.0, desde la
+    construcción original -- no era nada de lo agregado hoy. Corregido.
   VERSION : v1.0
   FECHA   : 2026-08-16
   v1.0 - Construcción inicial desde cero.
@@ -425,7 +432,7 @@ function tlRender() {
     var piezas = tlPiezasDe(r);
     var conFab = tlFolioTieneFabricacion(r);
     var moduloLbl = tlModuloLabel(r);
-    return '<div class="folio-card ' + (conFab ? 'tiene-taller' : '') + '" onclick="tlAbrirDetalle(' + r.id + ')">' +
+    return '<div class="folio-card ' + (conFab ? 'tiene-taller' : '') + '" onclick="tlAbrirDetalle(\'' + r.id + '\')">' +
       '<div class="folio-top">' +
         '<div>' +
           '<div class="folio-num">' + esc(r.folio || '(sin folio)') + ' <span style="color:var(--gray-400);font-weight:400">· ' + esc(moduloLbl) + '</span></div>' +
