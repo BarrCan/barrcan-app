@@ -6,6 +6,15 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.21
+  FECHA   : 2026-09-19
+  v1.21 - Botón "🔎 Taller" junto al folio de obra de cada artículo:
+    cruza la descripción del artículo contra los desgloses de
+    material pendientes en Taller (cortesCalc/herrajesCalc) por
+    palabras clave, y sugiere la obra si encuentra una coincidencia
+    clara -- si hay varias parejas, avisa en vez de adivinar. No hay
+    clave exacta compartida entre ambos módulos, así que es una
+    sugerencia a confirmar, no un autollenado ciego.
   VERSION : v1.20
   FECHA   : 2026-09-12
   v1.20 - Ya no hace falta refrescar la hoja después de asignar:
@@ -823,7 +832,7 @@ var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
 
-var APP_VERSION = 'v1.20';
+var APP_VERSION = 'v1.21';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -1072,6 +1081,74 @@ async function cmpGuardarEdicionFactura() {
     cmpCargarFacturas();
   } catch (e) {
     toast('Error al guardar: ' + e.message);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// SUGERIR OBRA DESDE TALLER — sep-2026
+// Cruza la descripción del artículo de la factura contra los
+// desgloses de material pendientes en Taller (cortesCalc/
+// herrajesCalc dentro de notas_internas) -- ya que si se compró es
+// muy probablemente porque una obra lo necesitaba. No hay clave
+// exacta compartida entre ambos lados, así que el cruce es por
+// palabras de la descripción -- es una SUGERENCIA, no un
+// autollenado ciego; Mau confirma o corrige.
+// ══════════════════════════════════════════════════════════════
+var TALLER_PEND_CACHE = null; // null = no cargado todavía
+
+async function cmpCargarTallerPendientes() {
+  if (!sb()) return [];
+  try {
+    var res = await sb().from('presupuestos_atrasados')
+      .select('folio,notas_internas')
+      .eq('eliminado', false)
+      .order('fecha', { ascending: false })
+      .limit(300);
+    if (res.error) throw res.error;
+    var pend = [];
+    (res.data || []).forEach(function(p) {
+      var piezas = [];
+      try { piezas = JSON.parse(p.notas_internas || '[]'); } catch(e) {}
+      if (!Array.isArray(piezas)) return;
+      piezas.forEach(function(pz) {
+        var r = pz.resultado;
+        if (!r) return;
+        (r.cortesCalc || []).forEach(function(c) { pend.push({ folio: p.folio, texto: (c.nombre || '') + ' ' + (c.clave || '') }); });
+        (r.herrajesCalc || []).forEach(function(h) { pend.push({ folio: p.folio, texto: (h.desc || '') + ' ' + (h.cod || '') }); });
+      });
+    });
+    TALLER_PEND_CACHE = pend;
+  } catch (e) { console.warn('[Compras] No se pudo cargar pendientes de Taller:', e); TALLER_PEND_CACHE = []; }
+  return TALLER_PEND_CACHE;
+}
+
+function cmpPalabrasClave(txt) {
+  return (txt || '').toUpperCase().split(/[^A-Z0-9ÁÉÍÓÚÑ]+/).filter(function(w) { return w.length >= 4; });
+}
+
+async function cmpSugerirObra(itemId) {
+  var it = MC_ITEMS.filter(function(x) { return x.id === itemId; })[0];
+  if (!it || !it.descripcion) { toast('Escribe primero la descripción del artículo'); return; }
+  if (TALLER_PEND_CACHE === null) { toast('Buscando en Taller...'); await cmpCargarTallerPendientes(); }
+
+  var palabras = cmpPalabrasClave(it.descripcion);
+  if (!palabras.length) { toast('Descripción muy corta para buscar coincidencia'); return; }
+
+  var mejores = {};
+  TALLER_PEND_CACHE.forEach(function(p) {
+    var txtUp = p.texto.toUpperCase();
+    var coincidencias = palabras.filter(function(w) { return txtUp.indexOf(w) >= 0; }).length;
+    if (coincidencias > 0) mejores[p.folio] = (mejores[p.folio] || 0) + coincidencias;
+  });
+  var folios = Object.keys(mejores).sort(function(a, b) { return mejores[b] - mejores[a]; });
+
+  if (!folios.length) { toast('Sin coincidencia en los desgloses pendientes de Taller'); return; }
+  if (folios.length === 1 || mejores[folios[0]] > mejores[folios[1]] * 1.5) {
+    cmpItemActualizar(itemId, 'folio_obra', folios[0]);
+    cmpRenderItems();
+    toast('✓ Sugerido: ' + folios[0] + ' (según Taller)');
+  } else {
+    toast('Varias obras coinciden (' + folios.slice(0, 3).join(', ') + ') -- elige a mano, no hay una sola clara');
   }
 }
 
@@ -1644,7 +1721,10 @@ function cmpRenderItems() {
       + '<input type="number" class="form-input" placeholder="Cantidad para esta obra" value="' + it.cantidad + '" style="font-size:12px" oninput="cmpItemActualizar(\'' + it.id + '\',\'cantidad\',this.value);cmpRenderItems()">'
       + '<input type="number" class="form-input" placeholder="Precio unitario" value="' + it.precio_unitario + '" style="font-size:12px" oninput="cmpItemActualizar(\'' + it.id + '\',\'precio_unitario\',this.value);cmpRenderItems()">'
       + '</div>'
-      + '<input type="text" class="form-input" list="mc-obra-lista" placeholder="Folio de la obra" value="' + esc(it.folio_obra) + '" style="margin-bottom:6px;font-size:12px" oninput="cmpItemActualizar(\'' + it.id + '\',\'folio_obra\',this.value)">'
+      + '<div style="display:flex;gap:5px;margin-bottom:6px">'
+      + '<input type="text" class="form-input" list="mc-obra-lista" placeholder="Folio de la obra" value="' + esc(it.folio_obra) + '" style="margin-bottom:0;font-size:12px;flex:1" oninput="cmpItemActualizar(\'' + it.id + '\',\'folio_obra\',this.value)">'
+      + '<button type="button" onclick="cmpSugerirObra(\'' + it.id + '\')" style="padding:0 10px;border-radius:8px;border:1.5px solid var(--gold);background:none;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">🔎 Taller</button>'
+      + '</div>'
       + '<label style="font-size:10px;color:var(--gray-400);display:block;margin-bottom:2px">¿Compraste más de lo que usa esta obra? (ej. caja de 100 tornillos, usas 12)</label>'
       + '<input type="number" class="form-input" placeholder="Cantidad TOTAL comprada (opcional)" value="' + (it.cantidad_total != null ? it.cantidad_total : '') + '" style="font-size:12px;margin-bottom:4px" oninput="cmpItemActualizar(\'' + it.id + '\',\'cantidad_total\',this.value);cmpRenderItems()">'
       + (sobrante > 0 ? '<div style="font-size:10px;color:#8E44AD;background:rgba(142,68,173,0.08);padding:4px 8px;border-radius:6px;margin-bottom:4px">🧰 ' + fmt(sobrante) + ' de sobrante se guarda como stock disponible (sin obra) para la próxima vez</div>' : '')
