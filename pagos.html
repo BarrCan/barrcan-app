@@ -6,6 +6,11 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.24
+  FECHA   : 2026-09-19
+  v4.24 — Nueva forma de pago "Liga de retiro" (botón en el
+    formulario principal, opción en Editar, y en las etiquetas de
+    recibo/lista). Valor guardado: liga_retiro.
   VERSIÓN : v4.23
   FECHA   : 2026-09-15
   v4.23 — La lista de pagos ahora ordena por número de recibo (RB-N,
@@ -1086,6 +1091,7 @@ select.form-select { padding-right: 36px; cursor: pointer; }
         <button class="pf-btn active" data-forma="transferencia" onclick="selForma(this)">Transferencia</button>
         <button class="pf-btn" data-forma="efectivo" onclick="selForma(this)">Efectivo</button>
         <button class="pf-btn" data-forma="tarjeta" onclick="selForma(this)">Tarjeta</button>
+        <button class="pf-btn" data-forma="liga_retiro" onclick="selForma(this)">Liga de retiro</button>
       </div>
       <div style="margin-bottom:12px">
         <button class="pf-btn" data-forma="mercado_libre" onclick="selForma(this)" style="width:100%">🛒 Mercado Libre</button>
@@ -1155,6 +1161,7 @@ select.form-select { padding-right: 36px; cursor: pointer; }
       <option value="transferencia">Transferencia</option>
       <option value="efectivo">Efectivo</option>
       <option value="tarjeta">Tarjeta</option>
+      <option value="liga_retiro">Liga de retiro</option>
       <option value="mercado_libre">🛒 Mercado Libre</option>
     </select>
     <label class="form-label">Notas</label>
@@ -1203,7 +1210,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.23';
+var APP_VERSION = 'v4.24';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -1273,7 +1280,7 @@ var ESTADO_SHORT = {
   entregado: 'Entregado'
 };
 var CONCEPTO_L = { anticipo: 'Anticipo 50%', segundo_pago: '2\u00b0 Pago 35%', liquidacion: 'Liquidaci\u00f3n 15%', pago_total: 'Pago total', otro: 'Otro' };
-var FORMA_E    = { transferencia: 'Transf.', efectivo: 'Efectivo', tarjeta: 'Tarjeta', mercado_libre: '🛒 ML' };
+var FORMA_E    = { transferencia: 'Transf.', efectivo: 'Efectivo', tarjeta: 'Tarjeta', mercado_libre: '🛒 ML', liga_retiro: 'Liga retiro' };
 
 // ── Paginación ────────────────────────────────────────────────────
 var PAGOS_VISIBLES = 10;
@@ -2045,7 +2052,7 @@ async function pagoGuardarMultiple() {
     lineas.push({ db: db, folio: sel.p.folio, saldoNuevo: saldoNuevo, presId: sel.p.id, presEstado: sel.p.estado });
   }
 
-  var fLabels = { transferencia: 'Transferencia bancaria', efectivo: 'Efectivo', tarjeta: 'Tarjeta cr\u00e9dito/d\u00e9bito' };
+  var fLabels = { transferencia: 'Transferencia bancaria', efectivo: 'Efectivo', tarjeta: 'Tarjeta cr\u00e9dito/d\u00e9bito', liga_retiro: 'Liga de retiro' };
   _RECIBO = generarReciboMultiple({
     folioRB: folioRB, cliente: cliente, tel: tel, monto: total,
     fecha: fecha, concepto: concepto, forma: FORMA_SEL, formaLabel: fLabels[FORMA_SEL] || FORMA_SEL,
@@ -2197,7 +2204,7 @@ async function pagoGuardar() {
     comision_ml_pct: FORMA_SEL === 'mercado_libre' ? (parseFloat(document.getElementById('pago-comision-ml').value) || null) : null
   };
 
-  var fLabels = { transferencia: 'Transferencia bancaria', efectivo: 'Efectivo', tarjeta: 'Tarjeta cr\u00e9dito/d\u00e9bito', mercado_libre: 'Mercado Libre' };
+  var fLabels = { transferencia: 'Transferencia bancaria', efectivo: 'Efectivo', tarjeta: 'Tarjeta cr\u00e9dito/d\u00e9bito', mercado_libre: 'Mercado Libre', liga_retiro: 'Liga de retiro' };
   // OJO: el recibo (_RECIBO) SOLO recibe monto/forma/notas del usuario --
   // nunca comision_ml_pct ni el neto. Eso es exclusivamente para el
   // registro interno en `db`, jamás se le imprime al cliente.
@@ -2764,7 +2771,7 @@ function pagoEditarReimprimir() {
     else if (parte !== folio && parte !== cliente) { notaLimpia += (notaLimpia ? ' | ' : '') + parte; }
   });
 
-  var fLabels = { transferencia: 'Transferencia bancaria', efectivo: 'Efectivo', tarjeta: 'Tarjeta crédito/débito' };
+  var fLabels = { transferencia: 'Transferencia bancaria', efectivo: 'Efectivo', tarjeta: 'Tarjeta crédito/débito', liga_retiro: 'Liga de retiro' };
   var html = generarRecibo({
     folioRB:    folioRB,
     folio:      folio,
