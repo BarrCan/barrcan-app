@@ -6,6 +6,67 @@
 <title>BarrCan · Cotizador Baños</title>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v3.2
+  FECHA   : 2026-09-16
+  v3.2 - Prueba de un mes (sep-2026): GIF 15%→9%, GA 25%→15.1%,
+    Utilidad se queda en 35% (el valor real que ya estaba en
+    config_precios -- el 25% que aparecía en el HTML de Frameless/
+    Bacalar/Escuadra/Corredizo era solo el default antes de cargar,
+    nunca el real). Se conecta por fin Corredizo Cristal (cc-gif/
+    cc-ga/cc-utilidad/cc-iva) a la misma config compartida --
+    vivía aislado en 15/25/25/16 fijos, nunca se actualizaba con lo
+    demás. Ahora los 6 cotizadores (Nacional/Español/Eurovent/
+    Servicios/Baños completo) leen los mismos porcentajes de
+    config_precios. Margen total resultante: ~94% sobre costo neto
+    (antes ~119%). Revisar en un mes cómo se comporta.
+  VERSION : v3.1
+  FECHA   : 2026-09-16
+  v3.1 - FIX de unidad: Alu/Polietileno capturaba Largo/Alto/Largo2/
+    descuento de apertura en cm, inconsistente con el resto del
+    archivo (Frameless/Bacalar/Escuadra/Corredizo, y Nacional/Español/
+    Eurovent) que usan mm. Ahora captura en mm y convierte a cm
+    internamente antes de calcular -- las fórmulas no cambiaron, solo
+    el punto de entrada. La hoja de corte impresa se queda en cm
+    (convención de fabricación/dibujo que ya usa Mau), pero ahora
+    parte de una captura en mm consistente con el resto del módulo.
+  VERSION : v3.0
+  FECHA   : 2026-09-16
+  v3.0 - Hoja de corte para taller/proveedor, dentro de Alu/Polietileno
+    tipo Recto: reparte el ancho entre Fijo y Puerta (das una medida,
+    la otra sale por diferencia, descontando la holgura de apertura,
+    default 1.7cm editable). Alto de la Puerta siempre 1cm menos que
+    el Fijo (confirmado como constante). Calcula posición de saques
+    (clip en el Fijo, bisagra en la Puerta, ambos a 30cm de cada
+    extremo) y barrenos de jaladera (13mm×2 estándar, o 4.5cm×1-2 para
+    jaladera tipo C/H/uñero). Genera diagrama SVG de cada pieza con
+    acotado, imprimible en pestaña nueva -- opción de imprimir solo
+    vidrios o completo (con lista de herrajes). Es la primera pieza
+    real de "cortesCalc" para baños -- Taller todavía no la lee (sigue
+    pendiente esa conexión), pero ya existe el documento físico para
+    mandar al proveedor mientras tanto. Por ahora solo Recto --
+    Escuadra queda pendiente, es otra geometría de corte.
+  VERSION : v2.9
+  FECHA   : 2026-09-16
+  v2.9 - Nueva línea "Alu/Polietileno": cancel con marco de aluminio
+    y lámina de polietileno (opción económica, sin vidrio). Costeo
+    por pieza real -- mismas claves que ya usa el inventario (674
+    riel, 675 jamba inferior, 677 jamba lateral, 670/671/676 moldura
+    según nivel Económico/Semi Lujo/Lujo), sacadas de la Lista de
+    precios real (sep-2026). Color con el mismo criterio de
+    "factorAcabado" que el resto de la app: precio base (Natural) +
+    % según color (Blanco/Negro), en vez de una tabla de precio
+    independiente por cada combinación -- editable en un solo lugar
+    (config_precios, prefijo alu_) en cuanto se le agregue esa
+    sección a config.html. Misma fórmula de indirectos que Corredizo
+    Cristal: GIF 15% + GA 25% + Utilidad 25%, MO fija $600,
+    netificación de IVA de compra antes de margen. Dos tipos: Recto
+    (1 muro) y Escuadra (2 muros, con Largo2). Semi Lujo es el nivel
+    estándar por default. PENDIENTE: alu_670_base usa el precio "S/A"
+    porque esa clave no tenía precio en Natural en la lista original
+    -- confirmar con Mau si es correcto o hay que capturarlo. También
+    pendiente: esta línea (como el resto del módulo) todavía no tiene
+    el retrofit de Vista Cliente/rol que sí tienen Nacional/Español/
+    Eurovent/Servicios -- tarea aparte ya identificada.
   VERSION : v2.8
   FECHA   : 2026-09-05
   v2.8 - Candado por cliente en el código promocional -- de paso, candado por cliente: si el código tiene un cliente asignado (nuevo módulo codigos_promocionales.html), solo aplica si el nombre capturado coincide (sin distinguir mayúsculas ni acentos).
@@ -309,6 +370,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     <button class="tab-btn" onclick="cbTab(this,'bacalar')">Bacalar</button>
     <button class="tab-btn" onclick="cbTab(this,'escuadra')">Escuadra</button>
     <button class="tab-btn" onclick="cbTab(this,'corredizo')">Corredizo</button>
+    <button class="tab-btn" onclick="cbTab(this,'alupol')">Alu/Polietileno</button>
     <button class="tab-btn" onclick="cbTab(this,'otro')">➕ Otro/Ampliación</button>
     <button class="tab-btn" onclick="cbTab(this,'taller')">🛠️ Taller</button>
   </div>
@@ -780,6 +842,117 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     </div>
   </div>
 
+  <!-- ══ TAB ALUMINIO / POLIETILENO ══ -->
+  <!-- Línea nueva (sep-2026): cancel con marco de aluminio y lámina de
+       polietileno en vez de vidrio -- opción económica. Costeo por
+       pieza real (igual que inventario: claves 670/671/674/675/676/677),
+       no por kit ni por $/kg genérico. Fórmula de indirectos idéntica a
+       Corredizo Cristal (GIF 15% + GA 25% + Utilidad 25%, MO fija $600,
+       netificación de IVA de compra) -- ver config_precios prefijo alu_.
+       Semi Lujo es el nivel estándar (default). -->
+  <div id="tab-alupol" style="display:none">
+    <div class="card">
+      <div class="card-title">Cancel Aluminio + Polietileno</div>
+
+      <label class="form-label">Tipo</label>
+      <div class="color-grid">
+        <button class="color-btn active" data-tipo="recto" onclick="apSelTipo(this)">Recto (1 muro)</button>
+        <button class="color-btn" data-tipo="escuadra" onclick="apSelTipo(this)">Escuadra (2 muros)</button>
+      </div>
+
+      <label class="form-label">Nivel</label>
+      <div class="color-grid">
+        <button class="color-btn" data-nivel="economico" onclick="apSelNivel(this)">Económico</button>
+        <button class="color-btn active" data-nivel="semilujo" onclick="apSelNivel(this)">Semi Lujo (estándar)</button>
+        <button class="color-btn" data-nivel="lujo" onclick="apSelNivel(this)">Lujo</button>
+      </div>
+
+      <label class="form-label">Color del marco</label>
+      <div class="color-grid">
+        <button class="color-btn active" data-color="NATURAL" onclick="apSelColor(this)">Natural</button>
+        <button class="color-btn" data-color="BLANCO" onclick="apSelColor(this)">Blanco</button>
+        <button class="color-btn" data-color="NEGRO" onclick="apSelColor(this)">Negro</button>
+      </div>
+
+      <div class="form-row">
+        <div>
+          <label class="form-label">Largo (mm)</label>
+          <input type="number" class="form-input" id="ap-largo" value="1000" inputmode="numeric">
+        </div>
+        <div id="ap-largo2-wrap" style="display:none">
+          <label class="form-label">Largo 2 (mm) &mdash; segundo muro</label>
+          <input type="number" class="form-input" id="ap-largo2" value="1000" inputmode="numeric">
+        </div>
+      </div>
+      <div>
+        <label class="form-label">Alto (mm)</label>
+        <input type="number" class="form-input" id="ap-alto" value="1800" inputmode="numeric">
+      </div>
+
+      <button class="btn btn-primary" onclick="apCalcular()">Calcular</button>
+    </div>
+
+    <div id="ap-resultado" style="display:none">
+      <div class="total-box">
+        <div class="total-label">PRECIO FINAL ALUMINIO/POLIETILENO</div>
+        <div class="total-monto" id="ap-precio-final">$0</div>
+        <div style="margin-top:10px">
+          <div class="desglose-row"><span>Perfiles aluminio</span><span id="ap-d-alu">$0</span></div>
+          <div class="desglose-row"><span>Herrajes</span><span id="ap-d-her">$0</span></div>
+          <div class="desglose-row"><span>Material (polietileno)</span><span id="ap-d-mat">$0</span></div>
+          <div class="desglose-row"><span>Mano de obra</span><span id="ap-d-mdo">$0</span></div>
+          <div class="desglose-row"><span>GIF</span><span id="ap-d-gif">$0</span></div>
+          <div class="desglose-row"><span>GA</span><span id="ap-d-ga">$0</span></div>
+          <div class="desglose-row"><span>Utilidad</span><span id="ap-d-util">$0</span></div>
+          <div class="desglose-row"><span>IVA</span><span id="ap-d-iva">$0</span></div>
+        </div>
+      </div>
+
+      <!-- Hoja de corte -- solo aplica a Recto (Fijo + Puerta en un
+           solo muro). Escuadra queda pendiente, es otra geometría. -->
+      <div class="card" id="ap-corte-card" style="display:none">
+        <div class="card-title">Hoja de corte para taller/proveedor</div>
+        <div style="font-size:10px;color:var(--gray-400);margin-bottom:8px">Reparte el ancho entre Fijo y Puerta, descontando la holgura de apertura. El alto de la Puerta siempre se hace 1cm más corto que el Fijo.</div>
+
+        <label class="form-label">Descuento de apertura (mm)</label>
+        <input type="number" class="form-input" id="ap-corte-descuento" value="17" step="1">
+
+        <label class="form-label">¿Qué medida vas a fijar?</label>
+        <div class="color-grid">
+          <button class="color-btn active" data-reparto="fijo" onclick="apSelReparto(this)">Doy la medida del Fijo</button>
+          <button class="color-btn" data-reparto="puerta" onclick="apSelReparto(this)">Doy la medida de la Puerta</button>
+        </div>
+        <label class="form-label" id="ap-corte-valor-label">Ancho del Fijo (mm)</label>
+        <input type="number" class="form-input" id="ap-corte-valor" value="200">
+
+        <label class="form-label">Jaladera</label>
+        <div class="color-grid">
+          <button class="color-btn active" data-jaladera="13mm2" onclick="apSelJaladera(this)">2 barrenos 13mm</button>
+          <button class="color-btn" data-jaladera="45cm1" onclick="apSelJaladera(this)">1 barreno 4.5cm (C/H/uñero)</button>
+          <button class="color-btn" data-jaladera="45cm2" onclick="apSelJaladera(this)">2 barrenos 4.5cm</button>
+        </div>
+
+        <button class="btn btn-primary" onclick="apCalcularCorte()">Generar hoja de corte</button>
+
+        <div id="ap-corte-resultado" style="display:none;margin-top:12px">
+          <div class="desglose-row"><span>Fijo (vidrio)</span><span id="ap-corte-fijo-txt">—</span></div>
+          <div class="desglose-row"><span>Puerta (vidrio)</span><span id="ap-corte-puerta-txt">—</span></div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button class="btn btn-gold" style="flex:1" onclick="apImprimirCorte(false)">Imprimir solo vidrios</button>
+            <button class="btn" style="flex:1;border:1.5px solid var(--gray-300)" onclick="apImprimirCorte(true)">Imprimir completo</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Guardar presupuesto Aluminio/Polietileno</div>
+        <input type="text" class="form-input" id="alupol-cliente" list="sn-clientes-datalist" placeholder="Nombre del cliente *" oninput="snAutocompletarCliente('alupol')">
+        <input type="text" class="form-input" id="alupol-tel" placeholder="Tel&eacute;fono">
+        <button class="btn btn-gold" onclick="cbGuardarPresupuesto('alupol')">Guardar y generar folio CACN</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ══ TAB OTRO / AMPLIACIÓN ══ -->
   <div id="tab-otro" style="display:none">
     <div class="wizard-card">
@@ -1066,7 +1239,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v2.7';
+var APP_VERSION = 'v3.2';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -1108,6 +1281,278 @@ var CC_PRECIOS = {
   vid_templado_8mm: 1000.00, vid_templado_10mm: 1270.00,
   esmerilado_recargo: 800.00
 };
+
+// ── ALUMINIO + POLIETILENO — costos base (sep-2026) ────────────
+// Precios por barra completa de 6.10m (610cm), color Natural --
+// mismo criterio de "factorAcabado" que el resto de la app: un
+// precio base + % según color, en vez de precio independiente por
+// cada combinación clave×color (así se actualiza en un solo lugar
+// en config.html en vez de mantener una tabla enorme). Defaults
+// sacados de la Lista de precios real (sep-2026); alu_670_base usa
+// el precio "S/A" porque esa clave no tiene precio en Natural
+// capturado -- confirmar con Mau si eso está bien o hay que
+// corregirlo.
+var ALU_PRECIOS = {
+  '674_base': 878.35, '675_base': 362.62, '677_base': 297.89,
+  '670_base': 280.37, '671_base': 340.00, '676_base': 327.00,
+  factor_blanco_pct: 0, factor_negro_pct: 15,
+  her_carretilla: 5.22, her_jaladera: 4.06, her_escuadra: 1.508,
+  her_vinil_kg: 38.28, her_silicon: 199.52, her_remache: 20.648,
+  material_m2: 300, mdo: 600,
+  gif_pct: 15, ga_pct: 25, util_pct: 25,
+  iva_compras_pct: 16, iva_venta_pct: 16
+};
+var AP_TIPO = 'recto', AP_NIVEL = 'semilujo', AP_COLOR = 'NATURAL';
+
+function apSelTipo(btn) {
+  btn.closest('.color-grid').querySelectorAll('.color-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  AP_TIPO = btn.dataset.tipo;
+  document.getElementById('ap-largo2-wrap').style.display = AP_TIPO === 'escuadra' ? 'block' : 'none';
+  document.getElementById('ap-corte-card').style.display = AP_TIPO === 'recto' ? 'block' : 'none';
+}
+function apSelNivel(btn) {
+  btn.closest('.color-grid').querySelectorAll('.color-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  AP_NIVEL = btn.dataset.nivel;
+}
+function apSelColor(btn) {
+  btn.closest('.color-grid').querySelectorAll('.color-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  AP_COLOR = btn.dataset.color;
+}
+
+// Precio de una barra completa (610cm) de una clave, ya con el
+// incremento de color aplicado.
+function apPrecioBarra(clave) {
+  var base = ALU_PRECIOS[clave + '_base'];
+  var factorPct = AP_COLOR === 'BLANCO' ? ALU_PRECIOS.factor_blanco_pct
+                : AP_COLOR === 'NEGRO'  ? ALU_PRECIOS.factor_negro_pct : 0;
+  return base * (1 + factorPct / 100);
+}
+// Costo de una pieza cortada de "cm" centímetros de esa clave --
+// mismo criterio que el Excel: precio de barra completa × cm/610.
+function apCostoPieza(clave, cm) {
+  return (apPrecioBarra(clave) * cm) / 610;
+}
+
+function apCalcular() {
+  // Los campos capturan mm (estándar del resto de Baños); las fórmulas
+  // internas siguen trabajando en cm, igual que el Excel original.
+  var largo = (parseFloat(document.getElementById('ap-largo').value) || 0) / 10;
+  var alto  = (parseFloat(document.getElementById('ap-alto').value)  || 0) / 10;
+  var largo2 = AP_TIPO === 'escuadra' ? ((parseFloat(document.getElementById('ap-largo2').value) || 0) / 10) : 0;
+  if (!largo || !alto || (AP_TIPO === 'escuadra' && !largo2)) { toast('Faltan medidas'); return; }
+
+  var claveMoldura = AP_NIVEL === 'economico' ? '670' : AP_NIVEL === 'lujo' ? '676' : '671';
+
+  var cmRiel, cmJambaInf, cmJambaLat, cmMoldura;
+  var qCarretilla, qJaladera, qEscuadra, kgVinil, qSilicon, qRemache;
+  var m2Material;
+
+  if (AP_TIPO === 'recto') {
+    cmRiel = largo;
+    cmJambaInf = largo;
+    cmJambaLat = alto * 2;
+    cmMoldura = (largo + alto * 2) * 2;
+    qCarretilla = 4; qJaladera = 2; qEscuadra = 8;
+    kgVinil = ((largo / 2) * 4 * alto) / 12000;
+    qSilicon = 0.5; qRemache = 40;
+    m2Material = (alto * largo) / 10000;
+  } else {
+    cmRiel = largo + largo2;
+    cmJambaInf = largo + largo2;
+    cmJambaLat = alto * 2;
+    cmMoldura = ((largo + alto * 2) * 2) + ((largo2 + alto * 2) * 2);
+    qCarretilla = 4; qJaladera = 2; qEscuadra = 16;
+    kgVinil = (((largo / 2) * 4 * alto) + ((largo2 / 2) * 4 * alto)) / 12000;
+    qSilicon = 1; qRemache = 80;
+    m2Material = ((alto * largo) + (alto * largo2)) / 10000;
+  }
+
+  var costoAluminio = apCostoPieza('674', cmRiel) + apCostoPieza('675', cmJambaInf)
+    + apCostoPieza('677', cmJambaLat) + apCostoPieza(claveMoldura, cmMoldura);
+
+  var costoHerrajes = ALU_PRECIOS.her_carretilla * qCarretilla
+    + ALU_PRECIOS.her_jaladera * qJaladera
+    + ALU_PRECIOS.her_escuadra * qEscuadra
+    + ALU_PRECIOS.her_vinil_kg * kgVinil
+    + ALU_PRECIOS.her_silicon * qSilicon
+    + (ALU_PRECIOS.her_remache * qRemache) / 100;
+
+  var costoMaterial = ALU_PRECIOS.material_m2 * m2Material;
+
+  var costoBruto = costoAluminio + costoHerrajes + costoMaterial;
+  var costoNeto  = costoBruto / (1 + ALU_PRECIOS.iva_compras_pct / 100);
+  var subtotal   = costoNeto + ALU_PRECIOS.mdo;
+  var gif        = subtotal * ALU_PRECIOS.gif_pct / 100;
+  var ga         = subtotal * ALU_PRECIOS.ga_pct / 100;
+  var costoReal  = subtotal + gif + ga;
+  var utilidad   = costoReal * ALU_PRECIOS.util_pct / 100;
+  var antesIva   = costoReal + utilidad;
+  var ivaVenta   = antesIva * ALU_PRECIOS.iva_venta_pct / 100;
+  var precioFinal = antesIva + ivaVenta;
+
+  document.getElementById('ap-d-alu').textContent  = fmt(costoAluminio);
+  document.getElementById('ap-d-her').textContent  = fmt(costoHerrajes);
+  document.getElementById('ap-d-mat').textContent  = fmt(costoMaterial);
+  document.getElementById('ap-d-mdo').textContent  = fmt(ALU_PRECIOS.mdo);
+  document.getElementById('ap-d-gif').textContent  = fmt(gif);
+  document.getElementById('ap-d-ga').textContent   = fmt(ga);
+  document.getElementById('ap-d-util').textContent = fmt(utilidad);
+  document.getElementById('ap-d-iva').textContent  = fmt(ivaVenta);
+  document.getElementById('ap-precio-final').textContent = '$' + fmt(precioFinal);
+  document.getElementById('ap-resultado').style.display = 'block';
+
+  var nivelLabel = AP_NIVEL === 'economico' ? 'Económico' : AP_NIVEL === 'lujo' ? 'Lujo' : 'Semi Lujo';
+  var tipoLabel = AP_TIPO === 'escuadra' ? 'Escuadra' : 'Recto';
+  CB_RESULTADO = {
+    sistema: 'Aluminio/Polietileno ' + tipoLabel + ' ' + nivelLabel + ' ' + AP_COLOR,
+    L: largo2 ? ((largo*10) + '+' + (largo2*10)) : largo*10, H: alto*10,
+    precioFinal: precioFinal,
+    tipo: 'alupol', apTipo: AP_TIPO, apNivel: AP_NIVEL, apColor: AP_COLOR,
+    largo: largo, largo2: largo2 || null, alto: alto,
+    desglose: { costoAluminio: costoAluminio, costoHerrajes: costoHerrajes, costoMaterial: costoMaterial,
+                mdo: ALU_PRECIOS.mdo, gif: gif, ga: ga, utilidad: utilidad, iva: ivaVenta }
+  };
+
+  if (AP_TIPO === 'recto') {
+    document.getElementById('ap-corte-card').style.display = 'block';
+    document.getElementById('ap-corte-resultado').style.display = 'none';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// HOJA DE CORTE (Fijo + Puerta) — sep-2026
+// Reparte el ancho del vano entre Fijo y Puerta, descontando la
+// holgura de apertura, y calcula la posición de saques (clip en el
+// Fijo, bisagra en la Puerta) y barrenos de jaladera. Pensada para
+// imprimir y mandar directo al proveedor de vidrio/aluminio.
+// ══════════════════════════════════════════════════════════════
+var AP_REPARTO = 'fijo';
+var AP_JALADERA = '13mm2';
+var AP_CORTE = null;
+
+function apSelReparto(btn) {
+  btn.closest('.color-grid').querySelectorAll('.color-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  AP_REPARTO = btn.dataset.reparto;
+  document.getElementById('ap-corte-valor-label').textContent = AP_REPARTO === 'fijo' ? 'Ancho del Fijo (mm)' : 'Ancho de la Puerta (mm)';
+}
+function apSelJaladera(btn) {
+  btn.closest('.color-grid').querySelectorAll('.color-btn').forEach(function(b) { b.classList.remove('active'); });
+  btn.classList.add('active');
+  AP_JALADERA = btn.dataset.jaladera;
+}
+
+function apCalcularCorte() {
+  var largo = (parseFloat(document.getElementById('ap-largo').value) || 0) / 10;
+  var alto  = (parseFloat(document.getElementById('ap-alto').value)  || 0) / 10;
+  var descuento = (parseFloat(document.getElementById('ap-corte-descuento').value) || 0) / 10;
+  var valorDado  = (parseFloat(document.getElementById('ap-corte-valor').value) || 0) / 10;
+  if (!largo || !alto || !valorDado) { toast('Faltan medidas'); return; }
+
+  var anchoDisponible = largo - descuento;
+  var anchoFijo, anchoPuerta;
+  if (AP_REPARTO === 'fijo') { anchoFijo = valorDado; anchoPuerta = anchoDisponible - valorDado; }
+  else { anchoPuerta = valorDado; anchoFijo = anchoDisponible - valorDado; }
+
+  if (anchoFijo <= 0 || anchoPuerta <= 0) { toast('Las medidas no cierran -- revisa el ancho total y el descuento'); return; }
+
+  var altoFijo = alto;
+  var altoPuerta = alto - 1; // FIJO: siempre 1cm menos que el Fijo, confirmado como constante
+
+  var jaladeraLabel = AP_JALADERA === '13mm2' ? '2 barrenos Ø13mm' : AP_JALADERA === '45cm1' ? '1 barreno Ø4.5cm' : '2 barrenos Ø4.5cm';
+
+  AP_CORTE = {
+    largoTotal: largo, altoTotal: alto, descuento: descuento,
+    fijo: { ancho: anchoFijo, alto: altoFijo, saqueClip: [30, altoFijo - 30] },
+    puerta: { ancho: anchoPuerta, alto: altoPuerta, saqueBisagra: [30, altoPuerta - 30], jaladera: AP_JALADERA, jaladeraLabel: jaladeraLabel },
+    nivel: AP_NIVEL, color: AP_COLOR
+  };
+
+  document.getElementById('ap-corte-fijo-txt').textContent = anchoFijo.toFixed(1) + ' × ' + altoFijo.toFixed(1) + ' cm';
+  document.getElementById('ap-corte-puerta-txt').textContent = anchoPuerta.toFixed(1) + ' × ' + altoPuerta.toFixed(1) + ' cm';
+  document.getElementById('ap-corte-resultado').style.display = 'block';
+}
+
+// Dibuja una pieza (Fijo o Puerta) como SVG con acotado y símbolos de
+// saque, en el mismo lenguaje del boceto a mano: triángulo+círculo =
+// saque de clip, rectángulo = saque de bisagra, punto = barreno.
+function apSvgPieza(pieza, tipoLabel, esFijo) {
+  var escala = 220 / Math.max(pieza.ancho, pieza.alto * 0.6); // ajuste visual, no a escala real
+  var w = pieza.ancho * escala, h = pieza.alto * escala;
+  var margen = 50;
+  var totalW = w + margen * 2, totalH = h + margen * 2 + 20;
+
+  var svg = '<svg viewBox="0 0 ' + totalW + ' ' + totalH + '" xmlns="http://www.w3.org/2000/svg" style="max-width:260px">';
+  svg += '<rect x="' + margen + '" y="' + margen + '" width="' + w + '" height="' + h + '" fill="#EAF2FB" stroke="#1B3A5C" stroke-width="2"/>';
+  // Acotado ancho (abajo) y alto (izquierda)
+  svg += '<text x="' + (margen + w / 2) + '" y="' + (margen + h + 34) + '" text-anchor="middle" font-size="13" font-weight="700" fill="#1B3A5C">' + pieza.ancho.toFixed(1) + ' cm</text>';
+  svg += '<text x="14" y="' + (margen + h / 2) + '" text-anchor="middle" font-size="13" font-weight="700" fill="#1B3A5C" transform="rotate(-90 14 ' + (margen + h / 2) + ')">' + pieza.alto.toFixed(1) + ' cm</text>';
+
+  if (esFijo) {
+    // Saque de clip: lado derecho (colinda con la puerta) -- triángulo + círculo
+    pieza.saqueClip.forEach(function(y) {
+      var yPix = margen + (pieza.alto - y) * escala;
+      svg += '<circle cx="' + (margen + w) + '" cy="' + yPix + '" r="5" fill="none" stroke="#C0392B" stroke-width="1.5"/>';
+      svg += '<polygon points="' + (margen + w - 9) + ',' + (yPix - 5) + ' ' + (margen + w - 9) + ',' + (yPix + 5) + ' ' + (margen + w) + ',' + yPix + '" fill="#C0392B"/>';
+    });
+    svg += '<text x="' + (margen + w + 12) + '" y="' + (margen + 12) + '" font-size="10" fill="#C0392B">&#8592; clip</text>';
+  } else {
+    // Saque de bisagra: lado izquierdo (colinda con el fijo) -- rectángulo
+    pieza.saqueBisagra.forEach(function(y) {
+      var yPix = margen + (pieza.alto - y) * escala;
+      svg += '<rect x="' + (margen - 3) + '" y="' + (yPix - 8) + '" width="10" height="16" fill="none" stroke="#2E6DA4" stroke-width="1.5"/>';
+    });
+    svg += '<text x="-6" y="' + (margen + 12) + '" text-anchor="end" font-size="10" fill="#2E6DA4">bisagra &#8594;</text>';
+    // Barreno(s) de jaladera: lado derecho, 5cm del borde, posición estándar
+    var numBarrenos = pieza.jaladera === '45cm1' ? 1 : 2;
+    var yBase = pieza.alto * 0.5; // posición estándar de referencia, ajustable por proyecto
+    for (var i = 0; i < numBarrenos; i++) {
+      var yB = yBase + (i === 0 ? -6 : 6);
+      var yPixB = margen + (pieza.alto - yB) * escala;
+      svg += '<circle cx="' + (margen + w - 5 * escala) + '" cy="' + yPixB + '" r="3" fill="#8E44AD"/>';
+    }
+    svg += '<text x="' + (margen + w + 12) + '" y="' + (margen + h - 10) + '" font-size="9" fill="#8E44AD">' + pieza.jaladeraLabel + '</text>';
+  }
+  svg += '</svg>';
+  return svg;
+}
+
+function apImprimirCorte(completo) {
+  if (!AP_CORTE) { toast('Genera la hoja de corte primero'); return; }
+  var nivelLabel = AP_CORTE.nivel === 'economico' ? 'Económico' : AP_CORTE.nivel === 'lujo' ? 'Lujo' : 'Semi Lujo';
+
+  var herrajesHtml = '';
+  if (completo) {
+    herrajesHtml = '<h3 style="margin-top:24px">Herrajes</h3>'
+      + '<table style="width:100%;border-collapse:collapse;font-size:12px">'
+      + '<tr style="background:#1B3A5C;color:#fff"><th style="padding:6px;text-align:left">Pieza</th><th style="padding:6px;text-align:center">Cant.</th></tr>'
+      + '<tr><td style="padding:6px;border-bottom:1px solid #eee">Clip (fijo)</td><td style="padding:6px;text-align:center;border-bottom:1px solid #eee">2</td></tr>'
+      + '<tr><td style="padding:6px;border-bottom:1px solid #eee">Bisagra (puerta)</td><td style="padding:6px;text-align:center;border-bottom:1px solid #eee">2</td></tr>'
+      + '<tr><td style="padding:6px;border-bottom:1px solid #eee">Jaladera -- ' + esc(AP_CORTE.puerta.jaladeraLabel) + '</td><td style="padding:6px;text-align:center;border-bottom:1px solid #eee">1</td></tr>'
+      + '</table>';
+  }
+
+  var html = '<!DOCTYPE html><html lang=es><head><meta charset=UTF-8><title>Hoja de corte</title>'
+    + '<style>body{font-family:Arial,sans-serif;padding:24px;color:#1B3A5C}.pzas{display:flex;gap:30px;flex-wrap:wrap;margin-top:14px}.pza-box{text-align:center}h2{font-size:14px;margin-bottom:2px}.sub{font-size:11px;color:#666;margin-bottom:8px}.btns{margin-top:24px}.btns button{padding:10px 20px;border-radius:8px;border:none;font-weight:700;cursor:pointer;background:#C8923A;color:#1B3A5C}@media print{.btns{display:none}}</style>'
+    + '</head><body>'
+    + '<div style="border-bottom:3px solid #1B3A5C;padding-bottom:10px;margin-bottom:14px"><b style="font-size:18px">BarrCan</b> &middot; Hoja de corte &mdash; Aluminio/Polietileno ' + nivelLabel + ' (' + esc(AP_CORTE.color) + ')</div>'
+    + '<div style="font-size:12px;color:#666">Vano: ' + AP_CORTE.largoTotal + ' × ' + AP_CORTE.altoTotal + ' cm &middot; Descuento de apertura: ' + AP_CORTE.descuento + ' cm</div>'
+    + '<div class="pzas">'
+    + '<div class="pza-box"><h2>FIJO</h2><div class="sub">' + AP_CORTE.fijo.ancho.toFixed(1) + ' × ' + AP_CORTE.fijo.alto.toFixed(1) + ' cm &middot; saque de clip a 30cm de c/extremo</div>' + apSvgPieza(AP_CORTE.fijo, 'Fijo', true) + '</div>'
+    + '<div class="pza-box"><h2>PUERTA</h2><div class="sub">' + AP_CORTE.puerta.ancho.toFixed(1) + ' × ' + AP_CORTE.puerta.alto.toFixed(1) + ' cm &middot; bisagra a 30cm de c/extremo &middot; ' + esc(AP_CORTE.puerta.jaladeraLabel) + '</div>' + apSvgPieza(AP_CORTE.puerta, 'Puerta', false) + '</div>'
+    + '</div>'
+    + herrajesHtml
+    + '<div class="btns"><button onclick="window.print()">Imprimir / PDF</button></div>'
+    + '</body></html>';
+
+  var w = window.open('', '_blank');
+  if (!w) { toast('El navegador bloqueó la ventana -- permite pop-ups'); return; }
+  w.document.write(html);
+  w.document.close();
+}
 
 function flSincronizarPrecioVidrio() {
   var sel = document.getElementById('fl-cristal');
@@ -1409,7 +1854,7 @@ var FL_BOM = {
 function cbTab(btn, tab) {
   document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
   btn.classList.add('active');
-  var tabs = ['frameless','bacalar','escuadra','corredizo','otro','taller'];
+  var tabs = ['frameless','bacalar','escuadra','corredizo','alupol','otro','taller'];
   tabs.forEach(function(t) {
     var el = document.getElementById('tab-' + t);
     if (el) el.style.display = t === tab ? 'block' : 'none';
@@ -1970,8 +2415,8 @@ function cbCalcEscuadra() {
 async function cbGuardarPresupuesto(tipo) {
   if (!CB_RESULTADO) { toast('Primero calcula el presupuesto'); return; }
 
-  var clienteId = tipo === 'frameless' ? 'fl-cliente' : tipo === 'bacalar' ? 'bc-cliente' : tipo === 'escuadra' ? 'esc-cliente' : 'corredizo-cliente';
-  var telId     = tipo === 'frameless' ? 'fl-tel'     : tipo === 'bacalar' ? 'bc-tel'     : tipo === 'escuadra' ? 'esc-tel'     : 'corredizo-tel';
+  var clienteId = tipo === 'frameless' ? 'fl-cliente' : tipo === 'bacalar' ? 'bc-cliente' : tipo === 'escuadra' ? 'esc-cliente' : tipo === 'alupol' ? 'alupol-cliente' : 'corredizo-cliente';
+  var telId     = tipo === 'frameless' ? 'fl-tel'     : tipo === 'bacalar' ? 'bc-tel'     : tipo === 'escuadra' ? 'esc-tel'     : tipo === 'alupol' ? 'alupol-tel'     : 'corredizo-tel';
   var cliente = document.getElementById(clienteId).value.trim();
   var tel     = document.getElementById(telId).value.trim();
   if (!cliente) { toast('Ingresa el nombre del cliente'); return; }
@@ -2028,7 +2473,7 @@ async function promoValidar() {
     // Corredizo/Otro) debe coincidir -- solo una está activa a la vez,
     // así que se revisan todas y se usa la que tenga texto.
     if (promo && promo.cliente_asignado) {
-      var camposCliente = ['fl-cliente','bc-cliente','esc-cliente','corredizo-cliente','otro-cliente'];
+      var camposCliente = ['fl-cliente','bc-cliente','esc-cliente','corredizo-cliente','alupol-cliente','otro-cliente'];
       var clienteActual = '';
       camposCliente.forEach(function(id) {
         var el = document.getElementById(id);
@@ -2266,10 +2711,14 @@ async function cbCargarConfigPrecios() {
     var mapa = {};
     resp.data.forEach(function(row) { mapa[row.clave] = row.valor; });
     var campos = {
-      'gif_pct': ['fl-gif', 'bc-gif', 'esc-gif'],
-      'ga_pct': ['fl-ga', 'bc-ga', 'esc-ga'],
-      'utilidad_pct': ['fl-utilidad', 'bc-utilidad', 'esc-utilidad'],
-      'iva_pct': ['fl-iva', 'bc-iva', 'esc-iva'],
+      // FIX: Corredizo Cristal (cc-*) nunca estuvo conectado a esta
+      // config -- se quedaba fijo en 15/25/25/16 sin importar lo que
+      // se actualizara aquí. Se agrega para que "todos los
+      // cotizadores tengan lo mismo", como se pidió (sep-2026).
+      'gif_pct': ['fl-gif', 'bc-gif', 'esc-gif', 'cc-gif'],
+      'ga_pct': ['fl-ga', 'bc-ga', 'esc-ga', 'cc-ga'],
+      'utilidad_pct': ['fl-utilidad', 'bc-utilidad', 'esc-utilidad', 'cc-utilidad'],
+      'iva_pct': ['fl-iva', 'bc-iva', 'esc-iva', 'cc-iva'],
       'iva_compras_pct': ['cfg-iva-compras']
     };
     Object.keys(campos).forEach(function(clave) {
@@ -2291,6 +2740,11 @@ async function cbCargarConfigPrecios() {
     });
     if (mapa['vid_templado_8mm']  !== undefined) CC_PRECIOS.vid_templado_8mm  = parseFloat(mapa['vid_templado_8mm']);
     if (mapa['vid_templado_10mm'] !== undefined) CC_PRECIOS.vid_templado_10mm = parseFloat(mapa['vid_templado_10mm']);
+
+    // Aluminio + Polietileno: todas las claves alu_*
+    Object.keys(mapa).forEach(function(clave) {
+      if (clave.indexOf('alu_') === 0) ALU_PRECIOS[clave.slice(4)] = parseFloat(mapa[clave]);
+    });
 
     console.log('[Supabase] Config de precios sincronizada (Baños)');
   } catch(e) {
