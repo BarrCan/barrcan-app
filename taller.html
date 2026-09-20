@@ -21,6 +21,15 @@
     que las piezas de cotizador. Marca internamente _manual:true para
     diferenciarlo de un cálculo real de cotizador, sin ocultarlo del
     usuario.
+    FIX (mismo día): el badge de versión en pantalla lee de una
+    variable APP_VERSION separada del comentario del encabezado --
+    se me había olvidado actualizarla, por eso seguía mostrando v1.0
+    aunque el archivo sí era el nuevo. FIX 2: el botón de desglose
+    manual solo se agregó dentro de piezas ya existentes -- para
+    presupuestos con "0 piezas" (ej. capturados directo en Historial
+    sin pasar por ningún cotizador), Taller no mostraba nada más que
+    "sin piezas guardadas". Ahora también ofrece el botón ahí,
+    creando la primera pieza desde cero.
   VERSION : v1.0
   FECHA   : 2026-08-16
   v1.0 - Construcción inicial desde cero.
@@ -258,7 +267,7 @@ function sb() {
 }
 
 // ── Conexión ─────────────────────────────────────────────────────
-var APP_VERSION = 'v1.0';
+var APP_VERSION = 'v1.1';
 var SYNC = { online: navigator.onLine };
 function detectarConexion() {
   var b = document.getElementById('conn-status');
@@ -445,7 +454,8 @@ function tlAbrirDetalle(id) {
   var body = document.getElementById('det-body');
 
   if (piezas.length === 0) {
-    body.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div>Este presupuesto no tiene piezas guardadas.</div>';
+    body.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div>Este presupuesto no tiene piezas guardadas.</div>' +
+      '<div style="padding:0 16px 14px"><button class="btn-imprimir" style="background:var(--gold)" onclick="tlAbrirModoManual(0)">➕ Agregar desglose manual</button></div>';
   } else {
     body.innerHTML = piezas.map(function(pz, idx) { return tlRenderFichaPieza(pz, idx); }).join('');
   }
@@ -608,8 +618,8 @@ function tlAbrirModoManual(idx) {
   MM_CORTES = [];
   MM_HERRAJES = [];
   var piezas = tlPiezasDe(TL_ROW_ACTUAL);
-  var pz = piezas[idx];
-  document.getElementById('mm-pieza-nombre').textContent = (pz && pz.label) || 'Pieza ' + (idx + 1);
+  var pz = piezas[idx]; // puede no existir todavía si el presupuesto tenía 0 piezas
+  document.getElementById('mm-pieza-nombre').textContent = (pz && pz.label) || TL_ROW_ACTUAL.descripcion || 'Pieza ' + (idx + 1);
   tlRenderMMCortes();
   tlRenderMMHerrajes();
   document.getElementById('mm-overlay').style.display = 'block';
@@ -714,6 +724,12 @@ async function tlGuardarModoManual() {
 
   var piezas = tlPiezasDe(TL_ROW_ACTUAL);
   var pz = piezas[MM_IDX_ACTUAL];
+  if (!pz) {
+    // Presupuesto sin piezas todavía (0 piezas) -- se crea la primera,
+    // usando la descripción del presupuesto como nombre de referencia.
+    pz = { label: TL_ROW_ACTUAL.descripcion || 'Partida manual', cantidad: 1, resultado: {} };
+    piezas[MM_IDX_ACTUAL] = pz;
+  }
   if (!pz.resultado) pz.resultado = {};
   if (MM_CORTES.length) pz.resultado.cortesCalc = MM_CORTES;
   if (MM_HERRAJES.length) pz.resultado.herrajesCalc = MM_HERRAJES;
