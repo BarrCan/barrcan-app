@@ -6,6 +6,19 @@
 <title>BarrCan · Configuración de Costos</title>
 <!--
   BARRCAN · MÓDULO: CONFIGURACIÓN DE COSTOS (config.html)
+  VERSION : v1.8
+  FECHA   : 2026-09-22
+  v1.8 - Agregado el grupo "Corredizo de Lujo, 2 hojas (Baños)": Carretilla
+    corrediza, Empaque U, Material del panel y Mano de obra -- los únicos
+    4 precios que le faltan a ese sistema (modulos/alupol_cor_luj_2h.js)
+    para dejar de bloquear el cálculo. El aluminio de esa variante
+    (Riel/Jamba/Marco) NO se agregó aquí porque ya reusa los mismos
+    precios 674/675/676/677 del grupo "Aluminio y cargos fijos" -- pero
+    ese grupo, junto con los demás campos de Aluminio/Polietileno
+    (material_m2, mdo, herrajes de Recto/Escuadra, factor color), sigue
+    SIN pantalla en config.html: hoy solo se pueden cambiar editando
+    directo cotizador_banos.html. Pendiente confirmar con Mau si también
+    se agregan esos campos aquí.
   VERSION : v1.6
   v1.6 - FIX: este módulo nunca mostró su versión en pantalla (el badge
     solo decía "Online", sin número) -- por eso no había forma
@@ -175,6 +188,14 @@ html, body { min-height:100%; font-family:'DM Sans',sans-serif; background:var(-
     </div>
 
     <div class="grupo">
+      <div class="grupo-titulo">🚪 Corredizo de Lujo, 2 hojas (Baños)</div>
+      <div style="font-size:12px;color:var(--gray-600);line-height:1.5;margin-bottom:10px">
+        El aluminio de este sistema (Riel/Jamba/Marco) ya usa los mismos precios de "Aluminio y cargos fijos" de Recto/Escuadra — solo faltan estos 4, exclusivos de esta variante, para que el cotizador deje de bloquear el cálculo.
+      </div>
+      <div id="grupo-corluj"></div>
+    </div>
+
+    <div class="grupo">
       <div class="grupo-titulo">🎞️ Película / vinilo ($/m²)</div>
       <div id="grupo-pelicula"></div>
     </div>
@@ -196,7 +217,7 @@ html, body { min-height:100%; font-family:'DM Sans',sans-serif; background:var(-
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
-const APP_VERSION = 'v1.7';
+const APP_VERSION = 'v1.8';
 const SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co';
 const SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 let _sb = null;
@@ -254,6 +275,15 @@ const CAMPOS = [
   { grupo:'grupo-templado', clave:'vid_duovent_18mm',  label:'Duo Vent 18mm sin templar (antiruido)', unidad:'$' },
   { grupo:'grupo-templado', clave:'vid_duovent_24mm',  label:'Duo Vent 24mm sin templar (antiruido)', unidad:'$' },
   { grupo:'grupo-templado', clave:'vid_aluminio_4mm',  label:'Aluminio con vidrio 4mm (básico/económico)', unidad:'$' },
+
+  // v1.8 - Corredizo de Lujo (cotizador_banos.html, modulos/alupol_cor_luj_2h.js):
+  // el aluminio (Riel/Jamba/Marco) NO va aquí -- ya reusa los precios de
+  // "Aluminio y cargos fijos" (674/675/676/677, arriba). Estos 4 son
+  // exclusivos de esta variante y bloquean su cálculo mientras sigan en 0.
+  { grupo:'grupo-corluj', clave:'alu_corluj_carretilla',  label:'Carretilla corrediza',        unidad:'$/pza' },
+  { grupo:'grupo-corluj', clave:'alu_corluj_empaque_ml',  label:'Empaque U',                    unidad:'$/ml' },
+  { grupo:'grupo-corluj', clave:'alu_corluj_material_m2', label:'Material del panel (confirmar polietileno/acrílico)', unidad:'$/m²' },
+  { grupo:'grupo-corluj', clave:'alu_corluj_mdo',          label:'Mano de obra',                 unidad:'$' },
 
   { grupo:'grupo-pelicula', clave:'pel_esm_venta', label:'Esmerilado — precio de venta', unidad:'$' },
   { grupo:'grupo-pelicula', clave:'pel_esm_costo', label:'Esmerilado — costo',            unidad:'$' },
