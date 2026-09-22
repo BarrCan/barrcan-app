@@ -6,6 +6,30 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.27
+  FECHA   : 2026-09-22
+  v4.27 — 2 FIX en el recibo impreso, encontrados por Mau en el recibo
+    181 (presupuesto CACN-169A):
+    - FIX: la fila "Concepto" del recibo mostraba el valor interno tal
+      cual ('anticipo', 'segundo_pago'...) en vez de la etiqueta con
+      contexto que ya se usa en pantalla (CONCEPTO_L: "Anticipo 50%",
+      "2° Pago 35%", "Liquidación 15%"...) -- por eso el recibo 181 solo
+      decía "anticipo" a secas, sin indicar a qué porcentaje del
+      presupuesto corresponde. Ahora usa la misma etiqueta CONCEPTO_L
+      que el formulario, con la conversión anterior de respaldo
+      (guión bajo → espacio) solo para un concepto que no esté en el
+      mapa.
+    - FIX: "Monto recibido"/"Monto total recibido" se ve bien en la
+      pantalla de vista previa (caja azul marino con el monto en
+      dorado), pero al imprimir/generar PDF esa caja se perdía -- la
+      mayoría de navegadores NO imprimen fondos de color por default
+      (hay que activar "Gráficos de fondo" a mano en el diálogo de
+      impresión), así que el recibo salía con fondo blanco y el monto
+      en dorado casi invisible sobre blanco. Se agregó
+      -webkit-print-color-adjust/print-color-adjust:exact al recibo
+      (ambos: individual y pago múltiple) para forzar que el fondo
+      azul se imprima siempre, sin depender de esa opción del
+      navegador.
   VERSIÓN : v4.26
   FECHA   : 2026-09-19
   v4.26 — FIX en "Por Facturar" (ambas vistas): muchos pagos no
@@ -1234,7 +1258,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.26';
+var APP_VERSION = 'v4.27';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -2492,7 +2516,7 @@ function generarRecibo(d) {
     + '<meta name=viewport content="width=device-width,initial-scale=1">'
     + '<style>'
     + '* { box-sizing:border-box; margin:0; padding:0 }'
-    + 'body { font-family:Arial,sans-serif; font-size:9pt; color:#1B3A5C; background:white }'
+    + 'body { font-family:Arial,sans-serif; font-size:9pt; color:#1B3A5C; background:white; -webkit-print-color-adjust:exact; print-color-adjust:exact; color-adjust:exact }'
     + '.pg { max-width:140mm; margin:0 auto; padding:10mm 10mm 20mm }'
     + '.hdr { display:flex; align-items:center; gap:8px; margin-bottom:8px; padding-bottom:8px; border-bottom:2px solid #1B3A5C }'
     + 'table { width:100%; border-collapse:collapse; margin-bottom:6px }'
@@ -2502,7 +2526,7 @@ function generarRecibo(d) {
     + '.barra { position:fixed; bottom:0; left:0; right:0; background:#1B3A5C; padding:6px 12px; display:flex; gap:8px; justify-content:center; z-index:999 }'
     + '.bp { padding:8px 18px; background:#C8923A; color:white; border:none; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer }'
     + '.bc { padding:8px 10px; background:rgba(255,255,255,.15); color:white; border:none; border-radius:6px; font-size:11px; cursor:pointer }'
-    + '@media print { .barra { display:none!important } .pg { padding:5mm } }'
+    + '@media print { .barra { display:none!important } .pg { padding:5mm } * { -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; color-adjust:exact!important } }'
     + '@page { size: 140mm 216mm; margin: 0 }'
     + '</style></head><body>'
     + '<div class=barra>'
@@ -2527,7 +2551,7 @@ function generarRecibo(d) {
     + (d.desc ? '<tr><td class=lbl>Direcci\u00f3n</td><td>' + esc(d.desc) + '</td></tr>' : '')
     + '<tr><td class=lbl>Fecha</td><td>' + fd(d.fecha) + '</td></tr>'
     + '<tr><td class=lbl>Forma</td><td>' + esc(d.formaLabel || d.forma) + '</td></tr>'
-    + '<tr><td class=lbl>Concepto</td><td>' + esc((d.concepto || '').replace('_', ' ')) + '</td></tr>'
+    + '<tr><td class=lbl>Concepto</td><td>' + esc(CONCEPTO_L[d.concepto] || (d.concepto || '').replace(/_/g, ' ')) + '</td></tr>'
     + (d.factura ? '<tr><td class=lbl>Factura</td><td style="font-weight:700">' + esc(d.factura) + '</td></tr>' : '')
     + '</table>'
     + '<div class=mbox>'
@@ -2568,7 +2592,7 @@ function generarReciboMultiple(d) {
     + '<meta name=viewport content="width=device-width,initial-scale=1">'
     + '<style>'
     + '* { box-sizing:border-box; margin:0; padding:0 }'
-    + 'body { font-family:Arial,sans-serif; font-size:9pt; color:#1B3A5C; background:white }'
+    + 'body { font-family:Arial,sans-serif; font-size:9pt; color:#1B3A5C; background:white; -webkit-print-color-adjust:exact; print-color-adjust:exact; color-adjust:exact }'
     + '.pg { max-width:140mm; margin:0 auto; padding:10mm 10mm 20mm }'
     + '.hdr { display:flex; align-items:center; gap:8px; margin-bottom:8px; padding-bottom:8px; border-bottom:2px solid #1B3A5C }'
     + 'table { width:100%; border-collapse:collapse; margin-bottom:6px }'
@@ -2578,7 +2602,7 @@ function generarReciboMultiple(d) {
     + '.barra { position:fixed; bottom:0; left:0; right:0; background:#1B3A5C; padding:6px 12px; display:flex; gap:8px; justify-content:center; z-index:999 }'
     + '.bp { padding:8px 18px; background:#C8923A; color:white; border:none; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer }'
     + '.bc { padding:8px 10px; background:rgba(255,255,255,.15); color:white; border:none; border-radius:6px; font-size:11px; cursor:pointer }'
-    + '@media print { .barra { display:none!important } .pg { padding:5mm } }'
+    + '@media print { .barra { display:none!important } .pg { padding:5mm } * { -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; color-adjust:exact!important } }'
     + '@page { size: 140mm 216mm; margin: 0 }'
     + '</style></head><body>'
     + '<div class=barra>'
