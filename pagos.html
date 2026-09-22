@@ -6,6 +6,35 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.28
+  FECHA   : 2026-09-22
+  v4.28 — Aclaración de Mau sobre v4.27: el recibo 181 SÍ mostraba
+    "Concepto: Anticipo 50%" correcto (el fix de v4.27 funcionaba) -- lo
+    que faltaba era la descripción TÉCNICA del trabajo (ej. "Suministro
+    y colocación de dos piezas de vidrio Concha ámbar..."), aparte de la
+    Dirección. presupuestos_atrasados tiene DOS campos distintos (`dir`
+    = dirección, `descripcion` = qué se fabrica/instala), pero el recibo
+    solo mostraba uno de los dos (el que haya quedado en el campo
+    editable "Dirección" del formulario, dir con respaldo a descripcion
+    -- ver v4.16). Ahora el recibo trae una fila "Descripción" aparte,
+    con el texto técnico del presupuesto, sin tocar la fila Dirección
+    que ya existía:
+    - Pago nuevo (pagoGuardar): se toma de PRES_SEL.descripcion (ya
+      disponible en memoria desde que se seleccionó el presupuesto, sin
+      pedir nada extra a Supabase).
+    - Reimprimir (pagoEditarReimprimir): los pagos viejos nunca
+      guardaron este dato aparte, así que se busca por presupuesto_id
+      directo en presupuestos_atrasados al momento de reimprimir. La
+      función pasó a ser async -- la ventana del recibo se abre síncrono
+      ANTES del await (con un "Generando recibo…") para que el navegador
+      no la bloquee como pop-up, y se rellena con el recibo real en
+      cuanto llega la respuesta. Si falla o no hay conexión, reimprime
+      igual sin este dato -- nunca bloquea la reimpresión por esto.
+    Pendiente: el recibo de pago múltiple (varios proyectos en un solo
+    recibo) no lleva esta fila todavía -- ese formato es una tabla de
+    distribución por proyecto, sin un solo "presupuesto" al que
+    colgarle una descripción; se deja para revisar aparte si Mau lo
+    pide.
   VERSIÓN : v4.27
   FECHA   : 2026-09-22
   v4.27 — 2 FIX en el recibo impreso, encontrados por Mau en el recibo
@@ -1258,7 +1287,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.27';
+var APP_VERSION = 'v4.28';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -2348,6 +2377,10 @@ async function pagoGuardar() {
   // registro interno en `db`, jamás se le imprime al cliente.
   _RECIBO = generarRecibo({
     folioRB: folioRB, folio: folio, cliente: cliente, tel: tel, desc: desc,
+    // v4.28: descTrabajo = descripción TÉCNICA del presupuesto (qué se
+    // fabrica/instala), distinta de "desc" (que es la Dirección) --
+    // antes solo se guardaba una de las dos, nunca las dos juntas.
+    descTrabajo: PRES_SEL && PRES_SEL.descripcion ? PRES_SEL.descripcion : '',
     monto: monto, total: total, ant: ant, saldo: saldo,
     fecha: fecha, concepto: concepto, forma: FORMA_SEL,
     formaLabel: fLabels[FORMA_SEL] || FORMA_SEL,
@@ -2549,6 +2582,7 @@ function generarRecibo(d) {
     + (d.tel ? '<tr><td class=lbl>Tel\u00e9fono</td><td>' + esc(d.tel) + '</td></tr>' : '')
     + (d.folio ? '<tr><td class=lbl>Presupuesto</td><td style="font-family:monospace;color:#2E6DA4;font-size:7.5pt">' + esc(d.folio) + '</td></tr>' : '')
     + (d.desc ? '<tr><td class=lbl>Direcci\u00f3n</td><td>' + esc(d.desc) + '</td></tr>' : '')
+    + (d.descTrabajo ? '<tr><td class=lbl>Descripci\u00f3n</td><td style="font-size:7.5pt">' + esc(d.descTrabajo) + '</td></tr>' : '')
     + '<tr><td class=lbl>Fecha</td><td>' + fd(d.fecha) + '</td></tr>'
     + '<tr><td class=lbl>Forma</td><td>' + esc(d.formaLabel || d.forma) + '</td></tr>'
     + '<tr><td class=lbl>Concepto</td><td>' + esc(CONCEPTO_L[d.concepto] || (d.concepto || '').replace(/_/g, ' ')) + '</td></tr>'
@@ -2886,13 +2920,19 @@ async function pagoEditarGuardar() {
   EDIT_ID = null;
 }
 
-function pagoEditarReimprimir() {
+async function pagoEditarReimprimir() {
   if (!EDIT_ID) return;
   var p = null;
   for (var i = 0; i < PAGOS_CACHE.length; i++) {
     if (PAGOS_CACHE[i].id === EDIT_ID) { p = PAGOS_CACHE[i]; break; }
   }
   if (!p) { toast('No se encontró el pago'); return; }
+
+  // La ventana se abre YA, síncrono (antes de cualquier await) -- si se
+  // abre después de una espera de red, Chrome/Safari la bloquean como
+  // pop-up. Se rellena con el recibo real en cuanto esté listo.
+  var win = window.open('', '_blank');
+  if (win) { win.document.write('<p style="font-family:sans-serif;padding:20px;color:#1B3A5C">Generando recibo…</p>'); }
 
   var numFolioEl = document.getElementById('edit-folio-num');
   var numFolio   = numFolioEl ? numFolioEl.value.trim() : '';
@@ -2909,6 +2949,20 @@ function pagoEditarReimprimir() {
     else if (parte !== folio && parte !== cliente) { notaLimpia += (notaLimpia ? ' | ' : '') + parte; }
   });
 
+  // v4.28: la descripción TÉCNICA del presupuesto (qué se fabrica/
+  // instala, ej. "Suministro y colocación de...") nunca se guardó en
+  // `pagos` -- solo vive en presupuestos_atrasados.descripcion. Se
+  // busca aquí por presupuesto_id para que también salga al
+  // reimprimir. Si falla o no hay conexión, el recibo se genera igual
+  // sin este dato -- nunca bloquea la reimpresión por esto.
+  var descTrabajo = '';
+  if (p.presupuesto_id && sb()) {
+    try {
+      var resPres = await sb().from('presupuestos_atrasados').select('descripcion').eq('id', p.presupuesto_id).maybeSingle();
+      if (!resPres.error && resPres.data) descTrabajo = resPres.data.descripcion || '';
+    } catch(e) { console.warn('No se pudo traer descripción del presupuesto para reimpresión:', e.message); }
+  }
+
   var fLabels = { transferencia: 'Transferencia bancaria', efectivo: 'Efectivo', tarjeta: 'Tarjeta crédito/débito', liga_retiro: 'Liga de retiro' };
   var html = generarRecibo({
     folioRB:    folioRB,
@@ -2916,6 +2970,7 @@ function pagoEditarReimprimir() {
     cliente:    cliente,
     tel:        '',
     desc:       p.descripcion || '',
+    descTrabajo: descTrabajo,
     adicionales: p.adicionales || null,
     monto:      parseFloat(p.monto) || 0,
     total:      0,
@@ -2933,8 +2988,7 @@ function pagoEditarReimprimir() {
   _RECIBO = html;
   try { sessionStorage.setItem('barrcan_recibo_actual', html); } catch(e) {}
 
-  var win = window.open('', '_blank');
-  if (win) { win.document.write(html); win.document.close(); }
+  if (win) { win.document.open(); win.document.write(html); win.document.close(); }
   else {
     try {
       var blob = new Blob([html], { type: 'text/html' });
