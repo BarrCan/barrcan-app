@@ -6,6 +6,46 @@
 <title>BarrCan · Cotizador Baños</title>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v3.4
+  FECHA   : 2026-09-21
+  v3.4 - Recto y Escuadra (Alu/Polietileno) también se sacaron a
+    módulos de cálculo puro (modulos/alupol_recto.js,
+    modulos/alupol_escuadra.js), mismo contrato que Corredizo Lujo
+    (v3.3): MISMA fórmula, verificada con pruebas automatizadas
+    contra el cálculo original en 5 combinaciones distintas de tipo/
+    nivel/color -- coinciden exacto, cero cambio de comportamiento.
+    apPrecioBarra()/apCostoPieza() y toda la rama if(recto)/else
+    (escuadra) desaparecen del central -- ya NO queda ninguna fórmula
+    de precio de Alu/Polietileno en este archivo, solo orquestación
+    (AP_MODULOS decide a qué archivo despachar, apCalcularConModulo
+    pinta el resultado). Diferencia clave frente a Corredizo Lujo:
+    Recto/Escuadra NO traen su propio catálogo -- comparten las
+    mismas claves 674/675/677/67x y % de indirectos ya sincronizados
+    desde config_precios, así que el central les sigue pasando su
+    ALU_PRECIOS completo en cada cálculo (ctx.precios) en vez de que
+    cada módulo tenga su copia -- si trajeran copia propia, una
+    edición de precio en config.html dejaría de aplicarles sin que
+    nadie lo notara.
+  v3.3 - PRIMER MÓDULO INDEPENDIENTE, arquitectura nueva acordada con
+    Mau (separar la app en módulos independientes por variante, para
+    que agregar un modelo al catálogo no vuelva a requerir editar este
+    archivo central). Alu/Polietileno gana un tercer Tipo, "Corredizo
+    de Lujo (2 hojas)" (COR-LUJ-2H), que YA NO vive en este archivo:
+    su catálogo/costeo está en modulos/alupol_cor_luj_2h.js, cargado
+    dinámicamente (bcCargarModulo) solo cuando se selecciona. El
+    central solo junta ancho/alto/color y los porcentajes GIF/GA/
+    Utilidad/IVA ya cargados de config_precios, y los pasa al módulo
+    -- el módulo regresa el resultado listo para el mismo
+    cbGuardarPresupuesto/folio CACN de siempre, sin tocarlos.
+    BLOQUEANTE conocido: el módulo no tiene precio real capturado
+    para los perfiles/herrajes nuevos (claves 9947/10198/10197/10103,
+    carretilla corrediza, empaque U) ni confirmado el material del
+    panel (dice "acrílico" en el despiece que mandó Mau, pero la línea
+    existente es polietileno) -- por diseño, calcular() se niega a dar
+    un precio inventado y en vez de eso avisa qué falta capturar. Este
+    tipo no tiene todavía hoja de corte (esa tarjeta se oculta para él).
+    Nivel (Económico/Semi Lujo/Lujo) no aplica a este tipo -- se oculta
+    para no sugerir que sí hace algo.
   VERSION : v3.2
   FECHA   : 2026-09-16
   v3.2 - Prueba de un mes (sep-2026): GIF 15%→9%, GA 25%→15.1%,
@@ -858,13 +898,18 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
       <div class="color-grid">
         <button class="color-btn active" data-tipo="recto" onclick="apSelTipo(this)">Recto (1 muro)</button>
         <button class="color-btn" data-tipo="escuadra" onclick="apSelTipo(this)">Escuadra (2 muros)</button>
+        <button class="color-btn" data-tipo="corredizo_lujo" onclick="apSelTipo(this)">Corredizo Lujo (2 hojas)</button>
       </div>
 
-      <label class="form-label">Nivel</label>
-      <div class="color-grid">
-        <button class="color-btn" data-nivel="economico" onclick="apSelNivel(this)">Económico</button>
-        <button class="color-btn active" data-nivel="semilujo" onclick="apSelNivel(this)">Semi Lujo (estándar)</button>
-        <button class="color-btn" data-nivel="lujo" onclick="apSelNivel(this)">Lujo</button>
+      <!-- v3.3: Nivel no aplica a Corredizo Lujo (módulo independiente,
+           sin Económico/Semi Lujo/Lujo) -- se oculta para ese tipo. -->
+      <div id="ap-nivel-wrap">
+        <label class="form-label">Nivel</label>
+        <div class="color-grid">
+          <button class="color-btn" data-nivel="economico" onclick="apSelNivel(this)">Económico</button>
+          <button class="color-btn active" data-nivel="semilujo" onclick="apSelNivel(this)">Semi Lujo (estándar)</button>
+          <button class="color-btn" data-nivel="lujo" onclick="apSelNivel(this)">Lujo</button>
+        </div>
       </div>
 
       <label class="form-label">Color del marco</label>
@@ -1310,6 +1355,36 @@ function apSelTipo(btn) {
   AP_TIPO = btn.dataset.tipo;
   document.getElementById('ap-largo2-wrap').style.display = AP_TIPO === 'escuadra' ? 'block' : 'none';
   document.getElementById('ap-corte-card').style.display = AP_TIPO === 'recto' ? 'block' : 'none';
+  // v3.4: "Nivel" es Económico/Semi Lujo/Lujo -- Corredizo Lujo no lo
+  // usa (se oculta para no sugerir que hace algo que el módulo ignora).
+  document.getElementById('ap-nivel-wrap').style.display = AP_TIPO === 'corredizo_lujo' ? 'none' : 'block';
+}
+
+// ══════════════════════════════════════════════════════════════
+// CARGA DINÁMICA DE MÓDULOS INDEPENDIENTES -- v3.3/v3.4
+// Un módulo es un <script> aparte (sin HTML propio) que se registra
+// solo en window.BC_MODULOS[clave] al cargar. Este helper evita
+// pedirlo dos veces y avisa si falla la carga (ej. sin conexión y el
+// archivo nunca se había pedido antes en ese dispositivo -- el
+// Service Worker real de BarrCan (Cache First) solo cachea un archivo
+// la PRIMERA vez que se pide online, así que un módulo nuevo necesita
+// abrirse una vez con conexión antes de poder usarse offline).
+// ══════════════════════════════════════════════════════════════
+var BC_MODULOS_PEDIDOS = {};
+function bcCargarModulo(clave, src, callback) {
+  if (window.BC_MODULOS && window.BC_MODULOS[clave]) { callback(); return; }
+  if (BC_MODULOS_PEDIDOS[clave]) {
+    var chk = setInterval(function () {
+      if (window.BC_MODULOS && window.BC_MODULOS[clave]) { clearInterval(chk); callback(); }
+    }, 50);
+    return;
+  }
+  BC_MODULOS_PEDIDOS[clave] = true;
+  var s = document.createElement('script');
+  s.src = src;
+  s.onload = function () { callback(); };
+  s.onerror = function () { toast('No se pudo cargar el módulo ' + clave + ' -- revisa conexión o que modulos/' + src.split('/').pop() + ' esté subido junto a este archivo'); };
+  document.head.appendChild(s);
 }
 function apSelNivel(btn) {
   btn.closest('.color-grid').querySelectorAll('.color-btn').forEach(function(b) { b.classList.remove('active'); });
@@ -1322,103 +1397,78 @@ function apSelColor(btn) {
   AP_COLOR = btn.dataset.color;
 }
 
-// Precio de una barra completa (610cm) de una clave, ya con el
-// incremento de color aplicado.
-function apPrecioBarra(clave) {
-  var base = ALU_PRECIOS[clave + '_base'];
-  var factorPct = AP_COLOR === 'BLANCO' ? ALU_PRECIOS.factor_blanco_pct
-                : AP_COLOR === 'NEGRO'  ? ALU_PRECIOS.factor_negro_pct : 0;
-  return base * (1 + factorPct / 100);
-}
-// Costo de una pieza cortada de "cm" centímetros de esa clave --
-// mismo criterio que el Excel: precio de barra completa × cm/610.
-function apCostoPieza(clave, cm) {
-  return (apPrecioBarra(clave) * cm) / 610;
-}
+// ══════════════════════════════════════════════════════════════
+// DESPACHO A MÓDULOS INDEPENDIENTES -- v3.4
+// El central YA NO conoce ninguna fórmula de precio de Alu/Polietileno
+// (Recto, Escuadra y Corredizo Lujo viven cada uno en su propio
+// modulos/*.js). Esta función solo: (1) decide a qué módulo le toca
+// según AP_TIPO, (2) lo carga si hace falta, (3) le pasa los campos
+// compartidos -- medidas, color, nivel, y el ALU_PRECIOS ya
+// sincronizado con config_precios -- y (4) pinta el resultado que
+// regrese. Agregar el siguiente modelo de esta familia = otro archivo
+// modulos/*.js + una entrada en AP_MODULOS, nunca tocar esta función.
+// ══════════════════════════════════════════════════════════════
+var AP_MODULOS = {
+  recto:          { clave: 'ALUPOL_RECTO',       src: 'modulos/alupol_recto.js' },
+  escuadra:       { clave: 'ALUPOL_ESCUADRA',     src: 'modulos/alupol_escuadra.js' },
+  corredizo_lujo: { clave: 'ALUPOL_COR_LUJ_2H',   src: 'modulos/alupol_cor_luj_2h.js' }
+};
 
 function apCalcular() {
-  // Los campos capturan mm (estándar del resto de Baños); las fórmulas
-  // internas siguen trabajando en cm, igual que el Excel original.
-  var largo = (parseFloat(document.getElementById('ap-largo').value) || 0) / 10;
-  var alto  = (parseFloat(document.getElementById('ap-alto').value)  || 0) / 10;
-  var largo2 = AP_TIPO === 'escuadra' ? ((parseFloat(document.getElementById('ap-largo2').value) || 0) / 10) : 0;
-  if (!largo || !alto || (AP_TIPO === 'escuadra' && !largo2)) { toast('Faltan medidas'); return; }
+  var info = AP_MODULOS[AP_TIPO];
+  if (!info) { toast('Tipo desconocido: ' + AP_TIPO); return; }
+  bcCargarModulo(info.clave, info.src, function () { apCalcularConModulo(info.clave); });
+}
 
-  var claveMoldura = AP_NIVEL === 'economico' ? '670' : AP_NIVEL === 'lujo' ? '676' : '671';
+function apCalcularConModulo(clave) {
+  var mod = window.BC_MODULOS && window.BC_MODULOS[clave];
+  if (!mod) { toast('El módulo todavía está cargando -- intenta de nuevo en un segundo'); return; }
 
-  var cmRiel, cmJambaInf, cmJambaLat, cmMoldura;
-  var qCarretilla, qJaladera, qEscuadra, kgVinil, qSilicon, qRemache;
-  var m2Material;
+  var largoMm = parseFloat(document.getElementById('ap-largo').value) || 0;
+  var altoMm = parseFloat(document.getElementById('ap-alto').value) || 0;
+  var largo2Mm = AP_TIPO === 'escuadra' ? (parseFloat(document.getElementById('ap-largo2').value) || 0) : 0;
 
-  if (AP_TIPO === 'recto') {
-    cmRiel = largo;
-    cmJambaInf = largo;
-    cmJambaLat = alto * 2;
-    cmMoldura = (largo + alto * 2) * 2;
-    qCarretilla = 4; qJaladera = 2; qEscuadra = 8;
-    kgVinil = ((largo / 2) * 4 * alto) / 12000;
-    qSilicon = 0.5; qRemache = 40;
-    m2Material = (alto * largo) / 10000;
-  } else {
-    cmRiel = largo + largo2;
-    cmJambaInf = largo + largo2;
-    cmJambaLat = alto * 2;
-    cmMoldura = ((largo + alto * 2) * 2) + ((largo2 + alto * 2) * 2);
-    qCarretilla = 4; qJaladera = 2; qEscuadra = 16;
-    kgVinil = (((largo / 2) * 4 * alto) + ((largo2 / 2) * 4 * alto)) / 12000;
-    qSilicon = 1; qRemache = 80;
-    m2Material = ((alto * largo) + (alto * largo2)) / 10000;
+  var res = mod.calcular({
+    largoMm: largoMm, altoMm: altoMm, largo2Mm: largo2Mm,
+    color: AP_COLOR, nivel: AP_NIVEL,
+    precios: ALU_PRECIOS, // Recto/Escuadra lo usan completo; Corredizo Lujo lo ignora (trae su propio catálogo)
+    pct: {
+      gif_pct: ALU_PRECIOS.gif_pct, ga_pct: ALU_PRECIOS.ga_pct, util_pct: ALU_PRECIOS.util_pct,
+      iva_compras_pct: ALU_PRECIOS.iva_compras_pct, iva_venta_pct: ALU_PRECIOS.iva_venta_pct
+    }
+  });
+
+  if (!res.ok) {
+    // Nunca se completa el cálculo con datos inventados -- se avisa
+    // exactamente qué falta capturar.
+    toast('Faltan datos para cotizar: ' + (res.errores ? res.errores.join(' · ') : '(sin detalle)'));
+    document.getElementById('ap-resultado').style.display = 'none';
+    return;
   }
 
-  var costoAluminio = apCostoPieza('674', cmRiel) + apCostoPieza('675', cmJambaInf)
-    + apCostoPieza('677', cmJambaLat) + apCostoPieza(claveMoldura, cmMoldura);
-
-  var costoHerrajes = ALU_PRECIOS.her_carretilla * qCarretilla
-    + ALU_PRECIOS.her_jaladera * qJaladera
-    + ALU_PRECIOS.her_escuadra * qEscuadra
-    + ALU_PRECIOS.her_vinil_kg * kgVinil
-    + ALU_PRECIOS.her_silicon * qSilicon
-    + (ALU_PRECIOS.her_remache * qRemache) / 100;
-
-  var costoMaterial = ALU_PRECIOS.material_m2 * m2Material;
-
-  var costoBruto = costoAluminio + costoHerrajes + costoMaterial;
-  var costoNeto  = costoBruto / (1 + ALU_PRECIOS.iva_compras_pct / 100);
-  var subtotal   = costoNeto + ALU_PRECIOS.mdo;
-  var gif        = subtotal * ALU_PRECIOS.gif_pct / 100;
-  var ga         = subtotal * ALU_PRECIOS.ga_pct / 100;
-  var costoReal  = subtotal + gif + ga;
-  var utilidad   = costoReal * ALU_PRECIOS.util_pct / 100;
-  var antesIva   = costoReal + utilidad;
-  var ivaVenta   = antesIva * ALU_PRECIOS.iva_venta_pct / 100;
-  var precioFinal = antesIva + ivaVenta;
-
-  document.getElementById('ap-d-alu').textContent  = fmt(costoAluminio);
-  document.getElementById('ap-d-her').textContent  = fmt(costoHerrajes);
-  document.getElementById('ap-d-mat').textContent  = fmt(costoMaterial);
-  document.getElementById('ap-d-mdo').textContent  = fmt(ALU_PRECIOS.mdo);
-  document.getElementById('ap-d-gif').textContent  = fmt(gif);
-  document.getElementById('ap-d-ga').textContent   = fmt(ga);
-  document.getElementById('ap-d-util').textContent = fmt(utilidad);
-  document.getElementById('ap-d-iva').textContent  = fmt(ivaVenta);
-  document.getElementById('ap-precio-final').textContent = '$' + fmt(precioFinal);
+  document.getElementById('ap-d-alu').textContent = fmt(res.desglose.costoAluminio);
+  document.getElementById('ap-d-her').textContent = fmt(res.desglose.costoHerrajes);
+  document.getElementById('ap-d-mat').textContent = fmt(res.desglose.costoMaterial);
+  document.getElementById('ap-d-mdo').textContent = fmt(res.desglose.mdo);
+  document.getElementById('ap-d-gif').textContent = fmt(res.desglose.gif);
+  document.getElementById('ap-d-ga').textContent = fmt(res.desglose.ga);
+  document.getElementById('ap-d-util').textContent = fmt(res.desglose.utilidad);
+  document.getElementById('ap-d-iva').textContent = fmt(res.desglose.iva);
+  document.getElementById('ap-precio-final').textContent = '$' + fmt(res.precioFinal);
   document.getElementById('ap-resultado').style.display = 'block';
 
-  var nivelLabel = AP_NIVEL === 'economico' ? 'Económico' : AP_NIVEL === 'lujo' ? 'Lujo' : 'Semi Lujo';
-  var tipoLabel = AP_TIPO === 'escuadra' ? 'Escuadra' : 'Recto';
   CB_RESULTADO = {
-    sistema: 'Aluminio/Polietileno ' + tipoLabel + ' ' + nivelLabel + ' ' + AP_COLOR,
-    L: largo2 ? ((largo*10) + '+' + (largo2*10)) : largo*10, H: alto*10,
-    precioFinal: precioFinal,
-    tipo: 'alupol', apTipo: AP_TIPO, apNivel: AP_NIVEL, apColor: AP_COLOR,
-    largo: largo, largo2: largo2 || null, alto: alto,
-    desglose: { costoAluminio: costoAluminio, costoHerrajes: costoHerrajes, costoMaterial: costoMaterial,
-                mdo: ALU_PRECIOS.mdo, gif: gif, ga: ga, utilidad: utilidad, iva: ivaVenta }
+    sistema: res.sistema, L: res.L, H: res.H, precioFinal: res.precioFinal,
+    tipo: res.tipo, apTipo: res.apTipo, apNivel: res.apNivel, apColor: res.apColor,
+    largo: res.largo, largo2: res.largo2, alto: res.alto,
+    desglose: res.desglose
   };
 
   if (AP_TIPO === 'recto') {
     document.getElementById('ap-corte-card').style.display = 'block';
     document.getElementById('ap-corte-resultado').style.display = 'none';
+  } else {
+    document.getElementById('ap-corte-card').style.display = 'none';
   }
 }
 
