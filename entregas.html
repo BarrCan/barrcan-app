@@ -6,6 +6,18 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.61.0
+  FECHA   : 2026-09-26
+  v3.61.0 - FIX: Cloudflare (el CDN delante de Supabase Storage) a
+    veces cachea la primera respuesta a una URL de reporte con
+    content-type incorrecto (text/plain en vez de text/html) y la
+    sigue sirviendo así indefinidamente -- el archivo se mostraba
+    como código en vez de renderizarse, aunque la metadata real del
+    archivo en Supabase estuviera correcta. Detectado con
+    ENT-166-01.html, confirmado con encabezados de red reales
+    (Cf-Cache-Status: HIT). Ahora cada URL de reporte se guarda con
+    un parámetro único (?v=timestamp), para que Cloudflare la trate
+    como nunca antes pedida y no reutilice una copia vieja atorada.
   VERSION : v3.60.0
   FECHA   : 2026-09-26
   v3.60.0 - Dos cambios relacionados con envío vs. entrega:
@@ -2272,7 +2284,15 @@ function offReintentarUno(reg) {
     .then(function(upRes) {
       if (upRes.error) throw upRes.error;
       var urlRes = cliente.storage.from('reportes').getPublicUrl(reg.nombreArchivo);
-      reg.payload.reporte_url = urlRes.data ? urlRes.data.publicUrl : null;
+      // FIX (26-sep-2026): Cloudflare (el CDN delante de Supabase
+      // Storage) a veces cachea la PRIMERA respuesta a una URL con un
+      // content-type incorrecto (text/plain en vez de text/html) y la
+      // sigue sirviendo así indefinidamente, aunque la metadata real
+      // del archivo esté correcta -- se detectó con ENT-166-01.html.
+      // Se agrega un parámetro único para que cada subida tenga su
+      // propia URL nunca antes pedida, y Cloudflare no tenga nada
+      // viejo que servir.
+      reg.payload.reporte_url = urlRes.data ? (urlRes.data.publicUrl + '?v=' + Date.now()) : null;
       if (!reg.datosJson) return null;
       var blobD = new Blob([reg.datosJson], { type: 'application/json' });
       return cliente.storage.from('reportes').upload(reg.nombreArchivoDatos, blobD, { contentType: 'application/json', upsert: true });
@@ -2347,7 +2367,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.60.0';
+var APP_VERSION = 'v3.61.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -3424,7 +3444,7 @@ async function entGenerarReporteInterno() {
         var upRes = await sb().storage.from('reportes').upload(nombreArch, blob, { contentType: 'text/html', upsert: true });
         if (!upRes.error) {
           var urlRes = sb().storage.from('reportes').getPublicUrl(nombreArch);
-          reporteUrl = urlRes.data ? urlRes.data.publicUrl : null;
+          reporteUrl = urlRes.data ? (urlRes.data.publicUrl + '?v=' + Date.now()) : null;
           subidaOk = true;
           try {
             var blobDatos = new Blob([datosJsonStr], { type: 'application/json' });
@@ -4757,7 +4777,7 @@ async function entGenerarReporteInstalacion() {
         var upResInst = await sb().storage.from('reportes').upload(nombreArchInst, blobInst, { contentType: 'text/html', upsert: true });
         if (!upResInst.error) {
           var urlResInst = sb().storage.from('reportes').getPublicUrl(nombreArchInst);
-          reporteUrl = urlResInst.data ? urlResInst.data.publicUrl : null;
+          reporteUrl = urlResInst.data ? (urlResInst.data.publicUrl + '?v=' + Date.now()) : null;
           subidaOkInst = true;
           try {
             var blobDatosInst = new Blob([datosJsonStr], { type: 'application/json' });
