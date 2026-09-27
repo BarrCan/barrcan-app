@@ -6,6 +6,18 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.12
+  FECHA   : 2026-09-26
+  v3.12 - FIX: "Progreso de la Obra" truena con "(v.piezas ||
+    []).forEach is not a function" cuando un reporte de entrega
+    (tabla reportes_entrega) guardó un número simple ("1", "2"...) en
+    vez de la lista detallada de piezas -- típico de la ruta de
+    envío/paquetería, más simple que la de instalación. Se
+    encontraron y corrigieron 12 reportes con este problema en la
+    base (CACN-166A entre ellos). El código ahora valida con
+    Array.isArray() en vez de solo revisar si es "truthy", y si el
+    dato viene como string JSON lo intenta parsear -- así un dato mal
+    guardado en el futuro no vuelve a romper esta pantalla.
   VERSIÓN : v3.11
   FECHA   : 2026-09-16
   v3.11 - Etiqueta "Activo — en proceso" cambiada a "Activo — en
@@ -1491,7 +1503,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.11';
+var APP_VERSION = 'v3.12';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -2567,13 +2579,22 @@ async function presVerProgreso(id) {
       visitas.push({
         fecha: r.fecha, tipoLabel: 'Instalaci\u00f3n' + (r.modo_captura === 'express' ? ' \u26a1 Express' : ''),
         tecnico: r.tecnico + (r.tecnico_acompanante ? ' + ' + r.tecnico_acompanante : ''),
-        piezas: r.piezas || [], sinEncargado: r.sin_encargado, reporte_url: r.reporte_url, ts: r.created_at
+        piezas: Array.isArray(r.piezas) ? r.piezas : [], sinEncargado: r.sin_encargado, reporte_url: r.reporte_url, ts: r.created_at
       });
     });
     (resEnt.data || []).forEach(function(r) {
+      // FIX: algunos reportes de envío/paquetería viejos guardaron un
+      // número simple ("1", "2"...) en vez de la lista detallada de
+      // piezas -- .forEach tronaba al toparse con eso. Ya se
+      // corrigieron los 12 casos existentes en la base, pero se deja
+      // esta protección aquí para que un dato mal guardado en el
+      // futuro no vuelva a romper esta pantalla.
+      var piezasR = r.piezas;
+      if (typeof piezasR === 'string') { try { piezasR = JSON.parse(piezasR); } catch(e) { piezasR = []; } }
+      if (!Array.isArray(piezasR)) piezasR = [];
       visitas.push({
         fecha: r.fecha_entrega, tipoLabel: r.paqueteria ? ('Env\u00edo \u00b7 ' + r.paqueteria) : 'Entrega / Mantenimiento',
-        tecnico: r.tecnico || '\u2014', piezas: r.piezas || [], sinEncargado: r.sin_encargado,
+        tecnico: r.tecnico || '\u2014', piezas: piezasR, sinEncargado: r.sin_encargado,
         reporte_url: r.reporte_url, ts: r.created_at, monto: r.monto
       });
     });
