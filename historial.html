@@ -6,6 +6,17 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.13
+  FECHA   : 2026-09-26
+  v3.13 - FIX: el link "Ver reporte" en Progreso de la Obra mostraba
+    el reporte como código en vez de renderizarlo -- Cloudflare (el
+    CDN delante de Supabase Storage) tenía atorada una copia vieja
+    con content-type incorrecto para esa URL específica, aunque la
+    metadata real del archivo estuviera bien. Detectado con
+    ENT-166-01.html. Los reportes generados desde ahora ya vienen con
+    protección (ver entregas.html v3.61.0); para los ya guardados
+    antes de ese fix, se les agrega un parámetro al abrirlos aquí, así
+    Cloudflare los trata como nunca antes pedidos.
   VERSIÓN : v3.12
   FECHA   : 2026-09-26
   v3.12 - FIX: "Progreso de la Obra" truena con "(v.piezas ||
@@ -1503,7 +1514,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.12';
+var APP_VERSION = 'v3.13';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -2551,6 +2562,20 @@ function progCerrarModal() {
   document.getElementById('prog-modal').style.display = 'none';
 }
 
+// FIX (26-sep-2026): Cloudflare (el CDN delante de Supabase Storage) a
+// veces cachea la PRIMERA respuesta a una URL con content-type
+// incorrecto (text/plain en vez de text/html) y la sigue sirviendo
+// así indefinidamente, aunque la metadata real del archivo esté bien
+// -- se detectó con ENT-166-01.html. Para reportes ya guardados antes
+// de este fix (sin parámetro de versión en su URL), se le agrega uno
+// aquí mismo al abrir, para que Cloudflare la trate como nunca antes
+// pedida y no sirva la copia vieja atorada.
+function presUrlSinCache(url) {
+  if (!url) return url;
+  if (url.indexOf('?') >= 0) return url; // ya trae parámetro (subido después del fix) -- no tocar
+  return url + '?v=' + Date.now();
+}
+
 async function presVerProgreso(id) {
   var p = null;
   for (var i = 0; i < PRES_CACHE.length; i++) {
@@ -2648,7 +2673,7 @@ async function presVerProgreso(id) {
         + '<div style="font-size:13px;font-weight:700;color:var(--navy)">' + v.tipoLabel + '</div>'
         + '<div style="font-size:11px;color:var(--gray-600)">T\u00e9cnico: ' + esc(v.tecnico) + (v.sinEncargado ? ' \u00b7 <span style="color:#E67E22">sin encargado presente</span>' : '') + '</div>'
         + piezasHtml
-        + (v.reporte_url ? '<a href="' + v.reporte_url + '" target="_blank" style="display:inline-block;margin-top:6px;font-size:11px;color:var(--blue);font-weight:700">Ver reporte &rarr;</a>' : '')
+        + (v.reporte_url ? '<a href="' + presUrlSinCache(v.reporte_url) + '" target="_blank" style="display:inline-block;margin-top:6px;font-size:11px;color:var(--blue);font-weight:700">Ver reporte &rarr;</a>' : '')
         + '</div>';
     }).join('');
   } catch(e) {
