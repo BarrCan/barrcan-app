@@ -6,6 +6,23 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.60.0
+  FECHA   : 2026-09-26
+  v3.60.0 - Dos cambios relacionados con envío vs. entrega:
+    1) FIX DE RAÍZ: el campo "Num. piezas" (para Envío/Puerta/
+       Mantenimiento) guardaba el número crudo (ej. "1") directo en
+       la columna piezas de reportes_entrega -- "Progreso de la Obra"
+       en historial.html espera una LISTA y truena al toparse con un
+       texto simple ("(v.piezas||[]).forEach is not a function"). Se
+       encontraron y corrigieron 12 reportes ya existentes con este
+       problema en la base. Ahora se guarda una lista real (una
+       entrada por pieza contada, usando la descripción del reporte
+       como referencia).
+    2) A pedido: si el folio seleccionado parece ser de Mercado Libre
+       (contiene "ML") y el tipo sigue en su default "En puerta", se
+       pregunta explícitamente si se va a enviar por paquetería, en
+       vez de asumir en silencio -- si contesta que sí, selecciona el
+       botón de Envío solo.
   VERSION : v3.59.0
   FECHA   : 2026-09-06
   v3.59.0 - Roster de técnicos ahora DINÁMICO -- ya no está escrito a mano
@@ -2330,7 +2347,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.59.0';
+var APP_VERSION = 'v3.60.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -2625,6 +2642,20 @@ function entSelPresupuesto() {
   // reporte anterior. Caso real: CACN-146 con espejo (ya entregado) +
   // repisas/toalleros (nuevo) -- antes repetía el espejo también.
   ENT_PRESUPUESTO_ACTUAL = p;
+
+  // A pedido (26-sep-2026): los folios de Mercado Libre (contienen "ML",
+  // ej. "26ML13") normalmente van por paquetería, no entrega en puerta
+  // -- pero el tipo por default es "En puerta" y nunca se preguntaba.
+  // Si el tipo sigue en su default, se pregunta explícito una vez que
+  // se detecta un folio así, en vez de asumir en silencio.
+  if (ENT_TIPO === 'puerta' && /ML/i.test(p.folio || '')) {
+    var esEnvioML = confirm('Este folio parece ser de Mercado Libre (' + p.folio + ').\n\n¿Se va a ENVIAR por paquetería?\n\nAceptar = Envío\nCancelar = Entrega en persona / instalación (elige el botón correcto abajo)');
+    if (esEnvioML) {
+      var btnEnvio = document.querySelector('.tipo-btn[data-tipo="envio"]');
+      if (btnEnvio) entSelTipo(btnEnvio);
+    }
+  }
+
   var piezas = [];
   try { piezas = JSON.parse(p.notas_internas || '[]'); } catch(e) {}
   if (piezas.length) {
@@ -3420,7 +3451,21 @@ async function entGenerarReporteInterno() {
       fecha_entrega: fecha, tecnico: 'BarrCan', tel_destino: tel || null,
       registrado_por: 'campo', whatsapp_enviado: false,
       dir_obra: direccion || null, reporte_url: reporteUrl, datos_url: datosUrl,
-      descripcion: desc || null, piezas: piezas || null, monto: monto || null,
+      descripcion: desc || null,
+      // FIX (26-sep-2026): antes se guardaba el número crudo del campo
+      // "Num. piezas" (ej. "1") directo en esta columna -- "Progreso de
+      // la Obra" en historial.html espera una LISTA de piezas y truena
+      // al toparse con un texto simple ("(v.piezas||[]).forEach is not
+      // a function"). Se detectó en 12 reportes ya existentes (todos
+      // corregidos en la base). Ahora se guarda una lista real, uno por
+      // cada pieza contada, usando la descripción del reporte como
+      // referencia de qué es cada una.
+      piezas: JSON.stringify(
+        Array.from({ length: Math.max(1, parseInt(piezas, 10) || 1) }, function() {
+          return { tipo: desc || 'Art\u00edculo', estado: 'instalada' };
+        })
+      ),
+      monto: monto || null,
       paqueteria: paqueteria || null, num_guia: numGuia || null,
       sin_encargado: ENT_SIN_ENCARGADO_SIMPLE,
       notas_internas: (document.getElementById('ent-notas') ? document.getElementById('ent-notas').value.trim() : '') || null,
