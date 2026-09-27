@@ -6,6 +6,33 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.15
+  FECHA   : 2026-09-26
+  v3.15 - Ajuste al desglose de "Piezas individuales" de v3.14: la
+    medida de cada unidad ahora es ancho/alto por separado (números,
+    mm) en vez de un texto libre -- necesario para poder mandarla de
+    verdad al cotizador. También color por unidad (hereda el de la
+    pieza, editable si el acabado real cambia). Nuevo botón "🔄
+    Recalcular esta unidad con el cotizador" (solo en piezas
+    Corredizo por ahora) -- manda esa unidad específica al cotizador
+    real de Baños con su propia medida y color, y guarda su desglose
+    de material de vuelta en pz.unidades[].resultado, sin tocar el
+    precio del presupuesto. Mismo motor de cálculo real, sin duplicar
+    la fórmula aquí.
+  VERSIÓN : v3.14
+  FECHA   : 2026-09-26
+  v3.14 - A pedido: nuevo desglose de "Piezas individuales" por cada
+    concepto del presupuesto -- botón "🔲 Desglosar" junto a cada
+    pieza, en el editor de conceptos. Pregunta cuántas unidades son
+    (precargado con la cantidad ya capturada, sea de cotizador o
+    manual), permite una medida general de sugerencia (nunca
+    sobreescribe una que ya se corrigió a mano) y cada unidad (1a, 1b,
+    1c...) guarda su propia medida y estado. Vive DENTRO de la misma
+    pieza, junto a resultado/label/cantidad -- no es una lista aparte,
+    para no repetir información. Resuelve instalación por etapas:
+    cuando los acabados no llegan completos, cada unidad se marca
+    instalada por separado (desde Entregas, siguiente paso pendiente)
+    y las que faltan quedan claras para la próxima visita.
   VERSIÓN : v3.13
   FECHA   : 2026-09-26
   v3.13 - FIX: el link "Ver reporte" en Progreso de la Obra mostraba
@@ -1343,6 +1370,40 @@ body{min-height:100vh}
   style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:600;backdrop-filter:blur(3px)"></div>
 
 <!-- MODAL ELEGIR MÓDULO -->
+
+<!-- PANEL UNIDADES INDIVIDUALES (desglose para instalación por etapas) -->
+<div id="unid-overlay" onclick="presCerrarUnidades()" style="display:none;position:fixed;inset:0;background:rgba(27,58,92,0.55);z-index:900"></div>
+<div id="unid-panel" style="display:none;position:fixed;inset:0;z-index:901;background:var(--white);overflow-y:auto">
+  <div class="det-header">
+    <button class="det-back" onclick="presCerrarUnidades()">←</button>
+    <div class="det-titulo">
+      <div class="det-folio">Piezas individuales</div>
+      <div class="det-cliente" id="unid-pieza-nombre">—</div>
+    </div>
+  </div>
+  <div style="padding:14px 16px 100px">
+    <div style="font-size:11px;color:var(--gray-400);margin-bottom:10px;line-height:1.4">
+      Cada unidad se instala y se marca por separado -- así, si los acabados no llegan completos, puedes marcar solo las que sí se colocaron en esta visita y las demás quedan pendientes para la siguiente.
+    </div>
+    <label class="form-label" style="font-size:10.5px">¿Cuántas piezas son?</label>
+    <div style="display:flex;gap:6px;margin-bottom:6px">
+      <input type="number" id="unid-cantidad" min="1" class="form-input" style="margin-bottom:0" onchange="presRegenerarUnidades()">
+      <button type="button" onclick="presRegenerarUnidades()" style="padding:0 14px;border-radius:8px;border:1.5px solid var(--gray-300);background:none;color:var(--gray-600);font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">Aplicar</button>
+    </div>
+    <label class="form-label" style="font-size:10.5px">Ancho y alto general (mm) -- sugerencia, ajusta la que varíe</label>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+      <input type="number" id="unid-ancho-general" placeholder="Ancho mm" class="form-input" style="margin-bottom:0" oninput="presAplicarMedidaGeneral()">
+      <input type="number" id="unid-alto-general" placeholder="Alto mm" class="form-input" style="margin-bottom:0" oninput="presAplicarMedidaGeneral()">
+    </div>
+    <label class="form-label" style="font-size:10.5px">Color general -- por si el acabado real cambia por unidad</label>
+    <input type="text" id="unid-color-general" placeholder="ej. BLANCO, NATURAL, NEGRO..." class="form-input" oninput="presAplicarMedidaGeneral()">
+    <div style="font-size:10px;color:var(--gray-400);margin:-4px 0 10px">No asume que todas son iguales -- solo precarga, cada una se puede corregir aparte.</div>
+    <div id="unid-lista"></div>
+    <button class="btn-imprimir" style="background:var(--navy);color:#fff;margin-top:10px" onclick="presGuardarUnidades()">💾 Guardar desglose</button>
+  </div>
+</div>
+
+<!-- MODAL ELEGIR MÓDULO -->
 <div id="modal-elegir-modulo" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:2000;align-items:flex-end;justify-content:center">
   <div style="background:#fff;border-radius:20px 20px 0 0;padding:18px 16px 28px;width:100%;max-width:520px;max-height:88vh;overflow-y:auto">
     <div style="width:40px;height:4px;background:var(--gray-200);border-radius:2px;margin:0 auto 14px"></div>
@@ -1514,7 +1575,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.13';
+var APP_VERSION = 'v3.15';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -2143,7 +2204,8 @@ function presRenderConceptos(notasInternasRaw) {
       cantidad: p.cantidad || 1,
       precio: p.precio,
       precioUnitario: p.precioUnitario != null ? p.precioUnitario : p.precio,
-      resultado: p.resultado
+      resultado: p.resultado,
+      unidades: Array.isArray(p.unidades) ? p.unidades : null
     };
   });
   presDibujarConceptos();
@@ -2165,6 +2227,11 @@ function presDibujarConceptos() {
       ? '<button type="button" onclick="presRecalcularPieza(' + i + ')" title="Reabrir en el cotizador Corredizo para recalcular con precios actuales" '
         + 'style="padding:6px 9px;background:rgba(200,146,58,0.1);border:1.5px solid rgba(200,146,58,0.3);border-radius:6px;color:var(--gold);cursor:pointer;flex-shrink:0;font-size:13px">🔄</button>'
       : '';
+    var numUnid = Array.isArray(p.unidades) ? p.unidades.length : 0;
+    var numInst = numUnid ? p.unidades.filter(function(u) { return u.estado === 'instalada'; }).length : 0;
+    var btnUnidades = '<button type="button" onclick="presAbrirUnidades(' + i + ')" title="Desglosar en piezas individuales para instalación por etapas" '
+      + 'style="padding:6px 9px;background:' + (numUnid ? 'rgba(39,174,96,0.1)' : 'rgba(0,0,0,0.04)') + ';border:1.5px solid ' + (numUnid ? 'rgba(39,174,96,0.3)' : 'var(--gray-200)') + ';border-radius:6px;color:' + (numUnid ? '#27AE60' : 'var(--gray-400)') + ';cursor:pointer;flex-shrink:0;font-size:10.5px;font-weight:700;white-space:nowrap">'
+      + (numUnid ? ('🔲 ' + numInst + '/' + numUnid) : '🔲 Desglosar') + '</button>';
     return '<div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:8px">'
       + '<textarea class="form-input" rows="2" style="resize:none;font-size:13px" '
       + 'oninput="presConceptoEditar(' + i + ',\'label\',this.value)" placeholder="Descripción de esta pieza">' + esc(p.label) + '</textarea>'
@@ -2175,6 +2242,7 @@ function presDibujarConceptos() {
       + '<div style="font-size:10px;color:var(--gray-400);text-align:center">$' + fmt(p.precio || 0) + '</div>'
       + '</div>'
       + btnRecalcular
+      + btnUnidades
       + '<button type="button" onclick="presConceptoQuitar(' + i + ')" title="Quitar" '
       + 'style="padding:6px 9px;background:rgba(192,57,43,0.08);border:1.5px solid rgba(192,57,43,0.25);border-radius:6px;color:#C0392B;cursor:pointer;flex-shrink:0">✕</button>'
       + '</div>';
@@ -2204,6 +2272,132 @@ function presRecalcularPieza(idx) {
       pieceIndex: idx, resultadoOriginal: pieza.resultado
     }));
   } catch(e) { toast('No se pudo preparar la pieza para recalcular'); return; }
+  location.href = 'cotizador_banos.html';
+}
+
+// ══════════════════════════════════════════════════════════════
+// PIEZAS INDIVIDUALES (unidades) -- 26-sep-2026
+// Desglose de cada concepto en unidades físicas independientes
+// (1a, 1b, 1c...), cada una con su propia medida, estado y (más
+// adelante, desde Entregas) fecha y foto de instalación. Resuelve
+// dos cosas a la vez: instalación por etapas cuando los acabados no
+// llegan completos, y evita repetir información -- vive DENTRO de la
+// misma pieza (junto a resultado, label, cantidad), no en una lista
+// aparte, y se pre-carga con lo que la pieza ya trae (cotizador o
+// captura manual) en vez de volver a preguntar desde cero.
+// Ancho/alto van como número (mm), no como texto libre -- así el
+// puente de recálculo real con el cotizador (ver más abajo) puede
+// precargarlos directo, sin tener que adivinar un formato de texto.
+// ══════════════════════════════════════════════════════════════
+var UNID_IDX_ACTUAL = null;
+var UNID_ACTUALES = [];
+
+function presAbrirUnidades(idx) {
+  var pz = PRES_CONCEPTOS[idx];
+  if (!pz) return;
+  UNID_IDX_ACTUAL = idx;
+  UNID_ACTUALES = Array.isArray(pz.unidades) ? JSON.parse(JSON.stringify(pz.unidades)) : [];
+  document.getElementById('unid-pieza-nombre').textContent = pz.label || 'Pieza ' + (idx + 1);
+  document.getElementById('unid-cantidad').value = UNID_ACTUALES.length || pz.cantidad || 1;
+  document.getElementById('unid-ancho-general').value = (pz.resultado && pz.resultado.L) || '';
+  document.getElementById('unid-alto-general').value = (pz.resultado && pz.resultado.H) || '';
+  document.getElementById('unid-color-general').value = (pz.resultado && pz.resultado.color) || '';
+  if (!UNID_ACTUALES.length) presRegenerarUnidades(); else presRenderUnidadesLista();
+  document.getElementById('unid-overlay').style.display = 'block';
+  document.getElementById('unid-panel').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+}
+function presCerrarUnidades() {
+  document.getElementById('unid-overlay').style.display = 'none';
+  document.getElementById('unid-panel').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+// Ajusta la cantidad de unidades sin perder las que ya tenían medida
+// o estado capturado -- solo agrega o quita al final.
+function presRegenerarUnidades() {
+  var n = parseInt(document.getElementById('unid-cantidad').value, 10) || 1;
+  while (UNID_ACTUALES.length < n) {
+    var letra = String.fromCharCode(97 + UNID_ACTUALES.length); // a, b, c...
+    UNID_ACTUALES.push({ id: (UNID_IDX_ACTUAL + 1) + letra, ancho: null, alto: null, color: '', estado: 'pendiente', foto: null, fecha: null, resultado: null });
+  }
+  while (UNID_ACTUALES.length > n) UNID_ACTUALES.pop();
+  presAplicarMedidaGeneral();
+}
+// Precarga ancho/alto/color generales en las unidades que TODAVÍA no
+// se corrigieron a mano -- nunca pisa una que ya se ajustó.
+function presAplicarMedidaGeneral() {
+  var ancho = document.getElementById('unid-ancho-general').value;
+  var alto  = document.getElementById('unid-alto-general').value;
+  var color = document.getElementById('unid-color-general').value;
+  UNID_ACTUALES.forEach(function(u) {
+    if (!u._tocada) { u.ancho = ancho ? parseFloat(ancho) : null; u.alto = alto ? parseFloat(alto) : null; u.color = color; }
+  });
+  presRenderUnidadesLista();
+}
+function presUnidadEditar(i, campo, val) {
+  if (!UNID_ACTUALES[i]) return;
+  UNID_ACTUALES[i][campo] = (campo === 'ancho' || campo === 'alto') ? (val ? parseFloat(val) : null) : val;
+  UNID_ACTUALES[i]._tocada = true; // ya no se pisa con los generales
+}
+function presRenderUnidadesLista() {
+  var cont = document.getElementById('unid-lista');
+  var pz = PRES_CONCEPTOS[UNID_IDX_ACTUAL];
+  var esCorredizo = pz && pz.resultado && pz.resultado.tipo === 'corredizo';
+  cont.innerHTML = UNID_ACTUALES.map(function(u, i) {
+    var yaInstalada = u.estado === 'instalada';
+    var yaRecalculada = !!u.resultado;
+    return '<div style="margin-bottom:8px;padding:8px;background:' + (yaInstalada ? 'rgba(39,174,96,0.06)' : '#F8F9FA') + ';border-radius:8px;border:1px solid ' + (yaInstalada ? 'rgba(39,174,96,0.25)' : 'var(--gray-200)') + '">'
+      + '<div style="display:flex;gap:6px;align-items:center;margin-bottom:' + (esCorredizo ? '6px' : '0') + '">'
+      + '<span style="font-weight:700;color:var(--navy);width:22px;flex-shrink:0">' + esc(u.id) + '</span>'
+      + '<input type="number" value="' + (u.ancho != null ? u.ancho : '') + '" placeholder="ancho" title="Ancho mm" '
+      + 'oninput="presUnidadEditar(' + i + ',\'ancho\',this.value)" style="width:64px;padding:6px 4px;border:1px solid var(--gray-200);border-radius:6px;font-size:12px;text-align:center">'
+      + '<span style="color:var(--gray-400)">×</span>'
+      + '<input type="number" value="' + (u.alto != null ? u.alto : '') + '" placeholder="alto" title="Alto mm" '
+      + 'oninput="presUnidadEditar(' + i + ',\'alto\',this.value)" style="width:64px;padding:6px 4px;border:1px solid var(--gray-200);border-radius:6px;font-size:12px;text-align:center">'
+      + '<input type="text" value="' + esc(u.color || '') + '" placeholder="color" title="Color" '
+      + 'oninput="presUnidadEditar(' + i + ',\'color\',this.value)" style="flex:1;padding:6px 6px;border:1px solid var(--gray-200);border-radius:6px;font-size:11.5px">'
+      + (yaInstalada ? '<span style="font-size:9.5px;color:#27AE60;font-weight:700;white-space:nowrap">✓' + (u.fecha ? ' ' + u.fecha : '') + '</span>' : '<span style="font-size:9.5px;color:var(--gray-400);white-space:nowrap">pend.</span>')
+      + '</div>'
+      + (esCorredizo ? ('<button type="button" onclick="presRecalcularUnidad(' + i + ')" style="width:100%;padding:5px;background:' + (yaRecalculada ? 'rgba(39,174,96,0.1)' : 'rgba(200,146,58,0.08)') + ';border:1.5px dashed ' + (yaRecalculada ? 'rgba(39,174,96,0.4)' : 'rgba(200,146,58,0.3)') + ';border-radius:6px;color:' + (yaRecalculada ? '#27AE60' : 'var(--gold)') + ';font-size:10px;font-weight:700;cursor:pointer">' + (yaRecalculada ? '✓ Desglosada con el cotizador -- recalcular de nuevo' : '🔄 Recalcular esta unidad con el cotizador') + '</button>') : '')
+      + '</div>';
+  }).join('');
+}
+function presGuardarUnidades() {
+  if (UNID_IDX_ACTUAL === null) return;
+  PRES_CONCEPTOS[UNID_IDX_ACTUAL].unidades = UNID_ACTUALES.map(function(u) {
+    return { id: u.id, ancho: u.ancho, alto: u.alto, color: u.color || '', estado: u.estado || 'pendiente', foto: u.foto || null, fecha: u.fecha || null, resultado: u.resultado || null };
+  });
+  presDibujarConceptos();
+  presCerrarUnidades();
+  toast('✅ Desglose de piezas guardado -- se aplica al guardar el presupuesto');
+}
+
+// Manda ESTA unidad (ancho/alto/color propios, no los de la pieza
+// completa) al cotizador de Corredizo real, para que su desglose de
+// material (cortesCalc/herrajesCalc) sea el cálculo de verdad, no una
+// copia de la fórmula viviendo aparte en Historial -- así si el
+// cotizador cambia su fórmula, esto nunca se queda desactualizado.
+function presRecalcularUnidad(i) {
+  var pz = PRES_CONCEPTOS[UNID_IDX_ACTUAL];
+  var u = UNID_ACTUALES[i];
+  if (!pz || !u) return;
+  if (!u.ancho || !u.alto) { toast('Captura ancho y alto de esta unidad antes de recalcular'); return; }
+  var p = null;
+  for (var k = 0; k < PRES_CACHE.length; k++) { if (PRES_CACHE[k].id === PRES_EDITANDO_ID) { p = PRES_CACHE[k]; break; } }
+  if (!p) { toast('Primero guarda o cierra la edición actual'); return; }
+  if (!confirm('Vas a abrir el cotizador Corredizo con la medida de la unidad ' + u.id + ' (' + u.ancho + '×' + u.alto + 'mm, ' + (u.color || 'sin color definido') + ').\n\nAl calcular ahí, el desglose de material de ESA unidad se actualiza -- el resto del presupuesto no se toca.\n\n¿Continuar?')) return;
+  try {
+    localStorage.setItem('barrcan_recalcular_unidad', JSON.stringify({
+      folioId: p.id, folio: p.folio, cliente: p.cliente, tel: p.tel,
+      monto: p.monto, saldo: p.saldo, notas_internas: p.notas_internas,
+      pieceIndex: UNID_IDX_ACTUAL, unidadId: u.id,
+      resultadoBase: pz.resultado, // línea/config/acabado/etc. de la pieza original, como plantilla
+      anchoUnidad: u.ancho, altoUnidad: u.alto, colorUnidad: u.color || pz.resultado.color
+    }));
+  } catch(e) { toast('No se pudo preparar la unidad para recalcular'); return; }
+  // Guarda de una vez lo que ya se editó en este panel, para no perderlo al salir a recalcular.
+  presGuardarUnidades();
   location.href = 'cotizador_banos.html';
 }
 
@@ -2435,7 +2629,7 @@ async function presGuardar() {
   };
   if (PRES_CONCEPTOS.length) {
     datos.notas_internas = JSON.stringify(PRES_CONCEPTOS.map(function(p) {
-      return { label: p.label, cantidad: p.cantidad || 1, precioUnitario: p.precioUnitario, precio: p.precio, resultado: p.resultado };
+      return { label: p.label, cantidad: p.cantidad || 1, precioUnitario: p.precioUnitario, precio: p.precio, resultado: p.resultado, unidades: p.unidades };
     }));
   }
 
