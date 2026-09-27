@@ -6,6 +6,19 @@
 <title>BarrCan · Cotizador Baños</title>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v3.5
+  FECHA   : 2026-09-26
+  v3.5 - A pedido: puente de recálculo por UNIDAD individual (no solo
+    por pieza completa). Cuando en Historial se desglosa una pieza en
+    unidades (1a, 1b, 1c...) para instalación por etapas, cada una
+    puede mandarse aquí con su propia medida y color para obtener su
+    desglose real de material -- usa el MISMO motor de cálculo de
+    Corredizo, nunca una copia de la fórmula. A diferencia del
+    recálculo de pieza completa, este NO toca el precio ni el monto/
+    saldo del folio -- solo actualiza el desglose de material de esa
+    unidad específica dentro de pz.unidades[].resultado. Primer
+    cotizador con este puente; el patrón queda listo para replicarse
+    en Nacional/Español/Eurovent/Servicios/Cubiertas.
   VERSION : v3.4
   FECHA   : 2026-09-21
   v3.4 - Recto y Escuadra (Alu/Polietileno) también se sacaron a
@@ -877,7 +890,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
         <div class="card-title">Guardar presupuesto Corredizo</div>
         <input type="text" class="form-input" id="corredizo-cliente" list="sn-clientes-datalist" placeholder="Nombre del cliente *" oninput="snAutocompletarCliente('corredizo')">
         <input type="text" class="form-input" id="corredizo-tel" placeholder="Tel&eacute;fono">
-        <button class="btn btn-gold" onclick="CC_RECALCULO ? ccGuardarRecalculo() : cbGuardarPresupuesto('corredizo')">Guardar y generar folio CACN</button>
+        <button class="btn btn-gold" onclick="CC_RECALCULO_UNIDAD ? ccGuardarRecalculoUnidad() : (CC_RECALCULO ? ccGuardarRecalculo() : cbGuardarPresupuesto('corredizo'))">Guardar y generar folio CACN</button>
       </div>
     </div>
   </div>
@@ -1284,7 +1297,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v3.2';
+var APP_VERSION = 'v3.5';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -1836,6 +1849,111 @@ async function ccGuardarRecalculo() {
     document.getElementById('corredizo-tel').value = '';
   } catch(e) {
     toast('Error al guardar el recálculo: ' + e.message);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// RECÁLCULO POR UNIDAD INDIVIDUAL -- 26-sep-2026
+// A diferencia de ccCargarRecalculoPieza (que reemplaza la PIEZA
+// completa y sí re-cotiza el precio), esto recalcula el desglose de
+// material de UNA sola unidad física dentro de esa pieza (ej. la
+// 2b de 3), con su propia medida y color -- para cuando el acabado
+// real que llega no es idéntico al cotizado, o se instala por
+// etapas. NO toca el precio ni el monto/saldo del folio -- ese ya
+// quedó fijado por la pieza completa; esto solo deja el desglose de
+// material de esa unidad tan real como el de una pieza recién
+// cotizada, usando el MISMO motor de cálculo, sin duplicar la
+// fórmula en ningún otro lado.
+// ══════════════════════════════════════════════════════════════
+var CC_RECALCULO_UNIDAD = null; // { folioId, folio, pieceIndex, unidadId, notas_internas, resultadoBase, anchoUnidad, altoUnidad, colorUnidad }
+
+function ccCargarRecalculoUnidad() {
+  var raw = null;
+  try { raw = localStorage.getItem('barrcan_recalcular_unidad'); } catch(e) {}
+  if (!raw) return;
+  var datos = null;
+  try { datos = JSON.parse(raw); } catch(e) {}
+  if (!datos || !datos.resultadoBase) return;
+  try { localStorage.removeItem('barrcan_recalcular_unidad'); } catch(e) {}
+
+  CC_RECALCULO_UNIDAD = datos;
+  var r = datos.resultadoBase; // plantilla: línea, config, acabado, carretilla, cristalMM de la pieza original
+
+  var btnTab = document.querySelector('.tabs .tab-btn[onclick*="corredizo"]');
+  if (btnTab) cbTab(btnTab, 'corredizo');
+
+  var lineaBtn = document.querySelector('#tab-corredizo .color-grid button[data-linea="' + (r.linea || 'virgo') + '"]');
+  if (lineaBtn) ccSelLinea(lineaBtn);
+
+  var configBtn = document.querySelector('#tab-corredizo .sistema-grid button[data-config="' + (r.config || 'recta') + '"]');
+  if (configBtn) ccSelConfig(configBtn);
+
+  // Aquí SÍ se usa la medida propia de la unidad, no la de la pieza completa
+  if (r.config === 'escuadra') {
+    if (document.getElementById('cc-ancho1')) document.getElementById('cc-ancho1').value = datos.anchoUnidad || r.L || 1200;
+    if (document.getElementById('cc-ancho2')) document.getElementById('cc-ancho2').value = r.L2 || 1200;
+  } else {
+    if (document.getElementById('cc-ancho')) document.getElementById('cc-ancho').value = datos.anchoUnidad || r.L || 1200;
+  }
+  if (document.getElementById('cc-alto')) document.getElementById('cc-alto').value = datos.altoUnidad || r.H || 2000;
+
+  var colorBtn = document.querySelector('#tab-corredizo .color-grid button[data-color="' + (datos.colorUnidad || r.color || 'NATURAL') + '"]');
+  if (colorBtn) ccSelColor(colorBtn);
+
+  if (r.cristalMM && document.getElementById('cc-cristal')) document.getElementById('cc-cristal').value = String(r.cristalMM);
+  if (r.acabado    && document.getElementById('cc-acabado')) document.getElementById('cc-acabado').value = r.acabado;
+  if (r.carretilla  && document.getElementById('cc-carretilla')) document.getElementById('cc-carretilla').value = r.carretilla;
+  ccActualizarUI();
+
+  if (document.getElementById('corredizo-cliente')) document.getElementById('corredizo-cliente').value = datos.cliente || '';
+  if (document.getElementById('corredizo-tel'))     document.getElementById('corredizo-tel').value     = datos.tel || '';
+
+  var banner = document.getElementById('cc-banner-recalculo');
+  if (banner) {
+    banner.style.display = 'block';
+    banner.innerHTML = '🔄 Recalculando la unidad <b>' + esc(datos.unidadId) + '</b> del folio <b>' + esc(datos.folio) + '</b> -- esto NO cambia el precio del presupuesto, solo el desglose de material de esta pieza física. <button type="button" onclick="ccCancelarRecalculoUnidad()" style="margin-left:8px;background:none;border:1px solid var(--gold);color:var(--gold);border-radius:6px;padding:2px 8px;font-size:11px;cursor:pointer">Cancelar</button>';
+  }
+  toast('🔄 Medidas de la unidad ' + datos.unidadId + ' precargadas -- da clic en Calcular');
+}
+
+function ccCancelarRecalculoUnidad() {
+  CC_RECALCULO_UNIDAD = null;
+  var banner = document.getElementById('cc-banner-recalculo');
+  if (banner) banner.style.display = 'none';
+  toast('Recálculo de unidad cancelado');
+}
+
+async function ccGuardarRecalculoUnidad() {
+  if (!CB_RESULTADO) { toast('Primero calcula el presupuesto'); return; }
+  var rec = CC_RECALCULO_UNIDAD;
+  var piezas = [];
+  try { piezas = JSON.parse(rec.notas_internas || '[]'); } catch(e) {}
+  var pz = piezas[rec.pieceIndex];
+  if (!pz) { toast('No se encontró la pieza original en el folio -- no se guardó nada'); return; }
+  if (!Array.isArray(pz.unidades)) { toast('Esta pieza ya no tiene el desglose de unidades -- revísalo en Historial'); return; }
+  var uIdx = -1;
+  for (var i = 0; i < pz.unidades.length; i++) { if (pz.unidades[i].id === rec.unidadId) { uIdx = i; break; } }
+  if (uIdx === -1) { toast('No se encontró la unidad ' + rec.unidadId + ' -- puede que se haya cambiado la cantidad de piezas en Historial'); return; }
+
+  pz.unidades[uIdx].resultado = CB_RESULTADO;
+  pz.unidades[uIdx].ancho = CB_RESULTADO.L || pz.unidades[uIdx].ancho;
+  pz.unidades[uIdx].alto  = CB_RESULTADO.H || pz.unidades[uIdx].alto;
+  pz.unidades[uIdx].color = CB_RESULTADO.color || pz.unidades[uIdx].color;
+
+  if (!sb()) { toast('Sin conexión -- no se pudo guardar el recálculo'); return; }
+  try {
+    var res = await sb().from('presupuestos_atrasados')
+      .update({ notas_internas: JSON.stringify(piezas) })
+      .eq('id', rec.folioId);
+    if (res.error) throw res.error;
+    toast('✅ Unidad ' + rec.unidadId + ' recalculada · ' + rec.folio + ' -- el precio del presupuesto no cambió, solo su desglose de material');
+    CC_RECALCULO_UNIDAD = null;
+    var banner = document.getElementById('cc-banner-recalculo');
+    if (banner) banner.style.display = 'none';
+    document.getElementById('corredizo-cliente').value = '';
+    document.getElementById('corredizo-tel').value = '';
+  } catch(e) {
+    toast('Error al guardar el recálculo de la unidad: ' + e.message);
   }
 }
 
@@ -2848,6 +2966,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // el folio existente para sumarle la próxima pieza que se calcule.
   snCargarContinuarFolio();
   ccCargarRecalculoPieza();
+  ccCargarRecalculoUnidad();
 });
 
 // ══════════════════════════════════════════════
