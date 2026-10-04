@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════
-// BarrCan Service Worker v11 — Offline First
+// BarrCan Service Worker v12 — Offline First
 // Estrategia: Network-First con timeout para HTML (páginas .html),
 //             Cache-First para fuentes/CDN,
 //             Supabase y APIs externas: Network Only
@@ -47,7 +47,8 @@
 //    celular quedaba sin nada para trabajar offline. Ahora se guarda uno
 //    por uno: si alguno falla, los demás sí quedan.
 
-const CACHE_VERSION = 'barrcan-v12'; // subir este número fuerza que TODOS los
+// v12 (04-oct-2026): precarga modulos/presupuesto_doc.js (documento oficial).
+const CACHE_VERSION = 'barrcan-v13'; // subir este número fuerza que TODOS los
 // dispositivos descarten su caché vieja de una vez -- ya no debería
 // hacer falta subirlo por cada arreglo ahora que HTML es Network First,
 // pero sigue disponible por si algún día conviene un reinicio total.
@@ -93,6 +94,8 @@ const RECURSOS_CORE = [
   './modulos/alupol_recto.js',
   './modulos/alupol_escuadra.js',
   './modulos/alupol_cor_luj_2h.js',
+  './modulos/presupuesto_doc.js',
+  './ver_reporte.html',
 ];
 
 const DOMINIOS_CACHEABLE = [

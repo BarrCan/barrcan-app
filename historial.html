@@ -4,8 +4,17 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Historial</title>
+<script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.19
+  FECHA   : 2026-10-04
+  v3.19 - Imprimir presupuesto usa el FORMATO OFICIAL (el mismo de los
+    cotizadores: condiciones de venta, política de pagos y cuentas,
+    almacenamiento, tiempos, firmas), desde el módulo compartido
+    modulos/presupuesto_doc.js. Antes Historial imprimía una tabla
+    simple sin nada de eso. El botón Imprimir espera a que carguen el
+    logo y los diagramas (antes salían en blanco).
   VERSIÓN : v3.18
   FECHA   : 2026-10-04
   v3.18 - FIX: cambiar la cantidad de un concepto ahora multiplica el
@@ -1639,7 +1648,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.18';
+var APP_VERSION = 'v3.19';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -2183,7 +2192,30 @@ function presDiagramaPieza(r) {
     + '<span style="font-size:9pt;color:#666">' + medidas + '</span></div>';
 }
 
+// v3.19: el presupuesto se imprime con el FORMATO OFICIAL compartido
+// (modulos/presupuesto_doc.js -- el mismo del cotizador de Baños:
+// encabezado, partidas con cantidad, diagramas, condiciones de venta,
+// cuentas y firmas). Si el módulo no cargó (sin señal y sin caché), se
+// usa la impresión simple de siempre.
 function presImprimir(idStr) {
+  var p = PRES_CACHE.filter(function(x) { return x.id === idStr; })[0];
+  if (!p) { toast('No se encontró ese presupuesto'); return; }
+  if (!window.BCDoc) { presImprimirSimple(idStr); return; }
+  var piezas = [];
+  try { piezas = JSON.parse(p.notas_internas || '[]'); } catch(e) {}
+  if (!Array.isArray(piezas) || !piezas.length) {
+    piezas = [{ label: p.descripcion || 'Presupuesto', cantidad: 1, precio: parseFloat(p.monto) || 0, precioUnitario: parseFloat(p.monto) || 0 }];
+  }
+  var f = String(p.fecha || '').split('-');
+  var fecha = f.length === 3 ? new Date(+f[0], +f[1] - 1, +f[2]) : new Date();
+  var html = window.BCDoc.generar(piezas, p.folio || '', p.cliente || '', p.dir || '', fecha, { total: parseFloat(p.monto) || 0 });
+  var w = window.open('', '_blank');
+  if (!w) { toast('El navegador bloqueó la ventana -- permite pop-ups para este sitio'); return; }
+  w.document.write(html);
+  w.document.close();
+}
+
+function presImprimirSimple(idStr) {
   var p = PRES_CACHE.filter(function(x) { return x.id === idStr; })[0];
   if (!p) { toast('No se encontró ese presupuesto'); return; }
 

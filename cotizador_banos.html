@@ -4,8 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Cotizador Baños</title>
+<script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v3.7
+  FECHA   : 2026-10-04
+  v3.7 - El documento de presupuesto se genera con el módulo compartido
+    modulos/presupuesto_doc.js (mismo formato que Historial). Arreglos
+    incluidos: el botón Imprimir espera a que carguen logo y diagramas,
+    y los importes ya no salen con doble signo de pesos.
   VERSION : v3.6
   FECHA   : 2026-10-04
   v3.6 - El presupuesto impreso muestra también el diagrama de la
@@ -1158,6 +1165,9 @@ function snDiagramaCorredizo(resultado) {
 }
 
 function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha) {
+  // v3.7: el formato oficial vive en modulos/presupuesto_doc.js (lo comparte con Historial).
+  // Esta copia local queda solo como respaldo si el módulo no cargó.
+  if (window.BCDoc) return window.BCDoc.generar(items, folio, cliente, dir, fecha);
   var fechaStr = fecha.toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
   var total = items.reduce(function(a, it){ return a + (it.precio || 0); }, 0);
   var lista = items.map(function(it, idx) {
@@ -1304,7 +1314,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v3.6';
+var APP_VERSION = 'v3.7';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
