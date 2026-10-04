@@ -6,6 +6,11 @@
 <title>BarrCan &middot; Pagos</title>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.29
+  FECHA   : 2026-10-04
+  v4.29 - FIX fecha adelantada: "hoy" se sacaba en hora UTC (toISOString), y a
+    partir de las 6 pm de CDMX ya marcaba el día siguiente. Ahora todas las
+    fechas usan el horario de America/Mexico_City.
   VERSIÓN : v4.28
   FECHA   : 2026-09-22
   v4.28 — Aclaración de Mau sobre v4.27: el recibo 181 SÍ mostraba
@@ -1287,7 +1292,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.28';
+var APP_VERSION = 'v4.29';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -2119,7 +2124,7 @@ function pagosRender() {
     return;
   }
 
-  var hoy = new Date().toISOString().split('T')[0];
+  var hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
   var totalHoy = PAGOS_CACHE.filter(function(p) { return p.fecha_pago === hoy; })
     .reduce(function(s, p) { return s + (parseFloat(p.monto) || 0); }, 0);
 
@@ -3006,7 +3011,7 @@ function pagoReset() {
   ['pago-folio','pago-cliente','pago-tel','pago-desc','pago-notas','pago-monto','pago-total','pago-ant'].forEach(function(cid) {
     var el = document.getElementById(cid); if (el) el.value = '';
   });
-  document.getElementById('pago-fecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('pago-fecha').value = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
   document.getElementById('pago-concepto').value = 'anticipo';
   var saldoEl = document.getElementById('pago-saldo');
   saldoEl.textContent = '$0';

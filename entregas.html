@@ -6,6 +6,20 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.63.0
+  FECHA   : 2026-10-04
+  v3.63.0 - Dos arreglos reportados en campo:
+    1) Liga de WhatsApp en blanco: la causa real es que Supabase sirve
+       los .html como texto con "Content-Security-Policy: sandbox" A
+       PROPÓSITO (seguridad) -- no era caché, por eso los arreglos de
+       v3.61.0 no sirvieron. Ahora se comparte
+       barrcan.github.io/barrcan-app/ver_reporte.html?f=..., una página
+       visora que lee el reporte de Supabase y lo muestra normal.
+    2) Había que imprimir 2 veces: el botón esperaba a que las imágenes
+       "cargaran", pero no a que el navegador las terminara de
+       procesar, y la primera vista de impresión salía incompleta.
+       Ahora espera la decodificación real de cada imagen y de las
+       fuentes, más dos cuadros de pintado, antes de imprimir.
   VERSION : v3.62.0
   FECHA   : 2026-10-02
   v3.62.0 - Entrega por etapas: al elegir un folio con piezas, aparece
@@ -2384,7 +2398,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.62.0';
+var APP_VERSION = 'v3.63.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -3542,7 +3556,7 @@ async function entGenerarReporteInterno() {
       + '</div>'
       + '<div style=font-size:7.5pt;color:#aaa;text-align:center;margin-top:14px;border-top:1px solid #eee;padding-top:8px>'
       + esc(folioFull) + ' - BarrCan - ' + fd(fecha)
-      + '<script>function imprimirListo(btn){ if(btn){btn.disabled=true;btn.textContent=\'Preparando...\';} var imgs=Array.prototype.slice.call(document.images); var total=imgs.length, listos=0, yaImprimio=false; function lanzar(){ if(yaImprimio)return; yaImprimio=true; if(btn){btn.disabled=false;btn.textContent=\'Imprimir / PDF\';} setTimeout(function(){window.print();},250); } if(!total){lanzar();return;} imgs.forEach(function(im){ if(im.complete && im.naturalWidth>0){listos++;if(listos>=total)lanzar();return;} im.addEventListener(\'load\',function(){listos++;if(listos>=total)lanzar();}); im.addEventListener(\'error\',function(){listos++;if(listos>=total)lanzar();}); }); if(listos>=total)lanzar(); setTimeout(lanzar,8000); }<\/script></div></div></div></body></html>';
+      + '<script>function imprimirListo(btn){if(btn){btn.disabled=true;btn.style.opacity=0.5;}var imgs=Array.prototype.slice.call(document.images);var esperas=imgs.map(function(im){return im.decode?im.decode().catch(function(){}):Promise.resolve();});if(document.fonts&&document.fonts.ready){esperas.push(document.fonts.ready);}var hecho=false;function lanzar(){if(hecho)return;hecho=true;requestAnimationFrame(function(){requestAnimationFrame(function(){setTimeout(function(){if(btn){btn.disabled=false;btn.style.opacity=1;}window.print();},500);});});}Promise.all(esperas).then(lanzar,lanzar);setTimeout(lanzar,8000);}<\/script></div></div></div></body></html>';
 
     try { sessionStorage.setItem('barrcan_entrega_html', _ENT_HTML); } catch(e) {}
     var win = window.open('', '_blank');
@@ -3729,11 +3743,21 @@ function entReverReporte() {
   }
 }
 
+// v3.63.0: Supabase sirve los .html como texto con "sandbox" (a
+// propósito, por seguridad) -- por eso la liga directa salía en blanco
+// o como código en WhatsApp. Se comparte la página visora de GitHub
+// Pages, que lee el reporte de Supabase y lo muestra normal.
+function entLigaPublica(url) {
+  if (!url) return url;
+  var m = String(url).split('?')[0].match(/\/object\/public\/reportes\/(.+\.html)$/);
+  return m ? ('https://barrcan.github.io/barrcan-app/ver_reporte.html?f=' + m[1]) : url;
+}
+
 function entEnviarWA() {
   var ov    = document.getElementById('ent-post-ov');
   var folio = ov ? (ov.dataset.folio || '') : '';
   var tel   = ov ? (ov.dataset.tel   || '').replace(/[^0-9]/g, '') : '';
-  var url   = ov ? (ov.dataset.url   || '') : '';
+  var url   = entLigaPublica(ov ? (ov.dataset.url   || '') : '');
   var texto = url
     ? encodeURIComponent('Hola, le compartimos el comprobante de entrega del pedido ' + folio + ': ' + url + ' Por favor confirme de recibido. BarrCan Canceleria - 56-15-15-84-15')
     : encodeURIComponent('Hola, le compartimos el comprobante de entrega del pedido ' + folio + '. Por favor confirme de recibido. BarrCan Canceleria - 56-15-15-84-15 (el link se enviará en cuanto sincronice, sin conexión ahora)');
@@ -3933,7 +3957,7 @@ function entVerReporteFallback(r) {
     + '</table>'
     + '<div style=font-size:7.5pt;color:#aaa;text-align:center;margin-top:12px;border-top:1px solid #eee;padding-top:8px>'
     + esc(r.folio || '') + ' - BarrCan - ' + new Date().toLocaleDateString('es-MX') + '</div>'
-    + "<script>function imprimirListo(btn){ if(btn){btn.disabled=true;btn.textContent='Preparando...';} var imgs=Array.prototype.slice.call(document.images); var total=imgs.length, listos=0, yaImprimio=false; function lanzar(){ if(yaImprimio)return; yaImprimio=true; if(btn){btn.disabled=false;btn.textContent='Imprimir / PDF';} setTimeout(function(){window.print();},250); } if(!total){lanzar();return;} imgs.forEach(function(im){ if(im.complete && im.naturalWidth>0){listos++;if(listos>=total)lanzar();return;} im.addEventListener('load',function(){listos++;if(listos>=total)lanzar();}); im.addEventListener('error',function(){listos++;if(listos>=total)lanzar();}); }); if(listos>=total)lanzar(); setTimeout(lanzar,8000); }<\/script>"
+    + "<script>function imprimirListo(btn){if(btn){btn.disabled=true;btn.style.opacity=0.5;}var imgs=Array.prototype.slice.call(document.images);var esperas=imgs.map(function(im){return im.decode?im.decode().catch(function(){}):Promise.resolve();});if(document.fonts&&document.fonts.ready){esperas.push(document.fonts.ready);}var hecho=false;function lanzar(){if(hecho)return;hecho=true;requestAnimationFrame(function(){requestAnimationFrame(function(){setTimeout(function(){if(btn){btn.disabled=false;btn.style.opacity=1;}window.print();},500);});});}Promise.all(esperas).then(lanzar,lanzar);setTimeout(lanzar,8000);}<\/script>"
     + '</div></div></body></html>';
     
   var win = window.open('', '_blank');

@@ -6,6 +6,11 @@
 <title>BarrCan · Reportes</title>
 <!--
   BARRCAN · MODULO: REPORTES (standalone)
+  VERSION : v3.1
+  FECHA   : 2026-10-04
+  v3.1 - FIX fecha adelantada: "hoy" se sacaba en hora UTC (toISOString), y a
+    partir de las 6 pm de CDMX ya marcaba el día siguiente. Ahora todas las
+    fechas usan el horario de America/Mexico_City.
   VERSION : v3.0
   FECHA   : 2026-09-13
   v3.0 - Nueva pestaña "🧾 Balance Fiscal", a pedido: estimado
@@ -512,7 +517,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 </div>
 </body>
 <script>
-var APP_VERSION = 'v3.0';
+var APP_VERSION = 'v3.1';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb=null;
@@ -572,8 +577,8 @@ function rpCargarTab(tab) {
 function rpInitPeriodo() {
   var hoy   = new Date();
   var desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-  document.getElementById('rp-desde').value = desde.toISOString().split('T')[0];
-  document.getElementById('rp-hasta').value = hoy.toISOString().split('T')[0];
+  document.getElementById('rp-desde').value = desde.toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
+  document.getElementById('rp-hasta').value = hoy.toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
 }
 
 function rpActualizar() {
@@ -1510,7 +1515,7 @@ async function fiscalCargar() {
 
   try {
     var hoy = new Date();
-    var inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toISOString().split('T')[0];
+    var inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1).toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
     var inicioAnio = hoy.getFullYear() + '-01-01';
     var numMeses = hoy.getMonth() + 1;
 

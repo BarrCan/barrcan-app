@@ -6,6 +6,13 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.16
+  FECHA   : 2026-10-04
+  v3.16 - "Ver reporte" abre la página visora (ver_reporte.html) en vez
+    de la liga directa de Supabase, que sirve los .html como texto con
+    "sandbox" a propósito -- por eso salían como código o en blanco.
+    También: la fecha de "hoy" ya usa horario de CDMX (antes UTC, se
+    adelantaba un día después de las 6 pm).
   VERSIÓN : v3.15
   FECHA   : 2026-09-26
   v3.15 - Ajuste al desglose de "Piezas individuales" de v3.14: la
@@ -1575,7 +1582,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.15';
+var APP_VERSION = 'v3.16';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1904,7 +1911,7 @@ function presAbrirNuevo() {
   if (btnDel) btnDel.style.display = 'none';
   if (errEl)  errEl.style.display  = 'none';
 
-  var hoy = new Date().toISOString().split('T')[0];
+  var hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
   var campos = ['pres-num','pres-cliente','pres-tel','pres-dir','pres-desc','pres-notas',
                 'pres-monto','pres-saldo','pres-numcli','pres-anio-ref'];
   campos.forEach(function(id) {
@@ -2765,9 +2772,12 @@ function progCerrarModal() {
 // aquí mismo al abrir, para que Cloudflare la trate como nunca antes
 // pedida y no sirva la copia vieja atorada.
 function presUrlSinCache(url) {
+  // v3.16: Supabase sirve los .html como texto con "sandbox" a propósito
+  // (no era caché) -- se abre la página visora de GitHub Pages, que lee
+  // el reporte de Supabase y lo muestra como página normal.
   if (!url) return url;
-  if (url.indexOf('?') >= 0) return url; // ya trae parámetro (subido después del fix) -- no tocar
-  return url + '?v=' + Date.now();
+  var m = String(url).split('?')[0].match(/\/object\/public\/reportes\/(.+\.html)$/);
+  return m ? ('https://barrcan.github.io/barrcan-app/ver_reporte.html?f=' + m[1]) : url;
 }
 
 async function presVerProgreso(id) {

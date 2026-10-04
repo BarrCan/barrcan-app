@@ -6,6 +6,11 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.23
+  FECHA   : 2026-10-04
+  v1.23 - FIX fecha adelantada: "hoy" se sacaba en hora UTC (toISOString), y a
+    partir de las 6 pm de CDMX ya marcaba el día siguiente. Ahora todas las
+    fechas usan el horario de America/Mexico_City.
   VERSION : v1.22
   FECHA   : 2026-09-30
   v1.22 - Asignar artículos a cada obra, conectado de verdad al
@@ -852,7 +857,7 @@ var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
 
-var APP_VERSION = 'v1.22';
+var APP_VERSION = 'v1.23';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -1530,7 +1535,7 @@ function cmpAbrirManual() {
 
   document.getElementById('mc-man-desc').value = '';
   document.getElementById('mc-man-proveedor').value = '';
-  document.getElementById('mc-man-fecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('mc-man-fecha').value = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
   document.getElementById('mc-man-folio').value = '';
   document.getElementById('mc-man-total').value = '';
   document.getElementById('mc-man-moneda').value = 'MXN';
@@ -1579,7 +1584,7 @@ function cmpAbrirSinComprobante() {
 
   document.getElementById('mc-man-desc').value = '';
   document.getElementById('mc-man-proveedor').value = '';
-  document.getElementById('mc-man-fecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('mc-man-fecha').value = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
   document.getElementById('mc-man-folio').value = '';
   document.getElementById('mc-man-total').value = '';
   document.getElementById('mc-man-moneda').value = 'MXN';
@@ -1905,7 +1910,7 @@ async function cmpGuardarClasificacion() {
         return it.cantidad_total != null && it.cantidad_total > (it.cantidad || 0);
       }).map(function(it) {
         return {
-          fecha_compra: new Date().toISOString().split('T')[0],
+          fecha_compra: new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' }),
           proveedor: proveedorNombre, factura: document.getElementById('mc-titulo').textContent.replace('Clasificar: ', ''),
           descripcion: it.descripcion.trim(), cantidad: it.cantidad_total - it.cantidad,
           precio_compra: it.precio_unitario || 0, estado: 'Disponible',
@@ -1968,7 +1973,7 @@ async function cmpGuardarClasificacion() {
           document.getElementById('hrr-condicion').value = 'bueno';
           document.getElementById('hrr-asignado').value = '';
           document.getElementById('hrr-ubicacion').value = '';
-          document.getElementById('hrr-fecha').value = new Date().toISOString().split('T')[0];
+          document.getElementById('hrr-fecha').value = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
           document.getElementById('hrr-costo').value = totalFact || '';
           document.getElementById('hrr-notas').value = 'Factura: ' + proveedorFact;
           document.getElementById('hrr-btn-baja').style.display = 'none';
