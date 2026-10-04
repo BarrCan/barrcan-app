@@ -6,6 +6,18 @@
 <title>BarrCan · Historial</title>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.17
+  FECHA   : 2026-10-04
+  v3.17 - Nuevo panel "🚚 Costos de obra y tarifa" en el editor:
+    distancia automática desde el taller (CP 03660) al CP o dirección
+    de la obra (OpenStreetMap), traslado ida y vuelta por visita
+    (medición + instalación) con gasolina + tiempo de cada persona y
+    factor de tráfico, cargo por piso sin elevador e IVA. Se suma UNA
+    vez por presupuesto como concepto "Costos de obra" y ajusta Monto/
+    Saldo. Tarifa Familia: agrega un ajuste que baja la utilidad de las
+    piezas al % de familia; nunca toca los costos de obra. Valores en
+    config_precios (obra_costo_km, obra_hora_persona,
+    obra_factor_trafico, cargo_piso, utilidad_pct, utilidad_familia_pct).
   VERSIÓN : v3.16
   FECHA   : 2026-10-04
   v3.16 - "Ver reporte" abre la página visora (ver_reporte.html) en vez
@@ -1493,6 +1505,43 @@ body{min-height:100vh}
     <label class="form-label">Direccion de obra</label>
     <input type="text" id="pres-dir" class="form-input" placeholder="Calle, colonia, municipio">
 
+    <!-- v3.17: COSTOS DE OBRA (traslado, visitas, pisos) + tarifa -->
+    <div id="obra-panel" style="border:1.5px solid rgba(27,58,92,0.18);border-radius:10px;padding:10px 12px;margin:4px 0 14px;background:#F8FAFC">
+      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="obraTogglePanel()">
+        <span style="font-size:12.5px;font-weight:700;color:var(--navy)">🚚 Costos de obra y tarifa</span>
+        <span id="obra-resumen" style="font-size:11px;color:var(--gray-400)">tocar para calcular</span>
+      </div>
+      <div id="obra-cuerpo" style="display:none;margin-top:10px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <div><label class="form-label" style="font-size:10.5px">CP de la obra</label>
+            <input type="text" id="obra-cp" class="form-input" inputmode="numeric" maxlength="5" placeholder="Ej: 09700" style="margin-bottom:0"></div>
+          <div style="display:flex;align-items:flex-end"><button type="button" onclick="obraCalcularDistancia()" id="obra-btn-calc"
+            style="width:100%;padding:10px 6px;border-radius:8px;border:none;background:var(--navy);color:#fff;font-size:12px;font-weight:700;cursor:pointer">📍 Calcular distancia</button></div>
+        </div>
+        <div style="font-size:10px;color:var(--gray-400);margin:4px 0 6px">Sin CP, busca por la dirección o nombre del negocio de arriba. Revisa que el lugar encontrado sea el correcto.</div>
+        <div id="obra-lugar" style="display:none;font-size:11px;padding:6px 8px;border-radius:6px;background:rgba(200,146,58,0.1);color:var(--navy);margin-bottom:6px"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <div><label class="form-label" style="font-size:10.5px">Km ida y vuelta</label><input type="number" id="obra-km" class="form-input" min="0" step="0.1" oninput="obraRecalcular()" style="margin-bottom:0"></div>
+          <div><label class="form-label" style="font-size:10.5px">Min. ida y vuelta</label><input type="number" id="obra-min" class="form-input" min="0" oninput="obraRecalcular()" style="margin-bottom:0"></div>
+          <div><label class="form-label" style="font-size:10.5px">Visitas de medición</label><input type="number" id="obra-vmed" class="form-input" min="0" value="1" oninput="obraRecalcular()" style="margin-bottom:0"></div>
+          <div><label class="form-label" style="font-size:10.5px">Visitas de instalación</label><input type="number" id="obra-vins" class="form-input" min="0" value="1" oninput="obraRecalcular()" style="margin-bottom:0"></div>
+          <div><label class="form-label" style="font-size:10.5px">Personas por visita</label><input type="number" id="obra-personas" class="form-input" min="1" value="2" oninput="obraRecalcular()" style="margin-bottom:0"></div>
+          <div><label class="form-label" style="font-size:10.5px">Piso (sin elevador)</label>
+            <select id="obra-piso" class="form-input" onchange="obraRecalcular()" style="margin-bottom:0"><option value="0">PB</option><option value="1">1°</option><option value="2">2°</option><option value="3">3°</option><option value="4">4°</option><option value="5">5°+</option></select></div>
+        </div>
+        <div id="obra-desglose" style="font-size:11.5px;color:var(--navy);margin:10px 0 8px;line-height:1.6"></div>
+        <button type="button" onclick="obraAplicarCostos()" style="width:100%;padding:10px;border-radius:8px;border:none;background:var(--gold);color:#fff;font-size:12.5px;font-weight:700;cursor:pointer">➕ Sumar costos de obra al presupuesto</button>
+        <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--gray-200)">
+          <label class="form-label" style="font-size:10.5px">Tarifa</label>
+          <div style="display:flex;gap:6px">
+            <button type="button" id="obra-tar-com" onclick="obraTarifa('comercial')" style="flex:1;padding:9px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🏢 Comercial</button>
+            <button type="button" id="obra-tar-fam" onclick="obraTarifa('familia')" style="flex:1;padding:9px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🏠 Familia</button>
+          </div>
+          <div id="obra-tar-nota" style="font-size:10.5px;color:var(--gray-400);margin-top:4px"></div>
+        </div>
+      </div>
+    </div>
+
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Monto total</label>
@@ -1582,7 +1631,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.16';
+var APP_VERSION = 'v3.17';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -2216,6 +2265,7 @@ function presRenderConceptos(notasInternasRaw) {
     };
   });
   presDibujarConceptos();
+  obraPrefill();
 }
 
 function presDibujarConceptos() {
@@ -2236,7 +2286,8 @@ function presDibujarConceptos() {
       : '';
     var numUnid = Array.isArray(p.unidades) ? p.unidades.length : 0;
     var numInst = numUnid ? p.unidades.filter(function(u) { return u.estado === 'instalada'; }).length : 0;
-    var btnUnidades = '<button type="button" onclick="presAbrirUnidades(' + i + ')" title="Desglosar en piezas individuales para instalación por etapas" '
+    var esCargoObra = p.resultado && /^(costos_obra|ajuste_tarifa)$/.test(p.resultado.tipo);
+    var btnUnidades = esCargoObra ? '' : '<button type="button" onclick="presAbrirUnidades(' + i + ')" title="Desglosar en piezas individuales para instalación por etapas" '
       + 'style="padding:6px 9px;background:' + (numUnid ? 'rgba(39,174,96,0.1)' : 'rgba(0,0,0,0.04)') + ';border:1.5px solid ' + (numUnid ? 'rgba(39,174,96,0.3)' : 'var(--gray-200)') + ';border-radius:6px;color:' + (numUnid ? '#27AE60' : 'var(--gray-400)') + ';cursor:pointer;flex-shrink:0;font-size:10.5px;font-weight:700;white-space:nowrap">'
       + (numUnid ? ('🔲 ' + numInst + '/' + numUnid) : '🔲 Desglosar') + '</button>';
     return '<div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:8px">'
@@ -2581,6 +2632,220 @@ async function presVerificarFolioExiste(folio, idExcluir) {
 // -- así si de verdad ya dieron un anticipo, se respeta lo que escriba.
 var PRES_SALDO_TOCADO_MANUAL = false;
 var PRES_PAGADO_REAL_EDICION = 0; // pagos ya reales del presupuesto que se está editando (0 si es nuevo)
+
+// ══════════════════════════════════════════════════════════════
+// COSTOS DE OBRA + TARIFA -- v3.17 (04-oct-2026)
+// Traslado ida y vuelta desde el taller (CP 03660) por cada visita
+// (medición + instalación), tiempo de traslado de cada persona con
+// factor de tráfico CDMX, y cargo por piso sin elevador. Se cobra
+// UNA vez por presupuesto (no por pieza) y siempre completo -- la
+// tarifa Familia solo reduce la utilidad de las piezas, nunca estos
+// costos. Valores en config_precios: obra_costo_km, obra_hora_persona,
+// obra_factor_trafico, cargo_piso, utilidad_pct, utilidad_familia_pct,
+// iva_pct. Distancia: OpenStreetMap (Nominatim + OSRM); si el servicio
+// no responde, se estima en línea recta ×1.4 o se captura a mano.
+// ══════════════════════════════════════════════════════════════
+var OBRA_CFG = { costo_km: 5, hora_persona: 400, factor_trafico: 1.5, cargo_piso: 150, utilidad_pct: 22, utilidad_familia_pct: 10, iva_pct: 16 };
+var OBRA_CFG_CARGADA = false;
+var OBRA_UBIC = null; // { cp, lugar, lat, lon }
+
+async function obraCargarConfig() {
+  if (OBRA_CFG_CARGADA || !sb()) return;
+  try {
+    var r = await sb().from('config_precios').select('clave,valor')
+      .in('clave', ['obra_costo_km','obra_hora_persona','obra_factor_trafico','cargo_piso','utilidad_pct','utilidad_familia_pct','iva_pct']);
+    (r.data || []).forEach(function(x) {
+      var k = x.clave.replace(/^obra_/, ''); var v = parseFloat(x.valor);
+      if (!isNaN(v)) OBRA_CFG[k] = v;
+    });
+    OBRA_CFG_CARGADA = true;
+  } catch (e) { console.warn('[BarrCan] Config de costos de obra no disponible, uso valores por default'); }
+}
+
+function obraTogglePanel() {
+  var c = document.getElementById('obra-cuerpo');
+  c.style.display = c.style.display === 'none' ? 'block' : 'none';
+  if (c.style.display === 'block') { obraCargarConfig().then(obraRecalcular); obraPintarTarifa(); }
+}
+
+function obraBuscarConcepto(tipo) {
+  for (var i = 0; i < PRES_CONCEPTOS.length; i++) if (PRES_CONCEPTOS[i].resultado && PRES_CONCEPTOS[i].resultado.tipo === tipo) return i;
+  return -1;
+}
+
+function obraPrefill() {
+  var ids = { 'obra-cp': '', 'obra-km': '', 'obra-min': '', 'obra-vmed': 1, 'obra-vins': 1, 'obra-personas': 2, 'obra-piso': 0 };
+  OBRA_UBIC = null;
+  var i = obraBuscarConcepto('costos_obra');
+  if (i >= 0) {
+    var r = PRES_CONCEPTOS[i].resultado;
+    ids = { 'obra-cp': r.cp || '', 'obra-km': r.km, 'obra-min': r.min, 'obra-vmed': r.vmed, 'obra-vins': r.vins, 'obra-personas': r.personas, 'obra-piso': r.piso };
+    if (r.lugar) OBRA_UBIC = { cp: r.cp, lugar: r.lugar };
+  }
+  Object.keys(ids).forEach(function(k) { var el = document.getElementById(k); if (el) el.value = ids[k]; });
+  var lugar = document.getElementById('obra-lugar');
+  if (lugar) { lugar.style.display = OBRA_UBIC ? 'block' : 'none'; lugar.textContent = OBRA_UBIC ? '📍 ' + OBRA_UBIC.lugar : ''; }
+  var cuerpo = document.getElementById('obra-cuerpo'); if (cuerpo) cuerpo.style.display = 'none';
+  obraRecalcular(); obraPintarTarifa();
+}
+
+async function obraGeocodificar(cp, texto) {
+  var base = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=mx&addressdetails=0';
+  var url = cp ? base + '&postalcode=' + encodeURIComponent(cp) : base + '&q=' + encodeURIComponent(texto + ', México');
+  var r = await fetch(url, { headers: { 'Accept-Language': 'es' } });
+  if (!r.ok) throw new Error('geocodificación ' + r.status);
+  var d = await r.json();
+  if (!d || !d.length) return null;
+  return { lat: parseFloat(d[0].lat), lon: parseFloat(d[0].lon), lugar: d[0].display_name };
+}
+
+async function obraOrigenTaller() {
+  try { var c = JSON.parse(localStorage.getItem('barrcan_origen_taller') || 'null'); if (c && c.lat) return c; } catch (e) {}
+  var o = await obraGeocodificar('03660', null);
+  if (o) { try { localStorage.setItem('barrcan_origen_taller', JSON.stringify(o)); } catch (e) {} }
+  return o;
+}
+
+function obraLineaRecta(a, b) {
+  var R = 6371, rad = Math.PI / 180;
+  var dLat = (b.lat - a.lat) * rad, dLon = (b.lon - a.lon) * rad;
+  var x = Math.sin(dLat / 2) * Math.sin(dLat / 2) + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
+async function obraCalcularDistancia() {
+  var btn = document.getElementById('obra-btn-calc');
+  var cp = (document.getElementById('obra-cp').value || '').replace(/\D/g, '');
+  var dir = (document.getElementById('pres-dir').value || '').trim();
+  if (!cp && !dir) { toast('Escribe el CP o la dirección de la obra'); return; }
+  if (cp && cp.length !== 5) { toast('El CP debe tener 5 dígitos'); return; }
+  btn.disabled = true; btn.textContent = 'Buscando...';
+  try {
+    var origen = await obraOrigenTaller();
+    if (!origen) throw new Error('No se ubicó el taller');
+    var dest = await obraGeocodificar(cp, dir);
+    if (!dest) { toast(cp ? 'No se encontró ese CP. Revisa el número.' : 'No se encontró la dirección. Captura el CP de la obra.'); return; }
+    var km, min, metodo = 'ruta';
+    try {
+      var rr = await fetch('https://router.project-osrm.org/route/v1/driving/' + origen.lon + ',' + origen.lat + ';' + dest.lon + ',' + dest.lat + '?overview=false');
+      var dd = await rr.json();
+      km = dd.routes[0].distance / 1000; min = dd.routes[0].duration / 60;
+    } catch (eRuta) {
+      km = obraLineaRecta(origen, dest) * 1.4; min = km / 22 * 60; metodo = 'estimado';
+    }
+    document.getElementById('obra-km').value = (km * 2).toFixed(1);
+    document.getElementById('obra-min').value = Math.round(min * 2);
+    OBRA_UBIC = { cp: cp, lugar: dest.lugar };
+    var lugar = document.getElementById('obra-lugar');
+    lugar.style.display = 'block';
+    lugar.innerHTML = '📍 ' + esc(dest.lugar) + (metodo === 'estimado' ? '<br><b>Distancia estimada en línea recta</b> (el servicio de rutas no respondió) — ajústala si la conoces.' : '');
+    obraRecalcular();
+  } catch (e) {
+    toast('No se pudo calcular la distancia. Puedes escribir los km a mano.');
+    console.warn('[BarrCan] Costos de obra:', e);
+  } finally { btn.disabled = false; btn.textContent = '📍 Calcular distancia'; }
+}
+
+function obraCalculo() {
+  var km = parseFloat(document.getElementById('obra-km').value) || 0;
+  var min = parseFloat(document.getElementById('obra-min').value) || 0;
+  var vmed = parseInt(document.getElementById('obra-vmed').value, 10) || 0;
+  var vins = parseInt(document.getElementById('obra-vins').value, 10) || 0;
+  var personas = Math.max(1, parseInt(document.getElementById('obra-personas').value, 10) || 1);
+  var piso = parseInt(document.getElementById('obra-piso').value, 10) || 0;
+  var C = OBRA_CFG;
+  var gasolina = km * C.costo_km;
+  var tiempo = (min / 60) * C.factor_trafico * C.hora_persona * personas;
+  var porVisita = gasolina + tiempo;
+  var visitas = vmed + vins;
+  var traslados = porVisita * visitas;
+  var pisos = piso * C.cargo_piso;
+  var subtotal = traslados + pisos;
+  var iva = subtotal * C.iva_pct / 100;
+  return { km: km, min: min, vmed: vmed, vins: vins, personas: personas, piso: piso, gasolina: gasolina, tiempo: tiempo,
+           porVisita: porVisita, visitas: visitas, traslados: traslados, pisos: pisos, subtotal: subtotal, iva: iva,
+           total: Math.round(subtotal + iva) };
+}
+
+function obraRecalcular() {
+  var el = document.getElementById('obra-desglose'); if (!el) return;
+  var c = obraCalculo();
+  var res = document.getElementById('obra-resumen');
+  var ya = obraBuscarConcepto('costos_obra') >= 0;
+  if (!c.km && !c.pisos) { el.innerHTML = '<span style="color:var(--gray-400)">Calcula la distancia o escribe los km para ver el costo.</span>'; if (res) res.textContent = ya ? '✓ incluido' : 'tocar para calcular'; return; }
+  el.innerHTML = 'Por visita: $' + fmt(c.gasolina) + ' gasolina + $' + fmt(c.tiempo) + ' tiempo (' + c.personas + ' pers.) = <b>$' + fmt(c.porVisita) + '</b><br>'
+    + c.visitas + ' visita(s) (' + c.vmed + ' medición + ' + c.vins + ' instalación): <b>$' + fmt(c.traslados) + '</b><br>'
+    + (c.pisos ? 'Piso ' + c.piso + ': <b>$' + fmt(c.pisos) + '</b><br>' : '')
+    + 'IVA ' + OBRA_CFG.iva_pct + '%: $' + fmt(c.iva) + '<br><span style="font-size:13px">Total costos de obra: <b>$' + fmt(c.total) + '</b></span>';
+  if (res) res.textContent = (ya ? '✓ incluido · ' : '') + '$' + fmt(c.total) + ' · ' + c.km + ' km';
+}
+
+function obraAjustarMonto(delta) {
+  var m = document.getElementById('pres-monto');
+  m.value = Math.round((parseFloat(m.value) || 0) + delta);
+  presMontoCambio();
+}
+
+function obraAplicarCostos() {
+  var c = obraCalculo();
+  if (!c.total) { toast('Primero calcula la distancia o escribe los km'); return; }
+  var concepto = {
+    label: 'Costos de obra: traslado (' + c.km + ' km i/v), ' + c.visitas + ' visita(s)' + (c.piso ? ', piso ' + c.piso : ''),
+    cantidad: 1, precio: c.total, precioUnitario: c.total,
+    resultado: { tipo: 'costos_obra', cp: OBRA_UBIC ? OBRA_UBIC.cp : '', lugar: OBRA_UBIC ? OBRA_UBIC.lugar : '',
+                 km: c.km, min: c.min, vmed: c.vmed, vins: c.vins, personas: c.personas, piso: c.piso,
+                 desglose: { gasolina: c.gasolina, tiempo: c.tiempo, traslados: c.traslados, pisos: c.pisos, iva: c.iva },
+                 config: JSON.parse(JSON.stringify(OBRA_CFG)), calculado: new Date().toISOString() },
+    unidades: null
+  };
+  var i = obraBuscarConcepto('costos_obra'), anterior = 0;
+  if (i >= 0) { anterior = parseFloat(PRES_CONCEPTOS[i].precio) || 0; PRES_CONCEPTOS[i] = concepto; } else PRES_CONCEPTOS.push(concepto);
+  obraAjustarMonto(c.total - anterior);
+  presDibujarConceptos(); obraRecalcular();
+  toast(anterior ? '✅ Costos de obra actualizados ($' + fmt(c.total) + ')' : '✅ Costos de obra sumados: $' + fmt(c.total));
+}
+
+function obraTarifaActual() { return obraBuscarConcepto('ajuste_tarifa') >= 0 ? 'familia' : 'comercial'; }
+
+function obraPintarTarifa() {
+  var t = obraTarifaActual();
+  var com = document.getElementById('obra-tar-com'), fam = document.getElementById('obra-tar-fam'), nota = document.getElementById('obra-tar-nota');
+  if (!com) return;
+  [[com, t === 'comercial'], [fam, t === 'familia']].forEach(function(x) {
+    x[0].style.background = x[1] ? 'var(--navy)' : 'transparent';
+    x[0].style.color = x[1] ? '#fff' : 'var(--navy)';
+    x[0].style.border = '1.5px solid var(--navy)';
+  });
+  nota.textContent = t === 'familia'
+    ? 'Utilidad ' + OBRA_CFG.utilidad_familia_pct + '% en las piezas (comercial ' + OBRA_CFG.utilidad_pct + '%). Los costos de obra se cobran completos.'
+    : 'Utilidad ' + OBRA_CFG.utilidad_pct + '% (precio de los cotizadores).';
+}
+
+async function obraTarifa(tipo) {
+  await obraCargarConfig();
+  var i = obraBuscarConcepto('ajuste_tarifa'), anterior = i >= 0 ? (parseFloat(PRES_CONCEPTOS[i].precio) || 0) : 0;
+  if (tipo === 'comercial') {
+    if (i < 0) return;
+    PRES_CONCEPTOS.splice(i, 1);
+    obraAjustarMonto(-anterior);
+    toast('Tarifa comercial: se quitó el ajuste de familia');
+  } else {
+    var base = PRES_CONCEPTOS.reduce(function(s, p) {
+      return (p.resultado && /^(costos_obra|ajuste_tarifa)$/.test(p.resultado.tipo)) ? s : s + (parseFloat(p.precio) || 0);
+    }, 0);
+    if (!base) { toast('No hay piezas con precio para aplicar la tarifa'); return; }
+    var factor = (1 + OBRA_CFG.utilidad_familia_pct / 100) / (1 + OBRA_CFG.utilidad_pct / 100);
+    var ajuste = -Math.round(base * (1 - factor));
+    var concepto = { label: 'Ajuste tarifa familia (utilidad ' + OBRA_CFG.utilidad_familia_pct + '% en lugar de ' + OBRA_CFG.utilidad_pct + '%)',
+      cantidad: 1, precio: ajuste, precioUnitario: ajuste, unidades: null,
+      resultado: { tipo: 'ajuste_tarifa', base: base, factor: factor, utilidad_familia_pct: OBRA_CFG.utilidad_familia_pct, utilidad_pct: OBRA_CFG.utilidad_pct } };
+    if (i >= 0) PRES_CONCEPTOS[i] = concepto; else PRES_CONCEPTOS.push(concepto);
+    obraAjustarMonto(ajuste - anterior);
+    toast('🏠 Tarifa familia aplicada: $' + fmt(-ajuste) + ' menos en piezas');
+  }
+  presDibujarConceptos(); obraPintarTarifa(); obraRecalcular();
+}
+
 function presMontoCambio() {
   if (PRES_SALDO_TOCADO_MANUAL) return;
   var montoEl = document.getElementById('pres-monto');

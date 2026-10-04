@@ -6,6 +6,10 @@
 <title>BarrCan · Taller</title>
 <!--
   BARRCAN · MODULO: TALLER (standalone)
+  VERSION : v1.5
+  FECHA   : 2026-10-04
+  v1.5 - "Costos de obra" y "Ajuste tarifa familia" (Historial v3.17)
+    no se muestran como piezas a fabricar.
   VERSION : v1.4
   FECHA   : 2026-09-26
   v1.4 - Ajuste al mismo cambio de v3.15 en Historial: la medida de
@@ -331,7 +335,7 @@ function sb() {
 }
 
 // ── Conexión ─────────────────────────────────────────────────────
-var APP_VERSION = 'v1.4';
+var APP_VERSION = 'v1.5';
 var SYNC = { online: navigator.onLine };
 function detectarConexion() {
   var b = document.getElementById('conn-status');
@@ -480,7 +484,8 @@ function tlFiltrar() {
 function tlPiezasDe(row) {
   try {
     var p = JSON.parse(row.notas_internas || '[]');
-    return Array.isArray(p) ? p : [];
+    // v1.5: costos de obra y ajuste de tarifa son cargos, no piezas a fabricar
+    return Array.isArray(p) ? p.filter(function(pz) { return !(pz.resultado && /^(costos_obra|ajuste_tarifa)$/.test(pz.resultado.tipo)); }) : [];
   } catch (e) { return []; }
 }
 function tlTieneFabricacion(r) {
