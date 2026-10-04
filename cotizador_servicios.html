@@ -191,6 +191,11 @@
     - Se agregó una verificación automática (script de comparación
       onclick/onchange vs. window.expuestas) para detectar esto antes
       de publicar, no solo revisando a ojo.
+  VERSION : v1.19.1
+  FECHA   : 2026-10-02
+  v1.19.1 - Solo se sincroniza este encabezado con la versión real en
+    pantalla (decía v1.8.0 mientras la app ya iba en v1.19.0). Sin
+    cambios de funcionamiento.
   VERSION : v1.8.0
   v1.8.0 - Fórmula simplificada y más barata para Mantenimiento:
     - Se reemplazó GIF+GA+Utilidad apilados (~89% efectivo sobre
@@ -4006,7 +4011,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.19.0';
+const APP_VERSION = 'v1.19.1';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —

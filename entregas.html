@@ -6,6 +6,18 @@
 <title>BarrCan &middot; Entregas</title>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.62.0
+  FECHA   : 2026-10-02
+  v3.62.0 - Entrega por etapas: al elegir un folio con piezas, aparece
+    "¿Qué se entrega en esta visita?" con cada pieza -- o cada unidad
+    (1a, 1b, 1c...) si se desglosó en Historial -- marcada por default.
+    Lo que se desmarca queda pendiente para la siguiente visita (antes
+    TODO se marcaba entregado de golpe). Cada unidad puede llevar su
+    foto (se guarda en Storage, carpeta unidades/) y queda con fecha.
+    La pieza solo cuenta como entregada cuando todas sus unidades lo
+    están. La descripción del reporte se ajusta sola a lo elegido. Se
+    relee el desglose del servidor antes de guardar para no pisar un
+    cambio hecho en Historial mientras tanto.
   VERSION : v3.61.0
   FECHA   : 2026-09-26
   v3.61.0 - FIX: Cloudflare (el CDN delante de Supabase Storage) a
@@ -1977,6 +1989,11 @@ body{min-height:100vh}
         <label class="form-label">Descripci&oacute;n *</label>
         <textarea id="ent-desc" class="form-input" rows="2" style="resize:none" placeholder="Ej: Cancel de ba&ntilde;o frameless 9mm, empacado en cart&oacute;n"></textarea>
       </div>
+      <div id="ent-unidades-card" style="display:none;margin-bottom:10px;padding:10px;border:1.5px solid rgba(39,174,96,0.35);border-radius:10px;background:rgba(39,174,96,0.05)">
+        <label class="form-label" style="margin-bottom:2px">&iquest;Qu&eacute; se entrega en esta visita?</label>
+        <div style="font-size:10.5px;color:var(--gray-400);margin-bottom:8px">Desmarca lo que NO se coloca hoy -- queda pendiente para la siguiente visita.</div>
+        <div id="ent-unidades-lista"></div>
+      </div>
       <div class="form-row">
         <div class="form-group" style="margin-bottom:0">
           <label class="form-label">Fecha</label>
@@ -2367,7 +2384,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.61.0';
+var APP_VERSION = 'v3.62.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -2690,6 +2707,7 @@ function entSelPresupuesto() {
     ENT_PIEZAS_PENDIENTES_ACTUALES = [];
     if (p.descripcion) document.getElementById('ent-desc').value = p.descripcion;
   }
+  entIniciarSeleccion();
   
   // Precargar dirección y monto
   var dirAsignada = false;
@@ -3089,7 +3107,7 @@ function entToggleCobro() {
 
 function entReset() {
   ENT_FOTOS_EMP = []; ENT_FOTOS_COMP = []; ENT_FOTOS_MANT = []; ENT_FOTOS_CONF = []; ENT_TIPO = 'puerta'; ENT_FORMA = 'efectivo'; ENT_CHECKS = {}; ENT_EVIDENCIA = {}; INST_DATOS_FOLIO = null;
-  ENT_PRESUPUESTO_ACTUAL = null; ENT_PIEZAS_PENDIENTES_ACTUALES = [];
+  ENT_PRESUPUESTO_ACTUAL = null; ENT_PIEZAS_PENDIENTES_ACTUALES = []; ENT_SEL = []; entRenderUnidades();
   ENT_MODO_INST = 'completo'; ENT_SIN_ENCARGADO = false;
   ENT_CHECKS_SALIDA = {};
   ENT_SIN_ENCARGADO_SIMPLE = false; ENT_SALDO_REAL = 0;
@@ -3237,18 +3255,130 @@ var ENT_PIEZAS_PENDIENTES_ACTUALES = [];
 // la próxima vez que alguien genere OTRO reporte para este mismo
 // folio, ya no vuelve a aparecer lo que se acaba de entregar ahora.
 // Si el folio no tiene piezas separadas (formato viejo), no hace nada.
+// ══════════════════════════════════════════════════════════════
+// v3.62.0 -- ENTREGA POR ETAPAS (unidades)
+// Antes, al guardar, TODAS las piezas pendientes se marcaban
+// entregadas de golpe. Ahora se elige qué se entrega en esta visita:
+// piezas completas, o unidades individuales (1a, 1b, 1c...) si la
+// pieza se desglosó en Historial. Cada unidad guarda fecha y foto, y
+// la pieza solo cuenta como entregada cuando TODAS sus unidades lo
+// están. Es el mismo dato que Historial define y Taller muestra.
+// ══════════════════════════════════════════════════════════════
+var ENT_SEL = []; // [{ label, unidadId|null, on, foto(dataURL)|null, texto }]
+
+function entIniciarSeleccion() {
+  ENT_SEL = [];
+  ENT_PIEZAS_PENDIENTES_ACTUALES.forEach(function(pz) {
+    if (Array.isArray(pz.unidades) && pz.unidades.length) {
+      pz.unidades.forEach(function(u) {
+        if (u.estado === 'instalada') return;
+        var med = (u.ancho && u.alto) ? (u.ancho + '×' + u.alto) : (u.medida || '');
+        ENT_SEL.push({ label: pz.label, unidadId: u.id, on: true, foto: null,
+          texto: u.id + (med ? ' · ' + med : '') + (u.color ? ' · ' + u.color : '') });
+      });
+    } else {
+      ENT_SEL.push({ label: pz.label, unidadId: null, on: true, foto: null, texto: pz.label });
+    }
+  });
+  entRenderUnidades();
+}
+
+function entRenderUnidades() {
+  var card = document.getElementById('ent-unidades-card');
+  var cont = document.getElementById('ent-unidades-lista');
+  if (!card || !cont) return;
+  // Solo vale la pena preguntar si hay algo que elegir
+  if (ENT_SEL.length < 2 && !ENT_SEL.some(function(x) { return x.unidadId; })) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  var html = '', ultimaPieza = null;
+  ENT_SEL.forEach(function(x, i) {
+    if (x.unidadId && x.label !== ultimaPieza) {
+      html += '<div style="font-size:11px;font-weight:700;color:var(--navy);margin:8px 0 4px">' + esc(x.label) + '</div>';
+    }
+    ultimaPieza = x.unidadId ? x.label : null;
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;margin-bottom:4px;background:#fff;border-radius:8px;border:1px solid var(--gray-200)">'
+      + '<input type="checkbox" ' + (x.on ? 'checked' : '') + ' onchange="entSelCambiar(' + i + ',this.checked)" style="width:20px;height:20px;flex-shrink:0">'
+      + '<span style="flex:1;font-size:12px;color:var(--navy)">' + esc(x.texto) + '</span>'
+      + (x.unidadId ? '<label style="font-size:11px;font-weight:700;color:' + (x.foto ? '#27AE60' : 'var(--gold)') + ';cursor:pointer;white-space:nowrap">'
+          + (x.foto ? '✓ foto' : '📷 foto')
+          + '<input type="file" accept="image/*" capture="environment" style="display:none" onchange="entSelFoto(' + i + ',this)"></label>' : '')
+      + '</div>';
+  });
+  cont.innerHTML = html;
+}
+
+function entSelCambiar(i, on) {
+  if (!ENT_SEL[i]) return;
+  ENT_SEL[i].on = on;
+  // La descripción del reporte refleja solo lo que de verdad se entrega hoy
+  var porPieza = {}, orden = [];
+  ENT_SEL.forEach(function(x) {
+    if (!x.on) return;
+    if (!porPieza[x.label]) { porPieza[x.label] = []; orden.push(x.label); }
+    if (x.unidadId) porPieza[x.label].push(x.unidadId);
+  });
+  document.getElementById('ent-desc').value = orden.map(function(l) {
+    return l + (porPieza[l].length ? ' (' + porPieza[l].join(', ') + ')' : '');
+  }).join(' + ');
+}
+
+function entSelFoto(i, input) {
+  var f = input.files && input.files[0];
+  if (!f || !ENT_SEL[i]) return;
+  entComprimirImagen(f, function(dataUrl) {
+    if (!dataUrl) { toast('Esa foto no se pudo leer'); return; }
+    ENT_SEL[i].foto = dataUrl; ENT_SEL[i].on = true;
+    entRenderUnidades();
+  });
+}
+
+async function entSubirFotoUnidad(folio, unidadId, dataUrl) {
+  try {
+    var blob = await (await fetch(dataUrl)).blob();
+    var ruta = 'unidades/' + (folio || 'sin-folio').replace(/[^A-Za-z0-9_-]/g, '_') + '/' + unidadId + '_' + Date.now() + '.jpg';
+    var up = await sb().storage.from('reportes').upload(ruta, blob, { contentType: 'image/jpeg', upsert: true });
+    if (up.error) throw up.error;
+    return sb().storage.from('reportes').getPublicUrl(ruta).data.publicUrl;
+  } catch (e) { console.warn('[BarrCan] No se pudo subir la foto de la unidad ' + unidadId + ':', e); return null; }
+}
+
+// Marca como entregado SOLO lo que se eligió en esta visita.
+// Si el folio no tiene piezas separadas (formato viejo), no hace nada.
 async function entMarcarPiezasEntregadas() {
   if (!ENT_PRESUPUESTO_ACTUAL || !ENT_PIEZAS_PENDIENTES_ACTUALES.length || !ENT_PRESUPUESTO_ACTUAL.id) return;
   if (!sb()) return;
   try {
+    // Se relee del servidor: si alguien editó el desglose en Historial
+    // mientras se llenaba este reporte, no se pisa su cambio.
+    var fresco = await sb().from('presupuestos_atrasados').select('notas_internas').eq('id', ENT_PRESUPUESTO_ACTUAL.id).single();
     var piezasCompletas = [];
-    try { piezasCompletas = JSON.parse(ENT_PRESUPUESTO_ACTUAL.notas_internas || '[]'); } catch(e) {}
+    try { piezasCompletas = JSON.parse((fresco.data && fresco.data.notas_internas) || ENT_PRESUPUESTO_ACTUAL.notas_internas || '[]'); } catch(e) {}
     if (!piezasCompletas.length) return;
-    var labelsEntregados = {};
-    ENT_PIEZAS_PENDIENTES_ACTUALES.forEach(function(pz) { labelsEntregados[pz.label] = true; });
+
+    var hoy = fechaHoyLocal();
+    var selPorClave = {};
+    for (var k = 0; k < ENT_SEL.length; k++) {
+      var x = ENT_SEL[k];
+      if (x.on && x.unidadId && x.foto) x.url = await entSubirFotoUnidad(ENT_PRESUPUESTO_ACTUAL.folio, x.unidadId, x.foto);
+      selPorClave[x.label + '::' + (x.unidadId || '')] = x;
+    }
+    var pendientes = {};
+    ENT_PIEZAS_PENDIENTES_ACTUALES.forEach(function(pz) { pendientes[pz.label] = true; });
+
     var actualizadas = piezasCompletas.map(function(pz) {
-      if (labelsEntregados[pz.label] && !pz.entregado) return Object.assign({}, pz, { entregado: true });
-      return pz;
+      if (!pendientes[pz.label] || pz.entregado) return pz;
+      if (Array.isArray(pz.unidades) && pz.unidades.length) {
+        var unidades = pz.unidades.map(function(u) {
+          var x = selPorClave[pz.label + '::' + u.id];
+          if (x && x.on && u.estado !== 'instalada') return Object.assign({}, u, { estado: 'instalada', fecha: hoy, foto: x.url || u.foto || null });
+          return u;
+        });
+        var todas = unidades.every(function(u) { return u.estado === 'instalada'; });
+        return Object.assign({}, pz, { unidades: unidades, entregado: todas });
+      }
+      var xp = selPorClave[pz.label + '::'];
+      if (xp && !xp.on) return pz; // desmarcada: sigue pendiente
+      return Object.assign({}, pz, { entregado: true });
     });
     var res = await sb().from('presupuestos_atrasados').update({ notas_internas: JSON.stringify(actualizadas) }).eq('id', ENT_PRESUPUESTO_ACTUAL.id);
     if (res.error) console.warn('[BarrCan] No se pudo marcar piezas como entregadas:', res.error);

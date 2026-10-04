@@ -6,6 +6,26 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.22
+  FECHA   : 2026-09-30
+  v1.22 - Asignar artículos a cada obra, conectado de verdad al
+    inventario:
+    1) Al activar "Desglosar por artículo" en una factura que llegó por
+       el Motor, los artículos se jalan solos del inventario (ya los
+       tenía guardados) -- antes la lista arrancaba vacía y había que
+       teclearlos o volver a subir el XML. Se marcan "📦 de la factura".
+    2) La obra asignada ahora se escribe TAMBIÉN en el inventario
+       (inventario_materiales.folio_obra). Antes solo quedaba en
+       facturas_conceptos y el inventario seguía marcando TODO como
+       disponible sin obra (661 artículos, solo 24 con obra) -- por eso
+       Taller sugería como sobrante material ya usado.
+    3) Factura con una sola obra (sin desglosar): todos sus artículos
+       del inventario sin obra quedan asignados a esa obra.
+    4) Sobrante: el renglón original se ajusta a lo usado, para no
+       contar dos veces el mismo material.
+    5) Modo manual: si los artículos no se guardan, ahora avisa (antes
+       fallaba en silencio) y la comparación "Cuadra / Diferencia" usa
+       el total capturado (antes comparaba contra $0).
   VERSION : v1.21
   FECHA   : 2026-09-19
   v1.21 - Botón "🔎 Taller" junto al folio de obra de cada artículo:
@@ -832,7 +852,7 @@ var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
 
-var APP_VERSION = 'v1.21';
+var APP_VERSION = 'v1.22';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -1372,6 +1392,8 @@ function cmpFiltrarFacturas() {
 var MC_ITEMS = [];       // artículos del desglose actual
 var MC_ITEM_SEQ = 0;
 var MC_TOTAL_FACTURA = 0; // total de la factura que se está clasificando (para comparar)
+var MC_FOLIO_FACT = null; // folio de la factura abierta -- para jalar sus artículos del inventario
+var MC_PROV_FACT = null;  // proveedor de la factura abierta
 
 // ── Categorías personalizadas ────────────────────────────────────
 // Además de las categorías fijas del <select>, se pueden agregar nuevas
@@ -1485,6 +1507,7 @@ function cmpProcesarXML(input) {
 // nueva en facturas_recibidas desde cero.
 function cmpAbrirManual() {
   MC_ID = null;
+  MC_FOLIO_FACT = null; MC_PROV_FACT = null;
   MC_MODO_MANUAL = true;
   MC_SIN_COMPROBANTE = false;
   MC_PDF_FILE = null;
@@ -1534,6 +1557,7 @@ function cmpAbrirManual() {
 // sin folio de factura ni PDF, y marcado con_comprobante=false.
 function cmpAbrirSinComprobante() {
   MC_ID = null;
+  MC_FOLIO_FACT = null; MC_PROV_FACT = null;
   MC_MODO_MANUAL = true;
   MC_SIN_COMPROBANTE = true;
   MC_PDF_FILE = null;
@@ -1592,6 +1616,8 @@ async function cmpAbrirClasificar(id, prov, folio, catActual, obraActual, desglo
   document.getElementById('mc-rfc-wrap').style.display = 'block';
   MC_ID = id;
   MC_TOTAL_FACTURA = parseFloat(totalFactura) || 0;
+  MC_FOLIO_FACT = folio || null;
+  MC_PROV_FACT = prov || null;
   document.getElementById('mc-titulo').textContent = 'Clasificar: ' + folio;
   document.getElementById('mc-sub').textContent = prov;
   document.getElementById('mc-rfc').value = rfcActual || '';
@@ -1685,7 +1711,34 @@ function cmpToggleDesglose() {
   document.getElementById('mc-multi-knob').style.left = on ? '21px' : '3px';
   document.getElementById('mc-obra').disabled = on;
   document.getElementById('mc-obra').style.opacity = on ? '0.4' : '1';
-  if (on && !MC_ITEMS.length) cmpAgregarItem();
+  if (on && !MC_ITEMS.length) {
+    // v1.22: si el Motor de Facturas ya guardó los artículos de esta
+    // factura en el inventario, se jalan de ahí -- ya no hay que
+    // teclearlos ni volver a subir el XML.
+    cmpPrecargarDesdeInventario().then(function(n) { if (!n) cmpAgregarItem(); });
+  }
+}
+
+async function cmpPrecargarDesdeInventario() {
+  if (MC_MODO_MANUAL || !MC_FOLIO_FACT || !sb()) return 0;
+  try {
+    var q = sb().from('inventario_materiales')
+      .select('id, descripcion, cantidad, precio_compra, folio_obra, clave_base')
+      .eq('factura', MC_FOLIO_FACT).order('created_at');
+    if (MC_PROV_FACT) q = q.eq('proveedor', MC_PROV_FACT);
+    var res = await q;
+    if (res.error || !res.data || !res.data.length) return 0;
+    MC_ITEMS = res.data.map(function(r) {
+      MC_ITEM_SEQ++;
+      return { id: 'it' + MC_ITEM_SEQ, inv_id: r.id,
+        descripcion: (r.clave_base ? r.clave_base + ' · ' : '') + (r.descripcion || ''),
+        cantidad: parseFloat(r.cantidad) || 1, cantidad_total: null,
+        precio_unitario: parseFloat(r.precio_compra) || 0, folio_obra: r.folio_obra || '' };
+    });
+    cmpRenderItems();
+    toast('📦 ' + MC_ITEMS.length + ' artículo(s) cargados de la factura -- solo asigna la obra de cada uno');
+    return MC_ITEMS.length;
+  } catch (e) { console.warn('[BarrCan] No se pudieron precargar artículos del inventario:', e); return 0; }
 }
 
 function cmpAgregarItem() {
@@ -1713,7 +1766,7 @@ function cmpRenderItems() {
     var sobrante = (it.cantidad_total != null && it.cantidad_total > (it.cantidad || 0)) ? (it.cantidad_total - it.cantidad) : 0;
     return '<div style="border:1px solid var(--gray-200);border-radius:8px;padding:8px;margin-top:6px;background:#F8F9FA">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'
-      + '<span style="font-size:10px;font-weight:700;color:var(--blue)">Artículo ' + (i + 1) + '</span>'
+      + '<span style="font-size:10px;font-weight:700;color:var(--blue)">Artículo ' + (i + 1) + (it.inv_id ? ' <span style="color:#8E44AD;font-weight:600">· 📦 de la factura</span>' : '') + '</span>'
       + (MC_ITEMS.length > 1 ? '<button type="button" onclick="cmpQuitarItem(\'' + it.id + '\')" style="border:none;background:none;color:var(--red,#C0392B);font-size:11px;font-weight:700;cursor:pointer">Quitar &times;</button>' : '')
       + '</div>'
       + '<input type="text" class="form-input" placeholder="Descripción (ej. 10 barras perfil 0858)" value="' + esc(it.descripcion) + '" style="margin-bottom:5px;font-size:12px" oninput="cmpItemActualizar(\'' + it.id + '\',\'descripcion\',this.value)">'
@@ -1735,6 +1788,7 @@ function cmpRenderItems() {
 }
 
 function cmpActualizarTotalDesglose() {
+  if (MC_MODO_MANUAL) { MC_TOTAL_FACTURA = parseFloat(document.getElementById('mc-man-total').value) || 0; }
   var sumaItems = MC_ITEMS.reduce(function(s, it) { return s + (it.cantidad || 0) * (it.precio_unitario || 0); }, 0);
   var el = document.getElementById('mc-desglose-total');
   var dif = MC_TOTAL_FACTURA - sumaItems;
@@ -1805,7 +1859,8 @@ async function cmpGuardarClasificacion() {
             folio_obra: it.folio_obra ? it.folio_obra.trim() : null
           };
         });
-        await sb().from('facturas_conceptos').insert(filasM);
+        var resM = await sb().from('facturas_conceptos').insert(filasM);
+        if (resM.error) { toast('⚠️ La factura se guardó, pero los artículos NO: ' + resM.error.message); }
       }
 
       toast(MC_SIN_COMPROBANTE ? '✅ Gasto sin comprobante guardado' : '✅ Factura manual guardada' + (recurrente ? ' (marcada como recurrente)' : ''));
@@ -1863,6 +1918,30 @@ async function cmpGuardarClasificacion() {
         else toast('Clasificado — ' + sobrantes.length + ' artículo(s) con sobrante guardado en stock');
       }
     }
+
+    // v1.22: la obra asignada se escribe TAMBIÉN en el inventario --
+    // antes solo quedaba en facturas_conceptos, y el inventario seguía
+    // marcando todo como "Disponible sin obra" (661 artículos así), lo
+    // que hacía que Taller sugiriera como sobrante material que ya se
+    // había usado en otra obra.
+    try {
+      if (esDesglose) {
+        var conInv = MC_ITEMS.filter(function(it) { return it.inv_id; });
+        for (var k = 0; k < conInv.length; k++) {
+          var cambioInv = { folio_obra: conInv[k].folio_obra ? conInv[k].folio_obra.trim() : null };
+          // Si se marcó sobrante, el renglón original queda solo con lo
+          // usado en esta obra (el resto ya se guardó aparte como stock),
+          // para no contar dos veces el mismo material.
+          if (conInv[k].cantidad_total != null && conInv[k].cantidad_total > (conInv[k].cantidad || 0)) cambioInv.cantidad = conInv[k].cantidad || 0;
+          await sb().from('inventario_materiales').update(cambioInv).eq('id', conInv[k].inv_id);
+        }
+      } else if (obra && MC_FOLIO_FACT) {
+        var qInv = sb().from('inventario_materiales').update({ folio_obra: obra })
+          .eq('factura', MC_FOLIO_FACT).is('folio_obra', null);
+        if (proveedorNombre) qInv = qInv.eq('proveedor', proveedorNombre);
+        await qInv;
+      }
+    } catch (eInv) { console.warn('[BarrCan] No se pudo marcar la obra en inventario (no crítico):', eInv); }
 
     // Actualizar cache local
     for (var i = 0; i < FACT_CACHE.length; i++) {
