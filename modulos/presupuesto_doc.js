@@ -1,6 +1,7 @@
 // ══════════════════════════════════════════════════════════════
 // BarrCan · DOCUMENTO OFICIAL DE PRESUPUESTO (compartido)
-// VERSION : v1.0   FECHA : 2026-10-04
+// VERSION : v1.1   FECHA : 2026-10-04
+// v1.1 - Correo de facturación corregido a ventas@barrcan.com.mx.
 // Un solo lugar para el formato acordado (encabezado oficial, partidas
 // con cantidad × precio unitario, diagramas de referencia, condiciones
 // de venta, política de pagos con cuentas BBVA/Banorte, almacenamiento,
@@ -153,7 +154,7 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
     + '<div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">Titular</div>'
     + '<div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div>'
     + '<div style="font-size:8.5pt;color:#333">RFC: BAEM790610K90</div>'
-    + '<div style="font-size:8pt;color:#888;margin-top:4px;font-style:italic">Factura: can_alum_cris@hotmail.com</div></div>'
+    + '<div style="font-size:8pt;color:#888;margin-top:4px;font-style:italic">Factura: ventas@barrcan.com.mx</div></div>'
     + '</div>'
     + '<div style="border:1.5px solid #E67E22;border-radius:4px;padding:10px 12px;margin-bottom:14px;background:#FFF8F0">'
     + '<div style="font-size:9pt;font-weight:700;color:#E67E22;margin-bottom:4px">IMPORTANTE \u2014 Segundo pago (35%)</div>'
@@ -184,5 +185,5 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
 }
 
 
-  window.BCDoc = { version: 'v1.0', generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo };
+  window.BCDoc = { version: 'v1.1', generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo };
 })();
