@@ -6,6 +6,10 @@
 <title>BarrCan · Cotizador Baños</title>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v3.6
+  FECHA   : 2026-10-04
+  v3.6 - El presupuesto impreso muestra también el diagrama de la
+    Escuadra de 2 muros (antes solo Corredizo recto/escuadra).
   VERSION : v3.5
   FECHA   : 2026-09-26
   v3.5 - A pedido: puente de recálculo por UNIDAD individual (no solo
@@ -1138,10 +1142,13 @@ var _DIAG_CORREDIZO_URL  = 'https://barrcan.github.io/barrcan-app/assets/Corre-6
 var _DIAG_ESCUADRA_URL   = 'https://barrcan.github.io/barrcan-app/assets/Esc-6mm-Tem.jpg';
 
 function snDiagramaCorredizo(resultado) {
-  if (!resultado || resultado.tipo !== 'corredizo') return '';
-  var esEscuadra = resultado.config === 'escuadra';
+  // v3.6: también la Escuadra de 2 muros (tipo 'escuadra', medidas L × P)
+  if (!resultado || (resultado.tipo !== 'corredizo' && resultado.tipo !== 'escuadra')) return '';
+  var esEscuadra = resultado.tipo === 'escuadra' || resultado.config === 'escuadra';
   var url = esEscuadra ? _DIAG_ESCUADRA_URL : _DIAG_CORREDIZO_URL;
-  var medidas = esEscuadra
+  var medidas = resultado.tipo === 'escuadra'
+    ? (resultado.L + ' \u00d7 ' + resultado.P + ' mm &middot; alto ' + resultado.H + ' mm')
+    : esEscuadra
     ? (resultado.L + ' \u00d7 ' + resultado.L2 + ' mm &middot; alto ' + resultado.H + ' mm')
     : (resultado.L + ' mm &middot; alto ' + resultado.H + ' mm');
   return '<div style="display:flex;gap:10px;align-items:center;margin-top:6px;padding-left:4px">'
@@ -1297,7 +1304,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v3.5';
+var APP_VERSION = 'v3.6';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
