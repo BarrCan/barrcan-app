@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════
-// BarrCan Service Worker v10 — Offline First
+// BarrCan Service Worker v11 — Offline First
 // Estrategia: Network-First con timeout para HTML (páginas .html),
 //             Cache-First para fuentes/CDN,
 //             Supabase y APIs externas: Network Only
@@ -34,7 +34,20 @@
 // si nunca se habían abierto con señal antes, no tenían nada guardado
 // para usar sin conexión.
 
-const CACHE_VERSION = 'barrcan-v11'; // subir este número fuerza que TODOS los
+// FIX v11 (30-sep-2026):
+// 1) Faltaban 11 módulos en la precarga (taller, cubiertas, adicionales,
+//    logistica, estado_cuenta, codigos_promocionales, finanzas_personales,
+//    guia_configuraciones, mensajes, encuesta_publica, limpieza_storage) --
+//    si nunca se abrieron con señal en ese celular, sin señal no abrían.
+// 2) Baños carga sus cálculos de Aluminio/Polietileno desde modulos/*.js
+//    solo cuando se ocupan; no estaban precargados, así que sin señal ese
+//    cálculo fallaba aunque la página sí abriera. Ya se precargan.
+// 3) La instalación usaba cache.addAll(): si UN solo archivo fallaba (ej.
+//    se renombra o borra uno), se caía TODA la precarga sin avisar y el
+//    celular quedaba sin nada para trabajar offline. Ahora se guarda uno
+//    por uno: si alguno falla, los demás sí quedan.
+
+const CACHE_VERSION = 'barrcan-v12'; // subir este número fuerza que TODOS los
 // dispositivos descarten su caché vieja de una vez -- ya no debería
 // hacer falta subirlo por cada arreglo ahora que HTML es Network First,
 // pero sigue disponible por si algún día conviene un reinicio total.
@@ -65,6 +78,21 @@ const RECURSOS_CORE = [
   './render_ia.html',
   './config.html',
   './cotizador_stands.html',
+  './cotizador_cubiertas.html',
+  './taller.html',
+  './adicionales.html',
+  './logistica.html',
+  './estado_cuenta.html',
+  './codigos_promocionales.html',
+  './finanzas_personales.html',
+  './guia_configuraciones.html',
+  './mensajes.html',
+  './encuesta_publica.html',
+  './limpieza_storage.html',
+  // Módulos de cálculo que Baños carga bajo demanda
+  './modulos/alupol_recto.js',
+  './modulos/alupol_escuadra.js',
+  './modulos/alupol_cor_luj_2h.js',
 ];
 
 const DOMINIOS_CACHEABLE = [
@@ -83,7 +111,10 @@ const DOMINIOS_NETWORK_ONLY = [
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_VERSION)
-      .then(cache => cache.addAll(RECURSOS_CORE))
+      .then(cache => Promise.allSettled(RECURSOS_CORE.map(u => cache.add(u))).then(res => {
+        const fallidos = res.filter(r => r.status === 'rejected').length;
+        console.log('[BarrCan SW] Precarga: ' + (RECURSOS_CORE.length - fallidos) + '/' + RECURSOS_CORE.length);
+      }))
       .then(() => self.skipWaiting())
   );
 });
