@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════
-// BarrCan Service Worker v16 — Offline First
+// BarrCan Service Worker v17 — Offline First
 // Estrategia: Network-First con timeout para HTML (páginas .html),
 //             Cache-First para fuentes/CDN,
 //             Supabase y APIs externas: Network Only
@@ -55,7 +55,8 @@
 // v14 (04-oct-2026): precarga ver_doc.html y modulos/abrir_doc.js (documentos con folio).
 // v15 (05-oct-2026): precarga modulos/etiquetas.js (etiquetas QR por Bluetooth).
 // v16 (05-oct-2026): precarga diseñador de etiquetas y generador de QR.
-const CACHE_VERSION = 'barrcan-v17'; // subir este número fuerza que TODOS los
+// v17 (05-oct-2026): páginas y .js siempre se revalidan con GitHub.
+const CACHE_VERSION = 'barrcan-v18'; // subir este número fuerza que TODOS los
 // dispositivos descarten su caché vieja de una vez -- ya no debería
 // hacer falta subirlo por cada arreglo ahora que HTML es Network First,
 // pero sigue disponible por si algún día conviene un reinicio total.
@@ -188,7 +189,13 @@ async function redPrimero(request) {
   // por si acaso llega y conviene actualizar el caché para la próxima).
   const TIMEOUT_MS = 3000;
 
-  const fetchPromise = fetch(request).then(response => {
+  // v17: siempre revalidar con GitHub (cache:'no-cache'). Antes fetch()
+  // aceptaba la copia del propio navegador -- GitHub permite guardarla
+  // 10 min -- y una versión recién publicada no se veía aunque se
+  // recargara. Si no hay cambios, GitHub responde 304 en milisegundos.
+  // (Una petición de navegación no admite opciones: se rearma por URL.)
+  const pedido = new Request(request.url, { cache: 'no-cache', credentials: 'same-origin', redirect: 'follow' });
+  const fetchPromise = fetch(pedido).then(response => {
     if (response && response.status === 200) {
       cache.put(request, response.clone());
     }
