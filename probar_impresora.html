@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BarrCan · Probar impresora de etiquetas</title>
+<!--
+  BARRCAN · DIAGNÓSTICO DE IMPRESORA DE ETIQUETAS
+  VERSION : v1.0
+  FECHA   : 2026-10-05
+  v1.0 - Prueba si la impresora (AiYin IP-801BT) se puede controlar
+    directo desde el navegador por Bluetooth de bajo consumo (BLE). Si
+    la encuentra, lista sus servicios y manda una etiqueta de prueba en
+    TSPL (texto + QR). Si no aparece, la impresora solo tiene Bluetooth
+    clásico y hay que usar el camino de la PC. Herramienta temporal para
+    decidir cómo se construye la impresión de etiquetas del inventario.
+-->
+<style>
+  :root{--navy:#1B3A5C;--gold:#C8923A}
+  body{font-family:Arial,sans-serif;color:var(--navy);margin:0;padding:16px;background:#F7F5F0}
+  h1{font-size:19px;margin:0 0 4px} p{font-size:13px;line-height:1.45;color:#444}
+  .card{background:#fff;border-radius:12px;padding:14px;margin:12px 0;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+  button{width:100%;padding:13px;border:none;border-radius:9px;font-size:15px;font-weight:700;cursor:pointer;margin-top:8px}
+  .b1{background:var(--navy);color:#fff} .b2{background:var(--gold);color:#fff} button:disabled{opacity:.45}
+  label{font-size:12px;font-weight:700;display:block;margin-top:8px}
+  input{width:100%;padding:9px;border:1.5px solid #ddd;border-radius:8px;font-size:14px;box-sizing:border-box}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  #log{font-family:monospace;font-size:11.5px;white-space:pre-wrap;background:#0f1d2b;color:#cfe3f7;border-radius:8px;padding:10px;min-height:80px;max-height:300px;overflow:auto}
+  .ok{color:#27AE60;font-weight:700} .mal{color:#C0392B;font-weight:700}
+</style>
+</head>
+<body>
+<h1>🏷️ Probar impresora de etiquetas</h1>
+<p>Prende la impresora con un rollo de etiquetas puesto. <b>No la emparejes en el Bluetooth del celular</b>: deja que esta página la busque. Necesitas Chrome en Android, con Bluetooth y ubicación activados.</p>
+
+<div class="card">
+  <div class="row">
+    <div><label>Ancho etiqueta (mm)</label><input id="ancho" type="number" value="50"></div>
+    <div><label>Alto etiqueta (mm)</label><input id="alto" type="number" value="30"></div>
+  </div>
+  <button class="b1" id="btnBuscar" onclick="buscar()">1. Buscar impresora</button>
+  <button class="b2" id="btnImprimir" onclick="imprimirPrueba()" disabled>2. Imprimir etiqueta de prueba</button>
+  <div id="resultado" style="margin-top:10px;font-size:13.5px"></div>
+</div>
+<div class="card"><b style="font-size:12px">Detalle técnico (mándame captura si algo falla)</b><div id="log"></div></div>
+
+<script>
+var CARACT = null;
+// Servicios Bluetooth que usan casi todas las impresoras térmicas chinas
+var SERVICIOS = ['000018f0-0000-1000-8000-00805f9b34fb','0000ff00-0000-1000-8000-00805f9b34fb','0000fff0-0000-1000-8000-00805f9b34fb',
+  '0000ffe0-0000-1000-8000-00805f9b34fb','0000ae30-0000-1000-8000-00805f9b34fb','0000ae00-0000-1000-8000-00805f9b34fb',
+  '49535343-fe7d-4ae5-8fa9-9fafd205e455','e7810a71-73ae-499d-8c15-faa9aef0c3f2','0000fee7-0000-1000-8000-00805f9b34fb',
+  '0000ff10-0000-1000-8000-00805f9b34fb','0000ffb0-0000-1000-8000-00805f9b34fb','0000180a-0000-1000-8000-00805f9b34fb'];
+function log(t){ var l=document.getElementById('log'); l.textContent += t + '\n'; l.scrollTop = l.scrollHeight; }
+function res(html){ document.getElementById('resultado').innerHTML = html; }
+
+async function buscar() {
+  if (!navigator.bluetooth) {
+    res('<span class="mal">Este navegador no puede usar Bluetooth.</span> Usa Chrome en Android (en iPhone no funciona).');
+    return;
+  }
+  try {
+    log('Buscando dispositivos Bluetooth (BLE)…');
+    var dev = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: SERVICIOS });
+    log('Elegido: ' + (dev.name || '(sin nombre)') + '  id=' + dev.id);
+    var gatt = await dev.gatt.connect();
+    log('Conectado. Leyendo servicios…');
+    var servicios = await gatt.getPrimaryServices();
+    for (var s of servicios) {
+      log('Servicio ' + s.uuid);
+      var cs = await s.getCharacteristics();
+      for (var c of cs) {
+        var p = c.properties;
+        log('   ↳ ' + c.uuid + '  [' + (p.write ? 'write ' : '') + (p.writeWithoutResponse ? 'writeNR ' : '') + (p.notify ? 'notify ' : '') + (p.read ? 'read' : '') + ']');
+        if (!CARACT && (p.write || p.writeWithoutResponse)) CARACT = c;
+      }
+    }
+    if (CARACT) {
+      log('Canal de impresión: ' + CARACT.uuid);
+      res('<span class="ok">✅ ¡Conectada!</span> La impresora acepta conexión directa. Toca "Imprimir etiqueta de prueba".');
+      document.getElementById('btnImprimir').disabled = false;
+    } else {
+      res('<span class="mal">Se conectó, pero no encontré un canal para enviar datos.</span> Mándame captura del detalle técnico.');
+    }
+  } catch (e) {
+    log('Error: ' + e.message);
+    if (/cancel/i.test(e.message)) res('<span class="mal">No elegiste ningún dispositivo.</span> Si tu impresora <b>no apareció en la lista</b>, solo tiene Bluetooth clásico: dímelo y usamos el camino de la PC.');
+    else res('<span class="mal">No se pudo conectar:</span> ' + e.message);
+  }
+}
+
+async function enviar(texto) {
+  var datos = new TextEncoder().encode(texto);
+  for (var i = 0; i < datos.length; i += 180) {
+    var pedazo = datos.slice(i, i + 180);
+    if (CARACT.properties.writeWithoutResponse) await CARACT.writeValueWithoutResponse(pedazo);
+    else await CARACT.writeValue(pedazo);
+    await new Promise(function (r) { setTimeout(r, 25); });
+  }
+}
+
+async function imprimirPrueba() {
+  var w = parseFloat(document.getElementById('ancho').value) || 50;
+  var h = parseFloat(document.getElementById('alto').value) || 30;
+  var ahora = new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' });
+  var tspl = 'SIZE ' + w + ' mm,' + h + ' mm\r\nGAP 2 mm,0 mm\r\nDIRECTION 1\r\nREFERENCE 0,0\r\nDENSITY 10\r\nCLS\r\n'
+    + 'TEXT 16,16,"3",0,1,1,"BARRCAN"\r\n'
+    + 'TEXT 16,56,"2",0,1,1,"PRUEBA 12542/5090"\r\n'
+    + 'TEXT 16,86,"2",0,1,1,"3.70 m - CERCO"\r\n'
+    + 'TEXT 16,116,"1",0,1,1,"' + ahora.replace(/"/g, '') + '"\r\n'
+    + 'QRCODE ' + Math.round((w - 22) * 8) + ',16,M,4,A,0,"https://barrcan.github.io/barrcan-app/"\r\n'
+    + 'PRINT 1,1\r\n';
+  try {
+    log('Enviando etiqueta TSPL ' + w + '×' + h + ' mm…');
+    await enviar(tspl);
+    log('Enviada.');
+    res('<span class="ok">Enviada.</span> ¿Salió la etiqueta con "BARRCAN", los datos y un QR? Si salió en blanco o cortada, dime qué viste.');
+  } catch (e) { log('Error al enviar: ' + e.message); res('<span class="mal">Error al enviar:</span> ' + e.message); }
+}
+</script>
+</body>
+</html>
