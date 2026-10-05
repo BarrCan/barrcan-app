@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════
-// BarrCan Service Worker v15 — Offline First
+// BarrCan Service Worker v16 — Offline First
 // Estrategia: Network-First con timeout para HTML (páginas .html),
 //             Cache-First para fuentes/CDN,
 //             Supabase y APIs externas: Network Only
@@ -54,7 +54,8 @@
 // segunda apertura, porque se servía la copia vieja guardada.
 // v14 (04-oct-2026): precarga ver_doc.html y modulos/abrir_doc.js (documentos con folio).
 // v15 (05-oct-2026): precarga modulos/etiquetas.js (etiquetas QR por Bluetooth).
-const CACHE_VERSION = 'barrcan-v16'; // subir este número fuerza que TODOS los
+// v16 (05-oct-2026): precarga diseñador de etiquetas y generador de QR.
+const CACHE_VERSION = 'barrcan-v17'; // subir este número fuerza que TODOS los
 // dispositivos descarten su caché vieja de una vez -- ya no debería
 // hacer falta subirlo por cada arreglo ahora que HTML es Network First,
 // pero sigue disponible por si algún día conviene un reinicio total.
@@ -103,6 +104,8 @@ const RECURSOS_CORE = [
   './modulos/presupuesto_doc.js',
   './modulos/abrir_doc.js',
   './modulos/etiquetas.js',
+  './modulos/qrcode.js',
+  './etiquetas_disenar.html',
   './ver_doc.html',
   './ver_reporte.html',
 ];

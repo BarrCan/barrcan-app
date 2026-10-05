@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>BarrCan · Diseñar etiqueta</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="modulos/qrcode.js"></script>
+<script src="modulos/etiquetas.js"></script>
+<!--
+  BARRCAN · DISEÑADOR DE ETIQUETAS QR
+  VERSION : v1.0
+  FECHA   : 2026-10-05
+  v1.0 - Diseña la etiqueta de inventario y guárdala como plantilla
+    (tabla etiquetas_plantillas). Dos modos:
+    · Rápido: 4 acomodos base (Perfil completo, Grande para campo, QR
+      grande, Herraje/pieza) + qué datos aparecen, tamaño de letra, logo.
+    · Libre: cada elemento se mueve con el dedo y se ajusta su tamaño;
+      se pueden agregar textos, datos, QR, logo y líneas.
+    La vista previa es exactamente lo que se imprime (203 dpi). La
+    plantilla marcada como predeterminada es la que usa Inventario.
+-->
+<style>
+  :root{--navy:#1B3A5C;--gold:#C8923A;--gris:#5B6B7A;--borde:#E2E7EC;--verde:#27AE60}
+  *{box-sizing:border-box} body{font-family:Arial,sans-serif;margin:0;background:#F7F5F0;color:var(--navy)}
+  header{background:var(--navy);color:#fff;padding:12px 14px;display:flex;align-items:center;gap:10px}
+  header a{color:#fff;text-decoration:none;font-size:20px} header b{flex:1;font-size:16px}
+  main{padding:12px;max-width:720px;margin:0 auto}
+  .card{background:#fff;border-radius:12px;padding:12px;margin-bottom:12px;box-shadow:0 1px 4px rgba(0,0,0,.07)}
+  label{font-size:11.5px;font-weight:700;color:var(--gris);display:block;margin:8px 0 3px}
+  input,select{width:100%;padding:9px;border:1.5px solid var(--borde);border-radius:8px;font-size:14px;background:#fff}
+  .fila{display:flex;gap:8px} .fila>*{flex:1}
+  button{padding:10px;border:none;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer}
+  .b-navy{background:var(--navy);color:#fff} .b-gold{background:var(--gold);color:#fff} .b-ln{background:#fff;border:1.5px solid var(--borde);color:var(--navy)}
+  .tabs{display:flex;gap:6px;margin-bottom:10px} .tabs button{flex:1;background:#fff;border:1.5px solid var(--navy);color:var(--navy)}
+  .tabs button.on{background:var(--navy);color:#fff}
+  #lienzo-wrap{background:#d9dde2;border-radius:10px;padding:12px;display:flex;justify-content:center}
+  #lienzo{background:#fff;width:100%;max-width:480px;image-rendering:pixelated;box-shadow:0 2px 8px rgba(0,0,0,.2);touch-action:none;border-radius:4px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px} .chips label{display:flex;align-items:center;gap:5px;margin:0;font-weight:400;font-size:13px;color:var(--navy);background:#F3F5F8;padding:6px 9px;border-radius:16px}
+  .chips input{width:auto}
+  .el{display:flex;align-items:center;gap:6px;padding:7px 8px;border:1.5px solid var(--borde);border-radius:8px;margin-bottom:5px;font-size:13px;cursor:pointer}
+  .el.sel{border-color:var(--gold);background:#FFF8EE}
+  .nota{font-size:11.5px;color:var(--gris);line-height:1.4}
+  #barra{position:fixed;left:0;right:0;bottom:0;background:var(--navy);padding:8px;display:flex;gap:8px}
+  #barra button{flex:1} main{padding-bottom:80px}
+  #prog{height:4px;background:var(--gold);width:0;transition:width .2s}
+</style>
+</head>
+<body>
+<header><a href="inventario.html">←</a><b>🏷️ Diseñar etiqueta</b><span id="ver" style="font-size:11px;opacity:.7"></span></header>
+<div id="prog"></div>
+<main>
+  <div class="card">
+    <div class="fila">
+      <div><label>Plantilla</label><select id="sel-plantilla" onchange="cargarSeleccion()"></select></div>
+      <div><label>Nombre</label><input id="nombre" placeholder="Ej: Perfiles taller"></div>
+    </div>
+    <div class="fila">
+      <div><label>Ancho etiqueta (mm)</label><input id="ancho" type="number" value="60" min="20" max="104" oninput="redibujar()"></div>
+      <div><label>Alto etiqueta (mm)</label><input id="alto" type="number" value="40" min="15" max="150" oninput="redibujar()"></div>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;margin-top:10px;color:var(--navy);font-size:13px"><input type="checkbox" id="predet" style="width:18px;height:18px"> Usar como predeterminada en Inventario</label>
+  </div>
+
+  <div id="lienzo-wrap"><canvas id="lienzo"></canvas></div>
+  <p class="nota" style="text-align:center;margin:6px 0 12px">Vista previa a tamaño de impresión con una pieza de muestra. En modo libre, arrastra los elementos con el dedo; la esquina inferior derecha del seleccionado cambia su tamaño.</p>
+
+  <div class="tabs"><button id="t-rapido" class="on" onclick="modo('rapido')">⚡ Rápido</button><button id="t-libre" onclick="modo('libre')">✏️ Libre</button></div>
+
+  <div id="p-rapido" class="card">
+    <label>Acomodo</label>
+    <select id="base" onchange="rapidoCambio()"></select>
+    <label>Datos que aparecen</label>
+    <div class="chips" id="chips"></div>
+    <div class="fila">
+      <div><label>Tamaño de letra</label>
+        <select id="escala" onchange="rapidoCambio()"><option value="0.85">Chica</option><option value="1" selected>Normal</option><option value="1.15">Grande</option></select></div>
+      <div><label>Logo</label><select id="conlogo" onchange="rapidoCambio()"><option value="1">Con logo</option><option value="0">Sin logo</option></select></div>
+    </div>
+    <button class="b-ln" style="width:100%;margin-top:10px" onclick="pasarALibre()">✏️ Personalizar este acomodo en modo libre</button>
+  </div>
+
+  <div id="p-libre" class="card" style="display:none">
+    <div class="fila" style="flex-wrap:wrap">
+      <button class="b-ln" onclick="agregar('campo')">+ Dato</button><button class="b-ln" onclick="agregar('texto')">+ Texto</button>
+      <button class="b-ln" onclick="agregar('qr')">+ QR</button><button class="b-ln" onclick="agregar('logo')">+ Logo</button><button class="b-ln" onclick="agregar('linea')">+ Línea</button>
+    </div>
+    <label>Elementos (toca para seleccionar)</label>
+    <div id="lista-el"></div>
+    <div id="edit-el" style="display:none;border-top:1px dashed var(--borde);margin-top:8px;padding-top:4px">
+      <div id="ed-campo-wrap"><label>Dato</label><select id="ed-campo" onchange="edit('campo',this.value)"></select></div>
+      <div id="ed-texto-wrap"><label>Texto</label><input id="ed-texto" oninput="edit('texto',this.value)"></div>
+      <div id="ed-letra-wrap">
+        <label>Tamaño de letra: <span id="ed-tam-v"></span> mm</label><input id="ed-tam" type="range" min="1.8" max="14" step="0.1" oninput="edit('tam',+this.value)">
+        <div class="fila"><select id="ed-neg" onchange="edit('negrita',this.value==='1')"><option value="0">Normal</option><option value="1">Negrita</option></select>
+          <select id="ed-al" onchange="edit('alinear',this.value)"><option value="left">Izquierda</option><option value="center">Centro</option><option value="right">Derecha</option></select></div>
+      </div>
+      <div class="fila">
+        <div><label>X (mm)</label><input id="ed-x" type="number" step="0.5" oninput="edit('x',+this.value)"></div>
+        <div><label>Y (mm)</label><input id="ed-y" type="number" step="0.5" oninput="edit('y',+this.value)"></div>
+        <div><label>Ancho</label><input id="ed-w" type="number" step="0.5" oninput="edit('w',+this.value)"></div>
+        <div><label>Alto</label><input id="ed-h" type="number" step="0.5" oninput="edit('h',+this.value)"></div>
+      </div>
+      <button class="b-ln" style="width:100%;margin-top:8px;color:#C0392B" onclick="quitar()">🗑 Quitar elemento</button>
+    </div>
+  </div>
+</main>
+<div id="barra">
+  <button class="b-ln" onclick="nueva()">Nueva</button>
+  <button class="b-gold" onclick="imprimirPrueba()">🖨 Probar</button>
+  <button class="b-navy" onclick="guardar()">💾 Guardar</button>
+</div>
+
+<script>
+var APP_VERSION = 'v1.0';
+var SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co', SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I', _sb = null;
+function sb() { if (!_sb && window.supabase) _sb = window.supabase.createClient(SB_URL, SB_KEY, { db: { schema: 'barrcan' }, auth: { persistSession: true, storageKey: 'barrcan_auth' } }); return _sb; }
+function toast(m) { var t = document.createElement('div'); t.textContent = m; t.style.cssText = 'position:fixed;left:50%;bottom:76px;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;z-index:99;max-width:90%;text-align:center'; document.body.appendChild(t); setTimeout(function () { t.remove(); }, 2800); }
+document.getElementById('ver').textContent = APP_VERSION;
+
+var MUESTRA = { id: '2b9f6c1e-4a7d-4c55-9a2e-1f0b7d3e8c21', clave_cuprum: '12542', clave_base: '5090', descripcion: 'Cerco EV puerta batir S50',
+  color: 'Natural', tipo: 'ALUMINIO', tipo_tramo: 'Tramo < 6.10 (3.70m)', longitud_m: 3.7, proveedor: 'Taller', folio_obra: '' };
+var PLANTILLAS = [], ACTUAL_ID = null, SEL = -1;
+var DATOS = { modo: 'rapido', base: 'perfil', escala: 1, conLogo: true, ocultos: [], ancho: 60, alto: 40 };
+
+function leerMedidas() { DATOS.ancho = +document.getElementById('ancho').value || 60; DATOS.alto = +document.getElementById('alto').value || 40; }
+async function redibujar() {
+  leerMedidas();
+  var cv = document.getElementById('lienzo');
+  await BCEtiquetas.dibujar(cv, DATOS, MUESTRA);
+  if (DATOS.modo === 'libre' && SEL >= 0 && DATOS.elementos[SEL]) {
+    var e = DATOS.elementos[SEL], ctx = cv.getContext('2d');
+    ctx.strokeStyle = '#C8923A'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]); ctx.strokeRect(e.x * 8, e.y * 8, e.w * 8, e.h * 8);
+    ctx.setLineDash([]); ctx.fillStyle = '#C8923A'; ctx.fillRect((e.x + e.w) * 8 - 10, (e.y + e.h) * 8 - 10, 14, 14);
+  }
+}
+function modo(m) {
+  if (m === 'libre' && DATOS.modo !== 'libre') { pasarALibre(); return; }
+  if (m === 'rapido' && DATOS.modo === 'libre' && !confirm('Al volver a Rápido se pierden los ajustes libres. ¿Continuar?')) return;
+  if (m === 'rapido') DATOS = { modo: 'rapido', base: document.getElementById('base').value || 'perfil', escala: 1, conLogo: true, ocultos: [], ancho: DATOS.ancho, alto: DATOS.alto };
+  pintarModo(); redibujar();
+}
+function pintarModo() {
+  var libre = DATOS.modo === 'libre';
+  document.getElementById('t-libre').classList.toggle('on', libre); document.getElementById('t-rapido').classList.toggle('on', !libre);
+  document.getElementById('p-libre').style.display = libre ? 'block' : 'none'; document.getElementById('p-rapido').style.display = libre ? 'none' : 'block';
+  if (libre) listaElementos(); else pintarRapido();
+}
+// ── Modo rápido ──
+function pintarRapido() {
+  var sel = document.getElementById('base');
+  sel.innerHTML = Object.keys(BCEtiquetas.BASES).map(function (k) { return '<option value="' + k + '"' + (k === DATOS.base ? ' selected' : '') + '>' + BCEtiquetas.BASES[k].nombre + '</option>'; }).join('');
+  document.getElementById('escala').value = String(DATOS.escala || 1);
+  document.getElementById('conlogo').value = DATOS.conLogo === false ? '0' : '1';
+  var campos = BCEtiquetas.BASES[DATOS.base].elementos.filter(function (e) { return e.tipo === 'campo'; }).map(function (e) { return e.campo; });
+  document.getElementById('chips').innerHTML = campos.map(function (c) {
+    return '<label><input type="checkbox" ' + ((DATOS.ocultos || []).indexOf(c) < 0 ? 'checked' : '') + ' onchange="ocultar(\'' + c + '\',!this.checked)">' + BCEtiquetas.CAMPOS[c] + '</label>';
+  }).join('');
+}
+function rapidoCambio() {
+  var nb = document.getElementById('base').value;
+  if (nb !== DATOS.base) DATOS.ocultos = [];
+  DATOS.base = nb; DATOS.escala = +document.getElementById('escala').value; DATOS.conLogo = document.getElementById('conlogo').value === '1';
+  pintarRapido(); redibujar();
+}
+function ocultar(c, si) { DATOS.ocultos = (DATOS.ocultos || []).filter(function (x) { return x !== c; }); if (si) DATOS.ocultos.push(c); redibujar(); }
+function pasarALibre() {
+  leerMedidas();
+  var r = BCEtiquetas.resolver(DATOS);
+  DATOS = { modo: 'libre', ancho: r.ancho, alto: r.alto, logoInvertido: true, elementos: r.elementos };
+  SEL = -1; pintarModo(); redibujar();
+}
+// ── Modo libre ──
+function nombreEl(e) {
+  if (e.tipo === 'campo') return '🔤 ' + (BCEtiquetas.CAMPOS[e.campo] || e.campo);
+  if (e.tipo === 'texto') return '✍️ "' + (e.texto || '') + '"';
+  return { qr: '▦ Código QR', logo: '🖼 Logo', linea: '— Línea' }[e.tipo] || e.tipo;
+}
+function listaElementos() {
+  document.getElementById('lista-el').innerHTML = DATOS.elementos.map(function (e, i) { return '<div class="el' + (i === SEL ? ' sel' : '') + '" onclick="seleccionar(' + i + ')">' + nombreEl(e) + '</div>'; }).join('') || '<div class="nota">Sin elementos. Agrega uno con los botones de arriba.</div>';
+  var ed = document.getElementById('edit-el'); var e = DATOS.elementos[SEL];
+  ed.style.display = e ? 'block' : 'none'; if (!e) return;
+  var esTexto = e.tipo === 'campo' || e.tipo === 'texto';
+  document.getElementById('ed-campo-wrap').style.display = e.tipo === 'campo' ? 'block' : 'none';
+  document.getElementById('ed-texto-wrap').style.display = e.tipo === 'texto' ? 'block' : 'none';
+  document.getElementById('ed-letra-wrap').style.display = esTexto ? 'block' : 'none';
+  document.getElementById('ed-campo').innerHTML = Object.keys(BCEtiquetas.CAMPOS).map(function (k) { return '<option value="' + k + '"' + (k === e.campo ? ' selected' : '') + '>' + BCEtiquetas.CAMPOS[k] + '</option>'; }).join('');
+  document.getElementById('ed-texto').value = e.texto || '';
+  if (esTexto) { document.getElementById('ed-tam').value = e.tam; document.getElementById('ed-tam-v').textContent = (+e.tam).toFixed(1); document.getElementById('ed-neg').value = e.negrita ? '1' : '0'; document.getElementById('ed-al').value = e.alinear || 'left'; }
+  ['x', 'y', 'w', 'h'].forEach(function (k) { document.getElementById('ed-' + k).value = (+e[k]).toFixed(1); });
+}
+function seleccionar(i) { SEL = i; listaElementos(); redibujar(); }
+function edit(k, v) { var e = DATOS.elementos[SEL]; if (!e) return; e[k] = v; if (k === 'tam') document.getElementById('ed-tam-v').textContent = (+v).toFixed(1); if (k === 'campo' || k === 'texto') listaElementos(); redibujar(); }
+function agregar(tipo) {
+  var e = { tipo: tipo, x: 3, y: 3, w: 30, h: 6 };
+  if (tipo === 'campo') { e.campo = 'clave_cuprum'; e.tam = 4; e.negrita = true; e.alinear = 'left'; }
+  if (tipo === 'texto') { e.texto = 'Texto'; e.tam = 3.5; e.negrita = false; e.alinear = 'left'; }
+  if (tipo === 'qr') { e.w = 18; e.h = 18; }
+  if (tipo === 'logo') { e.w = 12; e.h = 10; }
+  if (tipo === 'linea') { e.y = DATOS.alto / 2; e.w = DATOS.ancho - 6; e.h = 0.4; }
+  DATOS.elementos.push(e); SEL = DATOS.elementos.length - 1; listaElementos(); redibujar();
+}
+function quitar() { if (SEL < 0) return; DATOS.elementos.splice(SEL, 1); SEL = -1; listaElementos(); redibujar(); }
+// Arrastrar con el dedo / mouse
+(function () {
+  var cv = document.getElementById('lienzo'), arr = null;
+  function mm(ev) { var r = cv.getBoundingClientRect(); return { x: (ev.clientX - r.left) / r.width * DATOS.ancho, y: (ev.clientY - r.top) / r.height * DATOS.alto }; }
+  cv.addEventListener('pointerdown', function (ev) {
+    if (DATOS.modo !== 'libre') return;
+    var p = mm(ev), e = DATOS.elementos[SEL];
+    if (e && Math.abs(p.x - (e.x + e.w)) < 2.5 && Math.abs(p.y - (e.y + e.h)) < 2.5) { arr = { tipo: 'tam', p: p, o: { w: e.w, h: e.h } }; cv.setPointerCapture(ev.pointerId); return; }
+    for (var i = DATOS.elementos.length - 1; i >= 0; i--) { var t = DATOS.elementos[i]; if (p.x >= t.x && p.x <= t.x + t.w && p.y >= t.y && p.y <= t.y + Math.max(t.h, 1.5)) { SEL = i; arr = { tipo: 'mover', p: p, o: { x: t.x, y: t.y } }; cv.setPointerCapture(ev.pointerId); listaElementos(); redibujar(); return; } }
+    SEL = -1; listaElementos(); redibujar();
+  });
+  cv.addEventListener('pointermove', function (ev) {
+    if (!arr || SEL < 0) return; var p = mm(ev), e = DATOS.elementos[SEL], r = function (v) { return Math.round(v * 2) / 2; };
+    if (arr.tipo === 'mover') { e.x = r(arr.o.x + p.x - arr.p.x); e.y = r(arr.o.y + p.y - arr.p.y); }
+    else { e.w = Math.max(2, r(arr.o.w + p.x - arr.p.x)); e.h = Math.max(0.4, r(arr.o.h + p.y - arr.p.y)); if (e.tipo === 'qr') e.h = e.w; }
+    redibujar();
+  });
+  cv.addEventListener('pointerup', function () { if (arr) listaElementos(); arr = null; });
+})();
+// ── Guardar / cargar ──
+async function cargarLista() {
+  try { PLANTILLAS = await BCEtiquetas.listar(); } catch (e) { PLANTILLAS = []; }
+  var sel = document.getElementById('sel-plantilla');
+  sel.innerHTML = '<option value="">— Nueva plantilla —</option>' + PLANTILLAS.map(function (p) { return '<option value="' + p.id + '"' + (p.id === ACTUAL_ID ? ' selected' : '') + '>' + (p.predeterminada ? '⭐ ' : '') + p.nombre + '</option>'; }).join('');
+}
+function cargarSeleccion() {
+  var id = document.getElementById('sel-plantilla').value, p = PLANTILLAS.filter(function (x) { return x.id === id; })[0];
+  if (!p) { nueva(); return; }
+  ACTUAL_ID = p.id; DATOS = JSON.parse(JSON.stringify(p.datos)); SEL = -1;
+  document.getElementById('nombre').value = p.nombre; document.getElementById('predet').checked = p.predeterminada;
+  document.getElementById('ancho').value = DATOS.ancho || 60; document.getElementById('alto').value = DATOS.alto || 40;
+  pintarModo(); redibujar();
+}
+function nueva() {
+  ACTUAL_ID = null; DATOS = { modo: 'rapido', base: 'perfil', escala: 1, conLogo: true, ocultos: [], ancho: 60, alto: 40 }; SEL = -1;
+  document.getElementById('sel-plantilla').value = ''; document.getElementById('nombre').value = ''; document.getElementById('predet').checked = !PLANTILLAS.length;
+  document.getElementById('ancho').value = 60; document.getElementById('alto').value = 40; pintarModo(); redibujar();
+}
+async function guardar() {
+  leerMedidas();
+  var nombre = document.getElementById('nombre').value.trim(); if (!nombre) { toast('Ponle un nombre a la plantilla'); return; }
+  var predet = document.getElementById('predet').checked, c = sb(); if (!c) { toast('Sin conexión'); return; }
+  try {
+    if (predet) await c.from('etiquetas_plantillas').update({ predeterminada: false }).neq('id', ACTUAL_ID || '00000000-0000-0000-0000-000000000000');
+    var fila = { nombre: nombre, datos: DATOS, predeterminada: predet, updated_at: new Date().toISOString() }, r;
+    if (ACTUAL_ID) r = await c.from('etiquetas_plantillas').update(fila).eq('id', ACTUAL_ID).select();
+    else r = await c.from('etiquetas_plantillas').insert([fila]).select();
+    if (r.error) throw r.error;
+    ACTUAL_ID = r.data[0].id; BCEtiquetas.olvidarPredeterminada(); await cargarLista();
+    toast('✅ Plantilla guardada' + (predet ? ' (predeterminada en Inventario)' : ''));
+  } catch (e) { toast('No se pudo guardar: ' + e.message); }
+}
+async function imprimirPrueba() {
+  leerMedidas(); var prog = document.getElementById('prog');
+  try {
+    toast(BCEtiquetas.conectada() ? 'Imprimiendo prueba…' : 'Elige la impresora en la lista…');
+    await BCEtiquetas.imprimir([MUESTRA], { plantilla: DATOS, alAvanzar: function (f) { prog.style.width = Math.round(f * 100) + '%'; } });
+    toast('✅ Prueba enviada');
+  } catch (e) { toast(/cancel/i.test(e.message) ? 'No se eligió impresora' : 'No se pudo imprimir: ' + e.message); }
+  setTimeout(function () { prog.style.width = '0'; }, 800);
+}
+document.addEventListener('DOMContentLoaded', async function () { await cargarLista(); var p = PLANTILLAS.filter(function (x) { return x.predeterminada; })[0]; if (p) { document.getElementById('sel-plantilla').value = p.id; cargarSeleccion(); } else nueva(); });
+</script>
+</body>
+</html>
