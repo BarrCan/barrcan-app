@@ -7,6 +7,14 @@
 <script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.31
+  FECHA   : 2026-10-04
+  v4.31 - Recibos de pago en formato TICKET de 8 cm de ancho, mismo
+    diseño. El largo se ajusta solo: al imprimir se mide el contenido
+    (con o sin foto del comprobante / estado de cuenta) y la hoja queda
+    de 80 mm × el largo exacto, en vertical. Espera a que cargue la foto
+    del comprobante antes de imprimir. Aplica al recibo sencillo y al de
+    varios presupuestos.
   VERSIÓN : v4.30
   FECHA   : 2026-10-04
   v4.30 - Los documentos (presupuestos, recibos, reportes) se abren con
@@ -1298,7 +1306,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.30';
+var APP_VERSION = 'v4.31';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -2561,20 +2569,22 @@ function generarRecibo(d) {
     + '<style>'
     + '* { box-sizing:border-box; margin:0; padding:0 }'
     + 'body { font-family:Arial,sans-serif; font-size:9pt; color:#1B3A5C; background:white; -webkit-print-color-adjust:exact; print-color-adjust:exact; color-adjust:exact }'
-    + '.pg { max-width:140mm; margin:0 auto; padding:10mm 10mm 20mm }'
+    + '.pg { width:80mm; max-width:100%; margin:0 auto; padding:4mm 4mm 6mm }'
+    + '@media screen { body { background:#e9ecef; padding-bottom:64px } .pg { background:white; margin-top:8px; box-shadow:0 1px 6px rgba(0,0,0,.15) } }'
     + '.hdr { display:flex; align-items:center; gap:8px; margin-bottom:8px; padding-bottom:8px; border-bottom:2px solid #1B3A5C }'
     + 'table { width:100%; border-collapse:collapse; margin-bottom:6px }'
-    + 'td { padding:3px 6px; border:1px solid #ddd; font-size:8pt }'
+    + 'td { padding:2px 4px; border:1px solid #ddd; font-size:7.5pt; word-break:break-word }'
     + '.lbl { font-weight:700; background:#f5f7fa; width:40% }'
-    + '.mbox { background:#1B3A5C; color:white; border-radius:5px; padding:8px 10px; display:flex; justify-content:space-between; align-items:center; margin:8px 0 }'
+    + '.mbox { background:#1B3A5C; color:white; border-radius:5px; padding:6px 8px; display:flex; justify-content:space-between; align-items:center; margin:6px 0 }'
     + '.barra { position:fixed; bottom:0; left:0; right:0; background:#1B3A5C; padding:6px 12px; display:flex; gap:8px; justify-content:center; z-index:999 }'
     + '.bp { padding:8px 18px; background:#C8923A; color:white; border:none; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer }'
     + '.bc { padding:8px 10px; background:rgba(255,255,255,.15); color:white; border:none; border-radius:6px; font-size:11px; cursor:pointer }'
-    + '@media print { .barra { display:none!important } .pg { padding:5mm } * { -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; color-adjust:exact!important } }'
-    + '@page { size: 140mm 216mm; margin: 0 }'
+    + '@media print { .barra { display:none!important } body { background:white; padding:0 } .pg { padding:3mm 4mm; box-shadow:none; margin:0 } * { -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; color-adjust:exact!important } }'
+    + '@page { size: 80mm 200mm; margin: 0 }'
     + '</style></head><body>'
+    + '<script>function imprimirTicket(btn){if(btn){btn.disabled=true;btn.style.opacity=0.5;}var imgs=Array.prototype.slice.call(document.images);var esperas=imgs.map(function(im){return im.decode?im.decode().catch(function(){}):Promise.resolve();});var hecho=false;function lanzar(){if(hecho)return;hecho=true;var pg=document.querySelector(".pg");var alto=Math.ceil((pg?pg.scrollHeight:document.body.scrollHeight)*25.4/96)+4;var st=document.createElement("style");st.textContent="@page{size:80mm "+alto+"mm;margin:0}";document.head.appendChild(st);requestAnimationFrame(function(){requestAnimationFrame(function(){setTimeout(function(){if(btn){btn.disabled=false;btn.style.opacity=1;}window.print();},400);});});}Promise.all(esperas).then(lanzar,lanzar);setTimeout(lanzar,8000);}<\/script>'
     + '<div class=barra>'
-    + '<button class=bp onclick="window.print()">Imprimir / PDF</button>'
+    + '<button class=bp onclick="imprimirTicket(this)">Imprimir ticket / PDF</button>'
     + '<button class=bc onclick="window.close()">Cerrar</button>'
     + '</div>'
     + '<div class=pg>'
@@ -2638,20 +2648,22 @@ function generarReciboMultiple(d) {
     + '<style>'
     + '* { box-sizing:border-box; margin:0; padding:0 }'
     + 'body { font-family:Arial,sans-serif; font-size:9pt; color:#1B3A5C; background:white; -webkit-print-color-adjust:exact; print-color-adjust:exact; color-adjust:exact }'
-    + '.pg { max-width:140mm; margin:0 auto; padding:10mm 10mm 20mm }'
+    + '.pg { width:80mm; max-width:100%; margin:0 auto; padding:4mm 4mm 6mm }'
+    + '@media screen { body { background:#e9ecef; padding-bottom:64px } .pg { background:white; margin-top:8px; box-shadow:0 1px 6px rgba(0,0,0,.15) } }'
     + '.hdr { display:flex; align-items:center; gap:8px; margin-bottom:8px; padding-bottom:8px; border-bottom:2px solid #1B3A5C }'
     + 'table { width:100%; border-collapse:collapse; margin-bottom:6px }'
-    + 'td { padding:3px 6px; border:1px solid #ddd; font-size:8pt }'
+    + 'td { padding:2px 4px; border:1px solid #ddd; font-size:7.5pt; word-break:break-word }'
     + '.lbl { font-weight:700; background:#f5f7fa; width:40% }'
-    + '.mbox { background:#1B3A5C; color:white; border-radius:5px; padding:8px 10px; display:flex; justify-content:space-between; align-items:center; margin:8px 0 }'
+    + '.mbox { background:#1B3A5C; color:white; border-radius:5px; padding:6px 8px; display:flex; justify-content:space-between; align-items:center; margin:6px 0 }'
     + '.barra { position:fixed; bottom:0; left:0; right:0; background:#1B3A5C; padding:6px 12px; display:flex; gap:8px; justify-content:center; z-index:999 }'
     + '.bp { padding:8px 18px; background:#C8923A; color:white; border:none; border-radius:6px; font-size:12px; font-weight:700; cursor:pointer }'
     + '.bc { padding:8px 10px; background:rgba(255,255,255,.15); color:white; border:none; border-radius:6px; font-size:11px; cursor:pointer }'
-    + '@media print { .barra { display:none!important } .pg { padding:5mm } * { -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; color-adjust:exact!important } }'
-    + '@page { size: 140mm 216mm; margin: 0 }'
+    + '@media print { .barra { display:none!important } body { background:white; padding:0 } .pg { padding:3mm 4mm; box-shadow:none; margin:0 } * { -webkit-print-color-adjust:exact!important; print-color-adjust:exact!important; color-adjust:exact!important } }'
+    + '@page { size: 80mm 200mm; margin: 0 }'
     + '</style></head><body>'
+    + '<script>function imprimirTicket(btn){if(btn){btn.disabled=true;btn.style.opacity=0.5;}var imgs=Array.prototype.slice.call(document.images);var esperas=imgs.map(function(im){return im.decode?im.decode().catch(function(){}):Promise.resolve();});var hecho=false;function lanzar(){if(hecho)return;hecho=true;var pg=document.querySelector(".pg");var alto=Math.ceil((pg?pg.scrollHeight:document.body.scrollHeight)*25.4/96)+4;var st=document.createElement("style");st.textContent="@page{size:80mm "+alto+"mm;margin:0}";document.head.appendChild(st);requestAnimationFrame(function(){requestAnimationFrame(function(){setTimeout(function(){if(btn){btn.disabled=false;btn.style.opacity=1;}window.print();},400);});});}Promise.all(esperas).then(lanzar,lanzar);setTimeout(lanzar,8000);}<\/script>'
     + '<div class=barra>'
-    + '<button class=bp onclick="window.print()">Imprimir / PDF</button>'
+    + '<button class=bp onclick="imprimirTicket(this)">Imprimir ticket / PDF</button>'
     + '<button class=bc onclick="window.close()">Cerrar</button>'
     + '</div>'
     + '<div class=pg>'
