@@ -4,8 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan &middot; Adicionales</title>
+<script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN · MODULO: ADICIONALES / EXTRAS (standalone)
+  VERSION : v1.1
+  FECHA   : 2026-10-04
+  v1.1 - Los documentos (presupuestos, recibos, reportes) se abren con
+    su folio en la dirección y en el título -- ya no "about:blank" -- y el
+    PDF se guarda con el nombre del folio (modulos/abrir_doc.js).
   VERSION : v1.0
   FECHA   : 2026-09-03
   v1.0 - Creación inicial. Se intentó primero como tarjeta aislada
@@ -109,7 +115,7 @@ textarea.form-input { resize:vertical; min-height:70px; }
 <div class="toast" id="toast"></div>
 
 <script>
-var APP_VERSION = 'v1.0';
+var APP_VERSION = 'v1.1';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sbClient=null;

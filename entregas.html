@@ -4,8 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan &middot; Entregas</title>
+<script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.64.1
+  FECHA   : 2026-10-04
+  v3.64.1 - Los documentos (presupuestos, recibos, reportes) se abren con
+    su folio en la dirección y en el título -- ya no "about:blank" -- y el
+    PDF se guarda con el nombre del folio (modulos/abrir_doc.js).
   VERSION : v3.64.0
   FECHA   : 2026-10-04
   v3.64.0 - Los conceptos "Costos de obra" y "Ajuste tarifa familia"
@@ -2403,7 +2409,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.64.0';
+var APP_VERSION = 'v3.64.1';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');

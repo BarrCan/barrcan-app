@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Cotizador Eurovent</title>
+<script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN COTIZADOR EUROVENT v1.8.0
   v1.8.0 - Muestra visual junto a Acabado/Color y Espesor de Vidrio: en vez
@@ -3528,7 +3529,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.8.3';
+const APP_VERSION = 'v1.8.4';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —

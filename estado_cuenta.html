@@ -4,8 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan &middot; Estado de Cuenta</title>
+<script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN · MODULO: ESTADO DE CUENTA POR CLIENTE (standalone)
+  VERSION : v1.5
+  FECHA   : 2026-10-04
+  v1.5 - Los documentos (presupuestos, recibos, reportes) se abren con
+    su folio en la dirección y en el título -- ya no "about:blank" -- y el
+    PDF se guarda con el nombre del folio (modulos/abrir_doc.js).
   VERSION : v1.4
   FECHA   : 2026-09-16
   v1.4 - FIX: la búsqueda por número de cliente (el "(N)" junto al
@@ -119,7 +125,7 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--off
 <div class="toast" id="toast"></div>
 
 <script>
-var APP_VERSION = 'v1.4';
+var APP_VERSION = 'v1.5';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sbClient=null;

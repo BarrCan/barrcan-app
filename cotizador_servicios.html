@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Servicios y Accesorios</title>
+<script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN SERVICIOS Y ACCESORIOS v1.18.0
   v1.18.0 - Código promocional (SEPTMX26, compartido con los demás
@@ -191,6 +192,11 @@
     - Se agregó una verificación automática (script de comparación
       onclick/onchange vs. window.expuestas) para detectar esto antes
       de publicar, no solo revisando a ojo.
+  VERSION : v1.19.2
+  FECHA   : 2026-10-04
+  v1.19.2 - Los documentos (presupuestos, recibos, reportes) se abren con
+    su folio en la dirección y en el título -- ya no "about:blank" -- y el
+    PDF se guarda con el nombre del folio (modulos/abrir_doc.js).
   VERSION : v1.19.1
   FECHA   : 2026-10-02
   v1.19.1 - Solo se sincroniza este encabezado con la versión real en
@@ -4011,7 +4017,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.19.1';
+const APP_VERSION = 'v1.19.2';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BarrCan · Documento</title>
+<!--
+  BARRCAN · VISOR DE DOCUMENTOS INTERNOS
+  VERSION : v1.0
+  FECHA   : 2026-10-04
+  v1.0 - Recibe el documento que genera cualquier módulo (presupuesto,
+    recibo, reporte, entrega, visita...) a través de modulos/abrir_doc.js
+    y lo muestra con dirección propia: ver_doc.html?ref=<FOLIO>, en vez
+    de "about:blank". El título queda con el folio, así el PDF se guarda
+    con ese nombre. El documento se borra del almacenamiento del celular
+    al abrirse, para no ocupar espacio.
+-->
+<style>
+  body{font-family:Arial,sans-serif;color:#1B3A5C;display:flex;align-items:center;justify-content:center;min-height:90vh;margin:0;text-align:center}
+  .s{width:34px;height:34px;border:4px solid #E2E7EC;border-top-color:#C8923A;border-radius:50%;animation:g 1s linear infinite;margin:0 auto 14px}
+  @keyframes g{to{transform:rotate(360deg)}} small{color:#5B6B7A}
+</style>
+</head>
+<body>
+<div id="msg"><div class="s"></div><b>Preparando documento…</b><br><small>BarrCan</small></div>
+<script>
+(function () {
+  var k = new URLSearchParams(location.search).get('k') || '';
+  var CLAVE = 'barrcan_doc_' + k, intentos = 0;
+  function mostrar(d) {
+    try { localStorage.removeItem(CLAVE); } catch (e) {}
+    try { history.replaceState(null, '', 'ver_doc.html?ref=' + encodeURIComponent(d.ref) + '&k=' + encodeURIComponent(k)); } catch (e) {}
+    document.open(); document.write(d.html); document.close();
+  }
+  function revisar() {
+    var raw = null; try { raw = localStorage.getItem(CLAVE); } catch (e) {}
+    if (raw) { try { mostrar(JSON.parse(raw)); return; } catch (e) {} }
+    if (++intentos > 400) { // ~2 minutos (fotos que se suben antes de generar el reporte)
+      document.getElementById('msg').innerHTML = '<b>Este documento ya no está disponible aquí.</b><br><small>Vuelve a abrirlo desde la app.</small>';
+      return;
+    }
+    setTimeout(revisar, 300);
+  }
+  if (!k) { document.getElementById('msg').innerHTML = '<b>Documento no encontrado.</b><br><small>Vuelve a abrirlo desde la app.</small>'; return; }
+  // Esperar a que el visor termine de cargar: si el documento ya estaba
+  // listo, escribirlo mientras la página aún se arma lo mezclaba con ella.
+  if (document.readyState === 'complete') revisar(); else window.addEventListener('load', revisar);
+})();
+</script>
+</body>
+</html>

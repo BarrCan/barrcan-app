@@ -4,8 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Reportes</title>
+<script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN · MODULO: REPORTES (standalone)
+  VERSION : v3.2
+  FECHA   : 2026-10-04
+  v3.2 - Los documentos (presupuestos, recibos, reportes) se abren con
+    su folio en la dirección y en el título -- ya no "about:blank" -- y el
+    PDF se guarda con el nombre del folio (modulos/abrir_doc.js).
   VERSION : v3.1
   FECHA   : 2026-10-04
   v3.1 - FIX fecha adelantada: "hoy" se sacaba en hora UTC (toISOString), y a
@@ -517,7 +523,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 </div>
 </body>
 <script>
-var APP_VERSION = 'v3.1';
+var APP_VERSION = 'v3.2';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb=null;
