@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════
-// BarrCan Service Worker v12 — Offline First
+// BarrCan Service Worker v13 — Offline First
 // Estrategia: Network-First con timeout para HTML (páginas .html),
 //             Cache-First para fuentes/CDN,
 //             Supabase y APIs externas: Network Only
@@ -48,7 +48,11 @@
 //    por uno: si alguno falla, los demás sí quedan.
 
 // v12 (04-oct-2026): precarga modulos/presupuesto_doc.js (documento oficial).
-const CACHE_VERSION = 'barrcan-v13'; // subir este número fuerza que TODOS los
+// v13 (04-oct-2026): los .js locales (modulos/*.js, como el documento
+// oficial de presupuesto) ahora también son RED PRIMERO. Antes eran caché
+// primero: un cambio (ej. el correo de facturación) no se veía hasta la
+// segunda apertura, porque se servía la copia vieja guardada.
+const CACHE_VERSION = 'barrcan-v14'; // subir este número fuerza que TODOS los
 // dispositivos descarten su caché vieja de una vez -- ya no debería
 // hacer falta subirlo por cada arreglo ahora que HTML es Network First,
 // pero sigue disponible por si algún día conviene un reinicio total.
@@ -154,7 +158,7 @@ self.addEventListener('fetch', event => {
 
   // NETWORK FIRST — páginas .html (y navegación directa): siempre la
   // versión más reciente si hay señal, caché solo como respaldo offline.
-  const esHTML = event.request.mode === 'navigate' || url.pathname.endsWith('.html');
+  const esHTML = event.request.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname.endsWith('.js');
   if (esLocal && esHTML) {
     event.respondWith(redPrimero(event.request));
     return;
