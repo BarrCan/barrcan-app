@@ -2,6 +2,11 @@
 ══════════════════════════════════════════════════════════════════
   BARRCAN · MÓDULO: CLIENTES (standalone)
 ══════════════════════════════════════════════════════════════════
+  VERSIÓN : v1.6
+  FECHA   : 2026-10-06
+  v1.6 - Canales de origen nuevos: FB Facebook, IG Instagram y TT TikTok
+    (se quitó "F" combinado; ningún cliente lo usaba). FIX: el consecutivo
+    de "W" contaba también los "WA" por empezar igual; ahora es exacto.
   VERSIÓN : v1.5
   FECHA   : 2026-07-13
   ESTADO  : Logo corregido y estandarizado
@@ -1215,8 +1220,10 @@ body{min-height:100vh}
       <div class="form-select-wrap">
         <select id="cli-inp-canal" class="form-select" onchange="cliActualizarPreview()">
           <option value="WA">WA — WhatsApp</option>
+          <option value="FB">FB — Facebook</option>
+          <option value="IG">IG — Instagram</option>
+          <option value="TT">TT — TikTok</option>
           <option value="W">W — Web</option>
-          <option value="F">F — Facebook / Instagram</option>
           <option value="RC">RC — Recomendados</option>
           <option value="SH">SH — Shopify</option>
           <option value="ML">ML — Mercado Libre</option>
@@ -1426,10 +1433,14 @@ function cliGenerarNumCliente(canal, consecutivo) {
 function cliSiguienteNum(canal) {
   const anio = String(new Date().getFullYear()).slice(-2);
   const prefijo = `${anio}${canal}`;
+  // FIX: antes "W" contaba también los "WA" (y "F" contaría los "FB"),
+  // porque solo revisaba que el número empezara igual. Ahora el canal
+  // debe ir seguido directamente del consecutivo.
+  const exacto = new RegExp('^' + prefijo + '(\\d+)$', 'i');
   const delCanal = cliListaCache
-    .map(c => c.num_cliente || '')
-    .filter(n => n.toUpperCase().startsWith(prefijo))
-    .map(n => parseInt(n.slice(prefijo.length)) || 0)
+    .map(c => (c.num_cliente || '').toUpperCase().match(exacto))
+    .filter(Boolean)
+    .map(m => parseInt(m[1]) || 0)
     .filter(n => n < 100);
   const maxNum = delCanal.length ? Math.max(...delCanal) : 0;
   return cliGenerarNumCliente(canal, maxNum + 1);
