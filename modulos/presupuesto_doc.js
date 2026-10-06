@@ -1,6 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 // BarrCan · DOCUMENTO OFICIAL DE PRESUPUESTO (compartido)
-// VERSION : v1.2   FECHA : 2026-10-06
+// VERSION : v1.3   FECHA : 2026-10-06
+// v1.3 - Firma electrónica del cliente estampada en la zona de firmas
+//   (opciones.firma = { nombre, png, fecha, hash }).
 // v1.1 - Correo de facturación corregido a ventas@barrcan.com.mx.
 // v1.2 - Si el cliente tiene empresa en su ficha: "Cliente: EMPRESA" y
 //   "En atención a: Arq. X" (opciones.empresa / opciones.atencion).
@@ -80,7 +82,9 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
     return '<div style="padding:6px 0;border-bottom:1px solid #eee;font-size:11pt">'
       + '<div style="display:flex;justify-content:space-between">'
       + '<span>' + (idx + 1) + '. ' + esc(it.label) + detalle + '</span>'
-      + '<span style="font-weight:700;white-space:nowrap;padding-left:12px">$' + fmt(it.precio) + '</span></div>'
+      + (parseFloat(it.precio) < 0
+          ? '<span style="font-weight:700;white-space:nowrap;padding-left:12px;color:#27AE60">\u2212$' + fmt(-parseFloat(it.precio)) + '</span></div>'
+          : '<span style="font-weight:700;white-space:nowrap;padding-left:12px">$' + fmt(it.precio) + '</span></div>')
       + diagrama
       + '</div>';
   }).join('');
@@ -176,7 +180,12 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
     + 'El tiempo estimado de fabricaci\u00f3n e instalaci\u00f3n es de <strong>5 a 7 d\u00edas h\u00e1biles</strong> contados a partir de la recepci\u00f3n del anticipo del 50 %. BarrCan notificar\u00e1 con anticipaci\u00f3n si la carga de trabajo no permitiera cumplir con dicho plazo.'
     + '</div>'
     + '<table style="width:100%;margin-top:24px"><tr>'
-    + '<td style="width:44%;padding:50px 12px 8px;border-top:1.5px solid #999;font-size:9pt;color:#555;text-align:center">Firma y nombre del cliente<br>Fecha: ___________________</td>'
+    + (opciones.firma && opciones.firma.png
+        ? '<td style="width:44%;padding:4px 12px 8px;border-top:1.5px solid #999;font-size:9pt;color:#555;text-align:center;vertical-align:bottom">'
+          + '<img src="' + opciones.firma.png + '" style="max-height:70px;max-width:100%;display:block;margin:0 auto 2px">'
+          + '<strong style="color:#1B3A5C">' + esc(opciones.firma.nombre || '') + '</strong><br>Firmado electr\u00f3nicamente: ' + esc(opciones.firma.fecha || '')
+          + (opciones.firma.hash ? '<br><span style="font-family:monospace;font-size:6.5pt;color:#999">Huella: ' + esc(String(opciones.firma.hash).slice(0, 24)) + '…</span>' : '') + '</td>'
+        : '<td style="width:44%;padding:50px 12px 8px;border-top:1.5px solid #999;font-size:9pt;color:#555;text-align:center">Firma y nombre del cliente<br>Fecha: ___________________</td>')
     + '<td style="width:12%"></td>'
     + '<td style="width:44%;padding:50px 12px 8px;border-top:1.5px solid #999;font-size:9pt;color:#555;text-align:center">Sello y firma BarrCan<br><span style="font-family:\'Courier New\',monospace;font-size:8pt;color:#1B3A5C">' + esc(folio) + '</span></td>'
     + '</tr></table>'
@@ -203,5 +212,5 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
       return { empresa: String(f.empresa).trim(), atencion: f.nombre };
     } catch (e) { return {}; }
   }
-  window.BCDoc = { version: 'v1.2', generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo, datosCliente: datosCliente };
+  window.BCDoc = { version: 'v1.3', generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo, datosCliente: datosCliente };
 })();

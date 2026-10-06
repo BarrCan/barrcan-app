@@ -8,6 +8,12 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.22
+  FECHA   : 2026-10-06
+  v3.22 - Firma del cliente: botón "📝 Enviar para firma (WhatsApp)" que
+    manda la liga a firmar.html con un código aleatorio; la tarjeta marca
+    "⏳ Firma enviada" o "✅ Firmado" y al imprimir sale la firma estampada.
+    Las líneas de descuento cuentan como cargo, no como pieza.
   VERSIÓN : v3.21
   FECHA   : 2026-10-06
   v3.21 - Presupuesto impreso para clientes de empresa: "Cliente: EMPRESA"
@@ -1658,7 +1664,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.21';
+var APP_VERSION = 'v3.22';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1750,7 +1756,7 @@ async function presCargar() {
 
   try {
     var result = await sb().from('presupuestos_atrasados')
-      .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,fecha,anio_referencia,estado,notas_internas,modulo,created_at')
+      .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,fecha,anio_referencia,estado,notas_internas,modulo,created_at,firma_token,firmado_at,firmado_por,firma_png,firma_hash')
       .order('folio', { ascending: true })
       .range(0, 499);
 
@@ -1887,6 +1893,8 @@ function presRenderLista(datos) {
       + '<div style="font-size:12px;font-weight:700;color:var(--navy)">' + (p.folio || '&mdash;') + anioStr + '</div>'
       + '<div style="font-size:13px;font-weight:600;color:var(--navy)">' + (p.cliente || '') + '</div>'
       + '<div style="font-size:10px;color:var(--gray-400)">' + (p.fecha || '') + telStr + '</div>'
+      + (p.firmado_at ? '<div style="font-size:10px;font-weight:700;color:var(--green);margin-top:2px">✅ Firmado ' + new Date(p.firmado_at).toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City', day: '2-digit', month: 'short' }) + ' · ' + (p.firmado_por || '') + '</div>'
+         : (p.firma_token ? '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-top:2px">⏳ Firma enviada, pendiente</div>' : ''))
       + '</div>'
       + '<div style="text-align:right">'
       + '<span style="font-size:10px;font-weight:700;color:' + color + ';background:rgba(0,0,0,0.04);padding:2px 7px;border-radius:8px">'
@@ -2115,7 +2123,7 @@ function presBotonesNormales(idStr) {
     + '<button onclick="presCrearOT(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:9.5px;font-weight:700;cursor:pointer">OT</button>'
     + '<button onclick="presVerProgreso(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(142,68,173,0.08);border:1.5px solid rgba(142,68,173,0.3);border-radius:8px;color:#8E44AD;font-size:9.5px;font-weight:700;cursor:pointer">Progreso</button>'
     + '</div>'
-    + '<button onclick="presImprimir(\'' + idStr + '\')" style="width:100%;margin-top:5px;padding:7px 2px;background:rgba(27,58,92,0.06);border:1.5px solid rgba(27,58,92,0.2);border-radius:8px;color:var(--navy);font-size:9.5px;font-weight:700;cursor:pointer">&#128424; Reimprimir presupuesto</button>';
+    + '<button onclick="presImprimir(\'' + idStr + '\')" style="width:100%;margin-top:5px;padding:7px 2px;background:rgba(27,58,92,0.06);border:1.5px solid rgba(27,58,92,0.2);border-radius:8px;color:var(--navy);font-size:9.5px;font-weight:700;cursor:pointer">&#128424; Reimprimir presupuesto</button>' + '<button onclick="presEnviarFirma(\'' + idStr + '\')" style="width:100%;margin-top:5px;padding:8px 2px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.35);border-radius:8px;color:var(--green);font-size:10.5px;font-weight:700;cursor:pointer">📝 Enviar para firma (WhatsApp)</button>';
 }
 
 function presBotonesCola(p) {
@@ -2207,6 +2215,41 @@ function presDiagramaPieza(r) {
 // encabezado, partidas con cantidad, diagramas, condiciones de venta,
 // cuentas y firmas). Si el módulo no cargó (sin señal y sin caché), se
 // usa la impresión simple de siempre.
+// ── FIRMA DEL CLIENTE (v3.22) ───────────────────────────────────
+// Genera un código largo y aleatorio (no el folio, para que nadie pueda
+// ver presupuestos ajenos), lo guarda en el presupuesto y abre WhatsApp
+// con la liga a firmar.html. Si ya existe un código, se reutiliza.
+function presCodigoFirma() {
+  var abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789', a = new Uint32Array(32), t = '';
+  crypto.getRandomValues(a); for (var i = 0; i < a.length; i++) t += abc[a[i] % abc.length];
+  return t;
+}
+async function presEnviarFirma(idStr) {
+  var p = PRES_CACHE.filter(function(x) { return x.id === idStr; })[0];
+  if (!p) { toast('No se encontró ese presupuesto'); return; }
+  if (p.firmado_at) { toast('Ya está firmado por ' + (p.firmado_por || 'el cliente') + ' -- al imprimir sale con su firma'); return; }
+  var tel = String(p.tel || '').replace(/\D/g, '');
+  if (tel.length === 10) tel = '52' + tel;
+  var token = p.firma_token || presCodigoFirma();
+  try {
+    if (!p.firma_token) {
+      var r = await sb().from('presupuestos_atrasados').update({ firma_token: token, firma_enviada_at: new Date().toISOString() }).eq('id', p.id);
+      if (r.error) throw r.error;
+      p.firma_token = token; presGuardarCache(PRES_CACHE);
+    }
+  } catch (e) { toast('No se pudo preparar la liga de firma: ' + e.message); return; }
+  var liga = 'https://barrcan.github.io/barrcan-app/firmar.html?t=' + token;
+  var nombre = String(p.cliente || '').trim();
+  var monto = '$' + Number(p.monto || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  var texto = 'Hola' + (nombre ? ' ' + nombre : '') + ', le comparto su presupuesto ' + p.folio + ' por ' + monto + '.\n\n'
+    + 'Puede revisarlo y firmarlo desde su celular aquí:\n' + liga + '\n\n'
+    + 'Al firmar le aparecen los datos para el anticipo. Quedo a sus órdenes. — BarrCan';
+  var url = 'https://wa.me/' + (tel.length >= 12 ? tel : '') + '?text=' + encodeURIComponent(texto);
+  var w = window.open(url, '_blank');
+  if (!w) { try { await navigator.clipboard.writeText(liga); toast('Liga copiada -- pégala en WhatsApp'); } catch (e2) { prompt('Copia esta liga y mándala por WhatsApp:', liga); } }
+  if (typeof presFiltrar === "function") presFiltrar();
+}
+
 async function presImprimir(idStr) {
   var p = PRES_CACHE.filter(function(x) { return x.id === idStr; })[0];
   if (!p) { toast('No se encontró ese presupuesto'); return; }
@@ -2225,7 +2268,9 @@ async function presImprimir(idStr) {
   // v3.21: cliente de empresa -> "Cliente: EMPRESA" + "En atención a: ..."
   var emp = window.BCDoc.datosCliente ? await window.BCDoc.datosCliente(p.folio, p.cliente) : {};
   var html = window.BCDoc.generar(piezas, p.folio || '', p.cliente || '', p.dir || '', fecha,
-    { total: parseFloat(p.monto) || 0, empresa: emp.empresa, atencion: emp.atencion });
+    { total: parseFloat(p.monto) || 0, empresa: emp.empresa, atencion: emp.atencion,
+      firma: p.firmado_at ? { nombre: p.firmado_por, png: p.firma_png, hash: p.firma_hash,
+        fecha: new Date(p.firmado_at).toLocaleString('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'long', timeStyle: 'short' }) } : null });
   w.document.write(html);
   w.document.close();
 }
@@ -2357,7 +2402,7 @@ function presDibujarConceptos() {
       : '';
     var numUnid = Array.isArray(p.unidades) ? p.unidades.length : 0;
     var numInst = numUnid ? p.unidades.filter(function(u) { return u.estado === 'instalada'; }).length : 0;
-    var esCargoObra = p.resultado && /^(costos_obra|ajuste_tarifa)$/.test(p.resultado.tipo);
+    var esCargoObra = p.resultado && /^(costos_obra|ajuste_tarifa|descuento)$/.test(p.resultado.tipo);
     var btnUnidades = esCargoObra ? '' : '<button type="button" onclick="presAbrirUnidades(' + i + ')" title="Desglosar en piezas individuales para instalación por etapas" '
       + 'style="padding:6px 9px;background:' + (numUnid ? 'rgba(39,174,96,0.1)' : 'rgba(0,0,0,0.04)') + ';border:1.5px solid ' + (numUnid ? 'rgba(39,174,96,0.3)' : 'var(--gray-200)') + ';border-radius:6px;color:' + (numUnid ? '#27AE60' : 'var(--gray-400)') + ';cursor:pointer;flex-shrink:0;font-size:10.5px;font-weight:700;white-space:nowrap">'
       + (numUnid ? ('🔲 ' + numInst + '/' + numUnid) : '🔲 Desglosar') + '</button>';
@@ -2918,7 +2963,7 @@ async function obraTarifa(tipo) {
     toast('Tarifa comercial: se quitó el ajuste de familia');
   } else {
     var base = PRES_CONCEPTOS.reduce(function(s, p) {
-      return (p.resultado && /^(costos_obra|ajuste_tarifa)$/.test(p.resultado.tipo)) ? s : s + (parseFloat(p.precio) || 0);
+      return (p.resultado && /^(costos_obra|ajuste_tarifa|descuento)$/.test(p.resultado.tipo)) ? s : s + (parseFloat(p.precio) || 0);
     }, 0);
     if (!base) { toast('No hay piezas con precio para aplicar la tarifa'); return; }
     var factor = (1 + OBRA_CFG.utilidad_familia_pct / 100) / (1 + OBRA_CFG.utilidad_pct / 100);

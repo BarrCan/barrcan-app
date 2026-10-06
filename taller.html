@@ -6,6 +6,9 @@
 <title>BarrCan · Taller</title>
 <!--
   BARRCAN · MODULO: TALLER (standalone)
+  VERSION : v1.6
+  FECHA   : 2026-10-06
+  v1.6 - Las líneas de descuento no son piezas a fabricar.
   VERSION : v1.5
   FECHA   : 2026-10-04
   v1.5 - "Costos de obra" y "Ajuste tarifa familia" (Historial v3.17)
@@ -335,7 +338,7 @@ function sb() {
 }
 
 // ── Conexión ─────────────────────────────────────────────────────
-var APP_VERSION = 'v1.5';
+var APP_VERSION = 'v1.6';
 var SYNC = { online: navigator.onLine };
 function detectarConexion() {
   var b = document.getElementById('conn-status');
@@ -485,7 +488,7 @@ function tlPiezasDe(row) {
   try {
     var p = JSON.parse(row.notas_internas || '[]');
     // v1.5: costos de obra y ajuste de tarifa son cargos, no piezas a fabricar
-    return Array.isArray(p) ? p.filter(function(pz) { return !(pz.resultado && /^(costos_obra|ajuste_tarifa)$/.test(pz.resultado.tipo)); }) : [];
+    return Array.isArray(p) ? p.filter(function(pz) { return !(pz.resultado && /^(costos_obra|ajuste_tarifa|descuento)$/.test(pz.resultado.tipo)); }) : [];
   } catch (e) { return []; }
 }
 function tlTieneFabricacion(r) {

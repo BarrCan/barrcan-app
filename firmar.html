@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>BarrCan · Firma de presupuesto</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="modulos/presupuesto_doc.js"></script>
+<!--
+  BARRCAN · FIRMA DE PRESUPUESTO (página pública, sin PIN)
+  VERSION : v1.0
+  FECHA   : 2026-10-06
+  v1.0 - El cliente abre firmar.html?t=<código> desde WhatsApp, revisa su
+    presupuesto con el formato oficial, escribe su nombre, acepta las
+    condiciones y firma con el dedo. Se guarda en presupuestos_atrasados:
+    firmado_at, firmado_por, firma_png, firma_hash (huella SHA-256 del
+    contenido firmado: folio, monto y partidas), firma_agente (celular) y
+    firma_monto. El código de la liga es largo y aleatorio (no el folio)
+    para que nadie vea presupuestos ajenos. Al firmar se muestran el
+    anticipo y las cuentas, y un botón para avisar a BarrCan por WhatsApp.
+-->
+<style>
+  :root{--navy:#1B3A5C;--gold:#C8923A;--gris:#5B6B7A;--verde:#27AE60}
+  *{box-sizing:border-box} body{margin:0;font-family:Arial,sans-serif;background:#F3F5F8;color:var(--navy)}
+  header{background:var(--navy);color:#fff;padding:14px 16px;text-align:center}
+  header b{font-size:17px;letter-spacing:.5px} header div{font-size:11.5px;opacity:.75;margin-top:2px}
+  main{max-width:720px;margin:0 auto;padding:12px}
+  .card{background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;box-shadow:0 1px 5px rgba(0,0,0,.08)}
+  #doc{width:100%;height:62vh;border:1px solid #E2E7EC;border-radius:10px;background:#fff}
+  label{font-size:12.5px;font-weight:700;display:block;margin:10px 0 4px}
+  input[type=text]{width:100%;padding:11px;border:1.5px solid #D5DCE4;border-radius:9px;font-size:15px}
+  #firma{width:100%;height:170px;border:2px dashed #C8923A;border-radius:10px;background:#FFFDF8;touch-action:none;display:block}
+  .acepto{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.4;margin:12px 0}
+  .acepto input{width:22px;height:22px;flex-shrink:0;margin-top:1px}
+  button{width:100%;padding:14px;border:none;border-radius:10px;font-size:15.5px;font-weight:700;cursor:pointer}
+  .b-firma{background:var(--verde);color:#fff} .b-ln{background:#fff;border:1.5px solid #D5DCE4;color:var(--navy);padding:9px;font-size:13px}
+  .b-wa{background:#25D366;color:#fff;margin-top:10px} .b-doc{background:var(--navy);color:#fff;margin-top:10px}
+  .monto{font-size:26px;font-weight:800;color:var(--navy)} .nota{font-size:11.5px;color:var(--gris);line-height:1.45}
+  .banco{border:1px solid #E2E7EC;border-radius:9px;padding:10px;margin-top:8px;font-size:13px;line-height:1.5}
+  #msg{text-align:center;padding:40px 16px;color:var(--gris)}
+</style>
+</head>
+<body>
+<header><b>BarrCan</b><div>Cancelería · Aluminio · Vidrio</div></header>
+<main>
+  <div id="msg">Cargando su presupuesto…</div>
+  <div id="contenido" style="display:none">
+    <div class="card">
+      <div class="nota" style="margin-bottom:6px">Presupuesto <b id="folio"></b> · <span id="cliente"></span></div>
+      <iframe id="doc" title="Presupuesto"></iframe>
+      <div class="nota" style="margin-top:6px">Desliza para revisar las partidas y las condiciones de venta.</div>
+    </div>
+
+    <div class="card" id="panel-firma">
+      <div style="font-size:12px;color:var(--gris)">Total del presupuesto</div>
+      <div class="monto" id="total"></div>
+      <label for="nombre">Nombre completo de quien acepta</label>
+      <input type="text" id="nombre" autocomplete="name" placeholder="Nombre y apellidos">
+      <label>Firma <span style="font-weight:400;color:var(--gris)">(con el dedo dentro del recuadro)</span></label>
+      <canvas id="firma"></canvas>
+      <button class="b-ln" style="margin-top:6px" onclick="limpiar()">Borrar firma</button>
+      <label class="acepto"><input type="checkbox" id="acepto"> <span>He leído el presupuesto y <b>acepto los trabajos, el precio y las condiciones de venta</b> descritas, incluyendo la política de pagos.</span></label>
+      <button class="b-firma" id="btn-firmar" onclick="firmar()">✍️ Firmar y aceptar presupuesto</button>
+      <div class="nota" style="margin-top:8px">Al firmar se guarda su nombre, su firma, la fecha y hora, y una huella digital del presupuesto que garantiza que no se modificó después.</div>
+    </div>
+
+    <div class="card" id="panel-listo" style="display:none">
+      <div style="text-align:center;font-size:40px">✅</div>
+      <div style="text-align:center;font-size:18px;font-weight:800">¡Presupuesto aceptado!</div>
+      <div class="nota" style="text-align:center;margin:4px 0 12px" id="firmado-info"></div>
+      <div style="font-size:12px;color:var(--gris)">Anticipo para iniciar (50%)</div>
+      <div class="monto" id="anticipo"></div>
+      <div class="banco"><b>BBVA</b> · Mauricio Barrera Espinosa<br>Cuenta: 1512081906<br>CLABE: 012180015120819061</div>
+      <div class="banco"><b>Banorte</b> · Mauricio Barrera Espinosa<br>Cuenta: 0672530766<br>CLABE: 072180006725307668</div>
+      <button class="b-wa" onclick="avisar()">📲 Enviar comprobante a BarrCan por WhatsApp</button>
+      <button class="b-doc" onclick="verFirmado()">📄 Ver / descargar presupuesto firmado</button>
+    </div>
+  </div>
+</main>
+<script>
+var SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co', SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I', _sb = null;
+function sb() { if (!_sb && window.supabase) _sb = window.supabase.createClient(SB_URL, SB_KEY, { db: { schema: 'barrcan' }, auth: { persistSession: false } }); return _sb; }
+var TOKEN = new URLSearchParams(location.search).get('t') || '', P = null, EMP = {}, PIEZAS = [], hayTrazo = false;
+var WA_BARRCAN = '525615158415';
+function money(n) { return '$' + Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function fechaDe(p) { var f = String(p.fecha || '').split('-'); return f.length === 3 ? new Date(+f[0], +f[1] - 1, +f[2]) : new Date(); }
+function fechaHora(iso) { return new Date(iso).toLocaleString('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'long', timeStyle: 'short' }); }
+function docHTML(conFirma) {
+  var op = { total: parseFloat(P.monto) || 0, empresa: EMP.empresa, atencion: EMP.atencion };
+  if (conFirma && P.firmado_at) op.firma = { nombre: P.firmado_por, png: P.firma_png, fecha: fechaHora(P.firmado_at), hash: P.firma_hash };
+  return BCDoc.generar(PIEZAS, P.folio, P.cliente || '', P.dir || '', fechaDe(P), op);
+}
+function mostrarDoc() {
+  var html = docHTML(true).replace('</head>', '<style>.barra{display:none!important}body{padding-bottom:0!important}</style></head>');
+  document.getElementById('doc').srcdoc = html;
+}
+async function cargar() {
+  var msg = document.getElementById('msg');
+  if (!/^[A-Za-z0-9]{20,}$/.test(TOKEN)) { msg.innerHTML = '<b>Liga no válida.</b><br>Pida a BarrCan que se la envíe de nuevo.'; return; }
+  try {
+    var r = await sb().from('presupuestos_atrasados')
+      .select('id,folio,cliente,dir,fecha,monto,notas_internas,descripcion,firmado_at,firmado_por,firma_png,firma_hash,eliminado')
+      .eq('firma_token', TOKEN).limit(1);
+    if (r.error) throw r.error;
+    P = (r.data || [])[0];
+    if (!P || P.eliminado) { msg.innerHTML = '<b>Este presupuesto ya no está disponible.</b><br>Comuníquese con BarrCan: 56 1515 8415'; return; }
+  } catch (e) { msg.innerHTML = '<b>No se pudo cargar el presupuesto.</b><br>Revise su conexión e intente de nuevo.'; return; }
+  try { PIEZAS = JSON.parse(P.notas_internas || '[]'); } catch (e) { PIEZAS = []; }
+  if (!Array.isArray(PIEZAS) || !PIEZAS.length) PIEZAS = [{ label: P.descripcion || 'Presupuesto', cantidad: 1, precio: parseFloat(P.monto) || 0 }];
+  EMP = await BCDoc.datosCliente(P.folio, P.cliente);
+  document.getElementById('folio').textContent = P.folio;
+  document.getElementById('cliente').textContent = EMP.empresa || P.cliente || '';
+  document.getElementById('total').textContent = money(P.monto);
+  document.getElementById('anticipo').textContent = money((parseFloat(P.monto) || 0) * 0.5);
+  if (!document.getElementById('nombre').value) document.getElementById('nombre').value = (EMP.atencion || P.cliente || '').replace(/^(arq|ing|lic|sr|sra|srita)\.?\s+/i, '');
+  msg.style.display = 'none'; document.getElementById('contenido').style.display = 'block';
+  mostrarDoc(); prepararLienzo();
+  if (P.firmado_at) mostrarListo();
+}
+// ── Lienzo de firma ──
+var CV, CTX;
+function prepararLienzo() {
+  CV = document.getElementById('firma');
+  var r = CV.getBoundingClientRect(), k = window.devicePixelRatio || 1;
+  CV.width = Math.round(r.width * k); CV.height = Math.round(r.height * k);
+  CTX = CV.getContext('2d'); CTX.scale(k, k); CTX.lineWidth = 2.6; CTX.lineCap = 'round'; CTX.lineJoin = 'round'; CTX.strokeStyle = '#0B2545';
+  var dib = false, ult = null;
+  function pt(e) { var b = CV.getBoundingClientRect(); return { x: e.clientX - b.left, y: e.clientY - b.top }; }
+  CV.addEventListener('pointerdown', function (e) { dib = true; ult = pt(e); CV.setPointerCapture(e.pointerId); });
+  CV.addEventListener('pointermove', function (e) { if (!dib) return; var p = pt(e); CTX.beginPath(); CTX.moveTo(ult.x, ult.y); CTX.lineTo(p.x, p.y); CTX.stroke(); ult = p; hayTrazo = true; });
+  CV.addEventListener('pointerup', function () { dib = false; });
+}
+function limpiar() { CTX.clearRect(0, 0, CV.width, CV.height); hayTrazo = false; }
+async function huella() {
+  var txt = JSON.stringify({ folio: P.folio, monto: String(P.monto), partidas: P.notas_internas || '' });
+  var b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(txt));
+  return Array.from(new Uint8Array(b)).map(function (x) { return x.toString(16).padStart(2, '0'); }).join('');
+}
+async function firmar() {
+  var nombre = document.getElementById('nombre').value.trim();
+  if (nombre.length < 4) { alert('Escriba su nombre completo.'); return; }
+  if (!hayTrazo) { alert('Firme dentro del recuadro con el dedo.'); return; }
+  if (!document.getElementById('acepto').checked) { alert('Marque la casilla para aceptar el presupuesto y sus condiciones.'); return; }
+  var btn = document.getElementById('btn-firmar'); btn.disabled = true; btn.textContent = 'Guardando firma…';
+  try {
+    var datos = { firmado_at: new Date().toISOString(), firmado_por: nombre, firma_png: CV.toDataURL('image/png'),
+      firma_hash: await huella(), firma_agente: navigator.userAgent.slice(0, 300), firma_monto: parseFloat(P.monto) || 0 };
+    var r = await sb().from('presupuestos_atrasados').update(datos).eq('firma_token', TOKEN).is('firmado_at', null).select('id');
+    if (r.error) throw r.error;
+    if (!r.data || !r.data.length) throw new Error('Este presupuesto ya había sido firmado.');
+    Object.assign(P, datos); mostrarDoc(); mostrarListo();
+    window.scrollTo({ top: document.getElementById('panel-listo').offsetTop - 10, behavior: 'smooth' });
+  } catch (e) { alert('No se pudo guardar la firma: ' + e.message); btn.disabled = false; btn.textContent = '✍️ Firmar y aceptar presupuesto'; }
+}
+function mostrarListo() {
+  document.getElementById('panel-firma').style.display = 'none';
+  document.getElementById('panel-listo').style.display = 'block';
+  document.getElementById('firmado-info').textContent = 'Firmado por ' + P.firmado_por + ' · ' + fechaHora(P.firmado_at);
+}
+function avisar() {
+  var t = 'Hola BarrCan, ya firmé el presupuesto ' + P.folio + ' por ' + money(P.monto) + '. Les envío el comprobante del anticipo de ' + money((parseFloat(P.monto) || 0) * 0.5) + '.';
+  window.open('https://wa.me/' + WA_BARRCAN + '?text=' + encodeURIComponent(t), '_blank');
+}
+function verFirmado() {
+  var w = window.open('', '_blank');
+  if (!w) { alert('Permita ventanas emergentes para ver el documento.'); return; }
+  w.document.write(docHTML(true)); w.document.close();
+}
+cargar();
+</script>
+</body>
+</html>

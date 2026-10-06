@@ -7,6 +7,9 @@
 <script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.65.1
+  FECHA   : 2026-10-06
+  v3.65.1 - Las líneas de descuento no son piezas a entregar.
   VERSION : v3.65.0
   FECHA   : 2026-10-04
   v3.65.0 - Reporte de entrega: las primeras 6 fotos (3 columnas × 2
@@ -2418,7 +2421,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.65.0';
+var APP_VERSION = 'v3.65.1';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -2740,7 +2743,7 @@ function entSelPresupuesto() {
   try { piezas = JSON.parse(p.notas_internas || '[]'); } catch(e) {}
   if (piezas.length) {
     // v3.64.0: costos de obra y ajuste de tarifa son cargos, no piezas a entregar
-    var pendientes = piezas.filter(function(pz) { return !pz.entregado && !(pz.resultado && /^(costos_obra|ajuste_tarifa)$/.test(pz.resultado.tipo)); });
+    var pendientes = piezas.filter(function(pz) { return !pz.entregado && !(pz.resultado && /^(costos_obra|ajuste_tarifa|descuento)$/.test(pz.resultado.tipo)); });
     ENT_PIEZAS_PENDIENTES_ACTUALES = pendientes;
     if (pendientes.length) {
       document.getElementById('ent-desc').value = pendientes.map(function(pz) { return pz.label; }).join(' + ');
