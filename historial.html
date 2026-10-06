@@ -8,6 +8,10 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.23
+  FECHA   : 2026-10-06
+  v3.23 - Aviso "⚠️ Sin costos de obra" en presupuestos activos que aún no
+    los tienen: los cotizadores ya no cobran traslado por pieza.
   VERSIÓN : v3.22
   FECHA   : 2026-10-06
   v3.22 - Firma del cliente: botón "📝 Enviar para firma (WhatsApp)" que
@@ -1664,7 +1668,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.22';
+var APP_VERSION = 'v3.23';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1895,6 +1899,9 @@ function presRenderLista(datos) {
       + '<div style="font-size:10px;color:var(--gray-400)">' + (p.fecha || '') + telStr + '</div>'
       + (p.firmado_at ? '<div style="font-size:10px;font-weight:700;color:var(--green);margin-top:2px">✅ Firmado ' + new Date(p.firmado_at).toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City', day: '2-digit', month: 'short' }) + ' · ' + (p.firmado_por || '') + '</div>'
          : (p.firma_token ? '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-top:2px">⏳ Firma enviada, pendiente</div>' : ''))
+      // v3.23: los cotizadores ya no cobran traslado por pieza -- avisar si un presupuesto abierto aún no tiene costos de obra
+      + (p.estado === 'activo' && /^\s*\[/.test(p.notas_internas || '') && !/"tipo"\s*:\s*"costos_obra"/.test(p.notas_internas || '')
+         ? '<div style="font-size:10px;font-weight:700;color:#C0392B;margin-top:2px">⚠️ Sin costos de obra (traslado, visitas, pisos)</div>' : '')
       + '</div>'
       + '<div style="text-align:right">'
       + '<span style="font-size:10px;font-weight:700;color:' + color + ';background:rgba(0,0,0,0.04);padding:2px 7px;border-radius:8px">'

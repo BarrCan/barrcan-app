@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Servicios y Accesorios</title>
+<script src="modulos/presupuesto_doc.js"></script>
 <script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN SERVICIOS Y ACCESORIOS v1.18.0
@@ -192,6 +193,12 @@
     - Se agregó una verificación automática (script de comparación
       onclick/onchange vs. window.expuestas) para detectar esto antes
       de publicar, no solo revisando a ojo.
+  VERSION : v1.19.3
+  FECHA   : 2026-10-06
+  v1.19.3 - Logística por pieza en $0 por default (viático, ayudantes y cargo
+    por piso): el traslado, visitas y pisos se cobran UNA vez por obra en
+    Historial → Costos de obra (antes ~$780 por pieza, cobro repetido).
+    Impresión con el formato oficial compartido (modulos/presupuesto_doc.js).
   VERSION : v1.19.2
   FECHA   : 2026-10-04
   v1.19.2 - Los documentos (presupuestos, recibos, reportes) se abren con
@@ -1775,7 +1782,7 @@ body{background:var(--off-white)}
       <div class="switch-row">
         <div class="switch-info">
           <div class="switch-label">Visita Técnica Previa</div>
-          <div class="switch-desc">Suma $1,000 MXN al presupuesto</div>
+          <div class="switch-desc">Suma $1,000 · la medición ya va en Costos de obra</div>
         </div>
         <div class="toggle" id="toggle-visita" onclick="toggleSwitch('visita')">
           <div class="toggle-knob"></div>
@@ -1783,7 +1790,7 @@ body{background:var(--off-white)}
       </div>
       <div style="height:1px;background:var(--gray-100);margin:8px 0"></div>
       <div class="form-group" style="margin-top:10px">
-        <label class="form-label">Nivel / Piso de Instalación</label>
+        <label class="form-label">Nivel / Piso de Instalación <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--gray-400)">(referencia; el cargo va en Costos de obra)</span></label>
         <div class="piso-selector" id="piso-selector">
           <div class="piso-btn active" onclick="setPiso(0)" data-piso="0">PB</div>
           <div class="piso-btn" onclick="setPiso(1)" data-piso="1">1°</div>
@@ -1799,7 +1806,7 @@ body{background:var(--off-white)}
           <div class="modalidad-btn active" id="mod-local" onclick="setModalidad('local')">
             <div class="modalidad-icon">🔧</div>
             <div class="modalidad-label">Instalación Local</div>
-            <div class="modalidad-desc">Viáticos incluidos</div>
+            <div class="modalidad-desc">Traslado: en Costos de obra</div>
           </div>
           <div class="modalidad-btn" id="mod-envio" onclick="setModalidad('envio')">
             <div class="modalidad-icon">📦</div>
@@ -1809,14 +1816,18 @@ body{background:var(--off-white)}
         </div>
       </div>
       <div id="panel-viaticos" style="margin-top:10px">
+      <div style="background:rgba(39,174,96,0.08);border-left:3px solid #27AE60;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:11.5px;line-height:1.45;color:#1B3A5C">
+        🚚 <b>El traslado, las visitas y los pisos se cobran UNA vez por obra</b> en Historial → <b>Costos de obra</b>. Aquí déjalo en $0; captura viático solo si es un caso especial.
+      </div>
+
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">Viático instalador</label>
-            <input type="number" class="form-input" id="inp-viatico" value="300" inputmode="numeric">
+            <input type="number" class="form-input" id="inp-viatico" value="0" inputmode="numeric">
           </div>
           <div class="form-group">
             <label class="form-label">Ayudantes</label>
-            <input type="number" class="form-input" id="inp-ayudantes" value="1" min="0" inputmode="numeric">
+            <input type="number" class="form-input" id="inp-ayudantes" value="0" min="0" inputmode="numeric">
           </div>
         </div>
         <div class="form-group">
@@ -4017,7 +4028,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.19.2';
+const APP_VERSION = 'v1.19.3';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -4532,7 +4543,8 @@ function calcular() {
     const viatico = cfg('inp-viatico');
     const ayudantes = cfg('inp-ayudantes');
     const costoAyudante = cfg('inp-ayudante-costo');
-    const cargoPisoTotal = STATE.pisoActual * cargoPiso;
+    // Oct-2026: el piso se cobra una sola vez por obra (Historial → Costos de obra), no en cada pieza
+    const cargoPisoTotal = 0;
     costoLogistica = viatico + (ayudantes * costoAyudante) + cargoPisoTotal;
   } else {
     costoLogistica = 2200;
@@ -5600,6 +5612,9 @@ function snRenderPresupuesto() {
 // Documento final: mismo formato que los presupuestos-contrato oficiales
 // (encabezado + lista numerada de piezas + total), tal como en el PDF de referencia.
 function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha) {
+  // Oct-2026: formato oficial compartido (modulos/presupuesto_doc.js), el mismo de Historial y Baños.
+  // Esta copia local queda solo como respaldo si el módulo no cargó.
+  if (window.BCDoc) return window.BCDoc.generar(items, folio, cliente, dir, fecha);
   var fechaStr = fecha.toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
   var total = items.reduce(function(a, it){ return a + (it.precio || 0); }, 0);
   var lista = items.map(function(it, idx) {
