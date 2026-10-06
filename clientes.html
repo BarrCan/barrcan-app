@@ -2,6 +2,12 @@
 ══════════════════════════════════════════════════════════════════
   BARRCAN · MÓDULO: CLIENTES (standalone)
 ══════════════════════════════════════════════════════════════════
+  VERSIÓN : v1.8
+  FECHA   : 2026-10-06
+  v1.8 - CF Cliente frecuente: número corto fijo (07, 32, 80...); al dar de
+    alta uno nuevo se asigna el siguiente libre. El reporte por canal
+    reconoce esos números como recompra, busca por nombre a los clientes
+    de folios viejos sin número, y ya no cuenta los folios internos INT-.
   VERSIÓN : v1.7
   FECHA   : 2026-10-06
   v1.7 - Canales nuevos GG Google, EX Expo/stand, LC Local/letrero; W (Web)
@@ -1247,6 +1253,7 @@ body{min-height:100vh}
           <option value="EX">EX — Expo / stand</option>
           <option value="LC">LC — Local / letrero</option>
           <option value="RC">RC — Recomendados</option>
+          <option value="CF">CF — Cliente frecuente (número fijo)</option>
           <option value="SH">SH — Shopify</option>
           <option value="ML">ML — Mercado Libre</option>
           <option value="HB">HB — Habitissimo</option>
@@ -1453,6 +1460,13 @@ function cliGenerarNumCliente(canal, consecutivo) {
 }
 
 function cliSiguienteNum(canal) {
+  // v1.8: cliente frecuente = número corto fijo (como 07, 32, 80), el
+  // siguiente libre de 2 dígitos -- sin año ni letras, se conserva siempre.
+  if (canal === 'CF') {
+    const usados = cliListaCache.map(c => String(c.num_cliente || '')).filter(n => /^\d{1,3}(-\d+)?$/.test(n)).map(n => parseInt(n, 10));
+    let n = 1; while (usados.indexOf(n) >= 0) n++;
+    return String(n).padStart(2, '0');
+  }
   const anio = String(new Date().getFullYear()).slice(-2);
   const prefijo = `${anio}${canal}`;
   // FIX: antes "W" contaba también los "WA" (y "F" contaría los "FB"),
@@ -1474,20 +1488,32 @@ function cliSiguienteNum(canal) {
 // 89 están ligados a una ficha). Vendido = aprobado, en producción,
 // pendiente de entrega, entregado o liquidado.
 var CLI_CANALES = { WA:'WhatsApp', FB:'Facebook', IG:'Instagram', TT:'TikTok', GG:'Google', EX:'Expo / stand', LC:'Local / letrero',
-  RC:'Recomendados', SH:'Shopify', ML:'Mercado Libre', HB:'Habitissimo', W:'Web (anterior)', F:'Facebook/Instagram (anterior)' };
+  RC:'Recomendados', CF:'Cliente frecuente', SH:'Shopify', ML:'Mercado Libre', HB:'Habitissimo', W:'Web (anterior)', F:'Facebook/Instagram (anterior)' };
 var CLI_PRES_ORIGEN = null;
-function cliCanalDeFolio(folio) {
+function cliNormNombre(n) { return String(n || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/^(arq|ing|lic|sr|sra|srita|dr|dra)\.?\s+/, '').replace(/\s+/g, ' ').trim(); }
+// v1.8: número solo de dígitos (07, 80) = cliente frecuente (CF). Si el
+// folio es viejo y no trae número, se busca al cliente por nombre en las
+// fichas: si su número es corto → CF; si no, el canal de su ficha.
+function cliCanalDeFolio(folio, cliente) {
   var suf = String(folio || '').split('-')[3] || '';
+  if (/^\d{1,3}$/.test(suf)) return 'CF';
   var m = suf.toUpperCase().match(/^\d{2}([A-Z]{1,3})\d+$/);
-  return m ? m[1] : '';
+  if (m) return m[1];
+  var nom = cliNormNombre(cliente);
+  if (!nom) return '';
+  var f = (cliListaCache || []).filter(function(c) { return cliNormNombre(c.nombre) === nom; })[0];
+  if (!f) return '';
+  if (/^\d{1,3}(-\d+)?$/.test(String(f.num_cliente || ''))) return 'CF'; // incluye sub-números como 04-02
+  return f.canal || '';
 }
 async function cliAbrirOrigen() {
   document.getElementById('cli-origen-ov').style.display = 'block';
   if (!CLI_PRES_ORIGEN) {
     document.getElementById('cli-origen-cuerpo').textContent = 'Cargando…';
     try {
-      var r = await sb().from('presupuestos_atrasados').select('folio,monto,estado,fecha,created_at,eliminado');
-      CLI_PRES_ORIGEN = (r.data || []).filter(function(p) { return !p.eliminado; });
+      var r = await sb().from('presupuestos_atrasados').select('folio,cliente,monto,estado,fecha,created_at,eliminado');
+      // Los folios internos (INT-TALLER, INT-VEH...) son gastos propios, no clientes
+      CLI_PRES_ORIGEN = (r.data || []).filter(function(p) { return !p.eliminado && !/^INT-/i.test(p.folio || ''); });
     } catch (e) { document.getElementById('cli-origen-cuerpo').textContent = 'No se pudo cargar: ' + e.message; return; }
   }
   cliPintarOrigen();
@@ -1503,7 +1529,7 @@ function cliPintarOrigen() {
     var f = String(p.fecha || p.created_at || '').slice(0, 10).split('-');
     var fd = f.length === 3 ? new Date(+f[0], +f[1] - 1, +f[2]) : null;
     if (desde && (!fd || fd < desde)) return;
-    var c = cliCanalDeFolio(p.folio);
+    var c = cliCanalDeFolio(p.folio, p.cliente);
     if (!c) { sinCanal++; return; }
     var x = g[c] || (g[c] = { cot: 0, ven: 0, monto: 0, cotMonto: 0 });
     x.cot++; x.cotMonto += parseFloat(p.monto) || 0;
@@ -1524,7 +1550,7 @@ function cliPintarOrigen() {
       + '<td style="text-align:right;padding-right:7px;font-weight:700">' + money(x.monto) + '</td></tr>';
   });
   html += '<tr><td style="padding:8px 7px;font-weight:700">Total</td><td></td><td></td><td></td><td style="text-align:right;padding-right:7px;font-weight:800;color:var(--navy)">' + money(tot) + '</td></tr></table>';
-  html += '<div style="font-size:11px;color:var(--gray-400);margin-top:8px;line-height:1.5">Conv. = presupuestos vendidos ÷ cotizados. El canal se toma del folio (ej. 26ML13 → ML).'
+  html += '<div style="font-size:11px;color:var(--gray-400);margin-top:8px;line-height:1.5">Conv. = presupuestos vendidos ÷ cotizados. El canal se toma del folio (26ML13 → ML; número corto como 07 → CF cliente frecuente) o, en folios viejos, de la ficha del cliente.'
     + (sinCanal ? ' ' + sinCanal + ' presupuesto(s) sin canal en el folio no se cuentan.' : '') + '</div>';
   document.getElementById('cli-origen-cuerpo').innerHTML = html;
 }
