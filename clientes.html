@@ -2,6 +2,12 @@
 ══════════════════════════════════════════════════════════════════
   BARRCAN · MÓDULO: CLIENTES (standalone)
 ══════════════════════════════════════════════════════════════════
+  VERSIÓN : v1.7
+  FECHA   : 2026-10-06
+  v1.7 - Canales nuevos GG Google, EX Expo/stand, LC Local/letrero; W (Web)
+    ya no se ofrece a clientes nuevos (los que lo tienen lo conservan al
+    editar). Reporte "📊 Clientes y ventas por canal": cotizados, vendidos,
+    conversión y monto por canal, leyendo el canal del folio.
   VERSIÓN : v1.6
   FECHA   : 2026-10-06
   v1.6 - Canales de origen nuevos: FB Facebook, IG Instagram y TT TikTok
@@ -1170,6 +1176,20 @@ body{min-height:100vh}
         <span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);font-size:16px">🔍</span>
       </div>
 
+      <button onclick="cliAbrirOrigen()" style="width:100%;padding:11px;margin-bottom:12px;border:1.5px solid var(--gold);border-radius:var(--radius-sm);background:rgba(200,146,58,0.08);color:var(--navy);font-weight:700;font-size:13.5px;cursor:pointer">📊 Clientes y ventas por canal de origen</button>
+      <div id="cli-origen-ov" onclick="if(event.target===this)this.style.display='none'" style="display:none;position:fixed;inset:0;background:rgba(27,58,92,0.55);z-index:900;overflow:auto;padding:20px 12px">
+        <div style="background:#fff;border-radius:14px;max-width:620px;margin:0 auto;padding:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <b style="font-size:16px;color:var(--navy)">📊 Origen de clientes</b>
+            <button onclick="document.getElementById('cli-origen-ov').style.display='none'" style="border:none;background:none;font-size:20px;cursor:pointer">✕</button>
+          </div>
+          <select id="cli-origen-periodo" onchange="cliPintarOrigen()" style="width:100%;padding:9px;border:1.5px solid var(--gray-200);border-radius:8px;margin-bottom:10px;font-size:14px">
+            <option value="mes">Este mes</option><option value="3m">Últimos 3 meses</option><option value="anio" selected>Este año</option><option value="todo">Todo</option>
+          </select>
+          <div id="cli-origen-cuerpo" style="font-size:13px">Cargando…</div>
+        </div>
+      </div>
+
       <!-- Contador -->
       <div id="cli-contador" style="font-size:11px;color:var(--gray-400);margin-bottom:10px"></div>
 
@@ -1223,7 +1243,9 @@ body{min-height:100vh}
           <option value="FB">FB — Facebook</option>
           <option value="IG">IG — Instagram</option>
           <option value="TT">TT — TikTok</option>
-          <option value="W">W — Web</option>
+          <option value="GG">GG — Google (Maps / búsqueda)</option>
+          <option value="EX">EX — Expo / stand</option>
+          <option value="LC">LC — Local / letrero</option>
           <option value="RC">RC — Recomendados</option>
           <option value="SH">SH — Shopify</option>
           <option value="ML">ML — Mercado Libre</option>
@@ -1444,6 +1466,67 @@ function cliSiguienteNum(canal) {
     .filter(n => n < 100);
   const maxNum = delCanal.length ? Math.max(...delCanal) : 0;
   return cliGenerarNumCliente(canal, maxNum + 1);
+}
+
+// ══ REPORTE: CLIENTES Y VENTAS POR CANAL (v1.7) ══
+// El canal se lee del FOLIO (último bloque, ej. "26ML13" → ML), así
+// cubre también presupuestos cuyo cliente no tiene ficha (hoy solo 33 de
+// 89 están ligados a una ficha). Vendido = aprobado, en producción,
+// pendiente de entrega, entregado o liquidado.
+var CLI_CANALES = { WA:'WhatsApp', FB:'Facebook', IG:'Instagram', TT:'TikTok', GG:'Google', EX:'Expo / stand', LC:'Local / letrero',
+  RC:'Recomendados', SH:'Shopify', ML:'Mercado Libre', HB:'Habitissimo', W:'Web (anterior)', F:'Facebook/Instagram (anterior)' };
+var CLI_PRES_ORIGEN = null;
+function cliCanalDeFolio(folio) {
+  var suf = String(folio || '').split('-')[3] || '';
+  var m = suf.toUpperCase().match(/^\d{2}([A-Z]{1,3})\d+$/);
+  return m ? m[1] : '';
+}
+async function cliAbrirOrigen() {
+  document.getElementById('cli-origen-ov').style.display = 'block';
+  if (!CLI_PRES_ORIGEN) {
+    document.getElementById('cli-origen-cuerpo').textContent = 'Cargando…';
+    try {
+      var r = await sb().from('presupuestos_atrasados').select('folio,monto,estado,fecha,created_at,eliminado');
+      CLI_PRES_ORIGEN = (r.data || []).filter(function(p) { return !p.eliminado; });
+    } catch (e) { document.getElementById('cli-origen-cuerpo').textContent = 'No se pudo cargar: ' + e.message; return; }
+  }
+  cliPintarOrigen();
+}
+function cliPintarOrigen() {
+  var per = document.getElementById('cli-origen-periodo').value, hoy = new Date(), desde = null;
+  if (per === 'mes') desde = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+  if (per === '3m') desde = new Date(hoy.getFullYear(), hoy.getMonth() - 2, 1);
+  if (per === 'anio') desde = new Date(hoy.getFullYear(), 0, 1);
+  var VENDIDO = ['aprobado','en_produccion','pendiente_entrega','entregado','liquidado'];
+  var g = {}, sinCanal = 0;
+  (CLI_PRES_ORIGEN || []).forEach(function(p) {
+    var f = String(p.fecha || p.created_at || '').slice(0, 10).split('-');
+    var fd = f.length === 3 ? new Date(+f[0], +f[1] - 1, +f[2]) : null;
+    if (desde && (!fd || fd < desde)) return;
+    var c = cliCanalDeFolio(p.folio);
+    if (!c) { sinCanal++; return; }
+    var x = g[c] || (g[c] = { cot: 0, ven: 0, monto: 0, cotMonto: 0 });
+    x.cot++; x.cotMonto += parseFloat(p.monto) || 0;
+    if (VENDIDO.indexOf(p.estado) >= 0) { x.ven++; x.monto += parseFloat(p.monto) || 0; }
+  });
+  var filas = Object.keys(g).sort(function(a, b) { return g[b].monto - g[a].monto; });
+  var tot = filas.reduce(function(t, k) { return t + g[k].monto; }, 0);
+  var money = function(n) { return '$' + Math.round(n).toLocaleString('es-MX'); };
+  if (!filas.length) { document.getElementById('cli-origen-cuerpo').innerHTML = '<div style="color:var(--gray-400);text-align:center;padding:20px">Sin presupuestos en este periodo</div>'; return; }
+  var html = '<table style="width:100%;border-collapse:collapse;font-size:12.5px"><tr style="background:var(--navy);color:#fff"><th style="padding:7px;text-align:left">Canal</th><th>Cotiz.</th><th>Vend.</th><th>Conv.</th><th style="text-align:right;padding-right:7px">Vendido</th></tr>';
+  filas.forEach(function(k, i) {
+    var x = g[k], conv = x.cot ? Math.round(x.ven / x.cot * 100) : 0, pct = tot ? Math.round(x.monto / tot * 100) : 0;
+    html += '<tr style="border-bottom:1px solid var(--gray-200);background:' + (i % 2 ? '#F8FAFC' : '#fff') + '">'
+      + '<td style="padding:7px"><b>' + k + '</b> <span style="color:var(--gray-400)">' + (CLI_CANALES[k] || '') + '</span>'
+      + '<div style="height:4px;background:#EEF2F6;border-radius:2px;margin-top:4px"><div style="height:4px;width:' + pct + '%;background:var(--gold);border-radius:2px"></div></div></td>'
+      + '<td style="text-align:center">' + x.cot + '</td><td style="text-align:center">' + x.ven + '</td>'
+      + '<td style="text-align:center;color:' + (conv >= 50 ? 'var(--green)' : conv >= 25 ? 'var(--gold)' : '#C0392B') + ';font-weight:700">' + conv + '%</td>'
+      + '<td style="text-align:right;padding-right:7px;font-weight:700">' + money(x.monto) + '</td></tr>';
+  });
+  html += '<tr><td style="padding:8px 7px;font-weight:700">Total</td><td></td><td></td><td></td><td style="text-align:right;padding-right:7px;font-weight:800;color:var(--navy)">' + money(tot) + '</td></tr></table>';
+  html += '<div style="font-size:11px;color:var(--gray-400);margin-top:8px;line-height:1.5">Conv. = presupuestos vendidos ÷ cotizados. El canal se toma del folio (ej. 26ML13 → ML).'
+    + (sinCanal ? ' ' + sinCanal + ' presupuesto(s) sin canal en el folio no se cuentan.' : '') + '</div>';
+  document.getElementById('cli-origen-cuerpo').innerHTML = html;
 }
 
 function cliActualizarPreview() {
@@ -1709,7 +1792,14 @@ function cliAbrirEdicion(id) {
   document.getElementById('cli-inp-dir').value     = c.direccion|| '';
   document.getElementById('cli-inp-dir-obra').value= c.dir_obra || '';
   document.getElementById('cli-inp-notas').value   = c.notas    || '';
-  document.getElementById('cli-inp-canal').value   = c.canal    || 'WA';
+  var selCanal = document.getElementById('cli-inp-canal');
+  selCanal.querySelectorAll('option[data-anterior]').forEach(function(o) { o.remove(); });
+  if (c.canal && !Array.prototype.some.call(selCanal.options, function(o) { return o.value === c.canal; })) {
+    // Canal que ya no se ofrece para clientes nuevos (ej. W Web): se conserva para no cambiarlo sin querer
+    var op = document.createElement('option'); op.value = c.canal; op.textContent = c.canal + ' — (canal anterior)'; op.setAttribute('data-anterior', '1');
+    selCanal.appendChild(op);
+  }
+  selCanal.value = c.canal || 'WA';
 
   document.getElementById('cli-modal-overlay').style.display = 'block';
   document.getElementById('cli-modal').style.display = 'block';
