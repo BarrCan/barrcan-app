@@ -8,6 +8,10 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.21
+  FECHA   : 2026-10-06
+  v3.21 - Presupuesto impreso para clientes de empresa: "Cliente: EMPRESA"
+    y "En atención a: Arq. X", tomado de la ficha del cliente.
   VERSIÓN : v3.20
   FECHA   : 2026-10-04
   v3.20 - Los documentos (presupuestos, recibos, reportes) se abren con
@@ -1654,7 +1658,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.20';
+var APP_VERSION = 'v3.21';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -2203,10 +2207,14 @@ function presDiagramaPieza(r) {
 // encabezado, partidas con cantidad, diagramas, condiciones de venta,
 // cuentas y firmas). Si el módulo no cargó (sin señal y sin caché), se
 // usa la impresión simple de siempre.
-function presImprimir(idStr) {
+async function presImprimir(idStr) {
   var p = PRES_CACHE.filter(function(x) { return x.id === idStr; })[0];
   if (!p) { toast('No se encontró ese presupuesto'); return; }
   if (!window.BCDoc) { presImprimirSimple(idStr); return; }
+  // La ventana se abre ANTES de consultar la ficha (si se abre después de
+  // esperar, el celular la bloquea como ventana emergente).
+  var w = window.open('', '_blank');
+  if (!w) { toast('El navegador bloqueó la ventana -- permite pop-ups para este sitio'); return; }
   var piezas = [];
   try { piezas = JSON.parse(p.notas_internas || '[]'); } catch(e) {}
   if (!Array.isArray(piezas) || !piezas.length) {
@@ -2214,9 +2222,10 @@ function presImprimir(idStr) {
   }
   var f = String(p.fecha || '').split('-');
   var fecha = f.length === 3 ? new Date(+f[0], +f[1] - 1, +f[2]) : new Date();
-  var html = window.BCDoc.generar(piezas, p.folio || '', p.cliente || '', p.dir || '', fecha, { total: parseFloat(p.monto) || 0 });
-  var w = window.open('', '_blank');
-  if (!w) { toast('El navegador bloqueó la ventana -- permite pop-ups para este sitio'); return; }
+  // v3.21: cliente de empresa -> "Cliente: EMPRESA" + "En atención a: ..."
+  var emp = window.BCDoc.datosCliente ? await window.BCDoc.datosCliente(p.folio, p.cliente) : {};
+  var html = window.BCDoc.generar(piezas, p.folio || '', p.cliente || '', p.dir || '', fecha,
+    { total: parseFloat(p.monto) || 0, empresa: emp.empresa, atencion: emp.atencion });
   w.document.write(html);
   w.document.close();
 }

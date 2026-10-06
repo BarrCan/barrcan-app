@@ -1,7 +1,9 @@
 // ══════════════════════════════════════════════════════════════
 // BarrCan · DOCUMENTO OFICIAL DE PRESUPUESTO (compartido)
-// VERSION : v1.1   FECHA : 2026-10-04
+// VERSION : v1.2   FECHA : 2026-10-06
 // v1.1 - Correo de facturación corregido a ventas@barrcan.com.mx.
+// v1.2 - Si el cliente tiene empresa en su ficha: "Cliente: EMPRESA" y
+//   "En atención a: Arq. X" (opciones.empresa / opciones.atencion).
 // Un solo lugar para el formato acordado (encabezado oficial, partidas
 // con cantidad × precio unitario, diagramas de referencia, condiciones
 // de venta, política de pagos con cuentas BBVA/Banorte, almacenamiento,
@@ -98,7 +100,8 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
     + snHeaderOficial('Presupuesto - Contrato', folio)
     + '<div class=pg-body>'
     + '<div style="text-align:right;font-size:10pt;color:#666;margin-bottom:10px">' + fechaStr + '</div>'
-    + '<div style="font-size:11pt;margin-bottom:2px"><strong>Cliente:</strong> ' + esc(cliente) + '</div>'
+    + '<div style="font-size:11pt;margin-bottom:2px"><strong>Cliente:</strong> ' + esc(opciones.empresa || cliente) + '</div>'
+    + (opciones.empresa ? '<div style="font-size:10.5pt;margin-bottom:2px">En atenci\u00f3n a: <strong>' + esc(opciones.atencion || cliente) + '</strong></div>' : '')
     + (dir ? '<div style="font-size:10pt;color:#666;margin-bottom:14px">' + esc(dir) + '</div>' : '<div style="margin-bottom:14px"></div>')
     + lista
     + '<div style="display:flex;justify-content:flex-end;padding-top:12px;font-size:14pt;font-weight:900;color:#1B3A5C">$' + fmt(total) + '</div>'
@@ -185,5 +188,20 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
 }
 
 
-  window.BCDoc = { version: 'v1.1', generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo };
+  // v1.2: datos de empresa desde la ficha del cliente. Se busca por nombre
+  // (sin títulos ni acentos) y, si no, por el número de cliente del folio.
+  function normNombre(n) { return String(n || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/^(arq|ing|lic|sr|sra|srita|dr|dra)\.?\s+/, '').replace(/\s+/g, ' ').trim(); }
+  async function datosCliente(folio, cliente) {
+    try {
+      var c = typeof window.sb === 'function' ? window.sb() : null;
+      if (!c) return {};
+      var r = await c.from('clientes').select('nombre,num_cliente,empresa').limit(1000);
+      var lista = r.data || [], nom = normNombre(cliente), num = String(folio || '').split('-')[3] || '';
+      var f = lista.filter(function (x) { return nom && normNombre(x.nombre) === nom; })[0]
+           || (num ? lista.filter(function (x) { return String(x.num_cliente || '') === num; })[0] : null);
+      if (!f || !String(f.empresa || '').trim()) return {};
+      return { empresa: String(f.empresa).trim(), atencion: f.nombre };
+    } catch (e) { return {}; }
+  }
+  window.BCDoc = { version: 'v1.2', generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo, datosCliente: datosCliente };
 })();
