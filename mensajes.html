@@ -6,6 +6,10 @@
 <title>BarrCan &middot; Mensajes</title>
 <!--
   BARRCAN · MODULO: MENSAJES LISTOS (standalone)
+  VERSION : v1.1
+  FECHA   : 2026-10-08
+  v1.1 - Logo oficial (assets/logo-icono.jpg) en el encabezado; antes solo
+    mostraba una letra B. Si la imagen no carga, vuelve a la B.
   VERSION : v1.0
   FECHA   : 2026-08-29
   v1.0 - Creación inicial. Primero de los 3 huecos identificados al
@@ -79,7 +83,7 @@ datalist {}
 <div id="app">
   <div class="header">
     <div class="header-logo">
-      <div class="logo-mark">B</div>
+      <div class="logo-mark" style="padding:0;overflow:hidden"><img src="assets/logo-icono.jpg" alt="BarrCan" onerror="this.parentNode.textContent='B'" style="width:100%;height:100%;object-fit:cover;display:block"></div>
       <div><div class="logo-text">BarrCan</div><span class="logo-sub">Mensajes</span></div>
     </div>
     <div class="offline-badge"><span class="offline-dot"></span><span id="conn-status">Online</span></div>
@@ -121,7 +125,7 @@ datalist {}
 </div>
 
 <script>
-var APP_VERSION = 'v1.0';
+var APP_VERSION = 'v1.1';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sbClient=null;

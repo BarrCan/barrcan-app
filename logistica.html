@@ -6,6 +6,10 @@
 <title>BarrCan &middot; Log&iacute;stica</title>
 <!--
   BARRCAN · MODULO: LOGISTICA FORANEA (standalone)
+  VERSION : v1.2
+  FECHA   : 2026-10-08
+  v1.2 - Logo oficial (assets/logo-icono.jpg) en el encabezado; antes solo
+    mostraba una letra B. Si la imagen no carga, vuelve a la B.
   VERSION : v1.1
   FECHA   : 2026-08-29
   v1.1 - Se podía GUARDAR un cálculo, pero no había forma de volver a
@@ -71,7 +75,7 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--off
 <div id="app">
   <div class="header">
     <div class="header-logo">
-      <div class="logo-mark">B</div>
+      <div class="logo-mark" style="padding:0;overflow:hidden"><img src="assets/logo-icono.jpg" alt="BarrCan" onerror="this.parentNode.textContent='B'" style="width:100%;height:100%;object-fit:cover;display:block"></div>
       <div><div class="logo-text">BarrCan</div><span class="logo-sub">Log&iacute;stica</span></div>
     </div>
     <div class="offline-badge"><span class="offline-dot"></span><span id="conn-status">Online</span></div>
@@ -180,7 +184,7 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--off
 </div>
 
 <script>
-var APP_VERSION = 'v1.1';
+var APP_VERSION = 'v1.2';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sbClient=null;

@@ -7,6 +7,14 @@
 <script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN · MODULO: ESTADO DE CUENTA POR CLIENTE (standalone)
+  VERSION : v1.6
+  FECHA   : 2026-10-08
+  v1.6 - Logo oficial en el encabezado (antes solo una letra B).
+  v1.6 - Estado de cuenta por PROYECTO: tras buscar al cliente se listan
+    sus proyectos con casillas (todos marcados); el reporte sale solo con
+    los elegidos y, si es uno, con el proyecto en el título. El reporte se
+    abre en el mismo toque del botón (antes, tras esperar a la base, el
+    celular a veces bloqueaba la ventana).
   VERSION : v1.5
   FECHA   : 2026-10-04
   v1.5 - Los documentos (presupuestos, recibos, reportes) se abren con
@@ -101,7 +109,7 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--off
 <div id="app">
   <div class="header no-print">
     <div class="header-logo">
-      <div class="logo-mark">B</div>
+      <div class="logo-mark" style="padding:0;overflow:hidden"><img src="assets/logo-icono.jpg" alt="BarrCan" onerror="this.parentNode.textContent='B'" style="width:100%;height:100%;object-fit:cover;display:block"></div>
       <div><div class="logo-text">BarrCan</div><span class="logo-sub">Estado de Cuenta</span></div>
     </div>
     <div class="offline-badge"><span class="offline-dot"></span><span id="conn-status">Online</span></div>
@@ -125,7 +133,7 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--off
 <div class="toast" id="toast"></div>
 
 <script>
-var APP_VERSION = 'v1.5';
+var APP_VERSION = 'v1.6';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sbClient=null;
@@ -229,10 +237,53 @@ async function ecBuscar() {
     });
 
     EC_PRESUPUESTOS_CACHE = presupuestos;
-    ecRenderTabla(presupuestos, pagosPorObra, texto);
+    // v1.6: primero se muestran los proyectos para elegir cuáles van en el reporte
+    EC_PAGOS = pagosPorObra; EC_TITULO = texto;
+    ecMostrarProyectos(presupuestos, pagosPorObra);
   } catch (e) {
     resDiv.innerHTML = '<div class="wizard-card" style="color:var(--red)">Error: ' + esc(e.message) + '</div>';
   }
+}
+
+// ══ v1.6: ELEGIR PROYECTOS ══
+// Algunos clientes (arquitectos) piden el estado de cuenta de UN proyecto
+// en particular, no de todas sus obras. Se listan sus proyectos con una
+// casilla cada uno; el reporte sale solo con los marcados.
+var EC_PAGOS = {}, EC_TITULO = '';
+function ecMostrarProyectos(presupuestos, pagosPorObra) {
+  var html = '<div class="wizard-card no-print">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
+    + '<b style="font-size:14px">' + presupuestos.length + ' proyecto(s) de ' + esc(EC_TITULO) + '</b>'
+    + '<span style="font-size:11px"><a href="#" onclick="ecMarcarTodos(true);return false" style="color:var(--blue)">Todos</a> · '
+    + '<a href="#" onclick="ecMarcarTodos(false);return false" style="color:var(--blue)">Ninguno</a></span></div>';
+  presupuestos.forEach(function(p) {
+    var pagado = (pagosPorObra[p.id] || []).reduce(function(a, pg) { return a + (parseFloat(pg.monto) || 0); }, 0);
+    var saldo = parseFloat(p.saldo) || 0;
+    html += '<label style="display:flex;gap:10px;align-items:flex-start;padding:9px 6px;border-bottom:1px solid var(--gray-100);cursor:pointer">'
+      + '<input type="checkbox" class="ec-sel" value="' + p.id + '" checked onchange="ecContarSel()" style="width:20px;height:20px;margin-top:2px;flex-shrink:0">'
+      + '<div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:700">' + esc(p.folio) + ' <span style="font-weight:400;color:var(--gray-400)">· ' + fechaCorta(p.fecha) + '</span></div>'
+      + '<div style="font-size:11.5px;color:var(--gray-600);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + esc(p.dir || p.descripcion || '') + '</div></div>'
+      + '<div style="text-align:right;font-size:11.5px;white-space:nowrap"><div>$' + fmt(p.monto) + '</div>'
+      + '<div style="color:' + (saldo > 0 ? 'var(--red)' : 'var(--green)') + '">Saldo $' + fmt(saldo) + '</div></div></label>';
+  });
+  html += '<button type="button" class="btn-buscar" id="ec-btn-generar" style="margin-top:12px;background:linear-gradient(135deg,var(--gold),var(--gold-light))" onclick="ecGenerarSeleccion()">📄 Generar estado de cuenta</button></div>';
+  document.getElementById('ec-resultado').innerHTML = html;
+  ecContarSel();
+}
+function ecMarcarTodos(si) { document.querySelectorAll('.ec-sel').forEach(function(c) { c.checked = si; }); ecContarSel(); }
+function ecContarSel() {
+  var n = document.querySelectorAll('.ec-sel:checked').length, b = document.getElementById('ec-btn-generar');
+  if (b) b.textContent = n === 1 ? '📄 Generar estado de cuenta de este proyecto' : '📄 Generar estado de cuenta (' + n + ' proyectos)';
+}
+function ecGenerarSeleccion() {
+  var ids = Array.prototype.map.call(document.querySelectorAll('.ec-sel:checked'), function(c) { return c.value; });
+  if (!ids.length) { toast('Marca al menos un proyecto'); return; }
+  var sel = EC_PRESUPUESTOS_CACHE.filter(function(p) { return ids.indexOf(p.id) >= 0; });
+  var titulo = EC_TITULO;
+  if (sel.length === 1) titulo += ' · Proyecto ' + sel[0].folio + (sel[0].dir ? ' (' + String(sel[0].dir).slice(0, 50) + ')' : '');
+  ecRenderTabla(sel, EC_PAGOS, titulo);
+  ecMostrarProyectos(EC_PRESUPUESTOS_CACHE, EC_PAGOS);
+  document.querySelectorAll('.ec-sel').forEach(function(c) { c.checked = ids.indexOf(c.value) >= 0; }); ecContarSel();
 }
 
 function ecRenderTabla(presupuestos, pagosPorObra, tituloCliente) {
@@ -302,6 +353,8 @@ function ecRenderTabla(presupuestos, pagosPorObra, tituloCliente) {
     + '</tbody></table></div></body></html>';
 
   if (winReporte) { winReporte.document.write(htmlDoc); winReporte.document.close(); }
+  else toast('El navegador bloqueó la ventana -- permite ventanas emergentes para este sitio');
+  return;
   document.getElementById('ec-resultado').innerHTML = '<div class="wizard-card" style="text-align:center;color:var(--gray-600)">✅ Reporte generado en una pestaña nueva -- ' + presupuestos.length + ' obra(s) encontradas.</div>';
 }
 
