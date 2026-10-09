@@ -193,6 +193,13 @@
     - Se agregó una verificación automática (script de comparación
       onclick/onchange vs. window.expuestas) para detectar esto antes
       de publicar, no solo revisando a ojo.
+  VERSION : v1.19.4
+  FECHA   : 2026-10-08
+  v1.19.4 - Nuevo "Mantenimiento integral de ventana" (línea Nacional) por
+    tamaño: chica (≤1.00×1.00), mediana (≤1.35×1.80), grande (mayor, 2
+    personas + opción de agregar). Precios reales: carretillas $70/$85
+    por par, vinil $6/m, broche 2" $125 / 3" $155; mano de obra $250/h por
+    persona, horas × número de ventanas. Precios sueltos actualizados.
   VERSION : v1.19.3
   FECHA   : 2026-10-06
   v1.19.3 - Logística por pieza en $0 por default (viático, ayudantes y cargo
@@ -2226,6 +2233,26 @@ body{background:var(--off-white)}
 
       <!-- MODO NORMAL: un solo servicio -->
       <div id="serv-modo-normal">
+      <div id="serv-integral" style="display:none;background:rgba(200,146,58,0.07);border:1.5px solid rgba(200,146,58,0.35);border-radius:10px;padding:10px 12px;margin-bottom:12px">
+        <div style="font-size:11px;font-weight:700;color:var(--navy);margin-bottom:6px">🪟 Tamaño y línea (Nacional)</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div><label class="form-label">Tamaño</label>
+            <select id="int-tam" class="form-select" onchange="servIntegralAplicar(true)">
+              <option value="chica">Chica · hasta 1.00 × 1.00 m</option>
+              <option value="mediana">Mediana · hasta 1.35 × 1.80 m</option>
+              <option value="grande">Grande · mayor (2 personas)</option>
+            </select></div>
+          <div><label class="form-label">Línea</label>
+            <select id="int-linea" class="form-select" onchange="servIntegralAplicar(false)">
+              <option value="2">Nacional 2"</option><option value="3">Nacional 3"</option>
+            </select></div>
+          <div><label class="form-label">Broches a cambiar (por ventana)</label>
+            <input type="number" id="int-broches" class="form-input" min="0" value="1" oninput="servIntegralAplicar(false)"></div>
+          <div><label class="form-label">Personas extra</label>
+            <input type="number" id="int-extra" class="form-input" min="0" value="0" oninput="servIntegralAplicar(false)"></div>
+        </div>
+        <div id="int-detalle" style="font-size:11px;color:var(--gray-600);margin-top:8px;line-height:1.5"></div>
+      </div>
         <div class="form-group">
           <label class="form-label" id="serv-label-cant">Cantidad</label>
           <div class="input-unit">
@@ -2493,6 +2520,13 @@ const DB = {
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
+      id:"MANT_INTEGRAL_VENTANA", nombre:"Mantenimiento integral de ventana", serie:"Mantenimiento", emoji:"🪟",
+      categorias:['ventana'], integral:true,
+      tipo:"Servicio", esServicio:true, precioBase:0, unidad:'pza',
+      desc:'Línea Nacional (2" y 3"): cambio de carretillas y vinil, revisión de broches y cambio de los que hagan falta. Elige tamaño y línea; material, personas y horas se calculan solos. Traslado aparte (una vez por visita).',
+      holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
       id:"MANT_AJUSTE_HER", nombre:"Ajuste de Herrajes y Carretillas", serie:"Mantenimiento", emoji:"🔧",
       categorias:['ventana'],
       tipo:"Servicio", esServicio:true, precioBase:200, unidad:'pieza',
@@ -2502,15 +2536,15 @@ const DB = {
     {
       id:"MANT_CAMBIO_FELPA", nombre:"Cambio de Felpa / Vinil", serie:"Mantenimiento", emoji:"🔧",
       categorias:['ventana','puerta','bano'],
-      tipo:"Servicio", esServicio:true, precioBase:4.5, unidad:'ml',
-      desc:'Material: vinil cuña (~$4.26/m) o pata (~$4.73/m), promedio $4.50/m. Cantidad = metros lineales perimetrales del vidrio/marco. La mano de obra se agrega aparte.',
+      tipo:"Servicio", esServicio:true, precioBase:6, unidad:'ml',
+      desc:'Material: vinil pata #10 (rollo 16 m a $92 = $5.75/m) o #12 (rollo 11 m = $8.36/m); se usa $6/m. Cantidad = metros lineales perimetrales del vidrio/marco. La mano de obra se agrega aparte.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
       id:"MANT_CAMBIO_CARRETILLA", nombre:"Cambio de Carretillas", serie:"Mantenimiento", emoji:"⚙️",
       categorias:['ventana','bano'],
-      tipo:"Servicio", esServicio:true, precioBase:126, unidad:'par',
-      desc:'Material varía MUCHO por peso/línea (precio por PAR, 2 piezas): Económica $34-50 · 3" $114-140 · Línea Española/Eurovent $360-700 · Grande (hasta 100kg) hasta $1,800/par. Precargado con la línea 3" como punto medio ($126/par) — AJUSTA según la que realmente uses. Mano de obra aparte.',
+      tipo:"Servicio", esServicio:true, precioBase:70, unidad:'par',
+      desc:'Material por PAR (2 piezas), precios reales oct-2026: ajustable 3" $70 · 1¼" nylon reforzada $85 · tándem doble $77 · Línea Española/Eurovent $360-700 · Grande (hasta 100kg) hasta $1,800/par. Precargado con la ajustable 3" ($70/par). Mano de obra aparte.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
@@ -2558,8 +2592,8 @@ const DB = {
     {
       id:"MANT_CAMBIO_BROCHES", nombre:"Cambio de Broches", serie:"Mantenimiento", emoji:"🔒",
       categorias:['ventana'],
-      tipo:"Servicio", esServicio:true, precioBase:150, unidad:'par',
-      desc:'Material por línea (precio por par): Estándar $150 · Línea Española/Eurovent $250-400. Precargado con el estándar — AJUSTA si es línea española/eurovent. Mano de obra aparte.',
+      tipo:"Servicio", esServicio:true, precioBase:125, unidad:'pza',
+      desc:'Precio real por pieza: línea 2" $125 · línea 3" $155 · Línea Española/Eurovent desde $250 según la línea. Precargado con 2" — ajusta si es otra línea. Mano de obra aparte.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
@@ -4028,7 +4062,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.19.3';
+const APP_VERSION = 'v1.19.4';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -5207,6 +5241,8 @@ function servicioReset(sistema) {
   document.getElementById('serv-cargo-traslado').value = 0; // el traslado local ya va absorbido en las 1.5h de MO por default
   document.getElementById('serv-aviso-riesgo').checked = false;
   document.getElementById('serv-resultado').style.display = 'none';
+  document.getElementById('serv-integral').style.display = sistema.integral ? 'block' : 'none';
+  if (sistema.integral) { document.getElementById('int-tam').value = 'chica'; document.getElementById('int-linea').value = '2'; servIntegralAplicar(true); }
 }
 
 // ── Modo Combo: varios servicios de mantenimiento en la misma visita ──
@@ -5291,7 +5327,47 @@ function servComboCalcular() {
   servicioCalcPreview(1, subtotal, nombreCombo + ' (combo)');
 }
 
+
+// ══ MANTENIMIENTO INTEGRAL DE VENTANA (v1.19.4) ══
+// Línea Nacional. Precios reales de compra (oct-2026) y tiempos de Mau:
+// 1 persona tarda 1.5-2 h por ventana; las grandes requieren 2-3 personas.
+// El material por ventana va en "Precio unitario" (se le aplica el margen
+// de mantenimiento) y las horas se multiplican por la cantidad de ventanas,
+// porque la mano de obra se cobra una vez por trabajo.
+var INT_TAMANOS = {
+  chica:   { nombre: 'Chica (hasta 1.00 × 1.00 m)',    carretillas: 66.40,  carTxt: '1 par ajustable 3"',        vinilM: 6,  broches: 1, horas: 1.75, personas: 1 },
+  mediana: { nombre: 'Mediana (hasta 1.35 × 1.80 m)',  carretillas: 85.00,  carTxt: '1 par 1¼" nylon reforzada', vinilM: 10, broches: 1, horas: 2.5,  personas: 1 },
+  grande:  { nombre: 'Grande (mayor a 1.35 × 1.80 m)', carretillas: 153.16, carTxt: '2 pares tándem doble',      vinilM: 14, broches: 2, horas: 2.5,  personas: 2 }
+};
+var INT_BROCHE = { '2': 125, '3': 155 };
+var INT_VINIL_M = 6;
+var INT_TARIFA_H = 250;
+function servIntegralAplicar(cambioTamano) {
+  if (!SERV_SISTEMA || !SERV_SISTEMA.integral) return;
+  var t = INT_TAMANOS[document.getElementById('int-tam').value] || INT_TAMANOS.chica;
+  var linea = document.getElementById('int-linea').value;
+  if (cambioTamano) { document.getElementById('int-broches').value = t.broches; document.getElementById('int-extra').value = 0; }
+  var broches = Math.max(0, parseInt(document.getElementById('int-broches').value, 10) || 0);
+  var extra = Math.max(0, parseInt(document.getElementById('int-extra').value, 10) || 0);
+  var personas = Math.min(3, t.personas + extra);
+  var cant = Math.max(1, parseFloat(document.getElementById('serv-cantidad').value) || 1);
+  var vinil = t.vinilM * INT_VINIL_M, brochesCosto = broches * INT_BROCHE[linea];
+  var material = Math.round((t.carretillas + vinil + brochesCosto) * 100) / 100;
+  document.getElementById('serv-precio').value = material;
+  document.getElementById('serv-mo-horas').value = Math.round(t.horas * cant * 100) / 100;
+  document.getElementById('serv-mo-personas').value = String(personas);
+  document.getElementById('serv-mo-tarifa').value = INT_TARIFA_H;
+  document.getElementById('int-detalle').innerHTML = '<b>' + t.nombre + ' · línea ' + linea + '"</b><br>'
+    + 'Por ventana: carretillas ' + t.carTxt + ' $' + fmt(t.carretillas) + ' · vinil ~' + t.vinilM + ' m $' + fmt(vinil)
+    + ' · ' + broches + ' broche(s) ' + linea + '" $' + fmt(brochesCosto) + ' = <b>$' + fmt(material) + ' de material</b><br>'
+    + 'Mano de obra: ' + t.horas + ' h × ' + cant + ' ventana(s) × ' + personas + ' persona(s) a $' + INT_TARIFA_H + '/h';
+  document.getElementById('serv-notas').value = 'Mantenimiento integral, ventana ' + t.nombre.toLowerCase() + ', línea ' + linea + '": cambio de carretillas y vinil, revisión de broches' + (broches ? ' y cambio de ' + broches + ' por ventana' : '') + '.';
+  servCalcularMO();
+  servicioCalcPreview(cant, material);
+}
+
 function servicioActualizar() {
+  if (SERV_SISTEMA && SERV_SISTEMA.integral && SERV_MODO !== 'combo') { servIntegralAplicar(false); return; }
   const cant   = parseFloat(document.getElementById('serv-cantidad').value) || 0;
   const precio = parseFloat(document.getElementById('serv-precio').value)   || 0;
   if (cant > 0 && precio > 0) servicioCalcPreview(cant, precio);
