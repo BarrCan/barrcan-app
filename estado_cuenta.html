@@ -7,6 +7,10 @@
 <script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN · MODULO: ESTADO DE CUENTA POR CLIENTE (standalone)
+  VERSION : v1.7
+  FECHA   : 2026-10-08
+  v1.7 - La columna Factura toma folio_fiscal (pagos marcados como facturados
+    después); antes solo leía las notas y quedaba vacía.
   VERSION : v1.6
   FECHA   : 2026-10-08
   v1.6 - Logo oficial en el encabezado (antes solo una letra B).
@@ -133,7 +137,7 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--off
 <div class="toast" id="toast"></div>
 
 <script>
-var APP_VERSION = 'v1.6';
+var APP_VERSION = 'v1.7';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sbClient=null;
@@ -308,7 +312,8 @@ function ecRenderTabla(presupuestos, pagosPorObra, tituloCliente) {
       + '<td>—</td></tr>';
 
     var filasAnticipos = pagos.map(function(pg) {
-      var factura = extraerFacturaDeNotas(pg.notas);
+      // La factura puede estar solo en folio_fiscal (marcada después como facturada)
+      var factura = (pg.folio_fiscal && !/EFECTIVO/i.test(pg.folio_fiscal)) ? pg.folio_fiscal : extraerFacturaDeNotas(pg.notas);
       return '<tr style="color:#5A5652;font-size:9pt">'
         + '<td colspan="3" style="text-align:right;padding-right:10px">↳ Anticipo</td>'
         + '<td style="text-align:right">$' + fmt(pg.monto) + '</td>'

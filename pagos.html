@@ -7,6 +7,11 @@
 <script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.32
+  FECHA   : 2026-10-08
+  v4.32 - La reimpresión del recibo muestra la factura guardada en folio_fiscal
+    (pagos marcados como facturados después, desde "Pendientes de facturar");
+    antes solo la buscaba en las notas y no aparecía (ej. CACN-163A, RB-171).
   VERSIÓN : v4.31
   FECHA   : 2026-10-04
   v4.31 - Recibos de pago en formato TICKET de 8 cm de ancho, mismo
@@ -1306,7 +1311,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.31';
+var APP_VERSION = 'v4.32';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -2076,7 +2081,7 @@ async function pagosCargar() {
   if (!sb()) return;
   try {
     var result = await sb().from('pagos')
-      .select('id,monto,fecha_pago,forma_pago,concepto,notas,descripcion,adicionales,created_at,presupuesto_id')
+      .select('id,monto,fecha_pago,forma_pago,concepto,notas,descripcion,adicionales,created_at,presupuesto_id,facturado,folio_fiscal')
       .order('created_at', { ascending: false }).limit(200);
     if (result.error) throw result.error;
     SYNC.online = true; detectarConexion();
@@ -2971,6 +2976,9 @@ async function pagoEditarReimprimir() {
     else if (parte.indexOf('RECIBO:') === 0) { /* saltar */ }
     else if (parte !== folio && parte !== cliente) { notaLimpia += (notaLimpia ? ' | ' : '') + parte; }
   });
+  // La factura también puede vivir solo en folio_fiscal (pagos marcados como
+  // facturados después, desde "Pendientes de facturar"): se usa ese campo primero.
+  if (p.folio_fiscal && !/EFECTIVO/i.test(p.folio_fiscal)) factura = p.folio_fiscal;
 
   // v4.28: la descripción TÉCNICA del presupuesto (qué se fabrica/
   // instala, ej. "Suministro y colocación de...") nunca se guardó en
