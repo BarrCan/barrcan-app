@@ -193,6 +193,17 @@
     - Se agregó una verificación automática (script de comparación
       onclick/onchange vs. window.expuestas) para detectar esto antes
       de publicar, no solo revisando a ojo.
+  VERSION : v1.19.5
+  FECHA   : 2026-10-09
+  v1.19.5 - FIX: los menús de tamaño, línea y broches del mantenimiento
+  integral marcaban error ("servIntegralAplicar is not defined") porque
+  la función no estaba publicada para los botones; el cambio de tamaño no
+  recalculaba broches ni personas.
+  v1.19.5 - FIX: el "Mantenimiento integral de ventana" (chica / mediana /
+    grande) no aparecía en la lista de Mantenimiento: la v1.19.4 lo dio de
+    alta pero no lo agregó a las tarjetas. Ahora sale primero. No se ofrece
+    dentro del combo. Rótulo "Número de ventanas" y precios de las tarjetas
+    de vinil, carretillas y broches actualizados ($6/m, $70/par, $125/pza).
   VERSION : v1.19.4
   FECHA   : 2026-10-08
   v1.19.4 - Nuevo "Mantenimiento integral de ventana" (línea Nacional) por
@@ -2252,6 +2263,7 @@ body{background:var(--off-white)}
             <input type="number" id="int-extra" class="form-input" min="0" value="0" oninput="servIntegralAplicar(false)"></div>
         </div>
         <div id="int-detalle" style="font-size:11px;color:var(--gray-600);margin-top:8px;line-height:1.5"></div>
+        <div style="font-size:10.5px;color:var(--gray-400);margin-top:6px;line-height:1.45">¿Ventanas de distintos tamaños? Calcula una vez por tamaño y agrégalas al mismo presupuesto. El vinil y el material se multiplican por el número de ventanas.</div>
       </div>
         <div class="form-group">
           <label class="form-label" id="serv-label-cant">Cantidad</label>
@@ -3946,6 +3958,7 @@ function svgPorTipo(tipo, serie, id) {
     // ════════════════════════════════════════
     // MANTENIMIENTO Y SERVICIOS
     // ════════════════════════════════════════
+    'MANT_INTEGRAL_VENTANA':  () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🪟</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">MANT. INTEGRAL</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">desde $864/ventana</text>`),
     'MANT_LIMPIEZA_VEN':      () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🪟</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">LIMPIEZA VENTANAS</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">$350/pieza</text>`),
     'MANT_AJUSTE_HER':        () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🔧</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">AJUSTE HERRAJES</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">$200/pieza</text>`),
     'MANT_CAMBIO_FELPA':      () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🔧</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">CAMBIO FELPA</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">$180/ml</text>`),
@@ -4011,7 +4024,7 @@ const FAMILIAS_NACIONAL = [
     nombre: 'Mantenimiento',
     emoji: '🔧',
     desc: 'Limpieza, ajustes y refacciones para ventanas y canceles',
-    ids: ['MANT_LIMPIEZA_VEN','MANT_LIMPIEZA_PUERTA','MANT_AJUSTE_HER','MANT_CAMBIO_FELPA','MANT_CAMBIO_CARRETILLA',
+    ids: ['MANT_INTEGRAL_VENTANA','MANT_LIMPIEZA_VEN','MANT_LIMPIEZA_PUERTA','MANT_AJUSTE_HER','MANT_CAMBIO_FELPA','MANT_CAMBIO_CARRETILLA',
           'MANT_CANCEL_LIMPIEZA','MANT_CANCEL_SELLADO','MANT_CANCEL_HULES','MANT_CANCEL_BISAGRAS',
           'MANT_BANO_LAMINA_POLIETILENO','MANT_BANO_GOMA_SEGURIDAD',
           'MANT_CAMBIO_BROCHES','MANT_VENTANA_CHAPA','MANT_PUERTA_CALCE','MANT_PUERTA_CHAPA_PESADA','MANT_PUERTA_CHAPA_LIGERA',
@@ -4062,7 +4075,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.19.4';
+const APP_VERSION = 'v1.19.5';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -4681,18 +4694,19 @@ function snSelFamilia(fam,btnEl){
 // Precio de referencia por pieza mostrado en la tarjeta del catálogo,
 // tal cual aparece en barrcan_app.html (Mantenimiento y Garantías).
 const SN_PRECIO_TARJETA = {
+  MANT_INTEGRAL_VENTANA:  'desde $864/ventana',
   MANT_LIMPIEZA_VEN:      '$350/pieza',
   MANT_LIMPIEZA_PUERTA:   '$250/pieza',
   MANT_AJUSTE_HER:        '$200/pieza',
-  MANT_CAMBIO_FELPA:      '$4.50/m mat.',
-  MANT_CAMBIO_CARRETILLA: '$17-900 mat.',
+  MANT_CAMBIO_FELPA:      '$6/m mat.',
+  MANT_CAMBIO_CARRETILLA: '$70+/par mat.',
   MANT_CANCEL_LIMPIEZA:   '$600/pieza',
   MANT_CANCEL_SELLADO:    '$450/pieza',
   MANT_CANCEL_HULES:      '$380/pieza',
   MANT_CANCEL_BISAGRAS:   '$520/juego',
   MANT_BANO_LAMINA_POLIETILENO: '$120/pieza',
   MANT_BANO_GOMA_SEGURIDAD:     '$70/par',
-  MANT_CAMBIO_BROCHES:    '$150-400 mat.',
+  MANT_CAMBIO_BROCHES:    '$125+/pza mat.',
   MANT_VENTANA_CHAPA:     '$150/pieza',
   MANT_PUERTA_CALCE:      'Solo M.O.',
   MANT_PUERTA_CHAPA_PESADA: '$480-530 mat.',
@@ -5230,6 +5244,7 @@ function servicioReset(sistema) {
     sistema.unidad === 'ml' ? 'Metros lineales' :
     sistema.unidad === 'par' ? 'Pares' :
     sistema.unidad === 'juego' ? 'Juegos' : 'Cantidad (piezas)';
+  if (sistema.integral) document.getElementById('serv-label-cant').textContent = 'Número de ventanas (de este tamaño)';
   document.getElementById('serv-cantidad').value = '1';
   document.getElementById('serv-precio').value   = sistema.precioBase || '';
   document.getElementById('serv-notas').value    = '';
@@ -5267,7 +5282,7 @@ function servToggleCombo() {
 }
 
 function servRenderComboLista() {
-  var items = DB.sistemas.filter(function(s) { return s.esServicio; });
+  var items = DB.sistemas.filter(function(s) { return s.esServicio && !s.integral; });
   var cont = document.getElementById('serv-combo-lista');
   cont.innerHTML = items.map(function(it) {
     var sel = SERV_COMBO_SEL[it.id];
@@ -6501,6 +6516,7 @@ window.espSelForma = espSelForma;
 window.espActualizar = espActualizar;
 window.espCalcular = espCalcular;
 window.servicioActualizar = servicioActualizar;
+window.servIntegralAplicar = servIntegralAplicar; // v1.19.5: lo llaman los menús de tamaño/línea/broches (onchange)
 window.servicioCalcular = servicioCalcular;
 window.garantiaWizActualizar = garantiaWizActualizar;
 window.garantiaWizCalcular = garantiaWizCalcular;
