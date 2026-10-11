@@ -1595,7 +1595,7 @@ body{background:var(--off-white)}
       <div class="switch-row">
         <div class="switch-info">
           <div class="switch-label">Visita Técnica Previa</div>
-          <div class="switch-desc">Suma $1,000 · la medición ya va en Costos de obra</div>
+          <div class="switch-desc">Suma $500 · la medición ya va en Costos de obra</div>
         </div>
         <div class="toggle" id="toggle-visita" onclick="toggleSwitch('visita')">
           <div class="toggle-knob"></div>
@@ -3534,7 +3534,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.8.6'; // v1.8.6 (11-oct-2026): recálculo por unidad desde Historial; // v1.8.5 (06-oct-2026): logística por pieza en $0 (va en Historial → Costos de obra) + formato oficial compartido de impresión;
+const APP_VERSION = 'v1.8.7'; // v1.8.7 (11-oct-2026): visita técnica previa suma $500 (antes $1,000)
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -4000,7 +4000,7 @@ function calcular() {
     costoLogistica = 2200;
   }
 
-  const costoVisita = STATE.visitaTecnica ? 1000 : 0;
+  const costoVisita = STATE.visitaTecnica ? 500 : 0; // 11-oct-2026: visita técnica $500 (antes $1,000)
   const costoRealAcumulado = subtotalFabricacion + gif + ga + costoLogistica;
   const precioSinUtilidad = costoRealAcumulado;
   const utilidad = precioSinUtilidad * utilidadPct;
