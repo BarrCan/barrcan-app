@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════
-// BarrCan Service Worker v18 — Offline First
+// BarrCan Service Worker v19 — Offline First
 // Estrategia: Network-First con timeout para HTML (páginas .html),
 //             Cache-First para fuentes/CDN,
 //             Supabase y APIs externas: Network Only
@@ -57,7 +57,8 @@
 // v16 (05-oct-2026): precarga diseñador de etiquetas y generador de QR.
 // v17 (05-oct-2026): páginas y .js siempre se revalidan con GitHub.
 // v18 (08-oct-2026): precarga los logos (assets/logo-icono.jpg, logo-oficial.jpg).
-const CACHE_VERSION = 'barrcan-v19'; // subir este número fuerza que TODOS los
+// v19 (11-oct-2026): se quita modulos/alupol_cor_luj_2h.js de la precarga (Corredizo Lujo eliminado).
+const CACHE_VERSION = 'barrcan-v20'; // subir este número fuerza que TODOS los
 // dispositivos descarten su caché vieja de una vez -- ya no debería
 // hacer falta subirlo por cada arreglo ahora que HTML es Network First,
 // pero sigue disponible por si algún día conviene un reinicio total.
@@ -102,7 +103,6 @@ const RECURSOS_CORE = [
   // Módulos de cálculo que Baños carga bajo demanda
   './modulos/alupol_recto.js',
   './modulos/alupol_escuadra.js',
-  './modulos/alupol_cor_luj_2h.js',
   './modulos/presupuesto_doc.js',
   './modulos/abrir_doc.js',
   './modulos/etiquetas.js',

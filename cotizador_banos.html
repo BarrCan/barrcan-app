@@ -8,6 +8,11 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v3.11
+  FECHA   : 2026-10-11
+  v3.11 - Se quitó el tipo "Corredizo Lujo (2 hojas)" de Alu/Polietileno (no
+    calculaba: faltaban sus precios). Se eliminó su módulo y su sección en
+    Configuración. Quedan Recto y Escuadra.
   VERSION : v3.10
   FECHA   : 2026-10-11
   v3.10 - Alu/Polietileno, fórmulas corregidas por Mau: moldura = ((largo×2) +
@@ -940,7 +945,6 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
       <div class="color-grid">
         <button class="color-btn active" data-tipo="recto" onclick="apSelTipo(this)">Recto (1 muro)</button>
         <button class="color-btn" data-tipo="escuadra" onclick="apSelTipo(this)">Escuadra (2 muros)</button>
-        <button class="color-btn" data-tipo="corredizo_lujo" onclick="apSelTipo(this)">Corredizo Lujo (2 hojas)</button>
       </div>
 
       <label class="form-label">Color del marco</label>
@@ -1321,7 +1325,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v3.10';
+var APP_VERSION = 'v3.11';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -1429,7 +1433,7 @@ function apSelColor(btn) {
 // ══════════════════════════════════════════════════════════════
 // DESPACHO A MÓDULOS INDEPENDIENTES -- v3.4
 // El central YA NO conoce ninguna fórmula de precio de Alu/Polietileno
-// (Recto, Escuadra y Corredizo Lujo viven cada uno en su propio
+// (Recto y Escuadra viven cada uno en su propio
 // modulos/*.js). Esta función solo: (1) decide a qué módulo le toca
 // según AP_TIPO, (2) lo carga si hace falta, (3) le pasa los campos
 // compartidos -- medidas, color, nivel, y el ALU_PRECIOS ya
@@ -1439,8 +1443,7 @@ function apSelColor(btn) {
 // ══════════════════════════════════════════════════════════════
 var AP_MODULOS = {
   recto:          { clave: 'ALUPOL_RECTO',       src: 'modulos/alupol_recto.js' },
-  escuadra:       { clave: 'ALUPOL_ESCUADRA',     src: 'modulos/alupol_escuadra.js' },
-  corredizo_lujo: { clave: 'ALUPOL_COR_LUJ_2H',   src: 'modulos/alupol_cor_luj_2h.js' }
+  escuadra:       { clave: 'ALUPOL_ESCUADRA',     src: 'modulos/alupol_escuadra.js' }
 };
 
 function apCalcular() {
@@ -1460,7 +1463,7 @@ function apCalcularConModulo(clave) {
   var res = mod.calcular({
     largoMm: largoMm, altoMm: altoMm, largo2Mm: largo2Mm,
     color: AP_COLOR, nivel: AP_NIVEL,
-    precios: ALU_PRECIOS, // Recto/Escuadra lo usan completo; Corredizo Lujo lo ignora (trae su propio catálogo)
+    precios: ALU_PRECIOS, // Recto y Escuadra lo usan completo
     pct: {
       gif_pct: ALU_PRECIOS.gif_pct, ga_pct: ALU_PRECIOS.ga_pct, util_pct: ALU_PRECIOS.util_pct,
       iva_compras_pct: ALU_PRECIOS.iva_compras_pct, iva_venta_pct: ALU_PRECIOS.iva_venta_pct
