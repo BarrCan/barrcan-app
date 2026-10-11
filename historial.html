@@ -8,6 +8,11 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.24
+  FECHA   : 2026-10-11
+  v3.24 - Recálculo del desglose POR UNIDAD también para piezas de Nacional,
+    Española y Eurovent (antes solo Corredizo de Baños): el botón aparece en
+    cada unidad y manda su medida y color al cotizador que corresponde.
   VERSIÓN : v3.23
   FECHA   : 2026-10-06
   v3.23 - Aviso "⚠️ Sin costos de obra" en presupuestos activos que aún no
@@ -1668,7 +1673,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.23';
+var APP_VERSION = 'v3.24';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -2524,7 +2529,7 @@ function presUnidadEditar(i, campo, val) {
 function presRenderUnidadesLista() {
   var cont = document.getElementById('unid-lista');
   var pz = PRES_CONCEPTOS[UNID_IDX_ACTUAL];
-  var esCorredizo = pz && pz.resultado && pz.resultado.tipo === 'corredizo';
+  var esCorredizo = pz && pz.resultado && (pz.resultado.tipo === 'corredizo' || presEsVentanaSistema(pz.resultado)); // v3.24: incluye Nacional/Española/Eurovent
   cont.innerHTML = UNID_ACTUALES.map(function(u, i) {
     var yaInstalada = u.estado === 'instalada';
     var yaRecalculada = !!u.resultado;
@@ -2559,27 +2564,43 @@ function presGuardarUnidades() {
 // material (cortesCalc/herrajesCalc) sea el cálculo de verdad, no una
 // copia de la fórmula viviendo aparte en Historial -- así si el
 // cotizador cambia su fórmula, esto nunca se queda desactualizado.
+// v3.24: piezas de ventanas/puertas de Nacional, Española y Eurovent también
+// pueden recalcular el desglose de CADA unidad con su medida y color.
+function presEsVentanaSistema(r) {
+  return !!(r && r.sistema && !r.tipo && !r.esServicio && !r.esGarantia && !r.esEspejo && !r.esCubierta);
+}
+function presArchivoDeSistema(r, p) {
+  var serie = String(r.serie || '');
+  if (/^Eurovent S-(150|45)|^S-50 AD/i.test(serie)) return 'cotizador_eurovent.html'; // solo existen en Eurovent
+  if (/^Espa(n|ñ)ola/i.test(serie)) return 'cotizador_espanol.html';
+  var mod = p ? presModuloDe(p) : null;
+  if ((mod === 'espanol' || mod === 'eurovent') && PRES_MODULO_A_ARCHIVO[mod]) return PRES_MODULO_A_ARCHIVO[mod];
+  return 'cotizador_nacional.html';
+}
+
 function presRecalcularUnidad(i) {
   var pz = PRES_CONCEPTOS[UNID_IDX_ACTUAL];
   var u = UNID_ACTUALES[i];
   if (!pz || !u) return;
+  var esBanos = !!(pz.resultado && pz.resultado.tipo === 'corredizo');
+  if (!esBanos && !presEsVentanaSistema(pz.resultado)) { toast('Esta pieza no tiene datos para recalcular'); return; }
   if (!u.ancho || !u.alto) { toast('Captura ancho y alto de esta unidad antes de recalcular'); return; }
   var p = null;
   for (var k = 0; k < PRES_CACHE.length; k++) { if (PRES_CACHE[k].id === PRES_EDITANDO_ID) { p = PRES_CACHE[k]; break; } }
   if (!p) { toast('Primero guarda o cierra la edición actual'); return; }
-  if (!confirm('Vas a abrir el cotizador Corredizo con la medida de la unidad ' + u.id + ' (' + u.ancho + '×' + u.alto + 'mm, ' + (u.color || 'sin color definido') + ').\n\nAl calcular ahí, el desglose de material de ESA unidad se actualiza -- el resto del presupuesto no se toca.\n\n¿Continuar?')) return;
+  if (!confirm('Vas a abrir el cotizador ' + (esBanos ? 'Corredizo' : 'de ' + (pz.resultado.serie || pz.resultado.sistema)) + ' con la medida de la unidad ' + u.id + ' (' + u.ancho + '×' + u.alto + 'mm, ' + (u.color || 'sin color definido') + ').\n\nAl calcular ahí, el desglose de material de ESA unidad se actualiza -- el resto del presupuesto no se toca.\n\n¿Continuar?')) return;
   try {
     localStorage.setItem('barrcan_recalcular_unidad', JSON.stringify({
       folioId: p.id, folio: p.folio, cliente: p.cliente, tel: p.tel,
       monto: p.monto, saldo: p.saldo, notas_internas: p.notas_internas,
       pieceIndex: UNID_IDX_ACTUAL, unidadId: u.id,
       resultadoBase: pz.resultado, // línea/config/acabado/etc. de la pieza original, como plantilla
-      anchoUnidad: u.ancho, altoUnidad: u.alto, colorUnidad: u.color || pz.resultado.color
+      anchoUnidad: u.ancho, altoUnidad: u.alto, colorUnidad: u.color || pz.resultado.color || ''
     }));
   } catch(e) { toast('No se pudo preparar la unidad para recalcular'); return; }
   // Guarda de una vez lo que ya se editó en este panel, para no perderlo al salir a recalcular.
   presGuardarUnidades();
-  location.href = 'cotizador_banos.html';
+  location.href = esBanos ? 'cotizador_banos.html' : presArchivoDeSistema(pz.resultado, p);
 }
 
 function presConceptoEditar(idx, campo, valor) {

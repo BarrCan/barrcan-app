@@ -5420,7 +5420,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v3.7.5'; // v3.7.5 (06-oct-2026): logística por pieza en $0 (va en Historial → Costos de obra) + formato oficial compartido de impresión;
+const APP_VERSION = 'v3.7.6'; // v3.7.6 (11-oct-2026): recálculo por unidad desde Historial; // v3.7.5 (06-oct-2026): logística por pieza en $0 (va en Historial → Costos de obra) + formato oficial compartido de impresión;
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -6582,10 +6582,97 @@ function snAdjuntarArch(id){
 }
 
 // ── Init ──────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+// RECÁLCULO POR UNIDAD (11-oct-2026) -- puente desde Historial
+// Cuando en Historial se desglosa una pieza en unidades (1a, 1b, 1c...)
+// cada una puede mandarse aquí con su PROPIA medida y color: se elige el
+// sistema de la pieza original, se precargan las medidas de la unidad, se
+// calcula con el MISMO motor de este cotizador y el desglose de material
+// real (cortes, herrajes) se guarda dentro de esa unidad en el folio.
+// NO cambia el precio ni el monto/saldo del presupuesto. Mismo patrón que
+// cotizador_banos.html (v3.5).
+// ══════════════════════════════════════════════════════════════
+var SN_RECALC_UNIDAD = null;
+function snEscRU(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function snQuitarBannerRU() { var b = document.getElementById('sn-banner-unidad'); if (b) b.remove(); }
+function snCargarRecalculoUnidad() {
+  var raw = null;
+  try { raw = localStorage.getItem('barrcan_recalcular_unidad'); } catch (e) {}
+  if (!raw) return;
+  var d = null;
+  try { d = JSON.parse(raw); } catch (e) { return; }
+  var base = d && d.resultadoBase;
+  if (!base || !base.sistema || base.tipo) return; // las unidades de Baños las atiende cotizador_banos.html
+  var sis = DB.sistemas.find(function (s) { return s.nombre === base.sistema; });
+  if (!sis) return; // este cotizador no tiene ese sistema: se deja el dato intacto
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.ftab')), card = null;
+  for (var i = 0; i < tabs.length && !card; i++) {
+    tabs[i].click();
+    card = document.querySelector('.sis-card[data-sis-id="' + sis.id + '"]');
+  }
+  if (!card) return;
+  try { localStorage.removeItem('barrcan_recalcular_unidad'); } catch (e) {}
+  SN_RECALC_UNIDAD = d;
+  card.click();
+  // Medidas propias de la unidad (mm)
+  document.getElementById('inp-ancho').value = d.anchoUnidad || base.L || '';
+  document.getElementById('inp-alto').value = d.altoUnidad || base.H || '';
+  // Acabado: por el color de la unidad; si no coincide, el mismo factor de la pieza original
+  var ac = document.getElementById('inp-acabado'), col = String(d.colorUnidad || '').toLowerCase().trim(), hallado = false;
+  if (col) for (var j = 0; j < ac.options.length; j++) {
+    if (ac.options[j].text.toLowerCase().indexOf(col) >= 0) { ac.selectedIndex = j; hallado = true; break; }
+  }
+  if (!hallado && base.factorAcabado != null) {
+    for (var k = 0; k < ac.options.length; k++) { if (parseFloat(ac.options[k].value) === parseFloat(base.factorAcabado)) { ac.selectedIndex = k; break; } }
+  }
+  // Vidrio: el mismo de la pieza original
+  var vid = document.getElementById('inp-vidrio');
+  if (vid && base.vidTipo) for (var m = 0; m < vid.options.length; m++) { if (vid.options[m].text === base.vidTipo) { vid.selectedIndex = m; break; } }
+  try { actualizarSwatchAcabado(); } catch (e) {}
+  try { actualizarPelicula(); } catch (e) {}
+  var b = document.createElement('div');
+  b.id = 'sn-banner-unidad';
+  b.style.cssText = 'position:sticky;top:0;z-index:60;background:#FFF8E8;border-bottom:2px solid #C8923A;padding:8px 10px;font-size:12px;color:#1B3A5C;line-height:1.45';
+  b.innerHTML = '🔄 Recalculando la unidad <b>' + snEscRU(d.unidadId) + '</b> del folio <b>' + snEscRU(d.folio) + '</b> (' + snEscRU(d.anchoUnidad) + ' × ' + snEscRU(d.altoUnidad) + ' mm). '
+    + 'Da clic en <b>Calcular</b> y luego en <b>Guardar en la unidad</b>. No cambia el precio del presupuesto.'
+    + '<div style="display:flex;gap:8px;margin-top:6px"><button type="button" id="sn-ru-guardar" style="flex:1;padding:8px;border:none;border-radius:8px;background:#27AE60;color:#fff;font-weight:700;font-size:12px">💾 Guardar en la unidad</button>'
+    + '<button type="button" id="sn-ru-cancelar" style="padding:8px 12px;border:1.5px solid #C8923A;border-radius:8px;background:#fff;color:#1B3A5C;font-weight:700;font-size:12px">Cancelar</button></div>';
+  document.body.insertBefore(b, document.body.firstChild);
+  document.getElementById('sn-ru-guardar').addEventListener('click', snGuardarRecalculoUnidad);
+  document.getElementById('sn-ru-cancelar').addEventListener('click', function () { SN_RECALC_UNIDAD = null; snQuitarBannerRU(); toast('Recálculo de unidad cancelado'); });
+  toast('🔄 Medidas de la unidad ' + d.unidadId + ' precargadas -- da clic en Calcular');
+}
+async function snGuardarRecalculoUnidad() {
+  var rec = SN_RECALC_UNIDAD;
+  if (!rec) return;
+  var r = STATE.ultimoResultado;
+  if (!r || r.sistema !== rec.resultadoBase.sistema) { toast('⚠️ Primero da clic en Calcular'); return; }
+  if (!sb()) { toast('Sin conexión -- no se pudo guardar'); return; }
+  try {
+    // Se vuelve a leer el folio al momento de guardar, para no pisar cambios hechos mientras tanto
+    var q = await sb().from('presupuestos_atrasados').select('notas_internas').eq('id', rec.folioId).single();
+    if (q.error) throw q.error;
+    var piezas = JSON.parse(q.data.notas_internas || '[]');
+    var pz = piezas[rec.pieceIndex];
+    if (!pz || !Array.isArray(pz.unidades)) { toast('No se encontró la pieza o su desglose de unidades -- revísalo en Historial'); return; }
+    var u = pz.unidades.filter(function (x) { return x.id === rec.unidadId; })[0];
+    if (!u) { toast('No se encontró la unidad ' + rec.unidadId + ' -- puede que se haya cambiado la cantidad en Historial'); return; }
+    u.resultado = r;
+    u.ancho = r.L || u.ancho;
+    u.alto = r.H || u.alto;
+    var up = await sb().from('presupuestos_atrasados').update({ notas_internas: JSON.stringify(piezas) }).eq('id', rec.folioId);
+    if (up.error) throw up.error;
+    toast('✅ Unidad ' + rec.unidadId + ' recalculada · ' + rec.folio + ' -- el precio del presupuesto no cambió');
+    SN_RECALC_UNIDAD = null;
+    snQuitarBannerRU();
+  } catch (e) { toast('Error al guardar el recálculo: ' + e.message); }
+}
+
 document.addEventListener('DOMContentLoaded',()=>{
   cargarDesdeStorage();
   snDetectar();
   snBuildUI();
+  snCargarRecalculoUnidad(); // puente de Historial (recálculo por unidad)
   snHistorial();
   snCargarClientes();
   snCargarCarritoLocal();
