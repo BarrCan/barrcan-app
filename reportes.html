@@ -7,6 +7,13 @@
 <script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN · MODULO: REPORTES (standalone)
+  VERSION : v3.3
+  FECHA   : 2026-10-09
+  v3.3 - FIX: la mano de obra de una obra ya no "pierde" a los técnicos cuyo
+    pago semanal no está registrado (STAN-003 mostraba a Mauricio y no a
+    Luis, porque a Luis le faltaba el pago del 28-sep al 5-oct). Se estima
+    con su sueldo semanal y se marca "estimado" en el detalle, el reporte
+    impreso y Ganancia por obra; se reemplaza solo al registrar el pago.
   VERSION : v3.2
   FECHA   : 2026-10-04
   v3.2 - Los documentos (presupuestos, recibos, reportes) se abren con
@@ -523,7 +530,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 </div>
 </body>
 <script>
-var APP_VERSION = 'v3.2';
+var APP_VERSION = 'v3.3';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb=null;
@@ -721,6 +728,47 @@ async function rpCargarFlujo() {
 // folio, y arma un documento imprimible con el detalle artículo por
 // artículo -- para saber exactamente en qué se fue el material de
 // un proyecto específico.
+// ══ PAGOS DE TÉCNICOS CON ESTIMADOS (v3.3) ═══════════════════
+// El costo de mano de obra por obra se calcula repartiendo el pago
+// semanal de cada técnico entre sus actividades de esa semana. Si el
+// técnico TRABAJÓ pero su pago semanal todavía no está registrado, antes
+// su trabajo desaparecía de los reportes (caso real: STAN-003 mostraba a
+// Mauricio y no a Luis). Ahora se estima con su sueldo semanal
+// (tecnicos.sueldo_semanal) y se marca "estimado"; en cuanto se registra
+// el pago real de esa semana, el estimado desaparece solo. En la semana
+// en curso se prorratea por días transcurridos (semana de 6 días).
+var RP_SUELDOS_CACHE = null;
+function rpFechaUTC(iso) { var p = String(iso).split('-'); return Date.UTC(+p[0], +p[1] - 1, +p[2]); }
+function rpISO(ms) { return new Date(ms).toISOString().slice(0, 10); }
+function rpLunesDe(iso) { var ms = rpFechaUTC(iso), dow = new Date(ms).getUTCDay(); return rpISO(ms + (dow === 0 ? -6 : 1 - dow) * 86400000); }
+async function rpPagosConEstimados(pagos, entradas) {
+  try {
+    if (!RP_SUELDOS_CACHE) {
+      var r = await sb().from('tecnicos').select('tecnico_id_login,sueldo_semanal');
+      if (r.error) throw r.error;
+      RP_SUELDOS_CACHE = {};
+      (r.data || []).forEach(function(t) { RP_SUELDOS_CACHE[t.tecnico_id_login] = parseFloat(t.sueldo_semanal) || 0; });
+    }
+  } catch (e) { console.warn('[BarrCan] Sin sueldos de técnicos, no se estiman semanas sin pago:', e.message); return pagos; }
+  var hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
+  var lista = pagos.slice(), vistos = {};
+  (entradas || []).forEach(function(e) {
+    if (!e.bloques || !e.bloques.length) return;
+    var cubierto = pagos.some(function(pt) { return pt.tecnico_id === e.tecnico_id && e.fecha >= pt.semana_inicio && e.fecha < pt.semana_fin; });
+    if (cubierto) return;
+    var sueldo = RP_SUELDOS_CACHE[e.tecnico_id]; if (!sueldo) return;
+    var lunes = rpLunesDe(e.fecha), clave = e.tecnico_id + '|' + lunes;
+    if (vistos[clave]) return; vistos[clave] = true;
+    var fin = rpISO(rpFechaUTC(lunes) + 7 * 86400000), monto = sueldo;
+    if (hoy < fin) {
+      var transcurridos = Math.round((rpFechaUTC(hoy) - rpFechaUTC(lunes)) / 86400000) + 1;
+      monto = sueldo * Math.min(6, Math.max(1, transcurridos)) / 6;
+    }
+    lista.push({ tecnico_id: e.tecnico_id, semana_inicio: lunes, semana_fin: fin, monto: monto, _estimado: true });
+  });
+  return lista;
+}
+
 async function rpImprimirReporteObra(folio) {
   if (!sb()) { toast('Sin conexión'); return; }
   toast('Generando reporte...');
@@ -746,7 +794,8 @@ async function rpImprimirReporteObra(folio) {
       var resEntradas3 = await sb().from('tecnico_entradas_dia').select('tecnico_id,fecha,bloques');
       if (!resPagosTec3.error && !resEntradas3.error) {
         var entradas3 = resEntradas3.data || [];
-        (resPagosTec3.data || []).forEach(function(pt) {
+        var pagosEf3 = await rpPagosConEstimados(resPagosTec3.data || [], entradas3);
+        pagosEf3.forEach(function(pt) {
           var diasSemana = entradas3.filter(function(e) { return e.tecnico_id === pt.tecnico_id && e.fecha >= pt.semana_inicio && e.fecha < pt.semana_fin; });
           var todosLosBloques = [];
           diasSemana.forEach(function(d) { (d.bloques || []).forEach(function(b) { todosLosBloques.push({ b: b, fecha: d.fecha }); }); });
@@ -754,7 +803,7 @@ async function rpImprimirReporteObra(folio) {
           var parte = (parseFloat(pt.monto) || 0) / todosLosBloques.length;
           todosLosBloques.forEach(function(item) {
             if (item.b.folio_obra === folio) {
-              filasTecnicos.push({ fecha: item.fecha, proveedor: '🔧 ' + RP_NOMBRE_TECNICO(pt.tecnico_id), descripcion: (item.b.actividades || []).join(', '), importe: parte, moneda: 'MXN' });
+              filasTecnicos.push({ fecha: item.fecha, proveedor: '🔧 ' + RP_NOMBRE_TECNICO(pt.tecnico_id), descripcion: (item.b.actividades || []).join(', ') + (pt._estimado ? ' (estimado: pago de la semana sin registrar)' : ''), importe: parte, moneda: 'MXN' });
             }
           });
         });
@@ -896,11 +945,13 @@ async function rpCargarGanancia() {
     // administrativo, mantenimiento del auto, etc.) son gasto
     // general de operar el negocio -- igual que el GIF/GA de los
     // cotizadores -- y NO se le cargan a ninguna obra particular.
+    var estimadoTecnicos = 0; // v3.3: sueldos estimados (semanas con actividades y sin pago registrado)
     var resPagosTec = await sb().from('pagos_tecnicos').select('tecnico_id,semana_inicio,semana_fin,monto');
     var resEntradas = await sb().from('tecnico_entradas_dia').select('tecnico_id,fecha,bloques');
     if (!resPagosTec.error && !resEntradas.error) {
       var entradas = resEntradas.data || [];
-      (resPagosTec.data || []).forEach(function(pt) {
+      var pagosEf = await rpPagosConEstimados(resPagosTec.data || [], entradas);
+      pagosEf.forEach(function(pt) {
         var diasSemana = entradas.filter(function(e) {
           return e.tecnico_id === pt.tecnico_id && e.fecha >= pt.semana_inicio && e.fecha < pt.semana_fin;
         });
@@ -919,6 +970,7 @@ async function rpCargarGanancia() {
 
         var parte = (parseFloat(pt.monto) || 0) / todosLosBloques.length;
         todosLosBloques.forEach(function(b) {
+          if (pt._estimado) estimadoTecnicos += parte;
           if (b.folio_obra && obras[b.folio_obra]) {
             obras[b.folio_obra].tecnicos += parte;
           } else {
@@ -977,7 +1029,9 @@ async function rpCargarGanancia() {
         + '</div>';
     }
 
-    div.innerHTML = htmlGastosGenerales + html;
+    var notaEstimado = estimadoTecnicos > 0.5
+      ? '<div style="font-size:10px;color:#888;margin:4px 2px 12px;line-height:1.45">ℹ️ Incluye <b>' + fmtK(estimadoTecnicos) + '</b> estimados de sueldos de técnicos cuyo pago semanal aún no está registrado. Se reemplazan solos al registrar el pago en Técnicos.</div>' : '';
+    div.innerHTML = htmlGastosGenerales + html + notaEstimado;
     RP_OBRAS_CACHE = obras;
   } catch(e) {
     console.warn('[BarrCan] No se pudo cargar ganancia por obra:', e);
@@ -1222,7 +1276,8 @@ async function rpMostrarDetalleObra(folioOFolios) {
       var resEntradas2 = await sb().from('tecnico_entradas_dia').select('tecnico_id,tecnico_nombre,fecha,bloques');
       if (!resPagosTec2.error && !resEntradas2.error) {
         var entradas2 = resEntradas2.data || [];
-        (resPagosTec2.data || []).forEach(function(pt) {
+        var pagosEf2 = await rpPagosConEstimados(resPagosTec2.data || [], entradas2);
+        pagosEf2.forEach(function(pt) {
           var diasSemana = entradas2.filter(function(e) {
             return e.tecnico_id === pt.tecnico_id && e.fecha >= pt.semana_inicio && e.fecha < pt.semana_fin;
           });
@@ -1233,7 +1288,7 @@ async function rpMostrarDetalleObra(folioOFolios) {
           var bloquesDeEstosFolios = todosLosBloques.filter(function(b) { return b.folio_obra && folios.indexOf(b.folio_obra) >= 0; });
           if (!bloquesDeEstosFolios.length) return;
           addItem('MANO DE OBRA (TÉCNICOS)', {
-            desc: (RP_NOMBRE_TECNICO(pt.tecnico_id)) + ' -- ' + bloquesDeEstosFolios.map(function(b) { return (b.actividades || []).join(', '); }).join(' / '),
+            desc: (RP_NOMBRE_TECNICO(pt.tecnico_id)) + (pt._estimado ? ' (estimado: pago sin registrar)' : '') + ' -- ' + bloquesDeEstosFolios.map(function(b) { return (b.actividades || []).join(', '); }).join(' / '),
             cant: 1, monto: parte * bloquesDeEstosFolios.length,
             proveedor: RP_NOMBRE_TECNICO(pt.tecnico_id), fecha: pt.semana_inicio + ' al ' + pt.semana_fin
           });
