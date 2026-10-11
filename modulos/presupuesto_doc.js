@@ -1,6 +1,10 @@
 // ══════════════════════════════════════════════════════════════
 // BarrCan · DOCUMENTO OFICIAL DE PRESUPUESTO (compartido)
-// VERSION : v1.3   FECHA : 2026-10-06
+// VERSION : v1.4   FECHA : 2026-10-11
+// v1.4 - Diagrama esquemático (SVG) de la configuración de cada pieza de
+//   Nacional / Española / Eurovent: corredizas (OX, XX, XOX, OXO, OXXO,
+//   XXX, con fijo superior o mosquitero), fijos, batientes, proyectables,
+//   vasistas y puertas. Se dibuja del nombre del sistema y sus medidas.
 // v1.3 - Firma electrónica del cliente estampada en la zona de firmas
 //   (opciones.firma = { nombre, png, fecha, hash }).
 // v1.1 - Correo de facturación corregido a ventas@barrcan.com.mx.
@@ -51,8 +55,94 @@ function snHeaderOficial(tituloDoc, folioDoc) {
 var _DIAG_CORREDIZO_URL  = 'https://barrcan.github.io/barrcan-app/assets/Corre-6mm-Tem.jpg';
 var _DIAG_ESCUADRA_URL   = 'https://barrcan.github.io/barrcan-app/assets/Esc-6mm-Tem.jpg';
 
+// ══ v1.4: DIAGRAMA ESQUEMÁTICO DE CONFIGURACIÓN (Nacional, Española,
+// Eurovent) ══ Se dibuja en SVG a partir del NOMBRE del sistema y las
+// medidas de la pieza (L × H en mm), sin imágenes externas -- sale igual
+// con o sin señal y al imprimir. Convenciones: panel móvil = flecha ↔;
+// panel fijo = reflejos diagonales; batiente = triángulo punteado con el
+// vértice del lado de la bisagra; proyectable = bisagra arriba; vasista =
+// bisagra abajo; fijo superior / travesaño = franja de arriba.
+function bcEsquemaDeSistema(nombre) {
+  var n = String(nombre || '').toUpperCase();
+  var e = { tipo: 'corrediza', patron: 'OX', fijoSup: false, mosq: /MOSQUITERO/.test(n), hojas: 1, fijoLat: false, intermedio: false, puerta: /PUERTA/.test(n) };
+  e.fijoSup = /FIJO SUPERIOR|F_OVER|TRAVESA|FIJO\s*\+\s*CORRED|FIJO \+|\+ FIJO SUPERIOR|ANTEPECHO|\+ FIJO\s+SUPERIOR|FX/.test(n) && !/BATIENTE/.test(n);
+  if (/PROYECTABLE/.test(n)) { e.tipo = 'proyectable'; e.fijoSup = /FIJO|FX/.test(n); return e; }
+  if (/VASISTA/.test(n)) { e.tipo = 'vasista'; return e; }
+  if (/BATIENTE/.test(n)) {
+    e.tipo = 'batiente'; e.hojas = /2H|2 H|2 HOJAS/.test(n) ? 2 : 1; e.fijoLat = /\+\s*FIJO/.test(n); e.fijoSup = false; return e;
+  }
+  if (/PUERTA (RESIDENCIAL|COMERCIAL)|ZOCLO/.test(n) && !/CORRED/.test(n)) { e.tipo = 'puerta_bat'; e.puerta = true; e.fijoSup = /ANTEPECHO|FX/.test(n); return e; }
+  if (/\bFIJ[OA]\b/.test(n) && !/CORRED|\bOX\b|\bXO\b|\bXX\b/.test(n)) { e.tipo = 'fijo'; e.intermedio = /INTERMEDIO/.test(n); return e; }
+  if (/OXXO/.test(n)) e.patron = 'OXXO';
+  else if (/XOX/.test(n)) e.patron = 'XOX';
+  else if (/OXO/.test(n)) e.patron = 'OXO';
+  else if (/XXX|3 V[IÍ]AS/.test(n)) e.patron = 'XXX';
+  else if (/\bXX\b/.test(n) && !/OX\/XX|XO\/XX/.test(n)) e.patron = 'XX';
+  else e.patron = 'OX';
+  return e;
+}
+function bcDiagramaSvg(r) {
+  var L = parseFloat(r.L) || 0, H = parseFloat(r.H) || 0;
+  if (!L || !H) return '';
+  var e = bcEsquemaDeSistema(r.sistema);
+  var AZ = '#1B3A5C', VID = '#EAF2FB', ROJ = '#C0392B';
+  var maxW = 104, maxH = 70, k = Math.min(maxW / L, maxH / H);
+  var w = Math.max(46, L * k), h = Math.max(34, H * k), x0 = (120 - w) / 2, y0 = (84 - h) / 2;
+  var o = '';
+  function rect(x, y, ww, hh, fill, sw) { return '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + ww.toFixed(1) + '" height="' + hh.toFixed(1) + '" fill="' + fill + '" stroke="' + AZ + '" stroke-width="' + (sw || 1.3) + '"/>'; }
+  function glare(x, y, ww, hh) { var a = Math.min(ww, hh) * 0.35; return '<path d="M' + (x + ww * 0.18).toFixed(1) + ' ' + (y + hh * 0.82).toFixed(1) + ' L' + (x + ww * 0.18 + a).toFixed(1) + ' ' + (y + hh * 0.82 - a).toFixed(1) + ' M' + (x + ww * 0.18 + a * 0.5).toFixed(1) + ' ' + (y + hh * 0.82 + 0).toFixed(1) + ' L' + (x + ww * 0.18 + a * 1.5).toFixed(1) + ' ' + (y + hh * 0.82 - a).toFixed(1) + '" stroke="#9DB7D5" stroke-width="1" fill="none"/>'; }
+  function flecha(x, y, ww) { var a = Math.min(ww * 0.32, 11); return '<path d="M' + (x - a) + ' ' + y + ' H' + (x + a) + ' M' + (x - a) + ' ' + y + ' l3 -2.4 M' + (x - a) + ' ' + y + ' l3 2.4 M' + (x + a) + ' ' + y + ' l-3 -2.4 M' + (x + a) + ' ' + y + ' l-3 2.4" stroke="' + ROJ + '" stroke-width="1.3" fill="none"/>'; }
+  function triangulo(x, y, ww, hh, lado) { // vértice del lado de la bisagra
+    var pts;
+    if (lado === 'izq') pts = [[x, y + hh / 2], [x + ww, y], [x + ww, y + hh]];
+    else if (lado === 'der') pts = [[x + ww, y + hh / 2], [x, y], [x, y + hh]];
+    else if (lado === 'arr') pts = [[x + ww / 2, y], [x, y + hh], [x + ww, y + hh]];
+    else pts = [[x + ww / 2, y + hh], [x, y], [x + ww, y]];
+    return '<polyline points="' + pts[1].join(',') + ' ' + pts[0].join(',') + ' ' + pts[2].join(',') + '" fill="none" stroke="' + ROJ + '" stroke-width="1" stroke-dasharray="3 2"/>';
+  }
+  var yTop = y0, hBajo = h;
+  if (e.fijoSup) { var hf = h * 0.28; o += rect(x0, y0, w, hf, VID) + glare(x0, y0, w, hf); yTop = y0 + hf; hBajo = h - hf; }
+  if (e.tipo === 'corrediza') {
+    var pats = e.patron.split(''), n = pats.length, pw = w / n;
+    pats.forEach(function (c, i) {
+      var px = x0 + i * pw;
+      o += rect(px, yTop, pw, hBajo, VID);
+      if (c === 'X') o += flecha(px + pw / 2, yTop + hBajo / 2, pw); else o += glare(px, yTop, pw, hBajo);
+    });
+    if (e.mosq) o += '<rect x="' + (x0 + 2).toFixed(1) + '" y="' + (yTop + 2).toFixed(1) + '" width="' + (w - 4).toFixed(1) + '" height="' + (hBajo - 4).toFixed(1) + '" fill="none" stroke="#7F8C8D" stroke-width="0.9" stroke-dasharray="1.5 1.5"/>';
+  } else if (e.tipo === 'batiente') {
+    var nh = e.hojas + (e.fijoLat ? 1 : 0), pw2 = w / nh;
+    for (var i = 0; i < nh; i++) {
+      var px2 = x0 + i * pw2, esFijo = e.fijoLat && i === nh - 1;
+      o += rect(px2, yTop, pw2, hBajo, VID);
+      if (esFijo) o += glare(px2, yTop, pw2, hBajo);
+      else o += triangulo(px2, yTop, pw2, hBajo, e.hojas === 2 ? (i === 0 ? 'izq' : 'der') : 'izq');
+    }
+    if (e.puerta) o += '<circle cx="' + (x0 + w - 7).toFixed(1) + '" cy="' + (yTop + hBajo / 2).toFixed(1) + '" r="1.8" fill="' + AZ + '"/>';
+  } else if (e.tipo === 'puerta_bat') {
+    o += rect(x0, yTop, w, hBajo, VID) + triangulo(x0, yTop, w, hBajo, 'izq') + '<circle cx="' + (x0 + w - 7).toFixed(1) + '" cy="' + (yTop + hBajo / 2).toFixed(1) + '" r="1.8" fill="' + AZ + '"/>';
+  } else if (e.tipo === 'proyectable' || e.tipo === 'vasista') {
+    o += rect(x0, yTop, w, hBajo, VID) + triangulo(x0, yTop, w, hBajo, e.tipo === 'proyectable' ? 'arr' : 'abj');
+  } else if (e.tipo === 'fijo') {
+    o += rect(x0, yTop, w, hBajo, VID);
+    if (e.intermedio) { var yi = yTop + hBajo * 0.55; o += '<line x1="' + x0.toFixed(1) + '" y1="' + yi.toFixed(1) + '" x2="' + (x0 + w).toFixed(1) + '" y2="' + yi.toFixed(1) + '" stroke="' + AZ + '" stroke-width="1.3"/>'; }
+    o += glare(x0, yTop, w, hBajo);
+  }
+  o += rect(x0, y0, w, h, 'none', 2.4);
+  return '<svg viewBox="0 0 120 84" xmlns="http://www.w3.org/2000/svg" style="width:84px;height:auto;flex-shrink:0;border:1px solid #ddd;border-radius:4px;background:#fafafa">' + o + '</svg>';
+}
+function bcDiagramaGenerico(r) {
+  if (!r || r.tipo || r.esServicio || r.esGarantia || r.esEspejo || r.esCubierta || !r.sistema) return '';
+  var svg = bcDiagramaSvg(r);
+  if (!svg) return '';
+  var e = bcEsquemaDeSistema(r.sistema);
+  var txt = r.L + ' \u00d7 ' + r.H + ' mm' + (e.mosq ? ' &middot; con mosquitero' : '');
+  return '<div style="display:flex;gap:10px;align-items:center;margin-top:6px;padding-left:4px">' + svg + '<div style="font-size:9pt;color:#666">' + txt + '</div></div>';
+}
+
 function snDiagramaCorredizo(resultado) {
   // v3.6: también la Escuadra de 2 muros (tipo 'escuadra', medidas L × P)
+  if (resultado && resultado.sistema && !resultado.tipo) return bcDiagramaGenerico(resultado); // v1.4: Nacional / Española / Eurovent
   if (!resultado || (resultado.tipo !== 'corredizo' && resultado.tipo !== 'escuadra')) return '';
   var esEscuadra = resultado.tipo === 'escuadra' || resultado.config === 'escuadra';
   var url = esEscuadra ? _DIAG_ESCUADRA_URL : _DIAG_CORREDIZO_URL;
@@ -212,5 +302,5 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
       return { empresa: String(f.empresa).trim(), atencion: f.nombre };
     } catch (e) { return {}; }
   }
-  window.BCDoc = { version: 'v1.3', generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo, datosCliente: datosCliente };
+  window.BCDoc = { version: 'v1.4', generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo, diagramaSvg: bcDiagramaSvg, esquema: bcEsquemaDeSistema, datosCliente: datosCliente };
 })();
