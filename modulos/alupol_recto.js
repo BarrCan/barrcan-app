@@ -2,8 +2,19 @@
   BARRCAN · MÓDULO INDEPENDIENTE — Alu/Polietileno
   Variante  : Recto (1 muro)
   ID        : ALUPOL-RECTO
-  VERSION   : v1.0
-  FECHA     : 2026-09-21
+  VERSION   : v1.1
+  FECHA     : 2026-10-11
+
+  v1.1 - Fórmula corregida por Mau (11-oct-2026):
+    · Moldura = ((largo × 2) + (alto × 2)) × 2 -- perímetro completo, en
+      las dos caras. Antes era (largo + alto × 2) × 2.
+    · Jaladeras: 4 (antes 2). Carretillas 4, escuadras 8, silicón ½ y
+      remaches 40 no cambian.
+    · Un solo nivel: Semi Lujo (moldura clave 671). Económico y Lujo se
+      eliminaron.
+    · El polietileno ($/m²) viene de ALU_PRECIOS.material_m2 ($350).
+
+  Versión original: v1.0, 2026-09-21
 
   v1.0 - Extraído de apCalcular() (central, rama AP_TIPO==='recto')
     como parte de la migración a módulos independientes -- MISMA
@@ -39,7 +50,6 @@
     ctx = ctx || {};
     var precios = ctx.precios;
     var color = ctx.color || 'NATURAL';
-    var nivel = ctx.nivel || 'semilujo';
 
     if (!precios) return { ok: false, errores: ['El central no pasó ALU_PRECIOS -- revisar integración'] };
 
@@ -47,13 +57,13 @@
     var alto = (ctx.altoMm || 0) / 10;
     if (!largo || !alto) return { ok: false, errores: ['Faltan medidas'] };
 
-    var claveMoldura = nivel === 'economico' ? '670' : nivel === 'lujo' ? '676' : '671';
+    var claveMoldura = '671'; // único nivel: Semi Lujo
 
     var cmRiel = largo;
     var cmJambaInf = largo;
     var cmJambaLat = alto * 2;
-    var cmMoldura = (largo + alto * 2) * 2;
-    var qCarretilla = 4, qJaladera = 2, qEscuadra = 8;
+    var cmMoldura = ((largo * 2) + (alto * 2)) * 2; // perímetro completo, dos caras
+    var qCarretilla = 4, qJaladera = 4, qEscuadra = 8;
     var kgVinil = ((largo / 2) * 4 * alto) / 12000;
     var qSilicon = 0.5, qRemache = 40;
     var m2Material = (alto * largo) / 10000;
@@ -83,14 +93,12 @@
     var ivaVenta = antesIva * precios.iva_venta_pct / 100;
     var precioFinal = antesIva + ivaVenta;
 
-    var nivelLabel = nivel === 'economico' ? 'Económico' : nivel === 'lujo' ? 'Lujo' : 'Semi Lujo';
-
     return {
       ok: true,
-      sistema: 'Aluminio/Polietileno Recto ' + nivelLabel + ' ' + color,
+      sistema: 'Aluminio/Polietileno Recto Semi Lujo ' + color,
       L: largo * 10, H: alto * 10,
       precioFinal: precioFinal,
-      tipo: 'alupol', apTipo: 'recto', apNivel: nivel, apColor: color,
+      tipo: 'alupol', apTipo: 'recto', apNivel: 'semilujo', apColor: color,
       largo: largo, largo2: null, alto: alto,
       desglose: {
         costoAluminio: costoAluminio, costoHerrajes: costoHerrajes, costoMaterial: costoMaterial,
@@ -104,7 +112,7 @@
     id: 'ALUPOL-RECTO',
     linea: 'alupol',
     label: 'Recto (1 muro)',
-    version: '1.0',
+    version: '1.1',
     calcular: calcular
   };
 })();

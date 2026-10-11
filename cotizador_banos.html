@@ -8,6 +8,14 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v3.10
+  FECHA   : 2026-10-11
+  v3.10 - Alu/Polietileno, fórmulas corregidas por Mau: moldura = ((largo×2) +
+    (alto×2)) × 2 (perímetro completo, dos caras; Escuadra suma los dos
+    muros), 4 jaladeras (Recto y Escuadra), polietileno a $350/m². Un solo
+    nivel: Semi Lujo (se eliminaron Económico y Lujo y su selector).
+    Módulos alupol_recto / alupol_escuadra v1.1. También: el precio final de
+  Alu/Polietileno salía con doble signo ($$); corregido.
   VERSION : v3.9
   FECHA   : 2026-10-04
   v3.9 - Los documentos (presupuestos, recibos, reportes) se abren con
@@ -923,7 +931,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
        no por kit ni por $/kg genérico. Fórmula de indirectos idéntica a
        Corredizo Cristal (GIF 15% + GA 25% + Utilidad 25%, MO fija $600,
        netificación de IVA de compra) -- ver config_precios prefijo alu_.
-       Semi Lujo es el nivel estándar (default). -->
+       Un solo nivel: Semi Lujo (11-oct-2026). -->
   <div id="tab-alupol" style="display:none">
     <div class="card">
       <div class="card-title">Cancel Aluminio + Polietileno</div>
@@ -933,17 +941,6 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
         <button class="color-btn active" data-tipo="recto" onclick="apSelTipo(this)">Recto (1 muro)</button>
         <button class="color-btn" data-tipo="escuadra" onclick="apSelTipo(this)">Escuadra (2 muros)</button>
         <button class="color-btn" data-tipo="corredizo_lujo" onclick="apSelTipo(this)">Corredizo Lujo (2 hojas)</button>
-      </div>
-
-      <!-- v3.3: Nivel no aplica a Corredizo Lujo (módulo independiente,
-           sin Económico/Semi Lujo/Lujo) -- se oculta para ese tipo. -->
-      <div id="ap-nivel-wrap">
-        <label class="form-label">Nivel</label>
-        <div class="color-grid">
-          <button class="color-btn" data-nivel="economico" onclick="apSelNivel(this)">Económico</button>
-          <button class="color-btn active" data-nivel="semilujo" onclick="apSelNivel(this)">Semi Lujo (estándar)</button>
-          <button class="color-btn" data-nivel="lujo" onclick="apSelNivel(this)">Lujo</button>
-        </div>
       </div>
 
       <label class="form-label">Color del marco</label>
@@ -1324,7 +1321,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v3.9';
+var APP_VERSION = 'v3.10';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -1379,15 +1376,15 @@ var CC_PRECIOS = {
 // corregirlo.
 var ALU_PRECIOS = {
   '674_base': 878.35, '675_base': 362.62, '677_base': 297.89,
-  '670_base': 280.37, '671_base': 340.00, '676_base': 327.00,
+  '671_base': 340.00, // moldura Semi Lujo (único nivel)
   factor_blanco_pct: 0, factor_negro_pct: 15,
   her_carretilla: 5.22, her_jaladera: 4.06, her_escuadra: 1.508,
   her_vinil_kg: 38.28, her_silicon: 199.52, her_remache: 20.648,
-  material_m2: 300, mdo: 600,
+  material_m2: 350, mdo: 600,
   gif_pct: 15, ga_pct: 25, util_pct: 25,
   iva_compras_pct: 16, iva_venta_pct: 16
 };
-var AP_TIPO = 'recto', AP_NIVEL = 'semilujo', AP_COLOR = 'NATURAL';
+var AP_TIPO = 'recto', AP_NIVEL = 'semilujo' /* único nivel */, AP_COLOR = 'NATURAL';
 
 function apSelTipo(btn) {
   btn.closest('.color-grid').querySelectorAll('.color-btn').forEach(function(b) { b.classList.remove('active'); });
@@ -1395,9 +1392,6 @@ function apSelTipo(btn) {
   AP_TIPO = btn.dataset.tipo;
   document.getElementById('ap-largo2-wrap').style.display = AP_TIPO === 'escuadra' ? 'block' : 'none';
   document.getElementById('ap-corte-card').style.display = AP_TIPO === 'recto' ? 'block' : 'none';
-  // v3.4: "Nivel" es Económico/Semi Lujo/Lujo -- Corredizo Lujo no lo
-  // usa (se oculta para no sugerir que hace algo que el módulo ignora).
-  document.getElementById('ap-nivel-wrap').style.display = AP_TIPO === 'corredizo_lujo' ? 'none' : 'block';
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -1425,11 +1419,6 @@ function bcCargarModulo(clave, src, callback) {
   s.onload = function () { callback(); };
   s.onerror = function () { toast('No se pudo cargar el módulo ' + clave + ' -- revisa conexión o que modulos/' + src.split('/').pop() + ' esté subido junto a este archivo'); };
   document.head.appendChild(s);
-}
-function apSelNivel(btn) {
-  btn.closest('.color-grid').querySelectorAll('.color-btn').forEach(function(b) { b.classList.remove('active'); });
-  btn.classList.add('active');
-  AP_NIVEL = btn.dataset.nivel;
 }
 function apSelColor(btn) {
   btn.closest('.color-grid').querySelectorAll('.color-btn').forEach(function(b) { b.classList.remove('active'); });
@@ -1494,7 +1483,7 @@ function apCalcularConModulo(clave) {
   document.getElementById('ap-d-ga').textContent = fmt(res.desglose.ga);
   document.getElementById('ap-d-util').textContent = fmt(res.desglose.utilidad);
   document.getElementById('ap-d-iva').textContent = fmt(res.desglose.iva);
-  document.getElementById('ap-precio-final').textContent = '$' + fmt(res.precioFinal);
+  document.getElementById('ap-precio-final').textContent = fmt(res.precioFinal); // fmt() ya trae el signo $
   document.getElementById('ap-resultado').style.display = 'block';
 
   CB_RESULTADO = {

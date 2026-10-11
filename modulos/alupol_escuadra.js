@@ -2,8 +2,19 @@
   BARRCAN · MÓDULO INDEPENDIENTE — Alu/Polietileno
   Variante  : Escuadra (2 muros)
   ID        : ALUPOL-ESCUADRA
-  VERSION   : v1.0
-  FECHA     : 2026-09-21
+  VERSION   : v1.1
+  FECHA     : 2026-10-11
+
+  v1.1 - Fórmula corregida por Mau (11-oct-2026): suma los dos muros.
+    · Moldura de cada muro = ((largo × 2) + (alto × 2)) × 2 (perímetro
+      completo, dos caras); se suman los dos muros. Antes era
+      (largo + alto × 2) × 2 por muro.
+    · Jaladeras: 4 (antes 2). Carretillas 4, escuadras 16, silicón 1 y
+      remaches 80 no cambian.
+    · Un solo nivel: Semi Lujo (moldura clave 671).
+    · El polietileno ($/m²) viene de ALU_PRECIOS.material_m2 ($350).
+
+  Versión original: v1.0, 2026-09-21
 
   v1.0 - Extraído de apCalcular() (central, rama AP_TIPO==='escuadra')
     como parte de la migración a módulos independientes -- MISMA
@@ -31,7 +42,6 @@
     ctx = ctx || {};
     var precios = ctx.precios;
     var color = ctx.color || 'NATURAL';
-    var nivel = ctx.nivel || 'semilujo';
 
     if (!precios) return { ok: false, errores: ['El central no pasó ALU_PRECIOS -- revisar integración'] };
 
@@ -40,13 +50,13 @@
     var largo2 = (ctx.largo2Mm || 0) / 10;
     if (!largo || !alto || !largo2) return { ok: false, errores: ['Faltan medidas (incluye Largo 2 del segundo muro)'] };
 
-    var claveMoldura = nivel === 'economico' ? '670' : nivel === 'lujo' ? '676' : '671';
+    var claveMoldura = '671'; // único nivel: Semi Lujo
 
     var cmRiel = largo + largo2;
     var cmJambaInf = largo + largo2;
     var cmJambaLat = alto * 2;
-    var cmMoldura = ((largo + alto * 2) * 2) + ((largo2 + alto * 2) * 2);
-    var qCarretilla = 4, qJaladera = 2, qEscuadra = 16;
+    var cmMoldura = (((largo * 2) + (alto * 2)) * 2) + (((largo2 * 2) + (alto * 2)) * 2); // cada muro: perímetro completo, dos caras
+    var qCarretilla = 4, qJaladera = 4, qEscuadra = 16;
     var kgVinil = (((largo / 2) * 4 * alto) + ((largo2 / 2) * 4 * alto)) / 12000;
     var qSilicon = 1, qRemache = 80;
     var m2Material = ((alto * largo) + (alto * largo2)) / 10000;
@@ -76,14 +86,12 @@
     var ivaVenta = antesIva * precios.iva_venta_pct / 100;
     var precioFinal = antesIva + ivaVenta;
 
-    var nivelLabel = nivel === 'economico' ? 'Económico' : nivel === 'lujo' ? 'Lujo' : 'Semi Lujo';
-
     return {
       ok: true,
-      sistema: 'Aluminio/Polietileno Escuadra ' + nivelLabel + ' ' + color,
+      sistema: 'Aluminio/Polietileno Escuadra Semi Lujo ' + color,
       L: (largo * 10) + '+' + (largo2 * 10), H: alto * 10,
       precioFinal: precioFinal,
-      tipo: 'alupol', apTipo: 'escuadra', apNivel: nivel, apColor: color,
+      tipo: 'alupol', apTipo: 'escuadra', apNivel: 'semilujo', apColor: color,
       largo: largo, largo2: largo2, alto: alto,
       desglose: {
         costoAluminio: costoAluminio, costoHerrajes: costoHerrajes, costoMaterial: costoMaterial,
@@ -97,7 +105,7 @@
     id: 'ALUPOL-ESCUADRA',
     linea: 'alupol',
     label: 'Escuadra (2 muros)',
-    version: '1.0',
+    version: '1.1',
     calcular: calcular
   };
 })();
