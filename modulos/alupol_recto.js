@@ -2,8 +2,14 @@
   BARRCAN · MÓDULO INDEPENDIENTE — Alu/Polietileno
   Variante  : Recto (1 muro)
   ID        : ALUPOL-RECTO
-  VERSION   : v1.1
+  VERSION   : v1.2
   FECHA     : 2026-10-11
+
+  v1.2 - INSTALACIÓN incluida (11-oct-2026): se suma $500 de instalación
+    (precios.instalacion, clave alu_instalacion) a la mano de obra de
+    fabricación ($600). Va dentro de la base de costos, así que recibe
+    GIF, GA, utilidad e IVA igual que el resto. desglose.mdo = total;
+    mdoFabricacion y mdoInstalacion por separado.
 
   v1.1 - Fórmula corregida por Mau (11-oct-2026):
     · Moldura = ((largo × 2) + (alto × 2)) × 2 -- perímetro completo, en
@@ -84,7 +90,8 @@
 
     var costoBruto = costoAluminio + costoHerrajes + costoMaterial;
     var costoNeto = costoBruto / (1 + precios.iva_compras_pct / 100);
-    var subtotal = costoNeto + precios.mdo;
+    var mdoFab = precios.mdo || 0, mdoInst = precios.instalacion || 0, mdoTotal = mdoFab + mdoInst;
+    var subtotal = costoNeto + mdoTotal;
     var gif = subtotal * precios.gif_pct / 100;
     var ga = subtotal * precios.ga_pct / 100;
     var costoReal = subtotal + gif + ga;
@@ -102,7 +109,7 @@
       largo: largo, largo2: null, alto: alto,
       desglose: {
         costoAluminio: costoAluminio, costoHerrajes: costoHerrajes, costoMaterial: costoMaterial,
-        mdo: precios.mdo, gif: gif, ga: ga, utilidad: utilidad, iva: ivaVenta
+        mdo: mdoTotal, mdoFabricacion: mdoFab, mdoInstalacion: mdoInst, gif: gif, ga: ga, utilidad: utilidad, iva: ivaVenta
       }
     };
   }
@@ -112,7 +119,7 @@
     id: 'ALUPOL-RECTO',
     linea: 'alupol',
     label: 'Recto (1 muro)',
-    version: '1.1',
+    version: '1.2',
     calcular: calcular
   };
 })();

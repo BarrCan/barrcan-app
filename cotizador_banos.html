@@ -8,6 +8,11 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v3.12
+  FECHA   : 2026-10-11
+  v3.12 - Alu/Polietileno: se incluye la INSTALACIÓN ($500, clave alu_instalacion)
+    dentro de los costos (recibe GIF, GA, utilidad e IVA). Nueva fila
+    "Instalación" en el desglose. Módulos alupol_recto / alupol_escuadra v1.2.
   VERSION : v3.11
   FECHA   : 2026-10-11
   v3.11 - Se quitó el tipo "Corredizo Lujo (2 hojas)" de Alu/Polietileno (no
@@ -980,7 +985,8 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
           <div class="desglose-row"><span>Perfiles aluminio</span><span id="ap-d-alu">$0</span></div>
           <div class="desglose-row"><span>Herrajes</span><span id="ap-d-her">$0</span></div>
           <div class="desglose-row"><span>Material (polietileno)</span><span id="ap-d-mat">$0</span></div>
-          <div class="desglose-row"><span>Mano de obra</span><span id="ap-d-mdo">$0</span></div>
+          <div class="desglose-row"><span>Mano de obra (fabricación)</span><span id="ap-d-mdo">$0</span></div>
+          <div class="desglose-row"><span>Instalación</span><span id="ap-d-inst">$0</span></div>
           <div class="desglose-row"><span>GIF</span><span id="ap-d-gif">$0</span></div>
           <div class="desglose-row"><span>GA</span><span id="ap-d-ga">$0</span></div>
           <div class="desglose-row"><span>Utilidad</span><span id="ap-d-util">$0</span></div>
@@ -1325,7 +1331,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v3.11';
+var APP_VERSION = 'v3.12';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -1384,7 +1390,7 @@ var ALU_PRECIOS = {
   factor_blanco_pct: 0, factor_negro_pct: 15,
   her_carretilla: 5.22, her_jaladera: 4.06, her_escuadra: 1.508,
   her_vinil_kg: 38.28, her_silicon: 199.52, her_remache: 20.648,
-  material_m2: 350, mdo: 600,
+  material_m2: 350, mdo: 600, instalacion: 500,
   gif_pct: 15, ga_pct: 25, util_pct: 25,
   iva_compras_pct: 16, iva_venta_pct: 16
 };
@@ -1481,7 +1487,8 @@ function apCalcularConModulo(clave) {
   document.getElementById('ap-d-alu').textContent = fmt(res.desglose.costoAluminio);
   document.getElementById('ap-d-her').textContent = fmt(res.desglose.costoHerrajes);
   document.getElementById('ap-d-mat').textContent = fmt(res.desglose.costoMaterial);
-  document.getElementById('ap-d-mdo').textContent = fmt(res.desglose.mdo);
+  document.getElementById('ap-d-mdo').textContent = fmt(res.desglose.mdoFabricacion != null ? res.desglose.mdoFabricacion : res.desglose.mdo);
+  document.getElementById('ap-d-inst').textContent = fmt(res.desglose.mdoInstalacion || 0);
   document.getElementById('ap-d-gif').textContent = fmt(res.desglose.gif);
   document.getElementById('ap-d-ga').textContent = fmt(res.desglose.ga);
   document.getElementById('ap-d-util').textContent = fmt(res.desglose.utilidad);
