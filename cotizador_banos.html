@@ -8,6 +8,11 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v3.13
+  FECHA   : 2026-10-11
+  v3.13 - Alu/Polietileno: la instalación ($500) es un cargo directo con IVA
+    incluido; el precio final sube exactamente $500 (antes $971.70 por pasar
+    por GIF, GA y utilidad). Módulos alupol_recto / alupol_escuadra v1.3.
   VERSION : v3.12
   FECHA   : 2026-10-11
   v3.12 - Alu/Polietileno: se incluye la INSTALACIÓN ($500, clave alu_instalacion)
@@ -986,7 +991,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
           <div class="desglose-row"><span>Herrajes</span><span id="ap-d-her">$0</span></div>
           <div class="desglose-row"><span>Material (polietileno)</span><span id="ap-d-mat">$0</span></div>
           <div class="desglose-row"><span>Mano de obra (fabricación)</span><span id="ap-d-mdo">$0</span></div>
-          <div class="desglose-row"><span>Instalación</span><span id="ap-d-inst">$0</span></div>
+          <div class="desglose-row"><span>Instalación (cargo directo, IVA incl.)</span><span id="ap-d-inst">$0</span></div>
           <div class="desglose-row"><span>GIF</span><span id="ap-d-gif">$0</span></div>
           <div class="desglose-row"><span>GA</span><span id="ap-d-ga">$0</span></div>
           <div class="desglose-row"><span>Utilidad</span><span id="ap-d-util">$0</span></div>
@@ -1331,7 +1336,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v3.12';
+var APP_VERSION = 'v3.13';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');

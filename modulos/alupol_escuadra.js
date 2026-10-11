@@ -2,8 +2,14 @@
   BARRCAN · MÓDULO INDEPENDIENTE — Alu/Polietileno
   Variante  : Escuadra (2 muros)
   ID        : ALUPOL-ESCUADRA
-  VERSION   : v1.2
+  VERSION   : v1.3
   FECHA     : 2026-10-11
+
+  v1.3 - La INSTALACIÓN ya NO entra a la base de costos (antes subía el
+    precio $971.70). Ahora es un CARGO DIRECTO de $500 con IVA incluido
+    (precios.instalacion, clave alu_instalacion) que se suma después de la
+    utilidad: el precio final sube exactamente $500. Se le quita el IVA
+    ($431.03) antes de sumarlo, y el IVA de venta se calcula sobre el total.
 
   v1.2 - INSTALACIÓN incluida (11-oct-2026): se suma $500 de instalación
     (precios.instalacion, clave alu_instalacion) a la mano de obra de
@@ -83,13 +89,14 @@
 
     var costoBruto = costoAluminio + costoHerrajes + costoMaterial;
     var costoNeto = costoBruto / (1 + precios.iva_compras_pct / 100);
-    var mdoFab = precios.mdo || 0, mdoInst = precios.instalacion || 0, mdoTotal = mdoFab + mdoInst;
-    var subtotal = costoNeto + mdoTotal;
+    var mdoFab = precios.mdo || 0, instalacion = precios.instalacion || 0;
+    var subtotal = costoNeto + mdoFab; // la instalación NO entra a la base de costos
     var gif = subtotal * precios.gif_pct / 100;
     var ga = subtotal * precios.ga_pct / 100;
     var costoReal = subtotal + gif + ga;
     var utilidad = costoReal * precios.util_pct / 100;
-    var antesIva = costoReal + utilidad;
+    var instNeto = instalacion / (1 + precios.iva_venta_pct / 100); // cargo directo, IVA incluido
+    var antesIva = costoReal + utilidad + instNeto;
     var ivaVenta = antesIva * precios.iva_venta_pct / 100;
     var precioFinal = antesIva + ivaVenta;
 
@@ -102,7 +109,7 @@
       largo: largo, largo2: largo2, alto: alto,
       desglose: {
         costoAluminio: costoAluminio, costoHerrajes: costoHerrajes, costoMaterial: costoMaterial,
-        mdo: mdoTotal, mdoFabricacion: mdoFab, mdoInstalacion: mdoInst, gif: gif, ga: ga, utilidad: utilidad, iva: ivaVenta
+        mdo: mdoFab, mdoFabricacion: mdoFab, mdoInstalacion: instalacion, gif: gif, ga: ga, utilidad: utilidad, iva: ivaVenta
       }
     };
   }
@@ -112,7 +119,7 @@
     id: 'ALUPOL-ESCUADRA',
     linea: 'alupol',
     label: 'Escuadra (2 muros)',
-    version: '1.2',
+    version: '1.3',
     calcular: calcular
   };
 })();
