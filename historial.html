@@ -8,6 +8,13 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.25
+  FECHA   : 2026-10-12
+  v3.25 - FIX liga de firma: ya no se pisa la clave ya enviada al cliente. Siempre
+    se lee la base primero y se reutiliza la clave guardada; solo se crea una
+    nueva si no existe, con candado (solo si sigue vacía) y comprobando que
+    de verdad se guardó. Antes, un dispositivo con la lista vieja generaba otra
+    clave y la liga original del cliente quedaba inválida.
   VERSIÓN : v3.24
   FECHA   : 2026-10-11
   v3.24 - Recálculo del desglose POR UNIDAD también para piezas de Nacional,
@@ -1673,7 +1680,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.24';
+var APP_VERSION = 'v3.25';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -2242,13 +2249,33 @@ async function presEnviarFirma(idStr) {
   if (p.firmado_at) { toast('Ya está firmado por ' + (p.firmado_por || 'el cliente') + ' -- al imprimir sale con su firma'); return; }
   var tel = String(p.tel || '').replace(/\D/g, '');
   if (tel.length === 10) tel = '52' + tel;
-  var token = p.firma_token || presCodigoFirma();
+  // v3.25: la LIGA vive en la base, no en este dispositivo. Antes se generaba una
+  // clave nueva si la copia local no la tenía (otro teléfono o PC con la lista
+  // vieja) y se PISABA la que ya estaba enviada al cliente: su liga dejaba de
+  // funcionar ("Este presupuesto ya no está disponible"). Ahora siempre se lee
+  // la base primero; si ya hay clave se reutiliza y NUNCA se reemplaza.
+  var token = null;
   try {
-    if (!p.firma_token) {
-      var r = await sb().from('presupuestos_atrasados').update({ firma_token: token, firma_enviada_at: new Date().toISOString() }).eq('id', p.id);
-      if (r.error) throw r.error;
-      p.firma_token = token; presGuardarCache(PRES_CACHE);
+    if (!sb()) throw new Error('sin conexión');
+    var q = await sb().from('presupuestos_atrasados').select('firma_token,firmado_at').eq('id', p.id).maybeSingle();
+    if (q.error) throw q.error;
+    if (!q.data) throw new Error('el presupuesto todavía no está en la base (¿se guardó sin conexión?). Sincroniza y vuelve a intentar');
+    if (q.data.firmado_at) { toast('Ya está firmado -- al imprimir sale con su firma'); return; }
+    token = q.data.firma_token;
+    if (!token) {
+      var nuevo = presCodigoFirma();
+      var up = await sb().from('presupuestos_atrasados')
+        .update({ firma_token: nuevo, firma_enviada_at: new Date().toISOString() })
+        .eq('id', p.id).is('firma_token', null).select('firma_token');
+      if (up.error) throw up.error;
+      if (up.data && up.data.length) token = up.data[0].firma_token;
+      else { // otro dispositivo se adelantó: se usa la que quedó guardada
+        var q2 = await sb().from('presupuestos_atrasados').select('firma_token').eq('id', p.id).maybeSingle();
+        token = q2.data && q2.data.firma_token;
+      }
     }
+    if (!token) throw new Error('no se pudo guardar la liga');
+    p.firma_token = token; presGuardarCache(PRES_CACHE);
   } catch (e) { toast('No se pudo preparar la liga de firma: ' + e.message); return; }
   var liga = 'https://barrcan.github.io/barrcan-app/firmar.html?t=' + token;
   var nombre = String(p.cliente || '').trim();
