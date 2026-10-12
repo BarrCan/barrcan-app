@@ -193,6 +193,16 @@
     - Se agregó una verificación automática (script de comparación
       onclick/onchange vs. window.expuestas) para detectar esto antes
       de publicar, no solo revisando a ojo.
+  VERSION : v1.19.7
+  FECHA   : 2026-10-11
+  v1.19.7 - MANTENIMIENTO con GA: antes cobraba solo material × (1 + margen) +
+    mano de obra, sin GA y con la mano de obra sin margen. Ahora: (material +
+    mano de obra) + GA + utilidad (margen mantenimiento) + IVA; el TRASLADO se
+    suma aparte, sin factor. Una sola función (servPrecioMant) para la vista
+    previa, el combo y el resultado final. Tarifa de mano de obra: integral
+    $165/h (antes $250) y servicios sueltos $285/h (antes $400), para que los
+    precios queden casi iguales (chica $841, mediana $1,112, grande $2,137).
+    Tarjetas de precio actualizadas.
   VERSION : v1.19.6
   FECHA   : 2026-10-11
   v1.19.6 - La visita técnica previa suma $500 (antes $1,000): los clientes
@@ -2228,7 +2238,7 @@ body{background:var(--off-white)}
           </div>
           <div>
             <label class="form-label" style="font-size:10px">$/hora c/u</label>
-            <input type="number" id="serv-mo-tarifa" class="form-input" min="0" value="400" inputmode="numeric" oninput="servActualizarAjustes()">
+            <input type="number" id="serv-mo-tarifa" class="form-input" min="0" value="285" inputmode="numeric" oninput="servActualizarAjustes()">
           </div>
         </div>
         <input type="hidden" id="serv-mo-base" value="600">
@@ -3962,7 +3972,7 @@ function svgPorTipo(tipo, serie, id) {
     // ════════════════════════════════════════
     // MANTENIMIENTO Y SERVICIOS
     // ════════════════════════════════════════
-    'MANT_INTEGRAL_VENTANA':  () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🪟</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">MANT. INTEGRAL</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">desde $864/ventana</text>`),
+    'MANT_INTEGRAL_VENTANA':  () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🪟</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">MANT. INTEGRAL</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">desde $841/ventana</text>`),
     'MANT_LIMPIEZA_VEN':      () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🪟</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">LIMPIEZA VENTANAS</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">$350/pieza</text>`),
     'MANT_AJUSTE_HER':        () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🔧</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">AJUSTE HERRAJES</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">$200/pieza</text>`),
     'MANT_CAMBIO_FELPA':      () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🔧</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">CAMBIO FELPA</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">$180/ml</text>`),
@@ -4079,7 +4089,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.19.6';
+const APP_VERSION = 'v1.19.7';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -4293,8 +4303,10 @@ function renderResultado(r) {
           ${!s.esSinMargen && s.complejidad > 1 ? `<div class="desglose-row"><span>Ajuste por complejidad (×${s.complejidad})</span><span>$${fmt((s.esCombo ? s.subtotal*(1-s.comboDescuentoPct) : s.subtotalBase) * (s.complejidad - 1))}</span></div>` : ''}
           ${!s.esSinMargen && s.moBase > 0 ? `<div class="desglose-row"><span>Mano de obra</span><span>$${fmt(s.moBase)}</span></div>` : ''}
           ${!s.esSinMargen && s.cargoTraslado > 0 ? `<div class="desglose-row"><span>Traslado</span><span>$${fmt(s.cargoTraslado)}</span></div>` : ''}
-          ${!s.esSinMargen && esSupremo() ? `
-          <div class="desglose-row"><span>Margen Mantenimiento +${document.getElementById('cfg-margen-mant').value}%</span><span>$${fmt(s.gif||0)}</span></div>` : ''}
+          ${!s.esSinMargen && esSupremo() ? (s.ga > 0
+            ? `<div class="desglose-row"><span>GA +${document.getElementById('cfg-ga').value}%</span><span>$${fmt(s.ga)}</span></div>
+          <div class="desglose-row"><span>Utilidad +${document.getElementById('cfg-margen-mant').value}%</span><span>$${fmt(s.utilidad||0)}</span></div>`
+            : `<div class="desglose-row"><span>Margen Mantenimiento</span><span>$${fmt(s.gif||0)}</span></div>`) : ''}
           ${!s.esSinMargen ? `<div class="desglose-row"><span>IVA +${document.getElementById('cfg-iva').value}%</span><span>$${fmt(s.ivaMonto||0)}</span></div>` :
           `<div class="desglose-row"><span style="color:var(--green)">🛡️ Servicio de garantía — sin cargo adicional</span><span>$0</span></div>`}
           <div class="desglose-row total-row"><span>PRECIO FINAL</span><span>$${fmt(s.precioFinal)}</span></div>
@@ -4698,7 +4710,7 @@ function snSelFamilia(fam,btnEl){
 // Precio de referencia por pieza mostrado en la tarjeta del catálogo,
 // tal cual aparece en barrcan_app.html (Mantenimiento y Garantías).
 const SN_PRECIO_TARJETA = {
-  MANT_INTEGRAL_VENTANA:  'desde $864/ventana',
+  MANT_INTEGRAL_VENTANA:  'desde $841/ventana',
   MANT_LIMPIEZA_VEN:      '$350/pieza',
   MANT_LIMPIEZA_PUERTA:   '$250/pieza',
   MANT_AJUSTE_HER:        '$200/pieza',
@@ -4826,7 +4838,7 @@ function snIniciarCombo(cardEl) {
   document.getElementById('serv-complejidad').value = '1';
   document.getElementById('serv-mo-horas').value = 1.5;
   document.getElementById('serv-mo-personas').value = '1';
-  document.getElementById('serv-mo-tarifa').value = 400;
+  document.getElementById('serv-mo-tarifa').value = 285; // v1.19.7: antes 400 (ahora lleva GA y utilidad: ≈ $400 efectivos)
   servCalcularMO();
   document.getElementById('serv-cargo-traslado').value = 0; // el traslado local ya va absorbido en las 1.5h de MO por default
   document.getElementById('serv-aviso-riesgo').checked = false;
@@ -5255,7 +5267,7 @@ function servicioReset(sistema) {
   document.getElementById('serv-complejidad').value = '1';
   document.getElementById('serv-mo-horas').value = 1.5;
   document.getElementById('serv-mo-personas').value = '1';
-  document.getElementById('serv-mo-tarifa').value = 400;
+  document.getElementById('serv-mo-tarifa').value = 285; // v1.19.7: antes 400 (ahora lleva GA y utilidad: ≈ $400 efectivos)
   servCalcularMO();
   document.getElementById('serv-cargo-traslado').value = 0; // el traslado local ya va absorbido en las 1.5h de MO por default
   document.getElementById('serv-aviso-riesgo').checked = false;
@@ -5360,7 +5372,7 @@ var INT_TAMANOS = {
 };
 var INT_BROCHE = { '2': 125, '3': 155 };
 var INT_VINIL_M = 6;
-var INT_TARIFA_H = 250;
+var INT_TARIFA_H = 165; // v1.19.7: antes 250; ahora la mano de obra también lleva GA y utilidad
 function servIntegralAplicar(cambioTamano) {
   if (!SERV_SISTEMA || !SERV_SISTEMA.integral) return;
   var t = INT_TAMANOS[document.getElementById('int-tam').value] || INT_TAMANOS.chica;
@@ -5410,6 +5422,24 @@ function servActualizarAjustes() {
   else servicioActualizar();
 }
 
+// ══ PRECIO DE MANTENIMIENTO (v1.19.7, 11-oct-2026) ══
+// Antes: material × (1 + margen) + mano de obra + traslado, sin GA y con la
+// mano de obra sin margen. Ahora igual que tus demás cotizadores (sin GIF,
+// porque no hay fabricación): material + mano de obra = base; + GA; +
+// utilidad (el "margen mantenimiento" guardado); el TRASLADO se suma aparte,
+// sin factor; y al final el IVA. Una sola función para la vista previa, el
+// combo y el resultado final, para que nunca difieran.
+function servPrecioMant(subtotalMaterial, moBase, cargoTraslado) {
+  const gaPct = cfg('cfg-ga') / 100, utilPct = cfg('cfg-margen-mant') / 100, ivaPct = cfg('cfg-iva') / 100;
+  const base = subtotalMaterial + moBase;
+  const ga = base * gaPct;
+  const costoReal = base + ga;
+  const utilidad = costoReal * utilPct;
+  const precioAntesIva = costoReal + utilidad + cargoTraslado;
+  const ivaMonto = precioAntesIva * ivaPct;
+  return { base, ga, costoReal, utilidad, precioAntesIva, ivaPct, ivaMonto, total: precioAntesIva + ivaMonto };
+}
+
 function servicioCalcPreview(cant, precio, nombreOverride) {
   const esGarantia = (SERV_SISTEMA?.factorGIF === 1.0) && SERV_MODO !== 'combo';
   const complejidad = parseFloat(document.getElementById('serv-complejidad')?.value) || 1;
@@ -5440,31 +5470,24 @@ function servicioCalcPreview(cant, precio, nombreOverride) {
   } else { rowTras.style.display = 'none'; }
   ['ga','util'].forEach(function(k){
     var row = document.getElementById('serv-c-'+k).closest('.costo-row');
-    if (row) row.style.display = 'none'; // Mantenimiento ya no usa GA/Utilidad por separado
+    if (row) row.style.display = (esGarantia || !esSupremo()) ? 'none' : 'flex'; // v1.19.7: GA y utilidad visibles en la vista interna
   });
   var rowGif = document.getElementById('serv-c-gif').closest('.costo-row');
-  if (rowGif) rowGif.style.display = (esGarantia || !esSupremo()) ? 'none' : 'flex';
+  if (rowGif) rowGif.style.display = 'none'; // GIF no aplica a mantenimiento
   var rowIva = document.getElementById('serv-c-iva').closest('.costo-row');
   if (rowIva) rowIva.style.display = esGarantia ? 'none' : 'flex';
   if (esGarantia) {
     document.getElementById('serv-c-total').textContent = fmt(subtotalBase);
     return;
   }
-  // Mantenimiento usa UN solo margen (más simple y más bajo que GIF+GA+
-  // Utilidad apiladas de las instalaciones completas) para no espantar
-  // al cliente con un precio que se siente inflado.
-  const margenPct = cfg('cfg-margen-mant') / 100;
-  const ivaPct = cfg('cfg-iva') / 100;
-  const margen = subtotalMaterial * margenPct;
-  const materialConMargen = subtotalMaterial + margen;
-  const precioAntesIva = materialConMargen + moBase + cargoTraslado;
-  const ivaMonto = precioAntesIva * ivaPct;
-  const total = precioAntesIva + ivaMonto;
-  document.getElementById('serv-label-gif').textContent = 'Margen Mantenimiento +' + document.getElementById('cfg-margen-mant').value + '%';
-  document.getElementById('serv-c-gif').textContent   = fmt(margen);
+  const pm = servPrecioMant(subtotalMaterial, moBase, cargoTraslado);
+  document.getElementById('serv-label-ga').textContent = 'GA +' + document.getElementById('cfg-ga').value + '%';
+  document.getElementById('serv-c-ga').textContent     = fmt(pm.ga);
+  document.getElementById('serv-label-util').textContent = 'Utilidad +' + document.getElementById('cfg-margen-mant').value + '%';
+  document.getElementById('serv-c-util').textContent   = fmt(pm.utilidad);
   document.getElementById('serv-label-iva').textContent = 'IVA +' + document.getElementById('cfg-iva').value + '%';
-  document.getElementById('serv-c-iva').textContent   = fmt(ivaMonto);
-  document.getElementById('serv-c-total').textContent = fmt(total);
+  document.getElementById('serv-c-iva').textContent   = fmt(pm.ivaMonto);
+  document.getElementById('serv-c-total').textContent = fmt(pm.total);
 }
 
 function servicioCalcular() {
@@ -5480,12 +5503,8 @@ function servicioCalcular() {
     var cargoTrasladoC = parseFloat(document.getElementById('serv-cargo-traslado').value) || 0;
     var moBaseC = parseFloat(document.getElementById('serv-mo-base').value) || 0;
     var subtotalMaterialC = subtotalBruto * (1 - descPct) * complejidadC;
-    var margenPctC = cfg('cfg-margen-mant') / 100, ivaPctC = cfg('cfg-iva') / 100;
-    var margenC = subtotalMaterialC * margenPctC;
-    var materialConMargenC = subtotalMaterialC + margenC;
-    var precioAntesIvaC = materialConMargenC + moBaseC + cargoTrasladoC;
-    var ivaMontoC = precioAntesIvaC * ivaPctC;
-    var totalC = precioAntesIvaC + ivaMontoC;
+    var pmC = servPrecioMant(subtotalMaterialC, moBaseC, cargoTrasladoC);
+    var ivaPctC = pmC.ivaPct, ivaMontoC = pmC.ivaMonto, totalC = pmC.total;
     var detalleCombo = ids.map(function(id) {
       var s = SERV_COMBO_SEL[id];
       return { nombre: s.sistema.nombre, cantidad: s.cantidad, unidad: s.sistema.unidad, precioUnit: s.sistema.precioBase };
@@ -5499,7 +5518,7 @@ function servicioCalcular() {
       servCantidad: 1, servUnidad: 'combo', servPrecio: subtotalMaterialC,
       servNotas: document.getElementById('serv-notas').value.trim(),
       avisoRiesgo: document.getElementById('serv-aviso-riesgo').checked,
-      subtotal: subtotalBruto, gif: margenC, ga: 0, utilidad: 0, ivaPct: ivaPctC, ivaMonto: ivaMontoC, precioFinal: totalC, esSinMargen: false
+      subtotal: subtotalBruto, gif: 0, ga: pmC.ga, utilidad: pmC.utilidad, ivaPct: ivaPctC, ivaMonto: ivaMontoC, precioFinal: totalC, esSinMargen: false
     };
     toast('✅ Combo calculado');
     renderResultado(STATE.ultimoResultado);
@@ -5520,13 +5539,8 @@ function servicioCalcular() {
   let gif = 0, ga = 0, utilidad = 0, ivaMonto = 0, ivaPct = 0;
   let total = subtotalBase;
   if (!esGarantia) {
-    const margenPct = cfg('cfg-margen-mant') / 100;
-    ivaPct = cfg('cfg-iva') / 100;
-    gif = subtotalMaterial * margenPct; // "gif" aquí = margen único de mantenimiento (nombre de variable reutilizado por compatibilidad)
-    const materialConMargen = subtotalMaterial + gif;
-    const precioAntesIva = materialConMargen + moBase + cargoTraslado;
-    ivaMonto = precioAntesIva * ivaPct;
-    total = precioAntesIva + ivaMonto;
+    const pm = servPrecioMant(subtotalMaterial, moBase, cargoTraslado);
+    ga = pm.ga; utilidad = pm.utilidad; ivaPct = pm.ivaPct; ivaMonto = pm.ivaMonto; total = pm.total;
   }
   const unidad   = SERV_SISTEMA.unidad || 'pza';
   servicioCalcPreview(cant, precio);
