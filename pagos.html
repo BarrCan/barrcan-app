@@ -7,6 +7,13 @@
 <script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.33
+  FECHA   : 2026-10-11
+  v4.33 - Nuevo concepto "Visita técnica": recibo de visita en el mismo ticket de
+    80 mm y folio RB-n, con la nota "si continúa con nosotros se abona a su
+    presupuesto y no genera un gasto adicional". Monto por defecto $500 y
+    opción de cargar cliente, teléfono, dirección y folio desde una visita
+    registrada (módulo Visitas). Queda como cobrado en los reportes.
   VERSIÓN : v4.32
   FECHA   : 2026-10-08
   v4.32 - La reimpresión del recibo muestra la factura guardada en folio_fiscal
@@ -1177,14 +1184,21 @@ select.form-select { padding-right: 36px; cursor: pointer; }
         </div>
         <div class="form-group">
           <label class="form-label">Concepto</label>
-          <select id="pago-concepto" class="form-select">
+          <select id="pago-concepto" class="form-select" onchange="pagoConceptoCambio()">
             <option value="anticipo">Anticipo 50%</option>
             <option value="segundo_pago">2&deg; Pago 35%</option>
             <option value="liquidacion">Liquidaci&oacute;n 15%</option>
             <option value="pago_total">Pago total</option>
+            <option value="visita">Visita t&eacute;cnica (se abona al presupuesto)</option>
             <option value="otro">Otro</option>
           </select>
         </div>
+      </div>
+      <div id="pago-visita-box" style="display:none;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.4);border-radius:10px;padding:10px 12px;margin-bottom:12px">
+        <div style="font-size:12px;font-weight:700;color:#1B3A5C;margin-bottom:4px">&#128207; Recibo de visita t&eacute;cnica</div>
+        <div style="font-size:11px;color:#555;line-height:1.45;margin-bottom:8px">El recibo lleva la nota de que, si el cliente contin&uacute;a con BarrCan, este pago se abona a su presupuesto y no genera un gasto adicional.</div>
+        <label class="form-label" style="font-size:11px">Cargar datos desde una visita registrada</label>
+        <select id="pago-visita-sel" class="form-select" onchange="pagoElegirVisita()"><option value="">&mdash; Escribir los datos a mano &mdash;</option></select>
       </div>
 
       <label class="form-label">Forma de pago</label>
@@ -1311,7 +1325,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.32';
+var APP_VERSION = 'v4.33';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -1380,7 +1394,7 @@ var ESTADO_SHORT = {
   en_produccion: 'En prod.', pendiente_entrega: 'Pend. entrega',
   entregado: 'Entregado'
 };
-var CONCEPTO_L = { anticipo: 'Anticipo 50%', segundo_pago: '2\u00b0 Pago 35%', liquidacion: 'Liquidaci\u00f3n 15%', pago_total: 'Pago total', otro: 'Otro' };
+var CONCEPTO_L = { anticipo: 'Anticipo 50%', segundo_pago: '2\u00b0 Pago 35%', liquidacion: 'Liquidaci\u00f3n 15%', pago_total: 'Pago total', visita: 'Visita t\u00e9cnica y levantamiento', otro: 'Otro' };
 var FORMA_E    = { transferencia: 'Transf.', efectivo: 'Efectivo', tarjeta: 'Tarjeta', mercado_libre: '🛒 ML', liga_retiro: 'Liga retiro' };
 
 // ── Paginación ────────────────────────────────────────────────────
@@ -2313,6 +2327,51 @@ function pagoResetMulti() {
   pagoQuitarFoto();
 }
 
+// ══ RECIBO DE VISITA TÉCNICA (v4.33) ══
+// Concepto "visita": el recibo sale en el mismo ticket y folio RB-n, con una nota
+// de que si el cliente continúa con BarrCan el pago se abona a su presupuesto y
+// no genera un gasto adicional. Se pueden cargar los datos desde una visita
+// registrada en el módulo de Visitas (cliente, teléfono, dirección, folio).
+var PAGO_VISITAS = [];
+async function pagoCargarVisitas() {
+  var sel = document.getElementById('pago-visita-sel');
+  if (!sel || !sb()) return;
+  try {
+    var desde = new Date(Date.now() - 45 * 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
+    var r = await sb().from('visitas_medicion')
+      .select('folio,cliente_nombre,cliente_tel,dir_obra,fecha_visita,aplica_cobro,monto')
+      .gte('fecha_visita', desde).order('fecha_visita', { ascending: false }).limit(40);
+    if (r.error) throw r.error;
+    PAGO_VISITAS = r.data || [];
+    sel.innerHTML = '<option value="">&mdash; Escribir los datos a mano &mdash;</option>' + PAGO_VISITAS.map(function(v, i) {
+      return '<option value="' + i + '">' + esc(v.folio) + ' \u00b7 ' + esc(v.cliente_nombre || '') + (v.aplica_cobro ? ' \u00b7 $' + fmt(v.monto) : '') + '</option>';
+    }).join('');
+  } catch (e) { console.warn('[BarrCan] No se pudieron cargar las visitas:', e.message); }
+}
+function pagoConceptoCambio() {
+  var esVisita = document.getElementById('pago-concepto').value === 'visita';
+  var box = document.getElementById('pago-visita-box');
+  if (box) box.style.display = esVisita ? 'block' : 'none';
+  if (esVisita) {
+    var m = document.getElementById('pago-monto');
+    if (m && !(parseFloat(m.value) > 0)) m.value = 500; // monto estándar de la visita
+    pagoCargarVisitas();
+  }
+}
+function pagoElegirVisita() {
+  var i = document.getElementById('pago-visita-sel').value;
+  if (i === '') return;
+  var v = PAGO_VISITAS[parseInt(i, 10)];
+  if (!v) return;
+  if (typeof PRES_SEL !== 'undefined') PRES_SEL = null; // la visita no está ligada a un presupuesto
+  document.getElementById('pago-folio').value = v.folio || '';
+  document.getElementById('pago-cliente').value = v.cliente_nombre || '';
+  document.getElementById('pago-tel').value = v.cliente_tel || '';
+  document.getElementById('pago-desc').value = v.dir_obra || '';
+  if (v.fecha_visita) document.getElementById('pago-fecha').value = String(v.fecha_visita).slice(0, 10);
+  document.getElementById('pago-monto').value = (v.aplica_cobro && parseFloat(v.monto) > 0) ? v.monto : 500;
+}
+
 async function pagoGuardar() {
   var monto    = parseFloat(document.getElementById('pago-monto').value) || 0;
   var fecha    = document.getElementById('pago-fecha').value;
@@ -2558,6 +2617,10 @@ function generarRecibo(d) {
         }).join('')
       + '</div>'
     : '';
+  var notaVisitaBox = d.concepto === 'visita'
+    ? '<div style="border:1.5px solid #27AE60;border-radius:5px;padding:7px 9px;background:#EAF7EF;margin:8px 0;font-size:8pt;line-height:1.4;color:#1B3A5C">'
+      + '<strong>NOTA IMPORTANTE</strong><br>Si usted contin&uacute;a con nosotros, este pago se <strong>abona a su presupuesto</strong> y <strong>no genera un gasto adicional</strong>.</div>'
+    : '';
   var sboxHTML = d.total > 0
     ? '<div style="border:1.5px solid #E67E22;border-radius:5px;padding:8px 10px;background:#FEF9E7;margin:8px 0">'
       + '<div style="font-size:7.5pt;font-weight:700;color:#E67E22;margin-bottom:4px">ESTADO DE CUENTA</div>'
@@ -2606,7 +2669,7 @@ function generarRecibo(d) {
     + '<table>'
     + '<tr><td class=lbl>Cliente</td><td><strong>' + esc(d.cliente || '\u2014') + '</strong></td></tr>'
     + (d.tel ? '<tr><td class=lbl>Tel\u00e9fono</td><td>' + esc(d.tel) + '</td></tr>' : '')
-    + (d.folio ? '<tr><td class=lbl>Presupuesto</td><td style="font-family:monospace;color:#2E6DA4;font-size:7.5pt">' + esc(d.folio) + '</td></tr>' : '')
+    + (d.folio ? '<tr><td class=lbl>' + (d.concepto === 'visita' ? 'Folio de visita' : 'Presupuesto') + '</td><td style="font-family:monospace;color:#2E6DA4;font-size:7.5pt">' + esc(d.folio) + '</td></tr>' : '')
     + (d.desc ? '<tr><td class=lbl>Direcci\u00f3n</td><td>' + esc(d.desc) + '</td></tr>' : '')
     + (d.descTrabajo ? '<tr><td class=lbl>Descripci\u00f3n</td><td style="font-size:7.5pt">' + esc(d.descTrabajo) + '</td></tr>' : '')
     + '<tr><td class=lbl>Fecha</td><td>' + fd(d.fecha) + '</td></tr>'
@@ -2618,6 +2681,7 @@ function generarRecibo(d) {
     + '<div><div style="font-size:7.5pt;opacity:.7">Monto recibido</div>'
     + '<div style="font-size:16pt;font-weight:800;color:#F1C40F">$' + fmt(d.monto) + ' MXN</div></div>'
     + '<div style="font-size:24pt">&#10003;</div></div>'
+    + notaVisitaBox
     + sboxHTML
     + adicionalesBox
     + (d.notas ? '<div style="background:#f5f7fa;border-radius:4px;padding:6px 8px;font-size:7.5pt;color:#555;margin-bottom:6px">' + d.notas + '</div>' : '')
