@@ -8,6 +8,12 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.26
+  FECHA   : 2026-10-12
+  v3.26 - FIRMA DE BARRCAN: tu firma se dibuja una vez y se estampa en el recuadro
+    "Sello y firma BarrCan" automáticamente al enviar a firma, o con el botón
+    "✍️ Firmar por BarrCan". Cuando el cliente ya firmó, el botón de envío manda
+    la COPIA FIRMADA por ambas partes. La tarjeta avisa si falta tu firma.
   VERSIÓN : v3.25
   FECHA   : 2026-10-12
   v3.25 - FIX liga de firma: ya no se pisa la clave ya enviada al cliente. Siempre
@@ -1680,7 +1686,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.25';
+var APP_VERSION = 'v3.26';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1772,7 +1778,7 @@ async function presCargar() {
 
   try {
     var result = await sb().from('presupuestos_atrasados')
-      .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,fecha,anio_referencia,estado,notas_internas,modulo,created_at,firma_token,firmado_at,firmado_por,firma_png,firma_hash')
+      .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,fecha,anio_referencia,estado,notas_internas,modulo,created_at,firma_token,firmado_at,firmado_por,firma_png,firma_hash,firma_barrcan_png,firma_barrcan_at,firma_barrcan_por')
       .order('folio', { ascending: true })
       .range(0, 499);
 
@@ -1909,7 +1915,7 @@ function presRenderLista(datos) {
       + '<div style="font-size:12px;font-weight:700;color:var(--navy)">' + (p.folio || '&mdash;') + anioStr + '</div>'
       + '<div style="font-size:13px;font-weight:600;color:var(--navy)">' + (p.cliente || '') + '</div>'
       + '<div style="font-size:10px;color:var(--gray-400)">' + (p.fecha || '') + telStr + '</div>'
-      + (p.firmado_at ? '<div style="font-size:10px;font-weight:700;color:var(--green);margin-top:2px">✅ Firmado ' + new Date(p.firmado_at).toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City', day: '2-digit', month: 'short' }) + ' · ' + (p.firmado_por || '') + '</div>'
+      + (p.firmado_at ? '<div style="font-size:10px;font-weight:700;color:var(--green);margin-top:2px">✅ Firmado ' + new Date(p.firmado_at).toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City', day: '2-digit', month: 'short' }) + ' · ' + (p.firmado_por || '') + (p.firma_barrcan_at ? ' · BarrCan ✍️' : ' · <span style="color:#C0392B">falta firma BarrCan</span>') + '</div>'
          : (p.firma_token ? '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-top:2px">⏳ Firma enviada, pendiente</div>' : ''))
       // v3.23: los cotizadores ya no cobran traslado por pieza -- avisar si un presupuesto abierto aún no tiene costos de obra
       + (p.estado === 'activo' && /^\s*\[/.test(p.notas_internas || '') && !/"tipo"\s*:\s*"costos_obra"/.test(p.notas_internas || '')
@@ -2142,7 +2148,8 @@ function presBotonesNormales(idStr) {
     + '<button onclick="presCrearOT(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:9.5px;font-weight:700;cursor:pointer">OT</button>'
     + '<button onclick="presVerProgreso(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(142,68,173,0.08);border:1.5px solid rgba(142,68,173,0.3);border-radius:8px;color:#8E44AD;font-size:9.5px;font-weight:700;cursor:pointer">Progreso</button>'
     + '</div>'
-    + '<button onclick="presImprimir(\'' + idStr + '\')" style="width:100%;margin-top:5px;padding:7px 2px;background:rgba(27,58,92,0.06);border:1.5px solid rgba(27,58,92,0.2);border-radius:8px;color:var(--navy);font-size:9.5px;font-weight:700;cursor:pointer">&#128424; Reimprimir presupuesto</button>' + '<button onclick="presEnviarFirma(\'' + idStr + '\')" style="width:100%;margin-top:5px;padding:8px 2px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.35);border-radius:8px;color:var(--green);font-size:10.5px;font-weight:700;cursor:pointer">📝 Enviar para firma (WhatsApp)</button>';
+    + '<button onclick="presImprimir(\'' + idStr + '\')" style="width:100%;margin-top:5px;padding:7px 2px;background:rgba(27,58,92,0.06);border:1.5px solid rgba(27,58,92,0.2);border-radius:8px;color:var(--navy);font-size:9.5px;font-weight:700;cursor:pointer">&#128424; Reimprimir presupuesto</button>' + '<button onclick="presEnviarFirma(\'' + idStr + '\')" style="width:100%;margin-top:5px;padding:8px 2px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.35);border-radius:8px;color:var(--green);font-size:10.5px;font-weight:700;cursor:pointer">' + presTextoBotonFirma(idStr) + '</button>'
+    + '<button onclick=\"presFirmarBarrcan(\'' + idStr + '\')\" style=\"width:100%;margin-top:5px;padding:8px 2px;background:rgba(27,58,92,0.06);border:1.5px solid rgba(27,58,92,0.3);border-radius:8px;color:var(--navy);font-size:10.5px;font-weight:700;cursor:pointer\">✍️ Firmar por BarrCan</button>';
 }
 
 function presBotonesCola(p) {
@@ -2243,10 +2250,77 @@ function presCodigoFirma() {
   crypto.getRandomValues(a); for (var i = 0; i < a.length; i++) t += abc[a[i] % abc.length];
   return t;
 }
+// ══ FIRMA DE BARRCAN (v3.26) ══
+// Tu firma se dibuja UNA vez (queda en este dispositivo) y se estampa en cada
+// presupuesto: automáticamente al enviarlo a firma, o con "✍️ Firmar por BarrCan".
+// Así, cuando el cliente firma, su copia ya trae las dos firmas.
+function presFirmaEmpresaGet() { try { return localStorage.getItem('barrcan_firma_empresa') || ''; } catch (e) { return ''; } }
+function presTextoBotonFirma(idStr) {
+  var p = PRES_CACHE.filter(function(x) { return x.id === idStr; })[0];
+  return p && p.firmado_at ? '📤 Enviar copia firmada (WhatsApp)' : '📝 Enviar para firma (WhatsApp)';
+}
+function presDibujarFirmaEmpresa() {
+  return new Promise(function(resolve) {
+    var ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(27,58,92,0.6);z-index:2500;display:flex;align-items:center;justify-content:center;padding:14px';
+    ov.innerHTML = '<div style="background:#fff;border-radius:14px;padding:14px;width:100%;max-width:420px">'
+      + '<div style="font-weight:800;color:#1B3A5C;font-size:15px;margin-bottom:4px">✍️ Tu firma como BarrCan</div>'
+      + '<div style="font-size:11.5px;color:#666;margin-bottom:8px">Dibújala con el dedo. Se guarda en este dispositivo y se estampa en los presupuestos que envíes.</div>'
+      + '<canvas id="sf-cv" style="width:100%;height:150px;border:2px dashed #C8923A;border-radius:10px;background:#FFFDF8;touch-action:none;display:block"></canvas>'
+      + '<div style="display:flex;gap:8px;margin-top:10px"><button id="sf-borrar" style="flex:1;padding:10px;border:1.5px solid #ccc;background:#fff;border-radius:8px;font-weight:700">Borrar</button>'
+      + '<button id="sf-cancel" style="flex:1;padding:10px;border:1.5px solid #ccc;background:#fff;border-radius:8px;font-weight:700">Cancelar</button>'
+      + '<button id="sf-ok" style="flex:1.4;padding:10px;border:none;background:#27AE60;color:#fff;border-radius:8px;font-weight:700">Guardar firma</button></div></div>';
+    document.body.appendChild(ov);
+    var cv = ov.querySelector('#sf-cv'), r = cv.getBoundingClientRect(), k = window.devicePixelRatio || 1;
+    cv.width = Math.round(r.width * k); cv.height = Math.round(r.height * k);
+    var c = cv.getContext('2d'); c.scale(k, k); c.lineWidth = 2.6; c.lineCap = 'round'; c.lineJoin = 'round'; c.strokeStyle = '#0B2545';
+    var dib = false, ult = null, trazo = false;
+    function pt(e) { var b = cv.getBoundingClientRect(); return { x: e.clientX - b.left, y: e.clientY - b.top }; }
+    cv.addEventListener('pointerdown', function(e) { dib = true; ult = pt(e); cv.setPointerCapture(e.pointerId); });
+    cv.addEventListener('pointermove', function(e) { if (!dib) return; var q = pt(e); c.beginPath(); c.moveTo(ult.x, ult.y); c.lineTo(q.x, q.y); c.stroke(); ult = q; trazo = true; });
+    cv.addEventListener('pointerup', function() { dib = false; });
+    ov.querySelector('#sf-borrar').onclick = function() { c.clearRect(0, 0, cv.width, cv.height); trazo = false; };
+    ov.querySelector('#sf-cancel').onclick = function() { ov.remove(); resolve(''); };
+    ov.querySelector('#sf-ok').onclick = function() {
+      if (!trazo) { toast('Dibuja tu firma dentro del recuadro'); return; }
+      var png = cv.toDataURL('image/png'); try { localStorage.setItem('barrcan_firma_empresa', png); } catch (e) {}
+      ov.remove(); resolve(png);
+    };
+  });
+}
+async function presFirmarBarrcan(idStr, silencioso) {
+  var p = PRES_CACHE.filter(function(x) { return x.id === idStr; })[0];
+  if (!p) { toast('No se encontró ese presupuesto'); return false; }
+  if (p.firma_barrcan_at && !silencioso) { if (!confirm('Este presupuesto ya tiene la firma de BarrCan. ¿Volver a firmarlo?')) return false; }
+  var png = presFirmaEmpresaGet();
+  if (!png) png = await presDibujarFirmaEmpresa();
+  if (!png) return false;
+  try {
+    var ahora = new Date().toISOString();
+    var up = await sb().from('presupuestos_atrasados').update({ firma_barrcan_png: png, firma_barrcan_at: ahora, firma_barrcan_por: 'Mauricio Barrera Espinosa' }).eq('id', p.id).select('id');
+    if (up.error) throw up.error;
+    if (!up.data || !up.data.length) throw new Error('el presupuesto todavía no está en la base');
+    p.firma_barrcan_png = png; p.firma_barrcan_at = ahora; p.firma_barrcan_por = 'Mauricio Barrera Espinosa'; presGuardarCache(PRES_CACHE);
+    if (!silencioso) toast('✅ Firmado por BarrCan -- la copia del cliente ya lleva tu firma');
+    if (typeof presFiltrar === 'function') presFiltrar();
+    return true;
+  } catch (e) { toast('No se pudo guardar la firma de BarrCan: ' + e.message); return false; }
+}
+async function presEnviarCopiaFirmada(p, token, tel) {
+  if (!p.firma_barrcan_at) {
+    var ok = await presFirmarBarrcan(p.id, true);
+    if (!ok) { toast('Falta tu firma de BarrCan -- toca "✍️ Firmar por BarrCan" y vuelve a enviar'); return; }
+  }
+  var liga = 'https://barrcan.github.io/barrcan-app/firmar.html?t=' + token;
+  var texto = 'Hola' + (p.cliente ? ' ' + String(p.cliente).trim() : '') + ', le comparto la copia de su presupuesto ' + p.folio + ' firmado por ambas partes.\n\n'
+    + 'Puede verla y descargarla aquí:\n' + liga + '\n\nGracias por su confianza. — BarrCan';
+  var w = window.open('https://wa.me/' + (tel.length >= 12 ? tel : '') + '?text=' + encodeURIComponent(texto), '_blank');
+  if (!w) { try { await navigator.clipboard.writeText(liga); toast('Liga copiada -- pégala en WhatsApp'); } catch (e2) { prompt('Copia esta liga y mándala por WhatsApp:', liga); } }
+}
+
 async function presEnviarFirma(idStr) {
   var p = PRES_CACHE.filter(function(x) { return x.id === idStr; })[0];
   if (!p) { toast('No se encontró ese presupuesto'); return; }
-  if (p.firmado_at) { toast('Ya está firmado por ' + (p.firmado_por || 'el cliente') + ' -- al imprimir sale con su firma'); return; }
   var tel = String(p.tel || '').replace(/\D/g, '');
   if (tel.length === 10) tel = '52' + tel;
   // v3.25: la LIGA vive en la base, no en este dispositivo. Antes se generaba una
@@ -2260,8 +2334,11 @@ async function presEnviarFirma(idStr) {
     var q = await sb().from('presupuestos_atrasados').select('firma_token,firmado_at').eq('id', p.id).maybeSingle();
     if (q.error) throw q.error;
     if (!q.data) throw new Error('el presupuesto todavía no está en la base (¿se guardó sin conexión?). Sincroniza y vuelve a intentar');
-    if (q.data.firmado_at) { toast('Ya está firmado -- al imprimir sale con su firma'); return; }
     token = q.data.firma_token;
+    // v3.26: si el cliente YA firmó, este botón manda la COPIA FIRMADA (con la firma de BarrCan)
+    if (q.data.firmado_at) { await presEnviarCopiaFirmada(p, token, tel); return; }
+    // y si BarrCan aún no firma pero hay firma guardada en este dispositivo, se estampa sola al enviar
+    if (!p.firma_barrcan_at && presFirmaEmpresaGet()) { await presFirmarBarrcan(idStr, true); }
     if (!token) {
       var nuevo = presCodigoFirma();
       var up = await sb().from('presupuestos_atrasados')
@@ -2308,6 +2385,7 @@ async function presImprimir(idStr) {
   var emp = window.BCDoc.datosCliente ? await window.BCDoc.datosCliente(p.folio, p.cliente) : {};
   var html = window.BCDoc.generar(piezas, p.folio || '', p.cliente || '', p.dir || '', fecha,
     { total: parseFloat(p.monto) || 0, empresa: emp.empresa, atencion: emp.atencion,
+      firmaBarrcan: p.firma_barrcan_png ? { nombre: p.firma_barrcan_por || 'BarrCan', png: p.firma_barrcan_png, fecha: new Date(p.firma_barrcan_at).toLocaleString('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'long', timeStyle: 'short' }) } : null,
       firma: p.firmado_at ? { nombre: p.firmado_por, png: p.firma_png, hash: p.firma_hash,
         fecha: new Date(p.firmado_at).toLocaleString('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'long', timeStyle: 'short' }) } : null });
   w.document.write(html);

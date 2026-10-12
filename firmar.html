@@ -8,6 +8,10 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · FIRMA DE PRESUPUESTO (página pública, sin PIN)
+  VERSION : v1.1
+  FECHA   : 2026-10-12
+  v1.1 - Muestra también la firma de BarrCan (si ya se estampó) en el presupuesto
+    que ve y descarga el cliente.
   VERSION : v1.0
   FECHA   : 2026-10-06
   v1.0 - El cliente abre firmar.html?t=<código> desde WhatsApp, revisa su
@@ -88,6 +92,7 @@ function fechaHora(iso) { return new Date(iso).toLocaleString('es-MX', { timeZon
 function docHTML(conFirma) {
   var op = { total: parseFloat(P.monto) || 0, empresa: EMP.empresa, atencion: EMP.atencion };
   if (conFirma && P.firmado_at) op.firma = { nombre: P.firmado_por, png: P.firma_png, fecha: fechaHora(P.firmado_at), hash: P.firma_hash };
+  if (P.firma_barrcan_png) op.firmaBarrcan = { nombre: P.firma_barrcan_por || 'BarrCan', png: P.firma_barrcan_png, fecha: fechaHora(P.firma_barrcan_at) }; // v1.1: firma de BarrCan
   return BCDoc.generar(PIEZAS, P.folio, P.cliente || '', P.dir || '', fechaDe(P), op);
 }
 function mostrarDoc() {
@@ -99,7 +104,7 @@ async function cargar() {
   if (!/^[A-Za-z0-9]{20,}$/.test(TOKEN)) { msg.innerHTML = '<b>Liga no válida.</b><br>Pida a BarrCan que se la envíe de nuevo.'; return; }
   try {
     var r = await sb().from('presupuestos_atrasados')
-      .select('id,folio,cliente,dir,fecha,monto,notas_internas,descripcion,firmado_at,firmado_por,firma_png,firma_hash,eliminado')
+      .select('id,folio,cliente,dir,fecha,monto,notas_internas,descripcion,firmado_at,firmado_por,firma_png,firma_hash,firma_barrcan_png,firma_barrcan_at,firma_barrcan_por,eliminado')
       .eq('firma_token', TOKEN).limit(1);
     if (r.error) throw r.error;
     P = (r.data || [])[0];

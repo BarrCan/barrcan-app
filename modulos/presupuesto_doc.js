@@ -1,6 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 // BarrCan · DOCUMENTO OFICIAL DE PRESUPUESTO (compartido)
-// VERSION : v1.4   FECHA : 2026-10-11
+// VERSION : v1.5   FECHA : 2026-10-12
+// v1.5 - Firma de BarrCan estampada en el recuadro "Sello y firma BarrCan"
+//   (opciones.firmaBarrcan = { nombre, png, fecha }), junto a la del cliente.
 // v1.4 - Diagrama esquemático (SVG) de la configuración de cada pieza de
 //   Nacional / Española / Eurovent: corredizas (OX, XX, XOX, OXO, OXXO,
 //   XXX, con fijo superior o mosquitero), fijos, batientes, proyectables,
@@ -277,7 +279,12 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
           + (opciones.firma.hash ? '<br><span style="font-family:monospace;font-size:6.5pt;color:#999">Huella: ' + esc(String(opciones.firma.hash).slice(0, 24)) + '…</span>' : '') + '</td>'
         : '<td style="width:44%;padding:50px 12px 8px;border-top:1.5px solid #999;font-size:9pt;color:#555;text-align:center">Firma y nombre del cliente<br>Fecha: ___________________</td>')
     + '<td style="width:12%"></td>'
-    + '<td style="width:44%;padding:50px 12px 8px;border-top:1.5px solid #999;font-size:9pt;color:#555;text-align:center">Sello y firma BarrCan<br><span style="font-family:\'Courier New\',monospace;font-size:8pt;color:#1B3A5C">' + esc(folio) + '</span></td>'
+    + (opciones.firmaBarrcan && opciones.firmaBarrcan.png
+        ? '<td style="width:44%;padding:4px 12px 8px;border-top:1.5px solid #999;font-size:9pt;color:#555;text-align:center;vertical-align:bottom">'
+          + '<img src="' + opciones.firmaBarrcan.png + '" style="max-height:70px;max-width:100%;display:block;margin:0 auto 2px">'
+          + '<strong style="color:#1B3A5C">' + esc(opciones.firmaBarrcan.nombre || 'BarrCan') + '</strong><br>BarrCan \u00b7 Firmado electr\u00f3nicamente: ' + esc(opciones.firmaBarrcan.fecha || '')
+          + '<br><span style="font-family:monospace;font-size:8pt;color:#1B3A5C">' + esc(folio) + '</span></td>'
+        : '<td style="width:44%;padding:50px 12px 8px;border-top:1.5px solid #999;font-size:9pt;color:#555;text-align:center">Sello y firma BarrCan<br><span style="font-family:\'Courier New\',monospace;font-size:8pt;color:#1B3A5C">' + esc(folio) + '</span></td>')
     + '</tr></table>'
     + '<div style="font-size:7.5pt;color:#aaa;text-align:center;margin-top:16px;border-top:1px solid #eee;padding-top:8px">'
     + 'El presente presupuesto contempla los trabajos antes descritos. Cualquier trabajo adicional se cotizar\u00e1 por separado. Estos precios est\u00e1n sujetos a cambios sin previo aviso. &nbsp;\u00b7&nbsp; ' + esc(folio)
@@ -302,5 +309,5 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
       return { empresa: String(f.empresa).trim(), atencion: f.nombre };
     } catch (e) { return {}; }
   }
-  window.BCDoc = { version: 'v1.4', generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo, diagramaSvg: bcDiagramaSvg, esquema: bcEsquemaDeSistema, datosCliente: datosCliente };
+  window.BCDoc = { version: 'v1.5', generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo, diagramaSvg: bcDiagramaSvg, esquema: bcEsquemaDeSistema, datosCliente: datosCliente };
 })();
