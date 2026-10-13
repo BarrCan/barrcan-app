@@ -7,6 +7,11 @@
 <script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.36
+  FECHA   : 2026-10-12
+  v4.36 - Botón visible "Recibo de visita técnica" al inicio de Registrar pago: deja el
+    concepto en "Visita técnica", abre el buscador de clientes y baja hasta él. El
+    concepto estaba solo en la lista desplegable, que no se nota que se toca.
   VERSIÓN : v4.35
   FECHA   : 2026-10-12
   v4.35 - Se quitó una etiqueta escrita a mano ("Pagos v4.1") junto a la versión del
@@ -1099,6 +1104,12 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     <div class="wizard-card">
       <div class="wizard-title">Registrar pago</div>
 
+      <button type="button" id="pago-btn-visita" onclick="pagoModoVisita()"
+        style="width:100%;padding:12px;margin-bottom:8px;background:rgba(39,174,96,.08);border:1.5px solid rgba(39,174,96,.45);border-radius:8px;color:#1E8449;font-size:13px;font-weight:800;cursor:pointer">
+        &#129534; Recibo de visita t&eacute;cnica
+        <span style="display:block;font-size:10.5px;font-weight:500;color:#555;margin-top:2px">Para un cliente que pag&oacute; la visita y a&uacute;n no tiene presupuesto</span>
+      </button>
+
       <button type="button" id="pago-btn-multi" onclick="pagoToggleMulti()"
         style="width:100%;padding:10px;margin-bottom:12px;background:rgba(142,68,173,.06);border:1.5px solid rgba(142,68,173,.3);border-radius:8px;color:#8E44AD;font-size:12px;font-weight:700;cursor:pointer">
         &#129513; Este pago cubre varios proyectos
@@ -1339,7 +1350,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.35';
+var APP_VERSION = 'v4.36';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -2361,6 +2372,17 @@ async function pagoCargarVisitas() {
       return '<option value="' + i + '">' + esc(v.folio) + ' \u00b7 ' + esc(v.cliente_nombre || '') + (v.aplica_cobro ? ' \u00b7 $' + fmt(v.monto) : '') + '</option>';
     }).join('');
   } catch (e) { console.warn('[BarrCan] No se pudieron cargar las visitas:', e.message); }
+}
+// Atajo visible: deja el concepto en "Visita técnica", abre el buscador de clientes y baja hasta él.
+function pagoModoVisita() {
+  var sel = document.getElementById('pago-concepto');
+  if (!sel) return;
+  if (typeof PAGO_MODO !== 'undefined' && PAGO_MODO === 'multi' && typeof pagoToggleMulti === 'function') pagoToggleMulti(); // salir del pago múltiple
+  sel.value = 'visita';
+  pagoConceptoCambio();
+  var box = document.getElementById('pago-visita-box');
+  if (box) box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(function() { var b = document.getElementById('pago-vis-buscar'); if (b) b.focus(); }, 450);
 }
 function pagoConceptoCambio() {
   var esVisita = document.getElementById('pago-concepto').value === 'visita';
