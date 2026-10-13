@@ -7,6 +7,15 @@
 <script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.66.0
+  FECHA   : 2026-10-13
+  v3.66.0 - STANDS EN 3 FASES + EVENTUALES: con un folio STAN-... la Instalación (Pieza
+    única) pide la fase del stand: 1 Construcción, 2 Montaje e instalación, 3
+    Desmontaje y bodega, cada una con su formulario y su título en el reporte; se
+    guarda en fase_stand/datos_stand y el historial la muestra. Muestra el avance
+    del stand (Construcción/Montaje/Desmontaje). Catálogo editable de EVENTUALES
+    (tabla eventuales): se eligen quienes apoyaron en la fase, se agregan personas
+    nuevas, se quitan/reactivan y se ven los nombres de pagos anteriores.
   VERSION : v3.65.1
   FECHA   : 2026-10-06
   v3.65.1 - Las líneas de descuento no son piezas a entregar.
@@ -1883,6 +1892,67 @@ body{min-height:100vh}
           </button>
         </div>
 
+        <!-- ─── STAND: fase del trabajo (solo folios STAN) ─────────────────
+             Un stand tiene 3 fases: 1 Construcción (producción), 2 Montaje e
+             instalación en el evento, 3 Desmontaje y bodega. Se muestra solo
+             cuando el folio es STAN-... y fuerza el modo "Pieza única". -->
+        <div id="ent-stand-panel" style="display:none;background:rgba(142,68,173,0.06);border:1.5px solid rgba(142,68,173,0.3);border-radius:10px;padding:12px;margin-bottom:14px">
+          <div style="font-size:13px;font-weight:800;color:#6C3483;margin-bottom:2px">🎪 Stand — fase del trabajo</div>
+          <div style="font-size:11px;color:#666;margin-bottom:8px">Elige en qué fase está este reporte. Cada stand tiene 3 fases.</div>
+          <div id="st-progreso" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;font-size:11px"></div>
+          <div style="display:flex;gap:6px;margin-bottom:10px">
+            <button type="button" class="stand-fase-btn" data-fase="construccion" onclick="entStandSelFase(this)" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid var(--gray-200);background:#fff;color:var(--gray-400);font-size:11.5px;font-weight:700;cursor:pointer">🏗️ 1<br><small style="font-weight:500">Construcción</small></button>
+            <button type="button" class="stand-fase-btn" data-fase="montaje" onclick="entStandSelFase(this)" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid var(--gray-200);background:#fff;color:var(--gray-400);font-size:11.5px;font-weight:700;cursor:pointer">🎪 2<br><small style="font-weight:500">Montaje</small></button>
+            <button type="button" class="stand-fase-btn" data-fase="desmontaje" onclick="entStandSelFase(this)" style="flex:1;padding:9px 4px;border-radius:8px;border:1.5px solid var(--gray-200);background:#fff;color:var(--gray-400);font-size:11.5px;font-weight:700;cursor:pointer">📦 3<br><small style="font-weight:500">Desmontaje</small></button>
+          </div>
+
+          <div id="st-g-construccion" style="display:none">
+            <label class="form-label">Fecha de terminación</label>
+            <input type="date" id="st-con-fecha" class="form-input" style="margin-bottom:8px">
+            <label class="form-label">Módulos / piezas fabricadas</label>
+            <input type="number" id="st-con-modulos" class="form-input" min="0" placeholder="Ej: 12" style="margin-bottom:8px">
+            <label class="form-label">Pendientes antes del montaje</label>
+            <input type="text" id="st-con-pend" class="form-input" placeholder="Ej: falta vinil de frente, 2 repisas" style="margin-bottom:4px">
+          </div>
+
+          <div id="st-g-montaje" style="display:none">
+            <label class="form-label">Evento</label>
+            <input type="text" id="st-mon-evento" class="form-input" placeholder="Ej: Congreso ALEH" style="margin-bottom:8px">
+            <label class="form-label">Sede</label>
+            <input type="text" id="st-mon-sede" class="form-input" placeholder="Ej: Hotel Royal Pedregal" style="margin-bottom:8px">
+            <div style="display:flex;gap:8px;margin-bottom:4px">
+              <div style="flex:1"><label class="form-label">Stand / pabellón</label><input type="text" id="st-mon-stand" class="form-input" placeholder="Ej: Stand 14"></div>
+              <div style="flex:1"><label class="form-label">Hora de montaje</label><input type="time" id="st-mon-hora" class="form-input"></div>
+            </div>
+          </div>
+
+          <div id="st-g-desmontaje" style="display:none">
+            <label class="form-label">Estado del material</label>
+            <select id="st-des-estado" class="form-select" style="margin-bottom:8px">
+              <option value="completo">Completo</option>
+              <option value="faltantes">Con faltantes</option>
+              <option value="danos">Con daños</option>
+              <option value="ambos">Con faltantes y daños</option>
+            </select>
+            <label class="form-label">Detalle de faltantes o daños</label>
+            <input type="text" id="st-des-detalle" class="form-input" placeholder="Si todo está bien, déjalo vacío" style="margin-bottom:8px">
+            <div style="display:flex;gap:8px;margin-bottom:4px">
+              <div style="flex:1"><label class="form-label">Módulos / piezas recibidos</label><input type="number" id="st-des-modulos" class="form-input" min="0" placeholder="Ej: 12"></div>
+              <div style="flex:1.3"><label class="form-label">Ubicación en bodega</label><input type="text" id="st-des-bodega" class="form-input" placeholder="Ej: Estante B, nivel 2"></div>
+            </div>
+          </div>
+
+          <div id="st-ev-box" style="display:none;margin-top:10px">
+            <label class="form-label" style="font-size:11.5px">Apoyo eventual <span style="font-weight:400;color:#888">(quién ayudó en esta fase, si aplica)</span></label>
+            <div id="st-ev-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px"></div>
+            <div style="display:flex;gap:6px">
+              <input type="text" id="st-ev-nuevo" class="form-input" placeholder="Agregar a otra persona" style="flex:1">
+              <button type="button" onclick="entEventualAgregar()" style="padding:0 14px;border:none;border-radius:8px;background:#8E44AD;color:#fff;font-weight:800;font-size:16px">+</button>
+            </div>
+            <a href="#" onclick="entEventualesAdmin();return false" style="display:inline-block;margin-top:6px;font-size:11.5px;color:#8E44AD;font-weight:700">Administrar la lista de eventuales</a>
+          </div>
+        </div>
+
         <!-- CHECKLIST DE CIERRE — calidad y limpieza al TERMINAR la
              instalación (antes decía "de salida", enmarcado como lista
              de empaque para no salir del taller sin algo -- no tenía
@@ -2421,7 +2491,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.65.1';
+var APP_VERSION = 'v3.66.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -2712,12 +2782,14 @@ function entSelPresupuesto() {
     document.getElementById('inst-monto').value = '';
     ENT_PRESUPUESTO_ACTUAL = null;
     ENT_PIEZAS_PENDIENTES_ACTUALES = [];
+    entStandDetectar();
     return;
   }
   var opt = sel.options[sel.selectedIndex];
   var p = {};
   try { p = JSON.parse(opt.dataset.p || '{}'); } catch(e) {}
   document.getElementById('ent-folio').value = p.folio || sel.value;
+  entStandDetectar(); // v3.66: folios STAN → fases del stand
 
   // Si el folio tiene piezas capturadas por separado (vía +Piezas /
   // revisiones), solo mostrar la descripción de lo que TODAVÍA está
@@ -2860,6 +2932,7 @@ function entCalcularSaldo(p) {
 
 function entSelTipo(btn) {
   ENT_TIPO = btn.dataset.tipo;
+  setTimeout(entStandDetectar, 0);
   document.querySelectorAll('.tipo-btn').forEach(function(b) {
     var a = b === btn;
     b.style.borderColor = a ? 'var(--blue)' : 'var(--gray-200)';
@@ -3821,7 +3894,7 @@ async function entCargarHistorial() {
     if (resPuerta.error) throw resPuerta.error;
 
     var resInst = await sb().from('entregas_instalacion')
-      .select('id,folio,cliente,tel,fecha,tecnico,reporte_url,checklist_ok,checklist_total,modo_captura,created_at')
+      .select('id,folio,cliente,tel,fecha,tecnico,reporte_url,checklist_ok,checklist_total,modo_captura,fase_stand,created_at')
       .eq('eliminado', false)
       .order('created_at', { ascending: false }).limit(30);
 
@@ -3844,6 +3917,7 @@ async function entCargarHistorial() {
           created_at: r.created_at,
           checklist_ok: r.checklist_ok, checklist_total: r.checklist_total,
           modo_captura: r.modo_captura,
+          fase_stand: r.fase_stand,
           ts: new Date(r.created_at).toLocaleString('es-MX'),
           _tabla: 'entregas_instalacion', _tipo: 'instalacion'
         };
@@ -3905,7 +3979,7 @@ function entRenderHistorial() {
       + pendTag
       + '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">'
       + '<div>'
-      + '<div style="font-size:13px;font-weight:700;color:var(--navy)">' + esc(r.folio || '--') + tipoTag + '</div>'
+      + '<div style="font-size:13px;font-weight:700;color:var(--navy)">' + esc(r.folio || '--') + tipoTag + (r.fase_stand && ENT_STAND_FASES[r.fase_stand] ? '<span style="font-size:9px;font-weight:700;color:#6C3483;background:rgba(142,68,173,0.12);padding:2px 6px;border-radius:6px;margin-left:6px;vertical-align:middle">🎪 ' + ENT_STAND_FASES[r.fase_stand].toUpperCase() + '</span>' : '') + '</div>'
       + (r.folio_entrega ? '<div style="font-size:9.5px;color:var(--gray-400);font-family:monospace">' + esc(r.folio_entrega) + '</div>' : '')
       + '<div style="font-size:11px;color:var(--gray-400)">' + esc(r.cliente_nombre || '') + ' - ' + esc(r.fecha_entrega || '') + '</div>'
       + (r.reporte_url ? '<div style="font-size:10px;color:var(--green);font-weight:700">Reporte completo disponible</div>' : '')
@@ -4058,6 +4132,8 @@ async function entEditarCompleto(id) {
     var btnModo = document.querySelector('.modo-inst-btn[data-modo="' + ENT_MODO_INST + '"]');
     if (btnModo) entSelModoInst(btnModo); else entAplicarModoInst();
 
+    entStandRestaurar(datos.stand || r.datos_stand || null, r.fase_stand || null);
+
     ENT_SIN_ENCARGADO = !!(datos.sinEncargado || r.sin_encargado);
     var chkSinEnc = document.getElementById('ent-sin-encargado');
     if (chkSinEnc) { chkSinEnc.checked = ENT_SIN_ENCARGADO; entToggleSinEncargado(chkSinEnc); }
@@ -4208,6 +4284,7 @@ function entCancelarEdicion() {
 }
 
 function entSalirModoEdicion() {
+  entStandReset();
   ENT_EDIT_ID    = null;
   ENT_EDIT_TABLA = null;
   entMostrarBarraEdicion(false);
@@ -4759,6 +4836,192 @@ function entReintentarPendientesInstalacion() {
   });
 }
 
+// ══════════════════════════════════════════════════════════════
+// STAND — 3 FASES + EVENTUALES (v3.66.0, 13-oct-2026)
+// Un stand (folio STAN-...) tiene 3 fases y cada una es un reporte de Instalación
+// "Pieza única" con su propio formulario corto:
+//   1 Construcción (producción) · 2 Montaje e instalación (evento) · 3 Desmontaje y bodega
+// La fase y sus datos se guardan en entregas_instalacion.fase_stand / datos_stand.
+// "Eventuales": catálogo editable (tabla eventuales) de las personas que apoyan en cada fase.
+// ══════════════════════════════════════════════════════════════
+var ENT_STAND_ACTIVO = false, ENT_STAND_FASE = '', ENT_STAND_EVENTUALES = [], ENT_EVENTUALES_CAT = [], ENT_EV_SUG = [];
+var ENT_STAND_FASES = {
+  construccion: 'Fase 1 \u00b7 Construcci\u00f3n',
+  montaje:      'Fase 2 \u00b7 Montaje e instalaci\u00f3n',
+  desmontaje:   'Fase 3 \u00b7 Desmontaje y bodega'
+};
+var ENT_ESTADO_MATERIAL = { completo: 'Completo', faltantes: 'Con faltantes', danos: 'Con da\u00f1os', ambos: 'Con faltantes y da\u00f1os' };
+
+function entStandDetectar() {
+  var panel = document.getElementById('ent-stand-panel');
+  if (!panel) return;
+  var folio = (document.getElementById('ent-folio') || {}).value || '';
+  var es = ENT_TIPO === 'instalacion' && /^STAN-/i.test(folio);
+  if (es && ENT_MODO_INST !== 'express') {
+    var bExp = document.querySelector('.modo-inst-btn[data-modo="express"]');
+    if (bExp) entSelModoInst(bExp); // los stands se capturan en "Pieza única"
+  }
+  if (es === ENT_STAND_ACTIVO) { if (es) entStandProgreso(folio); return; }
+  ENT_STAND_ACTIVO = es;
+  panel.style.display = es ? 'block' : 'none';
+  if (es) { entEventualesCargar(); entStandProgreso(folio); entStandRender(); }
+  else entStandReset();
+}
+function entStandSelFase(btn) { ENT_STAND_FASE = btn.dataset.fase; entStandRender(); }
+function entStandRender() {
+  document.querySelectorAll('.stand-fase-btn').forEach(function(b) {
+    var a = b.dataset.fase === ENT_STAND_FASE;
+    b.style.borderColor = a ? '#8E44AD' : 'var(--gray-200)';
+    b.style.background  = a ? 'rgba(142,68,173,0.12)' : '#fff';
+    b.style.color       = a ? '#6C3483' : 'var(--gray-400)';
+  });
+  ['construccion', 'montaje', 'desmontaje'].forEach(function(f) {
+    var g = document.getElementById('st-g-' + f); if (g) g.style.display = ENT_STAND_FASE === f ? 'block' : 'none';
+  });
+  var evb = document.getElementById('st-ev-box'); if (evb) evb.style.display = ENT_STAND_FASE ? 'block' : 'none';
+  entEventualesRender();
+}
+function entStandReset() {
+  ENT_STAND_FASE = ''; ENT_STAND_EVENTUALES = [];
+  ['st-con-fecha','st-con-modulos','st-con-pend','st-mon-evento','st-mon-sede','st-mon-stand','st-mon-hora','st-des-detalle','st-des-modulos','st-des-bodega','st-ev-nuevo'].forEach(function(id) { var e = document.getElementById(id); if (e) e.value = ''; });
+  var se = document.getElementById('st-des-estado'); if (se) se.value = 'completo';
+  entStandRender();
+}
+async function entStandProgreso(folio) {
+  var box = document.getElementById('st-progreso'); if (!box) return;
+  var hechas = {};
+  try {
+    if (typeof sb === 'function' && sb()) {
+      var r = await sb().from('entregas_instalacion').select('fase_stand').eq('folio', folio).eq('eliminado', false);
+      (r.data || []).forEach(function(x) { if (x.fase_stand) hechas[x.fase_stand] = true; });
+    }
+  } catch (e) {}
+  box.innerHTML = [['construccion', 'Construcci\u00f3n'], ['montaje', 'Montaje'], ['desmontaje', 'Desmontaje']].map(function(f) {
+    return '<span style="padding:3px 8px;border-radius:10px;font-weight:700;background:' + (hechas[f[0]] ? 'rgba(39,174,96,.14);color:#1E8449' : 'rgba(0,0,0,.05);color:#888') + '">' + (hechas[f[0]] ? '\u2705 ' : '\u23f3 ') + f[1] + '</span>';
+  }).join('');
+}
+function entStandRecolectar() {
+  if (!ENT_STAND_ACTIVO) return null;
+  var v = function(id) { var e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; };
+  var f = ENT_STAND_FASE, o = { fase: f || '', eventuales: ENT_STAND_EVENTUALES.slice() };
+  if (f === 'construccion') { o.terminacion = v('st-con-fecha'); o.modulos = v('st-con-modulos'); o.pendientes = v('st-con-pend'); }
+  if (f === 'montaje')      { o.evento = v('st-mon-evento'); o.sede = v('st-mon-sede'); o.stand = v('st-mon-stand'); o.hora = v('st-mon-hora'); }
+  if (f === 'desmontaje')   { o.estadoMaterial = v('st-des-estado') || 'completo'; o.detalle = v('st-des-detalle'); o.modulos = v('st-des-modulos'); o.bodega = v('st-des-bodega'); }
+  return o;
+}
+function entStandRestaurar(d, fase) {
+  entStandDetectar();
+  if (!ENT_STAND_ACTIVO) return;
+  d = d || {}; ENT_STAND_FASE = d.fase || fase || '';
+  ENT_STAND_EVENTUALES = Array.isArray(d.eventuales) ? d.eventuales.slice() : [];
+  var set = function(id, val) { var e = document.getElementById(id); if (e && val != null) e.value = val; };
+  set('st-con-fecha', d.terminacion || ''); set('st-con-modulos', d.fase === 'construccion' ? (d.modulos || '') : ''); set('st-con-pend', d.pendientes || '');
+  set('st-mon-evento', d.evento || ''); set('st-mon-sede', d.sede || ''); set('st-mon-stand', d.stand || ''); set('st-mon-hora', d.hora || '');
+  set('st-des-estado', d.estadoMaterial || 'completo'); set('st-des-detalle', d.detalle || ''); set('st-des-modulos', d.fase === 'desmontaje' ? (d.modulos || '') : ''); set('st-des-bodega', d.bodega || '');
+  entStandRender();
+}
+function entStandTitulo(stand) { return (stand && stand.fase) ? 'Reporte de Stand \u2014 ' + ENT_STAND_FASES[stand.fase] : ''; }
+function entStandHtml(stand) {
+  if (!stand || !stand.fase) return '';
+  var filas = [];
+  function f(l, v) { if (v) filas.push('<tr><td style="padding:5px 8px;color:#9CA3AF;font-size:10px;text-transform:uppercase;width:38%">' + l + '</td><td style="padding:5px 8px;font-weight:700;font-size:12px">' + esc(String(v)) + '</td></tr>'); }
+  if (stand.fase === 'construccion') { f('Terminaci\u00f3n', stand.terminacion); f('M\u00f3dulos / piezas fabricadas', stand.modulos); f('Pendientes antes del montaje', stand.pendientes); }
+  if (stand.fase === 'montaje')      { f('Evento', stand.evento); f('Sede', stand.sede); f('Stand / pabell\u00f3n', stand.stand); f('Hora de montaje', stand.hora); }
+  if (stand.fase === 'desmontaje')   { f('Estado del material', ENT_ESTADO_MATERIAL[stand.estadoMaterial] || ''); f('Detalle', stand.detalle); f('M\u00f3dulos / piezas recibidos', stand.modulos); f('Ubicaci\u00f3n en bodega', stand.bodega); }
+  if (stand.eventuales && stand.eventuales.length) f('Apoyo eventual', stand.eventuales.join(', '));
+  return '<h2>\u{1F3AA} Stand \u2014 ' + ENT_STAND_FASES[stand.fase] + '</h2>' + (filas.length ? '<table style="margin-bottom:8px">' + filas.join('') + '</table>' : '');
+}
+
+// ── Catálogo de eventuales ──
+async function entEventualesCargar() {
+  try {
+    if (typeof sb === 'function' && sb() && SYNC.online) {
+      var r = await sb().from('eventuales').select('id,nombre,activo').order('nombre');
+      if (!r.error && r.data) { ENT_EVENTUALES_CAT = r.data; try { localStorage.setItem('barrcan_eventuales_cat', JSON.stringify(r.data)); } catch (e) {} }
+    }
+  } catch (e) {}
+  if (!ENT_EVENTUALES_CAT.length) { try { ENT_EVENTUALES_CAT = JSON.parse(localStorage.getItem('barrcan_eventuales_cat') || '[]'); } catch (e) {} }
+  entEventualesRender();
+}
+function entEventualesRender() {
+  var box = document.getElementById('st-ev-chips'); if (!box) return;
+  var activos = ENT_EVENTUALES_CAT.filter(function(e) { return e.activo !== false; });
+  box.innerHTML = activos.length ? activos.map(function(e) {
+    var on = ENT_STAND_EVENTUALES.indexOf(e.nombre) >= 0;
+    return '<button type="button" onclick="entStandToggleEventual(this.dataset.n)" data-n="' + esc(e.nombre) + '" style="padding:6px 12px;border-radius:16px;font-size:12px;font-weight:700;border:1.5px solid ' + (on ? '#8E44AD' : '#D5DCE4') + ';background:' + (on ? '#8E44AD' : '#fff') + ';color:' + (on ? '#fff' : '#555') + '">' + (on ? '\u2713 ' : '') + esc(e.nombre) + '</button>';
+  }).join('') : '<span style="font-size:11.5px;color:#888">Todav\u00eda no hay eventuales en la lista. Agrega a la primera persona abajo.</span>';
+}
+function entStandToggleEventual(nombre) {
+  var i = ENT_STAND_EVENTUALES.indexOf(nombre);
+  if (i >= 0) ENT_STAND_EVENTUALES.splice(i, 1); else ENT_STAND_EVENTUALES.push(nombre);
+  entEventualesRender();
+}
+function entEventualesGuardarCache() { try { localStorage.setItem('barrcan_eventuales_cat', JSON.stringify(ENT_EVENTUALES_CAT)); } catch (e) {} }
+async function entEventualAgregar(nombreDirecto) {
+  var inp = document.getElementById('st-ev-nuevo');
+  var nombre = String(nombreDirecto || (inp && inp.value) || '').trim().replace(/\s+/g, ' ');
+  if (!nombre) { toast('Escribe el nombre de la persona'); return; }
+  try {
+    if (typeof sb !== 'function' || !sb() || !SYNC.online) throw new Error('sin conexi\u00f3n');
+    var ya = ENT_EVENTUALES_CAT.filter(function(e) { return String(e.nombre).toLowerCase() === nombre.toLowerCase(); })[0];
+    if (ya) {
+      if (ya.activo === false) { var u = await sb().from('eventuales').update({ activo: true }).eq('id', ya.id); if (u.error) throw u.error; ya.activo = true; }
+    } else {
+      var r = await sb().from('eventuales').insert([{ nombre: nombre }]).select('id,nombre,activo');
+      if (r.error) throw r.error;
+      ya = r.data[0];
+      if (!ENT_EVENTUALES_CAT.some(function(x) { return x.id === ya.id; })) ENT_EVENTUALES_CAT.push(ya); // sin duplicados
+    }
+    entEventualesGuardarCache();
+    if (ENT_STAND_EVENTUALES.indexOf(ya.nombre) < 0) ENT_STAND_EVENTUALES.push(ya.nombre);
+    if (inp) inp.value = '';
+    entEventualesRender();
+    if (document.getElementById('st-ev-admin')) entEventualesAdmin();
+  } catch (e) { toast('No se pudo agregar: ' + e.message); }
+}
+async function entEventualAccion(accion, id) {
+  try {
+    if (typeof sb !== 'function' || !sb() || !SYNC.online) throw new Error('sin conexi\u00f3n');
+    var e = ENT_EVENTUALES_CAT.filter(function(x) { return x.id === id; })[0]; if (!e) return;
+    if (accion === 'quitar') { var u = await sb().from('eventuales').update({ activo: false }).eq('id', id); if (u.error) throw u.error; e.activo = false; var k = ENT_STAND_EVENTUALES.indexOf(e.nombre); if (k >= 0) ENT_STAND_EVENTUALES.splice(k, 1); }
+    if (accion === 'reactivar') { var u2 = await sb().from('eventuales').update({ activo: true }).eq('id', id); if (u2.error) throw u2.error; e.activo = true; }
+    if (accion === 'eliminar') {
+      if (!confirm('\u00bfEliminar a "' + e.nombre + '" de la lista para siempre?\n\nSus pagos anteriores no se borran.')) return;
+      var d = await sb().from('eventuales').delete().eq('id', id); if (d.error) throw d.error;
+      ENT_EVENTUALES_CAT = ENT_EVENTUALES_CAT.filter(function(x) { return x.id !== id; });
+    }
+    entEventualesGuardarCache(); entEventualesRender(); entEventualesAdmin();
+  } catch (err) { toast('No se pudo actualizar: ' + err.message); }
+}
+async function entEventualesAdmin() {
+  var ov = document.getElementById('st-ev-admin');
+  if (!ov) {
+    ov = document.createElement('div'); ov.id = 'st-ev-admin';
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(27,58,92,0.6);z-index:2600;display:flex;align-items:flex-end;justify-content:center';
+    document.body.appendChild(ov);
+  }
+  var activos = ENT_EVENTUALES_CAT.filter(function(e) { return e.activo !== false; });
+  var quitados = ENT_EVENTUALES_CAT.filter(function(e) { return e.activo === false; });
+  var btn = 'padding:5px 10px;border-radius:8px;font-size:11px;font-weight:700;border:1.5px solid #D5DCE4;background:#fff;color:#1B3A5C;margin-left:6px';
+  var fila = function(e, acc) { return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #eee"><b style="font-size:13px">' + esc(e.nombre) + '</b><span>' + acc + '</span></div>'; };
+  ov.innerHTML = '<div style="background:#fff;border-radius:16px 16px 0 0;padding:16px;width:100%;max-width:520px;max-height:85vh;overflow:auto">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-weight:800;color:#1B3A5C;font-size:15px">Lista de eventuales</div><button onclick="document.getElementById(\'st-ev-admin\').remove()" style="border:none;background:none;font-size:20px">\u2715</button></div>'
+    + '<div style="font-size:11px;color:#666;margin-bottom:6px">Qu\u00edtalos o agr\u00e9galos seg\u00fan quien apoye cada montaje o desmontaje. Quitarlos no borra sus pagos.</div>'
+    + (activos.length ? activos.map(function(e) { return fila(e, '<button style="' + btn + '" onclick="entEventualAccion(\'quitar\',\'' + e.id + '\')">Quitar</button>'); }).join('') : '<div style="font-size:12px;color:#888;padding:6px 0">No hay eventuales activos.</div>')
+    + (quitados.length ? '<div style="font-size:11px;font-weight:700;color:#888;margin:12px 0 2px">QUITADOS</div>' + quitados.map(function(e) { return fila(e, '<button style="' + btn + '" onclick="entEventualAccion(\'reactivar\',\'' + e.id + '\')">Reactivar</button><button style="' + btn + ';color:#C0392B" onclick="entEventualAccion(\'eliminar\',\'' + e.id + '\')">Eliminar</button>'); }).join('') : '')
+    + '<div id="st-ev-sug" style="margin-top:12px"></div></div>';
+  // Nombres que ya aparecen en pagos a eventuales pero no están en la lista
+  try {
+    var r = await sb().from('pagos_eventuales').select('nombre').limit(300);
+    var enCat = {}; ENT_EVENTUALES_CAT.forEach(function(e) { enCat[String(e.nombre).toLowerCase()] = true; });
+    var vistos = {}; ENT_EV_SUG = [];
+    (r.data || []).forEach(function(x) { var n = String(x.nombre || '').trim(), k = n.toLowerCase(); if (n && !enCat[k] && !vistos[k]) { vistos[k] = true; ENT_EV_SUG.push(n); } });
+    var box = document.getElementById('st-ev-sug');
+    if (box && ENT_EV_SUG.length) box.innerHTML = '<div style="font-size:11px;font-weight:700;color:#888;margin-bottom:4px">NOMBRES DE PAGOS ANTERIORES (toca para agregar)</div>'
+      + ENT_EV_SUG.map(function(n, i) { return '<button type="button" style="padding:6px 12px;margin:0 6px 6px 0;border-radius:16px;font-size:12px;font-weight:700;border:1.5px dashed #8E44AD;background:#fff;color:#8E44AD" onclick="entEventualAgregar(ENT_EV_SUG[' + i + '])">+ ' + esc(n) + '</button>'; }).join('');
+  } catch (e) {}
+}
+
 async function entGenerarReporteInstalacion() {
   var cliente   = (document.getElementById('ent-cliente') || {}).value || '';
   var desc      = (document.getElementById('ent-desc')    || {}).value || '';
@@ -4785,6 +5048,11 @@ async function entGenerarReporteInstalacion() {
 
   if (!cliente.trim()) {
     if (errEl) { errEl.textContent='Ingresa el nombre del cliente'; errEl.style.display='block'; }
+    return;
+  }
+  var stand = entStandRecolectar(); // null si el folio no es de Stand
+  if (stand && !stand.fase) {
+    if (errEl) { errEl.textContent='Elige la fase del stand: Construcción, Montaje o Desmontaje'; errEl.style.display='block'; }
     return;
   }
   if (ENT_MODO_INST === 'completo') {
@@ -4902,7 +5170,7 @@ async function entGenerarReporteInstalacion() {
       + '.foto-item img{max-height:150px;width:100%;object-fit:cover;border-radius:5px}'
       + '.foto-item div{font-size:9px}'
       + '</style></head><body>'
-      + entHeaderOficial('Reporte de Instalaci\u00f3n' + (ENT_MODO_INST === 'express' ? ' \u2014 Pieza \u00danica' : ''), folio)
+      + entHeaderOficial(entStandTitulo(stand) || 'Reporte de Instalaci\u00f3n' + (ENT_MODO_INST === 'express' ? ' \u2014 Pieza \u00danica' : ''), folio)
       + '<div class="pg-body">'
       + '<div style="font-size:11px;color:#9CA3AF;margin-bottom:14px;text-align:center">Fecha: ' + fechaStr + '</div>'
       + '<div class="meta">'
@@ -4912,6 +5180,7 @@ async function entGenerarReporteInstalacion() {
       + '</div>'
       + (direccion ? '<div style="background:#F8F9FA;padding:8px 10px;border-radius:6px;margin-bottom:14px;font-size:12px"><span style="color:#9CA3AF;font-size:10px">DIRECCIÓN: </span>' + direccion + '</div>' : '')
       + (desc ? '<div style="background:#F8F9FA;padding:8px 10px;border-radius:6px;margin-bottom:14px;font-size:12px"><span style="color:#9CA3AF;font-size:10px">SE ENTREG\u00d3 / INSTAL\u00d3: </span>' + esc(desc) + '</div>' : '')
+      + entStandHtml(stand)
       + piezasHtml
       + (ENT_MODO_INST === 'completo' ? '<h2>&#9989; Checklist T\u00e9cnico de Calidad</h2><table>' + ckRows + '</table>' : '')
       + '<h2>&#128247; Evidencia Fotogr\u00e1fica</h2>'
@@ -4952,7 +5221,7 @@ async function entGenerarReporteInstalacion() {
       direccion: direccion, monto: monto,
       checklist: ENT_CHECKS, piezas: piezasValidas, evidencia: ENT_EVIDENCIA,
       fotosComp: ENT_FOTOS_COMP, fotosEmp: ENT_FOTOS_EMP, fotosConf: ENT_FOTOS_CONF,
-      modoCaptura: ENT_MODO_INST, sinEncargado: ENT_SIN_ENCARGADO, checklistSalida: ENT_CHECKS_SALIDA,
+      modoCaptura: ENT_MODO_INST, sinEncargado: ENT_SIN_ENCARGADO, checklistSalida: ENT_CHECKS_SALIDA, stand: stand,
       firmaTec: firmaTec, firmaCli: firmaCli
     };
     var datosJsonStr = JSON.stringify(datosCompletos);
@@ -5003,6 +5272,8 @@ async function entGenerarReporteInstalacion() {
       direccion: direccion,
       piezas: piezasValidas,
       modo_captura: ENT_MODO_INST,
+      fase_stand: stand ? stand.fase : null,
+      datos_stand: stand || null,
       sin_encargado: ENT_SIN_ENCARGADO,
       checklist_salida: ENT_CHECKS_SALIDA,
       synced: false
