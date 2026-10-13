@@ -7,6 +7,11 @@
 <script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.35
+  FECHA   : 2026-10-12
+  v4.35 - Se quitó una etiqueta escrita a mano ("Pagos v4.1") junto a la versión del
+    encabezado: estaba desactualizada y confundía. La versión real es la del
+    indicador verde (APP_VERSION).
   VERSIÓN : v4.34
   FECHA   : 2026-10-12
   v4.34 - Recibo de visita para un CLIENTE REGISTRADO que aún no tiene presupuesto:
@@ -1052,7 +1057,7 @@ select.form-select { padding-right: 36px; cursor: pointer; }
     </div>
     <div class="offline-badge"><div class="offline-dot"></div>
       <span id="conn-status">Offline-First</span>
-      <span style="font-size:9px;color:rgba(255,255,255,0.3);margin-left:4px">Pagos v4.1</span>
+
     </div>
   </div>
 
@@ -1334,7 +1339,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.34';
+var APP_VERSION = 'v4.35';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
