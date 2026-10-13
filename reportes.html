@@ -7,6 +7,10 @@
 <script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN · MODULO: REPORTES (standalone)
+  VERSION : v3.4
+  FECHA   : 2026-10-13
+  v3.4 - Detalle de obra de un STAND: muestra el avance por fases (Construcción,
+    Montaje, Desmontaje y bodega) con la fecha de cada reporte de Entregas.
   VERSION : v3.3
   FECHA   : 2026-10-09
   v3.3 - FIX: la mano de obra de una obra ya no "pierde" a los técnicos cuyo
@@ -530,7 +534,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 </div>
 </body>
 <script>
-var APP_VERSION = 'v3.3';
+var APP_VERSION = 'v3.4';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb=null;
@@ -1317,11 +1321,24 @@ async function rpMostrarDetalleObra(folioOFolios) {
     // tener que volver a consultar todo.
     RP_DETALLE_PROYECTO_CACHE = { folio: tituloFolios, folios: folios, categorias: categorias, porCategoria: porCategoria, totalMonto: totalMonto };
 
+    // v3.4: avance del STAND por fases (Construcción / Montaje / Desmontaje y bodega), según los
+    // reportes de Entregas (entregas_instalacion.fase_stand). Solo para folios STAN-.
+    var htmlFasesStand = '';
+    if (folios.some(function(f) { return /^STAN-/i.test(f); })) {
+      try {
+        var rf = await sb().from('entregas_instalacion').select('fase_stand,fecha').in('folio', folios).eq('eliminado', false);
+        var porFase = {};
+        (rf.data || []).forEach(function(x) { if (x.fase_stand && (!porFase[x.fase_stand] || x.fecha > porFase[x.fase_stand])) porFase[x.fase_stand] = x.fecha; });
+        var chip = function(k, l) { var f = porFase[k]; return '<span style="padding:3px 9px;border-radius:10px;font-size:11px;font-weight:700;background:' + (f ? 'rgba(39,174,96,.14);color:#1E8449' : 'rgba(0,0,0,.05);color:#888') + '">' + (f ? '✅ ' : '⏳ ') + l + (f ? ' · ' + String(f).slice(5).split('-').reverse().join('/') : '') + '</span>'; };
+        htmlFasesStand = '<div style="display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px">' + chip('construccion', 'Construcción') + chip('montaje', 'Montaje') + chip('desmontaje', 'Desmontaje y bodega') + '</div>';
+      } catch (eF) { console.warn('[BarrCan] No se pudo cargar el avance del stand:', eF.message); }
+    }
+
     cont.innerHTML =
       '<div class="seccion-titulo" style="margin-top:12px;display:flex;flex-direction:column;gap:8px">'
       + '<span>📦 ' + esc(tituloFolios) + ' — Total comprado: ' + fmt(totalMonto) + '</span>'
       + '<button onclick="rpImprimirDetalleProyecto()" style="width:100%;padding:9px;background:rgba(27,58,92,.06);border:1.5px solid rgba(27,58,92,.15);border-radius:6px;color:var(--navy);font-size:12px;font-weight:700;cursor:pointer">🖨️ Imprimir este desglose</button>'
-      + '</div>' +
+      + '</div>' + htmlFasesStand +
       categorias.map(function(cat) {
         var c = porCategoria[cat];
         return '<div style="margin-bottom:10px">' +
