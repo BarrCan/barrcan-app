@@ -8,6 +8,10 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · FIRMA DE PRESUPUESTO (página pública, sin PIN)
+  VERSION : v1.2
+  FECHA   : 2026-10-12
+  v1.2 - Si el presupuesto ya trae un pago de visita aplicado, muestra "Total a pagar"
+    descontado, el anticipo reducido y el documento con el descuento.
   VERSION : v1.1
   FECHA   : 2026-10-12
   v1.1 - Muestra también la firma de BarrCan (si ya se estampó) en el presupuesto
@@ -91,6 +95,7 @@ function fechaDe(p) { var f = String(p.fecha || '').split('-'); return f.length 
 function fechaHora(iso) { return new Date(iso).toLocaleString('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'long', timeStyle: 'short' }); }
 function docHTML(conFirma) {
   var op = { total: parseFloat(P.monto) || 0, empresa: EMP.empresa, atencion: EMP.atencion };
+  if (parseFloat(P.abono_visita_monto) > 0) op.abonoVisita = { monto: parseFloat(P.abono_visita_monto), ref: P.abono_visita_ref || '' }; // v1.2: pago de visita descontado
   if (conFirma && P.firmado_at) op.firma = { nombre: P.firmado_por, png: P.firma_png, fecha: fechaHora(P.firmado_at), hash: P.firma_hash };
   if (P.firma_barrcan_png) op.firmaBarrcan = { nombre: P.firma_barrcan_por || 'BarrCan', png: P.firma_barrcan_png, fecha: fechaHora(P.firma_barrcan_at) }; // v1.1: firma de BarrCan
   return BCDoc.generar(PIEZAS, P.folio, P.cliente || '', P.dir || '', fechaDe(P), op);
@@ -104,7 +109,7 @@ async function cargar() {
   if (!/^[A-Za-z0-9]{20,}$/.test(TOKEN)) { msg.innerHTML = '<b>Liga no válida.</b><br>Pida a BarrCan que se la envíe de nuevo.'; return; }
   try {
     var r = await sb().from('presupuestos_atrasados')
-      .select('id,folio,cliente,dir,fecha,monto,notas_internas,descripcion,firmado_at,firmado_por,firma_png,firma_hash,firma_barrcan_png,firma_barrcan_at,firma_barrcan_por,eliminado')
+      .select('id,folio,cliente,dir,fecha,monto,notas_internas,descripcion,firmado_at,firmado_por,firma_png,firma_hash,firma_barrcan_png,firma_barrcan_at,firma_barrcan_por,abono_visita_monto,abono_visita_ref,eliminado')
       .eq('firma_token', TOKEN).limit(1);
     if (r.error) throw r.error;
     P = (r.data || [])[0];
@@ -115,8 +120,10 @@ async function cargar() {
   EMP = await BCDoc.datosCliente(P.folio, P.cliente);
   document.getElementById('folio').textContent = P.folio;
   document.getElementById('cliente').textContent = EMP.empresa || P.cliente || '';
-  document.getElementById('total').textContent = money(P.monto);
-  document.getElementById('anticipo').textContent = money((parseFloat(P.monto) || 0) * 0.5);
+  var abonoV = parseFloat(P.abono_visita_monto) > 0 ? parseFloat(P.abono_visita_monto) : 0;
+  document.getElementById('total').textContent = money(Math.max(0, (parseFloat(P.monto) || 0) - abonoV));
+  document.getElementById('anticipo').textContent = money(Math.max(0, (parseFloat(P.monto) || 0) * 0.5 - abonoV));
+  if (abonoV > 0) { var nt = document.createElement('div'); nt.style.cssText = 'font-size:11.5px;color:#27AE60;margin-top:2px'; nt.textContent = 'Ya descontamos su pago de visita de ' + money(abonoV); document.getElementById('total').insertAdjacentElement('afterend', nt); }
   if (!document.getElementById('nombre').value) document.getElementById('nombre').value = (EMP.atencion || P.cliente || '').replace(/^(arq|ing|lic|sr|sra|srita)\.?\s+/i, '');
   msg.style.display = 'none'; document.getElementById('contenido').style.display = 'block';
   mostrarDoc(); prepararLienzo();
@@ -163,7 +170,8 @@ function mostrarListo() {
   document.getElementById('firmado-info').textContent = 'Firmado por ' + P.firmado_por + ' · ' + fechaHora(P.firmado_at);
 }
 function avisar() {
-  var t = 'Hola BarrCan, ya firmé el presupuesto ' + P.folio + ' por ' + money(P.monto) + '. Les envío el comprobante del anticipo de ' + money((parseFloat(P.monto) || 0) * 0.5) + '.';
+  var abV = parseFloat(P.abono_visita_monto) > 0 ? parseFloat(P.abono_visita_monto) : 0;
+  var t = 'Hola BarrCan, ya firmé el presupuesto ' + P.folio + ' por ' + money(Math.max(0, (parseFloat(P.monto) || 0) - abV)) + '. Les envío el comprobante del anticipo de ' + money(Math.max(0, (parseFloat(P.monto) || 0) * 0.5 - abV)) + '.';
   window.open('https://wa.me/' + WA_BARRCAN + '?text=' + encodeURIComponent(t), '_blank');
 }
 function verFirmado() {

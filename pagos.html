@@ -7,6 +7,12 @@
 <script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.34
+  FECHA   : 2026-10-12
+  v4.34 - Recibo de visita para un CLIENTE REGISTRADO que aún no tiene presupuesto:
+    buscador de clientes (nombre o número) dentro del concepto "Visita técnica";
+    carga sus datos y su visita, y el pago queda ligado al cliente (cliente_id)
+    para aplicarlo después al presupuesto desde Historial.
   VERSIÓN : v4.33
   FECHA   : 2026-10-11
   v4.33 - Nuevo concepto "Visita técnica": recibo de visita en el mismo ticket de
@@ -1197,7 +1203,10 @@ select.form-select { padding-right: 36px; cursor: pointer; }
       <div id="pago-visita-box" style="display:none;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.4);border-radius:10px;padding:10px 12px;margin-bottom:12px">
         <div style="font-size:12px;font-weight:700;color:#1B3A5C;margin-bottom:4px">&#128207; Recibo de visita t&eacute;cnica</div>
         <div style="font-size:11px;color:#555;line-height:1.45;margin-bottom:8px">El recibo lleva la nota de que, si el cliente contin&uacute;a con BarrCan, este pago se abona a su presupuesto y no genera un gasto adicional.</div>
-        <label class="form-label" style="font-size:11px">Cargar datos desde una visita registrada</label>
+        <label class="form-label" style="font-size:11px">Buscar un cliente registrado (a&uacute;n sin presupuesto)</label>
+        <input type="text" id="pago-vis-buscar" class="form-input" placeholder="Nombre o n&uacute;mero de cliente" autocomplete="off" oninput="pagoBuscarCliente()" style="margin-bottom:6px">
+        <div id="pago-vis-lista" style="margin-bottom:8px"></div>
+        <label class="form-label" style="font-size:11px">o cargar datos desde una visita registrada</label>
         <select id="pago-visita-sel" class="form-select" onchange="pagoElegirVisita()"><option value="">&mdash; Escribir los datos a mano &mdash;</option></select>
       </div>
 
@@ -1325,7 +1334,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.33';
+var APP_VERSION = 'v4.34';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -2339,7 +2348,7 @@ async function pagoCargarVisitas() {
   try {
     var desde = new Date(Date.now() - 45 * 86400000).toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
     var r = await sb().from('visitas_medicion')
-      .select('folio,cliente_nombre,cliente_tel,dir_obra,fecha_visita,aplica_cobro,monto')
+      .select('folio,cliente_id,cliente_nombre,cliente_tel,dir_obra,fecha_visita,aplica_cobro,monto')
       .gte('fecha_visita', desde).order('fecha_visita', { ascending: false }).limit(40);
     if (r.error) throw r.error;
     PAGO_VISITAS = r.data || [];
@@ -2352,6 +2361,7 @@ function pagoConceptoCambio() {
   var esVisita = document.getElementById('pago-concepto').value === 'visita';
   var box = document.getElementById('pago-visita-box');
   if (box) box.style.display = esVisita ? 'block' : 'none';
+  if (!esVisita) PAGO_CLIENTE_ID = null;
   if (esVisita) {
     var m = document.getElementById('pago-monto');
     if (m && !(parseFloat(m.value) > 0)) m.value = 500; // monto estándar de la visita
@@ -2364,12 +2374,51 @@ function pagoElegirVisita() {
   var v = PAGO_VISITAS[parseInt(i, 10)];
   if (!v) return;
   if (typeof PRES_SEL !== 'undefined') PRES_SEL = null; // la visita no está ligada a un presupuesto
+  PAGO_CLIENTE_ID = v.cliente_id || PAGO_CLIENTE_ID || null;
   document.getElementById('pago-folio').value = v.folio || '';
   document.getElementById('pago-cliente').value = v.cliente_nombre || '';
   document.getElementById('pago-tel').value = v.cliente_tel || '';
   document.getElementById('pago-desc').value = v.dir_obra || '';
   if (v.fecha_visita) document.getElementById('pago-fecha').value = String(v.fecha_visita).slice(0, 10);
   document.getElementById('pago-monto').value = (v.aplica_cobro && parseFloat(v.monto) > 0) ? v.monto : 500;
+}
+
+// v4.34: cliente REGISTRADO sin presupuesto (pagó la visita). El pago queda ligado al
+// cliente (cliente_id) para poder aplicarlo después al presupuesto desde Historial.
+var PAGO_CLIENTES = [], PAGO_CLIENTE_ID = null, _pagoBuscarT = null;
+function pagoBuscarCliente() {
+  clearTimeout(_pagoBuscarT);
+  _pagoBuscarT = setTimeout(async function() {
+    var q = String(document.getElementById('pago-vis-buscar').value || '').replace(/[%,()*\\]/g, ' ').trim();
+    var lista = document.getElementById('pago-vis-lista');
+    if (q.length < 2 || !sb()) { lista.innerHTML = ''; return; }
+    try {
+      var r = await sb().from('clientes').select('id,num_cliente,nombre,telefono,movil,dir_obra,direccion,empresa')
+        .or('nombre.ilike.%' + q + '%,num_cliente.ilike.%' + q + '%').limit(8);
+      if (r.error) throw r.error;
+      PAGO_CLIENTES = r.data || [];
+      lista.innerHTML = PAGO_CLIENTES.length ? PAGO_CLIENTES.map(function(c, i) {
+        return '<button type="button" onclick="pagoElegirCliente(' + i + ')" style="display:block;width:100%;text-align:left;padding:8px 10px;margin-bottom:4px;border:1.5px solid #D5DCE4;border-radius:8px;background:#fff;font-size:12.5px;color:#1B3A5C">'
+          + '<b>' + esc(c.nombre || '') + '</b> <span style="color:#888;font-size:11px">' + esc(c.num_cliente || '') + (c.empresa ? ' &middot; ' + esc(c.empresa) : '') + '</span></button>';
+      }).join('') : '<div style="font-size:11.5px;color:#888;padding:4px 2px">Sin resultados. Escribe los datos a mano abajo.</div>';
+    } catch (e) { console.warn('[BarrCan] No se pudo buscar clientes:', e.message); }
+  }, 250);
+}
+async function pagoElegirCliente(i) {
+  var c = PAGO_CLIENTES[i]; if (!c) return;
+  if (typeof PRES_SEL !== 'undefined') PRES_SEL = null; // aún no tiene presupuesto
+  PAGO_CLIENTE_ID = c.id;
+  document.getElementById('pago-cliente').value = c.nombre || '';
+  document.getElementById('pago-tel').value = c.movil || c.telefono || '';
+  document.getElementById('pago-desc').value = c.dir_obra || c.direccion || '';
+  document.getElementById('pago-vis-lista').innerHTML = '<div style="font-size:12px;color:#27AE60;font-weight:700;padding:2px">✓ ' + esc(c.nombre || '') + ' (' + esc(c.num_cliente || '') + ')</div>';
+  document.getElementById('pago-vis-buscar').value = '';
+  // Si ese cliente tiene una visita registrada, se carga su folio y fecha
+  try {
+    var r = await sb().from('visitas_medicion').select('folio,fecha_visita,aplica_cobro,monto').eq('cliente_id', c.id).order('fecha_visita', { ascending: false }).limit(1);
+    var v = r.data && r.data[0];
+    if (v) { document.getElementById('pago-folio').value = v.folio || ''; if (v.fecha_visita) document.getElementById('pago-fecha').value = String(v.fecha_visita).slice(0, 10); if (v.aplica_cobro && parseFloat(v.monto) > 0) document.getElementById('pago-monto').value = v.monto; }
+  } catch (e) {}
 }
 
 async function pagoGuardar() {
@@ -2451,6 +2500,9 @@ async function pagoGuardar() {
     registrado_por:'campo',
     comprobante_img: _PAGO_FOTO || null,
     presupuesto_id: PRES_SEL && PRES_SEL.id ? PRES_SEL.id : null,
+    cliente_id: (concepto === 'visita' && PAGO_CLIENTE_ID) ? PAGO_CLIENTE_ID : null,
+    cliente_nombre_ref: concepto === 'visita' ? (cliente || null) : null,
+    folio_referencia: concepto === 'visita' ? (folio || null) : null,
     comision_ml_pct: FORMA_SEL === 'mercado_libre' ? (parseFloat(document.getElementById('pago-comision-ml').value) || null) : null
   };
 
@@ -2482,6 +2534,7 @@ async function pagoGuardar() {
     }
 
     var result = await sb().from('pagos').insert([db]);
+  PAGO_CLIENTE_ID = null;
     if (result.error) throw result.error;
 
     var newPago = Object.assign({}, db, { created_at: new Date().toISOString() });

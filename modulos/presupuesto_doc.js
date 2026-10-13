@@ -1,6 +1,9 @@
 // ══════════════════════════════════════════════════════════════
 // BarrCan · DOCUMENTO OFICIAL DE PRESUPUESTO (compartido)
-// VERSION : v1.5   FECHA : 2026-10-12
+// VERSION : v1.6   FECHA : 2026-10-12
+// v1.6 - Pago de visita descontado: si se pasa opciones.abonoVisita = { monto, ref },
+//   el documento muestra Total del presupuesto − Pago de visita = Total a pagar, y el
+//   anticipo del 50% se reduce en ese monto (el 35% y el 15% no cambian).
 // v1.5 - Firma de BarrCan estampada en el recuadro "Sello y firma BarrCan"
 //   (opciones.firmaBarrcan = { nombre, png, fecha }), junto a la del cliente.
 // v1.4 - Diagrama esquemático (SVG) de la configuración de cada pieza de
@@ -163,6 +166,7 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
   opciones = opciones || {};
   var fechaStr = fecha.toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
   var total = opciones.total != null ? opciones.total : items.reduce(function(a, it){ return a + (parseFloat(it.precio) || 0); }, 0);
+  var abonoV = (opciones.abonoVisita && parseFloat(opciones.abonoVisita.monto) > 0) ? parseFloat(opciones.abonoVisita.monto) : 0; // v1.6: pago de visita ya recibido
   var lista = items.map(function(it, idx) {
     var cant = it.cantidad || 1;
     var detalle = cant > 1 ? ' <span style="color:#888;font-size:9pt">(' + cant + ' pzas \u00d7 $' + fmt(it.precioUnitario != null ? it.precioUnitario : (it.precio / cant)) + ')</span>' : '';
@@ -200,7 +204,12 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
     + (opciones.empresa ? '<div style="font-size:10.5pt;margin-bottom:2px">En atenci\u00f3n a: <strong>' + esc(opciones.atencion || cliente) + '</strong></div>' : '')
     + (dir ? '<div style="font-size:10pt;color:#666;margin-bottom:14px">' + esc(dir) + '</div>' : '<div style="margin-bottom:14px"></div>')
     + lista
-    + '<div style="display:flex;justify-content:flex-end;padding-top:12px;font-size:14pt;font-weight:900;color:#1B3A5C">$' + fmt(total) + '</div>'
+    + (abonoV > 0
+        ? '<div style="padding-top:12px;text-align:right;color:#1B3A5C">'
+          + '<div style="font-size:10.5pt">Total del presupuesto&nbsp;&nbsp;<strong>$' + fmt(total) + '</strong></div>'
+          + '<div style="font-size:10.5pt;color:#27AE60">Pago de visita descontado' + (opciones.abonoVisita.ref ? ' <span style="color:#888;font-size:8.5pt">(' + esc(opciones.abonoVisita.ref) + ')</span>' : '') + '&nbsp;&nbsp;<strong>\u2212$' + fmt(abonoV) + '</strong></div>'
+          + '<div style="font-size:14pt;font-weight:900;margin-top:4px;border-top:1.5px solid #1B3A5C;padding-top:4px">Total a pagar&nbsp;&nbsp;$' + fmt(Math.max(0, total - abonoV)) + '</div></div>'
+        : '<div style="display:flex;justify-content:flex-end;padding-top:12px;font-size:14pt;font-weight:900;color:#1B3A5C">$' + fmt(total) + '</div>')
     + '<div style="margin-top:24px;font-size:9pt;text-align:center;color:#1B3A5C;background:#F7F5F0;padding:10px;border-radius:6px">'
     + 'El presente presupuesto contempla los trabajos antes descritos, cualquier otro trabajo adicional se cotizar\u00e1. Estos precios est\u00e1n sujetos a cambios sin previo aviso.'
     + '</div>'
@@ -234,7 +243,7 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
     + '<h2>2. Pol\u00edtica de pagos</h2>'
     + '<p style="font-size:9pt;color:#333;margin-bottom:10px">Al aprobar formalmente el presupuesto, el cliente acepta las siguientes condiciones de pago:</p>'
     + '<table style="margin-bottom:12px"><thead><tr><th>Concepto</th><th style="text-align:center;width:100px">Porcentaje</th><th>Momento de pago</th><th style="text-align:right;width:110px">Monto</th></tr></thead><tbody>'
-    + '<tr><td>Anticipo inicial</td><td style="text-align:center">50 %</td><td>Al aprobar y firmar el presupuesto</td><td style="text-align:right;font-weight:700">$&nbsp;' + fmt(total * 0.50) + '</td></tr>'
+    + '<tr><td>Anticipo inicial</td><td style="text-align:center">50 %</td><td>Al aprobar y firmar el presupuesto' + (abonoV > 0 ? '<br><span style="font-size:8pt;color:#27AE60">$' + fmt(total * 0.50) + ' menos $' + fmt(abonoV) + ' del pago de visita ya recibido</span>' : '') + '</td><td style="text-align:right;font-weight:700">$&nbsp;' + fmt(Math.max(0, total * 0.50 - abonoV)) + '</td></tr>'
     + '<tr style="background:#f5f7fa"><td>Segundo pago</td><td style="text-align:center">35 %</td><td>Al confirmar fecha de entrega e instalaci\u00f3n</td><td style="text-align:right;font-weight:700">$&nbsp;' + fmt(total * 0.35) + '</td></tr>'
     + '<tr style="background:#1B3A5C;color:white"><td style="color:white;font-weight:700;border-color:#1B3A5C">Liquidaci\u00f3n final</td><td style="color:white;text-align:center;border-color:#1B3A5C">15 %</td><td style="color:rgba(255,255,255,.85);border-color:#1B3A5C">A la entrega y conclusi\u00f3n total del trabajo</td><td style="color:#F1C40F;text-align:right;font-weight:700;border-color:#1B3A5C">$&nbsp;' + fmt(total * 0.15) + '</td></tr>'
     + '</tbody></table>'
@@ -309,5 +318,5 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
       return { empresa: String(f.empresa).trim(), atencion: f.nombre };
     } catch (e) { return {}; }
   }
-  window.BCDoc = { version: 'v1.5', generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo, diagramaSvg: bcDiagramaSvg, esquema: bcEsquemaDeSistema, datosCliente: datosCliente };
+  window.BCDoc = { version: 'v1.6', generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo, diagramaSvg: bcDiagramaSvg, esquema: bcEsquemaDeSistema, datosCliente: datosCliente };
 })();

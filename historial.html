@@ -8,6 +8,13 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.27
+  FECHA   : 2026-10-12
+  v3.27 - PAGO DE VISITA → PRESUPUESTO: el pago de visita de un cliente que aún no
+    tenía presupuesto se APLICA al presupuesto (botón "🔗 Aplicar pago de visita"
+    y aviso automático antes de enviar a firma): se liga el pago, baja el saldo
+    y el presupuesto impreso y el que firma el cliente muestran "Pago de visita
+    descontado", con el anticipo reducido.
   VERSIÓN : v3.26
   FECHA   : 2026-10-12
   v3.26 - FIRMA DE BARRCAN: tu firma se dibuja una vez y se estampa en el recuadro
@@ -1686,7 +1693,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.26';
+var APP_VERSION = 'v3.27';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1778,7 +1785,7 @@ async function presCargar() {
 
   try {
     var result = await sb().from('presupuestos_atrasados')
-      .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,fecha,anio_referencia,estado,notas_internas,modulo,created_at,firma_token,firmado_at,firmado_por,firma_png,firma_hash,firma_barrcan_png,firma_barrcan_at,firma_barrcan_por')
+      .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,fecha,anio_referencia,estado,notas_internas,modulo,created_at,firma_token,firmado_at,firmado_por,firma_png,firma_hash,firma_barrcan_png,firma_barrcan_at,firma_barrcan_por,abono_visita_monto,abono_visita_ref,abono_visita_pago_id')
       .order('folio', { ascending: true })
       .range(0, 499);
 
@@ -1917,6 +1924,7 @@ function presRenderLista(datos) {
       + '<div style="font-size:10px;color:var(--gray-400)">' + (p.fecha || '') + telStr + '</div>'
       + (p.firmado_at ? '<div style="font-size:10px;font-weight:700;color:var(--green);margin-top:2px">✅ Firmado ' + new Date(p.firmado_at).toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City', day: '2-digit', month: 'short' }) + ' · ' + (p.firmado_por || '') + (p.firma_barrcan_at ? ' · BarrCan ✍️' : ' · <span style="color:#C0392B">falta firma BarrCan</span>') + '</div>'
          : (p.firma_token ? '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-top:2px">⏳ Firma enviada, pendiente</div>' : ''))
+      + (parseFloat(p.abono_visita_monto) > 0 ? '<div style="font-size:10px;font-weight:700;color:var(--green);margin-top:2px">🧾 Visita −$' + fmt(p.abono_visita_monto) + ' aplicada</div>' : '')
       // v3.23: los cotizadores ya no cobran traslado por pieza -- avisar si un presupuesto abierto aún no tiene costos de obra
       + (p.estado === 'activo' && /^\s*\[/.test(p.notas_internas || '') && !/"tipo"\s*:\s*"costos_obra"/.test(p.notas_internas || '')
          ? '<div style="font-size:10px;font-weight:700;color:#C0392B;margin-top:2px">⚠️ Sin costos de obra (traslado, visitas, pisos)</div>' : '')
@@ -2149,7 +2157,7 @@ function presBotonesNormales(idStr) {
     + '<button onclick="presVerProgreso(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(142,68,173,0.08);border:1.5px solid rgba(142,68,173,0.3);border-radius:8px;color:#8E44AD;font-size:9.5px;font-weight:700;cursor:pointer">Progreso</button>'
     + '</div>'
     + '<button onclick="presImprimir(\'' + idStr + '\')" style="width:100%;margin-top:5px;padding:7px 2px;background:rgba(27,58,92,0.06);border:1.5px solid rgba(27,58,92,0.2);border-radius:8px;color:var(--navy);font-size:9.5px;font-weight:700;cursor:pointer">&#128424; Reimprimir presupuesto</button>' + '<button onclick="presEnviarFirma(\'' + idStr + '\')" style="width:100%;margin-top:5px;padding:8px 2px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.35);border-radius:8px;color:var(--green);font-size:10.5px;font-weight:700;cursor:pointer">' + presTextoBotonFirma(idStr) + '</button>'
-    + '<button onclick=\"presFirmarBarrcan(\'' + idStr + '\')\" style=\"width:100%;margin-top:5px;padding:8px 2px;background:rgba(27,58,92,0.06);border:1.5px solid rgba(27,58,92,0.3);border-radius:8px;color:var(--navy);font-size:10.5px;font-weight:700;cursor:pointer\">✍️ Firmar por BarrCan</button>';
+    + '<button onclick=\"presFirmarBarrcan(\'' + idStr + '\')\" style=\"width:100%;margin-top:5px;padding:8px 2px;background:rgba(27,58,92,0.06);border:1.5px solid rgba(27,58,92,0.3);border-radius:8px;color:var(--navy);font-size:10.5px;font-weight:700;cursor:pointer\">✍️ Firmar por BarrCan</button>' + presBotonVisita(idStr);
 }
 
 function presBotonesCola(p) {
@@ -2318,6 +2326,71 @@ async function presEnviarCopiaFirmada(p, token, tel) {
   if (!w) { try { await navigator.clipboard.writeText(liga); toast('Liga copiada -- pégala en WhatsApp'); } catch (e2) { prompt('Copia esta liga y mándala por WhatsApp:', liga); } }
 }
 
+// ══ PAGO DE VISITA → PRESUPUESTO (v3.27) ══
+// El cliente pagó la visita ANTES de tener presupuesto (recibo en Pagos con concepto
+// "Visita técnica", sin presupuesto). Al crear su presupuesto, este pago se APLICA:
+// se liga al presupuesto (baja el saldo) y el documento muestra "Pago de visita
+// descontado". Se ofrece solo antes de enviar a firma, o con el botón 🔗.
+function presNormNombreV(n) { return String(n || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/^(arq|ing|lic|sr|sra|srita|dr|dra)\.?\s+/, '').replace(/\s+/g, ' ').trim(); }
+function presBotonVisita(idStr) {
+  var p = PRES_CACHE.filter(function(x) { return x.id === idStr; })[0];
+  if (!p || parseFloat(p.abono_visita_monto) > 0) return '';
+  return '<button onclick="presAplicarPagoVisita(\'' + idStr + '\')" style="width:100%;margin-top:5px;padding:8px 2px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.4);border-radius:8px;color:var(--gold);font-size:10.5px;font-weight:700;cursor:pointer">🔗 Aplicar pago de visita</button>';
+}
+function presRefReciboV(g) {
+  var m = String(g.notas || '').match(/RECIBO:(RB-\d+)/);
+  return (m ? m[1] : '') || g.folio_referencia || 'visita';
+}
+async function presVisitasSinAplicar(p) {
+  var r = await sb().from('pagos').select('id,monto,fecha_pago,notas,cliente_id,cliente_nombre_ref,folio_referencia')
+    .eq('concepto', 'visita').is('presupuesto_id', null).order('fecha_pago', { ascending: false }).limit(60);
+  if (r.error) throw r.error;
+  var todos = r.data || [], nom = presNormNombreV(p.cliente);
+  var coinciden = todos.filter(function(g) { return nom && (presNormNombreV(g.cliente_nombre_ref) === nom || presNormNombreV(String(g.notas || '').split(' | ')[1]) === nom); });
+  return { coinciden: coinciden, otros: todos };
+}
+function presDescPagoV(g) { return '$' + fmt(g.monto) + ' · ' + presRefReciboV(g) + ' · ' + String(g.fecha_pago || '').slice(0, 10) + (g.cliente_nombre_ref ? ' · ' + g.cliente_nombre_ref : ''); }
+async function presAplicarPagoVisita(idStr, soloSiHay) {
+  var p = PRES_CACHE.filter(function(x) { return x.id === idStr; })[0];
+  if (!p) { toast('No se encontró ese presupuesto'); return false; }
+  try {
+    if (!sb()) throw new Error('sin conexión');
+    var cur = await sb().from('presupuestos_atrasados').select('monto,abono_visita_monto,abono_visita_ref').eq('id', p.id).maybeSingle();
+    if (cur.error) throw cur.error;
+    if (!cur.data) throw new Error('el presupuesto todavía no está en la base');
+    if (parseFloat(cur.data.abono_visita_monto) > 0) { p.abono_visita_monto = cur.data.abono_visita_monto; p.abono_visita_ref = cur.data.abono_visita_ref; if (!soloSiHay) toast('Este presupuesto ya tiene aplicado el pago de visita de $' + fmt(cur.data.abono_visita_monto)); return true; }
+    var v = await presVisitasSinAplicar(p), lista = v.coinciden.length ? v.coinciden : v.otros, elegido = null;
+    if (!lista.length) { if (!soloSiHay) toast('No hay pagos de visita sin aplicar. Regístralo en Pagos con el concepto "Visita técnica".'); return false; }
+    if (v.coinciden.length === 1) {
+      if (!confirm('Este cliente pagó una visita: ' + presDescPagoV(v.coinciden[0]) + '.\n\n¿Aplicarla a este presupuesto? Se descuenta del total y aparece en el presupuesto como "Pago de visita descontado".')) return false;
+      elegido = v.coinciden[0];
+    } else {
+      if (soloSiHay && !v.coinciden.length) return false; // al enviar, solo se ofrece si el nombre coincide
+      var txt = (v.coinciden.length ? 'Pagos de visita de este cliente:' : 'No encontré pagos de visita con el nombre de este cliente. Pagos de visita sin aplicar:') + '\n\n'
+        + lista.slice(0, 9).map(function(g, i) { return (i + 1) + ') ' + presDescPagoV(g); }).join('\n') + '\n\nEscribe el número del que quieres aplicar (o deja vacío para cancelar):';
+      var n = parseInt(prompt(txt, '1'), 10);
+      if (!(n >= 1 && n <= Math.min(9, lista.length))) return false;
+      elegido = lista[n - 1];
+      // Seguridad: si el pago es de OTRA persona, se confirma antes de aplicarlo
+      if (presNormNombreV(elegido.cliente_nombre_ref) !== presNormNombreV(p.cliente) && !confirm('Ese pago de visita es de "' + (elegido.cliente_nombre_ref || 'otro cliente') + '" y este presupuesto es de "' + (p.cliente || '') + '".\n\n¿Aplicarlo de todos modos?')) return false;
+    }
+    // 1) ligar el pago al presupuesto (solo si sigue sin presupuesto)
+    var lig = await sb().from('pagos').update({ presupuesto_id: p.id }).eq('id', elegido.id).is('presupuesto_id', null).select('id');
+    if (lig.error) throw lig.error;
+    if (!lig.data || !lig.data.length) throw new Error('ese pago ya se aplicó a otro presupuesto');
+    // 2) saldo real = monto − todos los pagos ligados al presupuesto
+    var ps = await sb().from('pagos').select('monto').eq('presupuesto_id', p.id);
+    var pagado = (ps.data || []).reduce(function(a, x) { return a + (parseFloat(x.monto) || 0); }, 0);
+    var saldo = Math.max(0, (parseFloat(cur.data.monto) || 0) - pagado), ref = presRefReciboV(elegido);
+    var up = await sb().from('presupuestos_atrasados').update({ saldo: saldo, abono_visita_monto: elegido.monto, abono_visita_ref: ref, abono_visita_pago_id: elegido.id }).eq('id', p.id);
+    if (up.error) throw up.error;
+    p.saldo = saldo; p.abono_visita_monto = elegido.monto; p.abono_visita_ref = ref; p.abono_visita_pago_id = elegido.id; presGuardarCache(PRES_CACHE);
+    toast('✅ Pago de visita de $' + fmt(elegido.monto) + ' aplicado · saldo $' + fmt(saldo));
+    if (typeof presFiltrar === 'function') presFiltrar();
+    return true;
+  } catch (e) { toast('No se pudo aplicar el pago de visita: ' + e.message); return false; }
+}
+
 async function presEnviarFirma(idStr) {
   var p = PRES_CACHE.filter(function(x) { return x.id === idStr; })[0];
   if (!p) { toast('No se encontró ese presupuesto'); return; }
@@ -2335,6 +2408,8 @@ async function presEnviarFirma(idStr) {
     if (q.error) throw q.error;
     if (!q.data) throw new Error('el presupuesto todavía no está en la base (¿se guardó sin conexión?). Sincroniza y vuelve a intentar');
     token = q.data.firma_token;
+    // v3.27: antes de enviar, si el cliente pagó una visita sin aplicar, se ofrece descontarla
+    if (!q.data.firmado_at && !(parseFloat(p.abono_visita_monto) > 0)) { await presAplicarPagoVisita(idStr, true); }
     // v3.26: si el cliente YA firmó, este botón manda la COPIA FIRMADA (con la firma de BarrCan)
     if (q.data.firmado_at) { await presEnviarCopiaFirmada(p, token, tel); return; }
     // y si BarrCan aún no firma pero hay firma guardada en este dispositivo, se estampa sola al enviar
@@ -2385,6 +2460,7 @@ async function presImprimir(idStr) {
   var emp = window.BCDoc.datosCliente ? await window.BCDoc.datosCliente(p.folio, p.cliente) : {};
   var html = window.BCDoc.generar(piezas, p.folio || '', p.cliente || '', p.dir || '', fecha,
     { total: parseFloat(p.monto) || 0, empresa: emp.empresa, atencion: emp.atencion,
+      abonoVisita: parseFloat(p.abono_visita_monto) > 0 ? { monto: parseFloat(p.abono_visita_monto), ref: p.abono_visita_ref || '' } : null,
       firmaBarrcan: p.firma_barrcan_png ? { nombre: p.firma_barrcan_por || 'BarrCan', png: p.firma_barrcan_png, fecha: new Date(p.firma_barrcan_at).toLocaleString('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'long', timeStyle: 'short' }) } : null,
       firma: p.firmado_at ? { nombre: p.firmado_por, png: p.firma_png, hash: p.firma_hash,
         fecha: new Date(p.firmado_at).toLocaleString('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'long', timeStyle: 'short' }) } : null });
