@@ -1,6 +1,9 @@
 // ══════════════════════════════════════════════════════════════
 // BarrCan · DOCUMENTO OFICIAL DE PRESUPUESTO (compartido)
-// VERSION : v1.6   FECHA : 2026-10-12
+// VERSION : v1.7   FECHA : 2026-10-12
+// v1.7 - El pago de visita (o adelanto) se reparte en orden: primero baja el anticipo del
+//   50%; si el cliente depositó de más, el excedente baja el 2° pago (35%) y luego la
+//   liquidación (15%). Antes un adelanto mayor al anticipo se perdía.
 // v1.6 - Pago de visita descontado: si se pasa opciones.abonoVisita = { monto, ref },
 //   el documento muestra Total del presupuesto − Pago de visita = Total a pagar, y el
 //   anticipo del 50% se reduce en ese monto (el 35% y el 15% no cambian).
@@ -167,6 +170,8 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
   var fechaStr = fecha.toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
   var total = opciones.total != null ? opciones.total : items.reduce(function(a, it){ return a + (parseFloat(it.precio) || 0); }, 0);
   var abonoV = (opciones.abonoVisita && parseFloat(opciones.abonoVisita.monto) > 0) ? parseFloat(opciones.abonoVisita.monto) : 0; // v1.6: pago de visita ya recibido
+  var a50 = total * 0.50, a35 = total * 0.35, a15 = total * 0.15, cred = abonoV;
+  var u50 = Math.min(cred, a50); cred -= u50; var u35 = Math.min(cred, a35); cred -= u35; var u15 = Math.min(cred, a15); // v1.7: si el adelanto excede el anticipo, el excedente baja el 2° pago y luego la liquidación
   var lista = items.map(function(it, idx) {
     var cant = it.cantidad || 1;
     var detalle = cant > 1 ? ' <span style="color:#888;font-size:9pt">(' + cant + ' pzas \u00d7 $' + fmt(it.precioUnitario != null ? it.precioUnitario : (it.precio / cant)) + ')</span>' : '';
@@ -243,9 +248,9 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
     + '<h2>2. Pol\u00edtica de pagos</h2>'
     + '<p style="font-size:9pt;color:#333;margin-bottom:10px">Al aprobar formalmente el presupuesto, el cliente acepta las siguientes condiciones de pago:</p>'
     + '<table style="margin-bottom:12px"><thead><tr><th>Concepto</th><th style="text-align:center;width:100px">Porcentaje</th><th>Momento de pago</th><th style="text-align:right;width:110px">Monto</th></tr></thead><tbody>'
-    + '<tr><td>Anticipo inicial</td><td style="text-align:center">50 %</td><td>Al aprobar y firmar el presupuesto' + (abonoV > 0 ? '<br><span style="font-size:8pt;color:#27AE60">$' + fmt(total * 0.50) + ' menos $' + fmt(abonoV) + ' del pago de visita ya recibido</span>' : '') + '</td><td style="text-align:right;font-weight:700">$&nbsp;' + fmt(Math.max(0, total * 0.50 - abonoV)) + '</td></tr>'
-    + '<tr style="background:#f5f7fa"><td>Segundo pago</td><td style="text-align:center">35 %</td><td>Al confirmar fecha de entrega e instalaci\u00f3n</td><td style="text-align:right;font-weight:700">$&nbsp;' + fmt(total * 0.35) + '</td></tr>'
-    + '<tr style="background:#1B3A5C;color:white"><td style="color:white;font-weight:700;border-color:#1B3A5C">Liquidaci\u00f3n final</td><td style="color:white;text-align:center;border-color:#1B3A5C">15 %</td><td style="color:rgba(255,255,255,.85);border-color:#1B3A5C">A la entrega y conclusi\u00f3n total del trabajo</td><td style="color:#F1C40F;text-align:right;font-weight:700;border-color:#1B3A5C">$&nbsp;' + fmt(total * 0.15) + '</td></tr>'
+    + '<tr><td>Anticipo inicial</td><td style="text-align:center">50 %</td><td>Al aprobar y firmar el presupuesto' + (abonoV > 0 ? '<br><span style="font-size:8pt;color:#27AE60">$' + fmt(a50) + ' menos $' + fmt(u50) + ' del pago de visita ya recibido</span>' : '') + '</td><td style="text-align:right;font-weight:700">$&nbsp;' + fmt(Math.max(0, a50 - u50)) + '</td></tr>'
+    + '<tr style="background:#f5f7fa"><td>Segundo pago</td><td style="text-align:center">35 %</td><td>Al confirmar fecha de entrega e instalaci\u00f3n</td><td style="text-align:right;font-weight:700">$&nbsp;' + fmt(Math.max(0, a35 - u35)) + (u35 > 0 ? '<br><span style="font-size:7.5pt;font-weight:400;color:#27AE60">$' + fmt(a35) + ' menos $' + fmt(u35) + ' ya cubierto</span>' : '') + '</td></tr>'
+    + '<tr style="background:#1B3A5C;color:white"><td style="color:white;font-weight:700;border-color:#1B3A5C">Liquidaci\u00f3n final</td><td style="color:white;text-align:center;border-color:#1B3A5C">15 %</td><td style="color:rgba(255,255,255,.85);border-color:#1B3A5C">A la entrega y conclusi\u00f3n total del trabajo</td><td style="color:#F1C40F;text-align:right;font-weight:700;border-color:#1B3A5C">$&nbsp;' + fmt(Math.max(0, a15 - u15)) + (u15 > 0 ? '<br><span style="font-size:7.5pt;font-weight:400;color:#9BE7B2">$' + fmt(a15) + ' menos $' + fmt(u15) + ' ya cubierto</span>' : '') + '</td></tr>'
     + '</tbody></table>'
     + '<div style="display:flex;gap:16px;margin-bottom:12px">'
     + '<div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px">'
@@ -318,5 +323,5 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
       return { empresa: String(f.empresa).trim(), atencion: f.nombre };
     } catch (e) { return {}; }
   }
-  window.BCDoc = { version: 'v1.6', generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo, diagramaSvg: bcDiagramaSvg, esquema: bcEsquemaDeSistema, datosCliente: datosCliente };
+  window.BCDoc = { version: 'v1.7', generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo, diagramaSvg: bcDiagramaSvg, esquema: bcEsquemaDeSistema, datosCliente: datosCliente };
 })();

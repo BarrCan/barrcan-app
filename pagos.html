@@ -7,6 +7,11 @@
 <script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.37
+  FECHA   : 2026-10-12
+  v4.37 - CANDADO: si el folio se escribe a mano pero ya existe como presupuesto, el pago
+    se liga a ese presupuesto (baja su saldo). Antes quedaba suelto: caso real
+    STAN-003A, RB-187 por $26,500, que seguía mostrando saldo completo.
   VERSIÓN : v4.36
   FECHA   : 2026-10-12
   v4.36 - Botón visible "Recibo de visita técnica" al inicio de Registrar pago: deja el
@@ -1350,7 +1355,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.36';
+var APP_VERSION = 'v4.37';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -2448,6 +2453,23 @@ async function pagoElegirCliente(i) {
   } catch (e) {}
 }
 
+// v4.37: busca el presupuesto por el folio escrito a mano y lo deja como PRES_SEL
+async function pagoLigarPorFolio(folio) {
+  try {
+    if (!sb()) return null;
+    var rf = await sb().from('presupuestos_atrasados')
+      .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,estado,nota_pago_pendiente').eq('folio', folio).limit(1);
+    if (rf.error || !rf.data || !rf.data.length) return null;
+    var pr = rf.data[0];
+    var real = await recalcularSaldoReal(pr.id);
+    if (real) pr.saldo = real.saldo;
+    var pagado = await recalcularPagadoAntes(pr.id);
+    PRES_SEL = pr;
+    toast('🔗 Pago ligado al presupuesto ' + pr.folio);
+    return { monto: pr.monto, cliente: pr.cliente, tel: pr.tel, pagadoAntes: parseFloat(pagado) || 0 };
+  } catch (e) { console.warn('[BarrCan] No se pudo ligar por folio:', e.message); return null; }
+}
+
 async function pagoGuardar() {
   var monto    = parseFloat(document.getElementById('pago-monto').value) || 0;
   var fecha    = document.getElementById('pago-fecha').value;
@@ -2467,6 +2489,19 @@ async function pagoGuardar() {
 
   if (!monto || monto <= 0) { errEl.textContent = 'Ingresa el monto'; errEl.classList.add('visible'); return; }
   if (!fecha)               { errEl.textContent = 'Ingresa la fecha';  errEl.classList.add('visible'); return; }
+
+  // v4.37 CANDADO: si el folio se escribió a mano pero YA existe como presupuesto, el pago se
+  // LIGA a ese presupuesto. Antes quedaba suelto y el presupuesto seguía mostrando su saldo
+  // completo (caso real: STAN-003A, RB-187 por $26,500).
+  if (!(PRES_SEL && PRES_SEL.id) && folio && concepto !== 'visita') {
+    var ligado = await pagoLigarPorFolio(folio);
+    if (ligado) {
+      total = parseFloat(ligado.monto) || total;
+      ant = ligado.pagadoAntes;
+      if (!cliente) cliente = ligado.cliente || cliente;
+      if (!tel) tel = ligado.tel || tel;
+    }
+  }
 
   // Si se agregaron adicionales (instalación, herrajes, maniobra...),
   // primero se suman al monto REAL del presupuesto en Supabase --
