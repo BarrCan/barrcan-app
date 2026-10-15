@@ -193,6 +193,12 @@
     - Se agregó una verificación automática (script de comparación
       onclick/onchange vs. window.expuestas) para detectar esto antes
       de publicar, no solo revisando a ojo.
+  VERSION : v1.20.0
+  FECHA   : 2026-10-13
+  v1.20.0 - Nueva línea "Instalación": "Instalación de cancel de vidrio (solo instalación)" a
+    $800 por cancel (vidrio de 9 mm, fijo o puerta), con traslado y 2 personas incluidos,
+    precio final con IVA y sin margen (mismo camino de precio fijo que la garantía). No
+    aparece en el combo de mantenimiento.
   VERSION : v1.19.7
   FECHA   : 2026-10-11
   v1.19.7 - MANTENIMIENTO con GA: antes cobraba solo material × (1 + margen) +
@@ -2546,6 +2552,13 @@ const DB = {
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
+      id:"INST_CANCEL_VIDRIO", nombre:"Instalación de cancel de vidrio (solo instalación)", serie:"Instalación", emoji:"🔧",
+      categorias:['ventana','puerta','bano'],
+      tipo:"Servicio", esServicio:true, precioFijo:true, precioBase:800, unidad:'pza',
+      desc:'Solo la instalación (sin suministro) de un cancel de vidrio de 9 mm, fijo o puerta. $800 por cancel: incluye traslado y 2 personas. Precio final con IVA incluido; se puede cambiar en "Precio unitario".',
+      holgura:0, factorGIF:1.0, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
+    },
+    {
       id:"MANT_INTEGRAL_VENTANA", nombre:"Mantenimiento integral de ventana", serie:"Mantenimiento", emoji:"🪟",
       categorias:['ventana'], integral:true,
       tipo:"Servicio", esServicio:true, precioBase:0, unidad:'pza',
@@ -4045,6 +4058,13 @@ const FAMILIAS_NACIONAL = [
           'MANT_PUERTA_PIVOTE','MANT_PUERTA_JUNQUILLO','MANT_VIDRIO_ROTO']
   },
   {
+    id: 'instalacion',
+    nombre: 'Instalación',
+    emoji: '🔧',
+    desc: 'Instalación sin suministro de cancel de vidrio · $800 c/u con traslado y 2 personas',
+    ids: ['INST_CANCEL_VIDRIO']
+  },
+  {
     id: 'garantia',
     nombre: 'Garantía Extendida',
     emoji: '🛡️',
@@ -4089,7 +4109,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.19.7';
+const APP_VERSION = 'v1.20.0';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -4710,6 +4730,7 @@ function snSelFamilia(fam,btnEl){
 // Precio de referencia por pieza mostrado en la tarjeta del catálogo,
 // tal cual aparece en barrcan_app.html (Mantenimiento y Garantías).
 const SN_PRECIO_TARJETA = {
+  INST_CANCEL_VIDRIO:     '$800 c/u (IVA incl.)',
   MANT_INTEGRAL_VENTANA:  'desde $841/ventana',
   MANT_LIMPIEZA_VEN:      '$350/pieza',
   MANT_LIMPIEZA_PUERTA:   '$250/pieza',
@@ -5298,7 +5319,7 @@ function servToggleCombo() {
 }
 
 function servRenderComboLista() {
-  var items = DB.sistemas.filter(function(s) { return s.esServicio && !s.integral; });
+  var items = DB.sistemas.filter(function(s) { return s.esServicio && !s.integral && !s.precioFijo; });
   var cont = document.getElementById('serv-combo-lista');
   cont.innerHTML = items.map(function(it) {
     var sel = SERV_COMBO_SEL[it.id];

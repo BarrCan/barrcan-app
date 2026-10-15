@@ -1,6 +1,7 @@
 // ══════════════════════════════════════════════════════════════
 // BarrCan · DOCUMENTO OFICIAL DE PRESUPUESTO (compartido)
-// VERSION : v1.7   FECHA : 2026-10-12
+// VERSION : v1.8   FECHA : 2026-10-13
+// v1.8 - Diagrama del MOSQUITERO FIJO (marco con malla) en el presupuesto impreso.
 // v1.7 - El pago de visita (o adelanto) se reparte en orden: primero baja el anticipo del
 //   50%; si el cliente depositó de más, el excedente baja el 2° pago (35%) y luego la
 //   liquidación (15%). Antes un adelanto mayor al anticipo se perdía.
@@ -74,6 +75,7 @@ function bcEsquemaDeSistema(nombre) {
   var n = String(nombre || '').toUpperCase();
   var e = { tipo: 'corrediza', patron: 'OX', fijoSup: false, mosq: /MOSQUITERO/.test(n), hojas: 1, fijoLat: false, intermedio: false, puerta: /PUERTA/.test(n) };
   e.fijoSup = /FIJO SUPERIOR|F_OVER|TRAVESA|FIJO\s*\+\s*CORRED|FIJO \+|\+ FIJO SUPERIOR|ANTEPECHO|\+ FIJO\s+SUPERIOR|FX/.test(n) && !/BATIENTE/.test(n);
+  if (/MOSQUITERO FIJO/.test(n)) { e.tipo = 'mosq_fijo'; e.mosq = false; return e; } // v1.8
   if (/PROYECTABLE/.test(n)) { e.tipo = 'proyectable'; e.fijoSup = /FIJO|FX/.test(n); return e; }
   if (/VASISTA/.test(n)) { e.tipo = 'vasista'; return e; }
   if (/BATIENTE/.test(n)) {
@@ -131,6 +133,10 @@ function bcDiagramaSvg(r) {
     o += rect(x0, yTop, w, hBajo, VID) + triangulo(x0, yTop, w, hBajo, 'izq') + '<circle cx="' + (x0 + w - 7).toFixed(1) + '" cy="' + (yTop + hBajo / 2).toFixed(1) + '" r="1.8" fill="' + AZ + '"/>';
   } else if (e.tipo === 'proyectable' || e.tipo === 'vasista') {
     o += rect(x0, yTop, w, hBajo, VID) + triangulo(x0, yTop, w, hBajo, e.tipo === 'proyectable' ? 'arr' : 'abj');
+  } else if (e.tipo === 'mosq_fijo') {
+    o += rect(x0, yTop, w, hBajo, '#F4F6F8');
+    for (var mi = 1; mi < 6; mi++) o += '<line x1="' + (x0 + w * mi / 6).toFixed(1) + '" y1="' + yTop.toFixed(1) + '" x2="' + (x0 + w * mi / 6).toFixed(1) + '" y2="' + (yTop + hBajo).toFixed(1) + '" stroke="#9AA5B1" stroke-width="0.6"/>';
+    for (var mj = 1; mj < 5; mj++) o += '<line x1="' + x0.toFixed(1) + '" y1="' + (yTop + hBajo * mj / 5).toFixed(1) + '" x2="' + (x0 + w).toFixed(1) + '" y2="' + (yTop + hBajo * mj / 5).toFixed(1) + '" stroke="#9AA5B1" stroke-width="0.6"/>';
   } else if (e.tipo === 'fijo') {
     o += rect(x0, yTop, w, hBajo, VID);
     if (e.intermedio) { var yi = yTop + hBajo * 0.55; o += '<line x1="' + x0.toFixed(1) + '" y1="' + yi.toFixed(1) + '" x2="' + (x0 + w).toFixed(1) + '" y2="' + yi.toFixed(1) + '" stroke="' + AZ + '" stroke-width="1.3"/>'; }
@@ -323,5 +329,5 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
       return { empresa: String(f.empresa).trim(), atencion: f.nombre };
     } catch (e) { return {}; }
   }
-  window.BCDoc = { version: 'v1.7', generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo, diagramaSvg: bcDiagramaSvg, esquema: bcEsquemaDeSistema, datosCliente: datosCliente };
+  window.BCDoc = { version: 'v1.8', generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo, diagramaSvg: bcDiagramaSvg, esquema: bcEsquemaDeSistema, datosCliente: datosCliente };
 })();
