@@ -8,6 +8,9 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.28
+  FECHA   : 2026-10-14
+  v3.28 - El presupuesto impreso muestra la "Nota" del documento (columna nota_documento).
   VERSIÓN : v3.27
   FECHA   : 2026-10-12
   v3.27 - PAGO DE VISITA → PRESUPUESTO: el pago de visita de un cliente que aún no
@@ -1693,7 +1696,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.27';
+var APP_VERSION = 'v3.28';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1785,7 +1788,7 @@ async function presCargar() {
 
   try {
     var result = await sb().from('presupuestos_atrasados')
-      .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,fecha,anio_referencia,estado,notas_internas,modulo,created_at,firma_token,firmado_at,firmado_por,firma_png,firma_hash,firma_barrcan_png,firma_barrcan_at,firma_barrcan_por,abono_visita_monto,abono_visita_ref,abono_visita_pago_id')
+      .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,fecha,anio_referencia,estado,notas_internas,modulo,created_at,firma_token,firmado_at,firmado_por,firma_png,firma_hash,firma_barrcan_png,firma_barrcan_at,firma_barrcan_por,abono_visita_monto,abono_visita_ref,abono_visita_pago_id,nota_documento')
       .order('folio', { ascending: true })
       .range(0, 499);
 
@@ -2460,6 +2463,7 @@ async function presImprimir(idStr) {
   var emp = window.BCDoc.datosCliente ? await window.BCDoc.datosCliente(p.folio, p.cliente) : {};
   var html = window.BCDoc.generar(piezas, p.folio || '', p.cliente || '', p.dir || '', fecha,
     { total: parseFloat(p.monto) || 0, empresa: emp.empresa, atencion: emp.atencion,
+      nota: p.nota_documento || '',
       abonoVisita: parseFloat(p.abono_visita_monto) > 0 ? { monto: parseFloat(p.abono_visita_monto), ref: p.abono_visita_ref || '' } : null,
       firmaBarrcan: p.firma_barrcan_png ? { nombre: p.firma_barrcan_por || 'BarrCan', png: p.firma_barrcan_png, fecha: new Date(p.firma_barrcan_at).toLocaleString('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'long', timeStyle: 'short' }) } : null,
       firma: p.firmado_at ? { nombre: p.firmado_por, png: p.firma_png, hash: p.firma_hash,

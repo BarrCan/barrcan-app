@@ -1,5 +1,7 @@
 // ══════════════════════════════════════════════════════════════
 // BarrCan · DOCUMENTO OFICIAL DE PRESUPUESTO (compartido)
+// VERSION : v1.9   FECHA : 2026-10-14
+// v1.9 - Nota del presupuesto: opciones.nota se imprime como "Nota: ..." antes del cierre.
 // VERSION : v1.8   FECHA : 2026-10-13
 // v1.8 - Diagrama del MOSQUITERO FIJO (marco con malla) en el presupuesto impreso.
 // v1.7 - El pago de visita (o adelanto) se reparte en orden: primero baja el anticipo del
@@ -221,6 +223,7 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
           + '<div style="font-size:10.5pt;color:#27AE60">Pago de visita descontado' + (opciones.abonoVisita.ref ? ' <span style="color:#888;font-size:8.5pt">(' + esc(opciones.abonoVisita.ref) + ')</span>' : '') + '&nbsp;&nbsp;<strong>\u2212$' + fmt(abonoV) + '</strong></div>'
           + '<div style="font-size:14pt;font-weight:900;margin-top:4px;border-top:1.5px solid #1B3A5C;padding-top:4px">Total a pagar&nbsp;&nbsp;$' + fmt(Math.max(0, total - abonoV)) + '</div></div>'
         : '<div style="display:flex;justify-content:flex-end;padding-top:12px;font-size:14pt;font-weight:900;color:#1B3A5C">$' + fmt(total) + '</div>')
+    + (opciones.nota ? '<div style="font-size:9.5pt;margin:12px 0 4px;color:#333;line-height:1.45"><strong>Nota:</strong> ' + esc(opciones.nota) + '</div>' : '')
     + '<div style="margin-top:24px;font-size:9pt;text-align:center;color:#1B3A5C;background:#F7F5F0;padding:10px;border-radius:6px">'
     + 'El presente presupuesto contempla los trabajos antes descritos, cualquier otro trabajo adicional se cotizar\u00e1. Estos precios est\u00e1n sujetos a cambios sin previo aviso.'
     + '</div>'
@@ -329,5 +332,5 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
       return { empresa: String(f.empresa).trim(), atencion: f.nombre };
     } catch (e) { return {}; }
   }
-  window.BCDoc = { version: 'v1.8', generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo, diagramaSvg: bcDiagramaSvg, esquema: bcEsquemaDeSistema, datosCliente: datosCliente };
+  window.BCDoc = { version: 'v1.9', generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo, diagramaSvg: bcDiagramaSvg, esquema: bcEsquemaDeSistema, datosCliente: datosCliente };
 })();

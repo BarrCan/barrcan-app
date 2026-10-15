@@ -2361,7 +2361,7 @@ const DB = {
       herrajes:[
         {cod:"MOSQ-5173",desc:"Perfil mosquitero fijo natural 5173/0254 (ml, +5% de corte)",cant:"perimetro*1.05",precio:58.57},
         {cod:"ES-2000",desc:"Escuadra para mosquitero",cant:4,precio:1.74},
-        {cod:"TELA-MOSQ-NEG",desc:"Tela mosquitero fibra de vidrio negra 1.20 m (ml)",cant:"Math.max(L,H)+0.06",precio:15.08},
+        {cod:"TELA-MOSQ-NEG",desc:"Tela mosquitero negra 1.20 m de ancho (ml) - $80/m sin IVA",cant:"Math.max(L,H)+0.06",precio:92.80},
         {cod:"CUERDA-MOSQ",desc:"Cuerda/hule para fijar la tela (ml) - precio por confirmar",cant:"perimetro",precio:4.64}
       ],
       formulas:{ cortes:[], vidrio:{tipo:"Sin vidrio (tela)",cant:0,ancho:(L,H)=>0,alto:(L,H)=>0} }
@@ -5440,7 +5440,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v3.8.0'; // v3.8.0 (13-oct-2026): Mosquitero Fijo (marco natural, tela negra) por medida; MO sugerida por sistema
+const APP_VERSION = 'v3.8.1'; // v3.8.1 (14-oct-2026): tela negra del mosquitero a $80/m (antes $13/m)
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —

@@ -8,6 +8,9 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · FIRMA DE PRESUPUESTO (página pública, sin PIN)
+  VERSION : v1.3
+  FECHA   : 2026-10-14
+  v1.3 - Muestra la nota del presupuesto (nota_documento).
   VERSION : v1.2
   FECHA   : 2026-10-12
   v1.2 - Si el presupuesto ya trae un pago de visita aplicado, muestra "Total a pagar"
@@ -95,6 +98,7 @@ function fechaDe(p) { var f = String(p.fecha || '').split('-'); return f.length 
 function fechaHora(iso) { return new Date(iso).toLocaleString('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'long', timeStyle: 'short' }); }
 function docHTML(conFirma) {
   var op = { total: parseFloat(P.monto) || 0, empresa: EMP.empresa, atencion: EMP.atencion };
+  if (P.nota_documento) op.nota = P.nota_documento; // v1.3: nota del presupuesto
   if (parseFloat(P.abono_visita_monto) > 0) op.abonoVisita = { monto: parseFloat(P.abono_visita_monto), ref: P.abono_visita_ref || '' }; // v1.2: pago de visita descontado
   if (conFirma && P.firmado_at) op.firma = { nombre: P.firmado_por, png: P.firma_png, fecha: fechaHora(P.firmado_at), hash: P.firma_hash };
   if (P.firma_barrcan_png) op.firmaBarrcan = { nombre: P.firma_barrcan_por || 'BarrCan', png: P.firma_barrcan_png, fecha: fechaHora(P.firma_barrcan_at) }; // v1.1: firma de BarrCan
@@ -109,7 +113,7 @@ async function cargar() {
   if (!/^[A-Za-z0-9]{20,}$/.test(TOKEN)) { msg.innerHTML = '<b>Liga no válida.</b><br>Pida a BarrCan que se la envíe de nuevo.'; return; }
   try {
     var r = await sb().from('presupuestos_atrasados')
-      .select('id,folio,cliente,dir,fecha,monto,notas_internas,descripcion,firmado_at,firmado_por,firma_png,firma_hash,firma_barrcan_png,firma_barrcan_at,firma_barrcan_por,abono_visita_monto,abono_visita_ref,eliminado')
+      .select('id,folio,cliente,dir,fecha,monto,notas_internas,descripcion,firmado_at,firmado_por,firma_png,firma_hash,firma_barrcan_png,firma_barrcan_at,firma_barrcan_por,abono_visita_monto,abono_visita_ref,nota_documento,eliminado')
       .eq('firma_token', TOKEN).limit(1);
     if (r.error) throw r.error;
     P = (r.data || [])[0];

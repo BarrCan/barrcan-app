@@ -193,6 +193,10 @@
     - Se agregó una verificación automática (script de comparación
       onclick/onchange vs. window.expuestas) para detectar esto antes
       de publicar, no solo revisando a ojo.
+  VERSION : v1.20.1
+  FECHA   : 2026-10-14
+  v1.20.1 - Vinil a $8/m (antes $6): cambio de vinil e integral. Integral con tus porcentajes:
+    chica $860, mediana $1,144, grande $2,183 (línea 2").
   VERSION : v1.20.0
   FECHA   : 2026-10-13
   v1.20.0 - Nueva línea "Instalación": "Instalación de cancel de vidrio (solo instalación)" a
@@ -2575,8 +2579,8 @@ const DB = {
     {
       id:"MANT_CAMBIO_FELPA", nombre:"Cambio de Felpa / Vinil", serie:"Mantenimiento", emoji:"🔧",
       categorias:['ventana','puerta','bano'],
-      tipo:"Servicio", esServicio:true, precioBase:6, unidad:'ml',
-      desc:'Material: vinil pata #10 (rollo 16 m a $92 = $5.75/m) o #12 (rollo 11 m = $8.36/m); se usa $6/m. Cantidad = metros lineales perimetrales del vidrio/marco. La mano de obra se agrega aparte.',
+      tipo:"Servicio", esServicio:true, precioBase:8, unidad:'ml',
+      desc:'Material: vinil pata; costo actual $8/m (oct-2026). Cantidad = metros lineales perimetrales del vidrio/marco. La mano de obra se agrega aparte.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
@@ -3985,7 +3989,7 @@ function svgPorTipo(tipo, serie, id) {
     // ════════════════════════════════════════
     // MANTENIMIENTO Y SERVICIOS
     // ════════════════════════════════════════
-    'MANT_INTEGRAL_VENTANA':  () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🪟</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">MANT. INTEGRAL</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">desde $841/ventana</text>`),
+    'MANT_INTEGRAL_VENTANA':  () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🪟</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">MANT. INTEGRAL</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">desde $860/ventana</text>`),
     'MANT_LIMPIEZA_VEN':      () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🪟</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">LIMPIEZA VENTANAS</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">$350/pieza</text>`),
     'MANT_AJUSTE_HER':        () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🔧</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">AJUSTE HERRAJES</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">$200/pieza</text>`),
     'MANT_CAMBIO_FELPA':      () => wrap(`<text x="60" y="36" text-anchor="middle" font-size="28" font-family="Arial">🔧</text><text x="60" y="52" text-anchor="middle" font-size="8" fill="${c}" font-family="Arial" font-weight="700">CAMBIO FELPA</text><text x="60" y="64" text-anchor="middle" font-size="7" fill="${c2}" font-family="Arial">$180/ml</text>`),
@@ -4109,7 +4113,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.20.0';
+const APP_VERSION = 'v1.20.1';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -4731,11 +4735,11 @@ function snSelFamilia(fam,btnEl){
 // tal cual aparece en barrcan_app.html (Mantenimiento y Garantías).
 const SN_PRECIO_TARJETA = {
   INST_CANCEL_VIDRIO:     '$800 c/u (IVA incl.)',
-  MANT_INTEGRAL_VENTANA:  'desde $841/ventana',
+  MANT_INTEGRAL_VENTANA:  'desde $860/ventana',
   MANT_LIMPIEZA_VEN:      '$350/pieza',
   MANT_LIMPIEZA_PUERTA:   '$250/pieza',
   MANT_AJUSTE_HER:        '$200/pieza',
-  MANT_CAMBIO_FELPA:      '$6/m mat.',
+  MANT_CAMBIO_FELPA:      '$8/m mat.',
   MANT_CAMBIO_CARRETILLA: '$70+/par mat.',
   MANT_CANCEL_LIMPIEZA:   '$600/pieza',
   MANT_CANCEL_SELLADO:    '$450/pieza',
@@ -5392,7 +5396,7 @@ var INT_TAMANOS = {
   grande:  { nombre: 'Grande (mayor a 1.35 × 1.80 m)', carretillas: 153.16, carTxt: '2 pares tándem doble',      vinilM: 14, broches: 2, horas: 2.5,  personas: 2 }
 };
 var INT_BROCHE = { '2': 125, '3': 155 };
-var INT_VINIL_M = 6;
+var INT_VINIL_M = 8; // v1.20.1: costo del vinil $8/m (antes $6)
 var INT_TARIFA_H = 165; // v1.19.7: antes 250; ahora la mano de obra también lleva GA y utilidad
 function servIntegralAplicar(cambioTamano) {
   if (!SERV_SISTEMA || !SERV_SISTEMA.integral) return;
