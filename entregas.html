@@ -1,12 +1,16 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script src="modulos/acceso.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan &middot; Entregas</title>
 <script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.66.1
+  FECHA   : 2026-10-14
+  v3.66.1 - CANDADO: sin sesión del día (PIN o huella en el portal) ya no abre; manda al portal y regresa aquí al entrar (modulos/acceso.js).
   VERSION : v3.66.0
   FECHA   : 2026-10-13
   v3.66.0 - STANDS EN 3 FASES + EVENTUALES: con un folio STAN-... la Instalación (Pieza
@@ -2491,7 +2495,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.66.0';
+var APP_VERSION = 'v3.66.1';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');

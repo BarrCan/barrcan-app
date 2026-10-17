@@ -1,12 +1,16 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script src="modulos/acceso.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Reportes</title>
 <script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN · MODULO: REPORTES (standalone)
+  VERSION : v3.5
+  FECHA   : 2026-10-14
+  v3.5 - CANDADO: sin sesión del día (PIN o huella en el portal) ya no abre; manda al portal y regresa aquí al entrar (modulos/acceso.js).
   VERSION : v3.4
   FECHA   : 2026-10-13
   v3.4 - Detalle de obra de un STAND: muestra el avance por fases (Construcción,
@@ -534,7 +538,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
 </div>
 </body>
 <script>
-var APP_VERSION = 'v3.4';
+var APP_VERSION = 'v3.5';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sb=null;

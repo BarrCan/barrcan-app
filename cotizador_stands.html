@@ -1,12 +1,16 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script src="modulos/acceso.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Stands</title>
 <script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN · COTIZADOR STANDS (cotizador_stands.html)
+  VERSION : v1.5
+  FECHA   : 2026-10-14
+  v1.5 - CANDADO: sin sesión del día (PIN o huella en el portal) ya no abre; manda al portal y regresa aquí al entrar (modulos/acceso.js).
   VERSION : v1.4
   FECHA   : 2026-10-04
   v1.4 - Los documentos (presupuestos, recibos, reportes) se abren con
@@ -1490,7 +1494,7 @@ function sb(){
     });
   return _sb;
 }
-const APP_VERSION = 'v1.4';
+const APP_VERSION = 'v1.5';
 function fmt(n) { return parseFloat(n||0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function esc(str) {
   if (!str) return '';

@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════
-// BarrCan Service Worker v19 — Offline First
+// BarrCan Service Worker v20 — Offline First
 // Estrategia: Network-First con timeout para HTML (páginas .html),
 //             Cache-First para fuentes/CDN,
 //             Supabase y APIs externas: Network Only
@@ -58,7 +58,8 @@
 // v17 (05-oct-2026): páginas y .js siempre se revalidan con GitHub.
 // v18 (08-oct-2026): precarga los logos (assets/logo-icono.jpg, logo-oficial.jpg).
 // v19 (11-oct-2026): se quita modulos/alupol_cor_luj_2h.js de la precarga (Corredizo Lujo eliminado).
-const CACHE_VERSION = 'barrcan-v20'; // subir este número fuerza que TODOS los
+// v20 (14-oct-2026): páginas con parámetros sin señal (hoja de orden en blanco), página amable sin conexión y precarga de acceso.js.
+const CACHE_VERSION = 'barrcan-v21'; // subir este número fuerza que TODOS los
 // dispositivos descarten su caché vieja de una vez -- ya no debería
 // hacer falta subirlo por cada arreglo ahora que HTML es Network First,
 // pero sigue disponible por si algún día conviene un reinicio total.
@@ -105,6 +106,7 @@ const RECURSOS_CORE = [
   './modulos/alupol_escuadra.js',
   './modulos/presupuesto_doc.js',
   './modulos/abrir_doc.js',
+  './modulos/acceso.js',
   './modulos/etiquetas.js',
   './assets/logo-icono.jpg',
   './assets/logo-oficial.jpg',
@@ -182,6 +184,11 @@ self.addEventListener('fetch', event => {
   }
 });
 
+// Página amable cuando no hay red NI copia guardada (antes: pantalla en blanco)
+function paginaSinConexion() {
+  return new Response('<!DOCTYPE html><html lang=es><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Sin conexión · BarrCan</title></head><body style="font-family:Arial,sans-serif;background:#F4F6F9;color:#1B3A5C;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center;padding:24px"><div><div style="font-size:42px">📡</div><h2>Sin conexión</h2><p>No se pudo abrir esta página y todavía no hay una copia guardada.<br>Conéctate y vuelve a intentarlo.</p><button onclick="location.reload()" style="padding:10px 18px;border:none;border-radius:8px;background:#1B3A5C;color:#fff;font-weight:700;font-size:14px">Reintentar</button></div></body></html>', { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+}
+
 async function redPrimero(request) {
   const cache = await caches.open(CACHE_VERSION);
 
@@ -216,11 +223,13 @@ async function redPrimero(request) {
     // El fetch real sigue corriendo aparte (fetchPromise no se cancela)
     // y si llega a tiempo, ya dejó actualizado el caché para la próxima.
     fetchPromise.catch(() => {}); // evitar "unhandled rejection" si también falla
-    const cached = await cache.match(request);
+    // v20: ignoreSearch -- una liga con parámetros (ver_doc.html?k=..., entregas.html?orden_id=...) no estaba
+    // en el caché con ese código y sin señal la página quedaba EN BLANCO. Ahora se sirve la página base.
+    const cached = (await cache.match(request)) || (await cache.match(request, { ignoreSearch: true }));
     if (cached) return cached;
     // No hay ni red a tiempo ni caché: como último recurso, esperar
     // la respuesta real aunque tarde (mejor tarde que un error feo).
-    try { return await fetchPromise; } catch (e2) { throw e2; }
+    try { return await fetchPromise; } catch (e2) { if (request.mode === 'navigate') return paginaSinConexion(); throw e2; }
   }
 }
 

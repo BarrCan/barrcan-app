@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script src="modulos/acceso.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Cotizador Española</title>
@@ -5288,7 +5289,7 @@ function sb(){
 }
 
 // ── Auxiliares del app base ────────────────────────────────
-const APP_VERSION = 'v1.6.7'; // v1.6.7 (11-oct-2026): visita técnica previa suma $500 (antes $1,000)
+const APP_VERSION = 'v1.6.8'; // v1.6.7 (11-oct-2026): visita técnica previa suma $500 (antes $1,000)
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —

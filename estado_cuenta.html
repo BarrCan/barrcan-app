@@ -1,12 +1,16 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script src="modulos/acceso.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan &middot; Estado de Cuenta</title>
 <script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN · MODULO: ESTADO DE CUENTA POR CLIENTE (standalone)
+  VERSION : v1.8
+  FECHA   : 2026-10-14
+  v1.8 - CANDADO: sin sesión del día (PIN o huella en el portal) ya no abre; manda al portal y regresa aquí al entrar (modulos/acceso.js).
   VERSION : v1.7
   FECHA   : 2026-10-08
   v1.7 - La columna Factura toma folio_fiscal (pagos marcados como facturados
@@ -137,7 +141,7 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--off
 <div class="toast" id="toast"></div>
 
 <script>
-var APP_VERSION = 'v1.7';
+var APP_VERSION = 'v1.8';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sbClient=null;

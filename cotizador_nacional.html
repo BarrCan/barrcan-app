@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script src="modulos/acceso.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Cotizador Nacional</title>
@@ -5440,7 +5441,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v3.8.3'; // v3.8.3 (14-oct-2026): tela negra del mosquitero a $80/m (costo confirmado por Mau; la v3.8.2 la había bajado por error a $8)
+const APP_VERSION = 'v3.8.4'; // v3.8.3 (14-oct-2026): tela negra del mosquitero a $80/m (costo confirmado por Mau; la v3.8.2 la había bajado por error a $8)
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —

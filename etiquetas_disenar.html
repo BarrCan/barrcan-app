@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script src="modulos/acceso.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Diseñar etiqueta</title>
@@ -9,6 +10,9 @@
 <script src="modulos/etiquetas.js"></script>
 <!--
   BARRCAN · DISEÑADOR DE ETIQUETAS QR
+  VERSION : v1.1
+  FECHA   : 2026-10-14
+  v1.1 - CANDADO: sin sesión del día (PIN o huella en el portal) ya no abre; manda al portal y regresa aquí al entrar (modulos/acceso.js).
   VERSION : v1.0
   FECHA   : 2026-10-05
   v1.0 - Diseña la etiqueta de inventario y guárdala como plantilla
@@ -112,7 +116,7 @@
 </div>
 
 <script>
-var APP_VERSION = 'v1.0';
+var APP_VERSION = 'v1.1';
 var SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co', SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I', _sb = null;
 function sb() { if (!_sb && window.supabase) _sb = window.supabase.createClient(SB_URL, SB_KEY, { db: { schema: 'barrcan' }, auth: { persistSession: true, storageKey: 'barrcan_auth' } }); return _sb; }
 function toast(m) { var t = document.createElement('div'); t.textContent = m; t.style.cssText = 'position:fixed;left:50%;bottom:76px;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;z-index:99;max-width:90%;text-align:center'; document.body.appendChild(t); setTimeout(function () { t.remove(); }, 2800); }

@@ -1,11 +1,15 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script src="modulos/acceso.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Configuración de Costos</title>
 <!--
   BARRCAN · MÓDULO: CONFIGURACIÓN DE COSTOS (config.html)
+  VERSION : v1.10
+  FECHA   : 2026-10-14
+  v1.10 - CANDADO: sin sesión del día (PIN o huella en el portal) ya no abre; manda al portal y regresa aquí al entrar (modulos/acceso.js).
   VERSION : v1.9
   FECHA   : 2026-10-11
   v1.9 - Se quitó el grupo "Corredizo de Lujo, 2 hojas (Baños)": ese sistema
@@ -213,7 +217,7 @@ html, body { min-height:100%; font-family:'DM Sans',sans-serif; background:var(-
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
-const APP_VERSION = 'v1.9';
+const APP_VERSION = 'v1.10';
 const SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co';
 const SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 let _sb = null;

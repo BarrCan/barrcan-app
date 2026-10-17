@@ -1,11 +1,15 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script src="modulos/acceso.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan &middot; Mensajes</title>
 <!--
   BARRCAN · MODULO: MENSAJES LISTOS (standalone)
+  VERSION : v1.2
+  FECHA   : 2026-10-14
+  v1.2 - CANDADO: sin sesión del día (PIN o huella en el portal) ya no abre; manda al portal y regresa aquí al entrar (modulos/acceso.js).
   VERSION : v1.1
   FECHA   : 2026-10-08
   v1.1 - Logo oficial (assets/logo-icono.jpg) en el encabezado; antes solo
@@ -125,7 +129,7 @@ datalist {}
 </div>
 
 <script>
-var APP_VERSION = 'v1.1';
+var APP_VERSION = 'v1.2';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sbClient=null;

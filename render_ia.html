@@ -1,12 +1,16 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
+<script src="modulos/acceso.js"></script>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <meta name="theme-color" content="#1B3A5C">
 <title>BarrCan · Render IA</title>
 <!--
   BARRCAN · MÓDULO: RENDER IA (standalone)
+  VERSIÓN : v1.3.1
+  FECHA   : 2026-10-14
+  v1.3.1 - CANDADO: sin sesión del día (PIN o huella en el portal) ya no abre; manda al portal y regresa aquí al entrar (modulos/acceso.js).
   VERSIÓN : v1.3.0
   FECHA   : 2026-08-02
   v1.3.0 — Facturación activada
@@ -304,7 +308,7 @@ function sb() {
   return _sbClient;
 }
 
-var APP_VERSION = 'v1.3.0';
+var APP_VERSION = 'v1.3.1';
 
 // ── Conexión ─────────────────────────────────────────────────────
 var SYNC = { online: navigator.onLine };
