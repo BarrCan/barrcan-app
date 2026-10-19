@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════
-// BarrCan Service Worker v20 — Offline First
+// BarrCan Service Worker v21 — Offline First
 // Estrategia: Network-First con timeout para HTML (páginas .html),
 //             Cache-First para fuentes/CDN,
 //             Supabase y APIs externas: Network Only
@@ -59,10 +59,21 @@
 // v18 (08-oct-2026): precarga los logos (assets/logo-icono.jpg, logo-oficial.jpg).
 // v19 (11-oct-2026): se quita modulos/alupol_cor_luj_2h.js de la precarga (Corredizo Lujo eliminado).
 // v20 (14-oct-2026): páginas con parámetros sin señal (hoja de orden en blanco), página amable sin conexión y precarga de acceso.js.
-const CACHE_VERSION = 'barrcan-v21'; // subir este número fuerza que TODOS los
+// v21 (14-oct-2026): librería de la base y html2pdf en caché propia que sobrevive a las versiones.
+const CACHE_VERSION = 'barrcan-v22'; // subir este número fuerza que TODOS los
 // dispositivos descarten su caché vieja de una vez -- ya no debería
 // hacer falta subirlo por cada arreglo ahora que HTML es Network First,
 // pero sigue disponible por si algún día conviene un reinicio total.
+
+// v21 (14-oct-2026): LIBRERÍAS EXTERNAS EN CACHÉ PROPIA. Antes la librería de la base (Supabase, la usan 37
+// módulos) nunca se guardaba: se pide sin permiso de copia (respuesta "opaca", status 0) y cachePrimero solo
+// guardaba status 200. Sin señal dependía de la copia temporal del navegador (~7 días). Ahora se precarga con
+// permiso de copia (CORS) en un caché que NO se borra al subir versión, y al actualizar se rescata lo viejo.
+const CACHE_EXT = 'barrcan-ext-v1';
+const RECURSOS_EXTERNOS = [
+  'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js'
+];
 
 const RECURSOS_CORE = [
   './barrcan_app.html',
@@ -120,6 +131,7 @@ const DOMINIOS_CACHEABLE = [
   'fonts.googleapis.com',
   'fonts.gstatic.com',
   'cdn.jsdelivr.net',
+  'cdnjs.cloudflare.com',
 ];
 
 // Dominios que NUNCA se cachean (siempre network)
@@ -136,24 +148,34 @@ self.addEventListener('install', event => {
         const fallidos = res.filter(r => r.status === 'rejected').length;
         console.log('[BarrCan SW] Precarga: ' + (RECURSOS_CORE.length - fallidos) + '/' + RECURSOS_CORE.length);
       }))
+      .then(() => caches.open(CACHE_EXT).then(ext => Promise.allSettled(RECURSOS_EXTERNOS.map(u => ext.match(u).then(h => h ? null : ext.add(u))))))
       .then(() => self.skipWaiting())
   );
 });
 
 // ── ACTIVATE ──────────────────────────────────
 self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys().then(claves =>
-      Promise.all(
-        claves
-          .filter(c => c !== CACHE_VERSION)
-          .map(c => {
-            console.log('[BarrCan SW] Eliminando caché antigua:', c);
-            return caches.delete(c);
-          })
-      )
-    ).then(() => self.clients.claim())
-  );
+  event.waitUntil((async () => {
+    const claves = await caches.keys();
+    // Antes de borrar cachés viejas, se rescatan las copias de librerías externas (por si ya estaban guardadas)
+    try {
+      const ext = await caches.open(CACHE_EXT);
+      for (const nombre of claves) {
+        if (nombre === CACHE_VERSION || nombre === CACHE_EXT) continue;
+        const vieja = await caches.open(nombre);
+        for (const req of await vieja.keys()) {
+          if (new URL(req.url).origin === self.location.origin) continue;
+          const resp = await vieja.match(req);
+          if (resp && resp.status === 200 && !(await ext.match(req))) await ext.put(req, resp);
+        }
+      }
+    } catch (e) { console.log('[BarrCan SW] No se pudo rescatar el caché externo:', e && e.message); }
+    await Promise.all(claves.filter(c => c !== CACHE_VERSION && c !== CACHE_EXT).map(c => {
+      console.log('[BarrCan SW] Eliminando caché antigua:', c);
+      return caches.delete(c);
+    }));
+    await self.clients.claim();
+  })());
 });
 
 // ── FETCH ─────────────────────────────────────
@@ -234,7 +256,8 @@ async function redPrimero(request) {
 }
 
 async function cachePrimero(request) {
-  const cache  = await caches.open(CACHE_VERSION);
+  const externo = new URL(request.url).origin !== self.location.origin; // v21: lo externo va al caché que no se borra
+  const cache  = await caches.open(externo ? CACHE_EXT : CACHE_VERSION);
   const cached = await cache.match(request);
 
   // Actualizar en background

@@ -6,6 +6,10 @@
 <title>BarrCan &middot; Portal</title>
 <!--
   BARRCAN · PORTAL MAESTRO (barrcan_brain.html)
+  VERSION : v2.34
+  FECHA   : 2026-10-14
+  v2.34 - INICIO DE SESIÓN SIN SEÑAL: guarda la lista de usuarios en el celular y la usa cuando no hay red
+    (antes: "Error real" y, con el candado de módulos, sin poder entrar a nada).
   VERSION : v2.33
   FECHA   : 2026-10-14
   v2.33 - Candado de módulos: al iniciar sesión regresa al módulo que se quería abrir (parámetro volver).
@@ -878,7 +882,7 @@ function sb(){
 }
 function toast(msg,dur){dur=dur||2800;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
-var APP_VERSION = 'v2.33';
+var APP_VERSION = 'v2.34';
 var USUARIOS = [];
 var USUARIO_SEL = null;   // el que se está tratando de loguear
 var PIN_BUFFER = '';
@@ -1049,14 +1053,34 @@ async function huellaToggleUI() {
 }
 
 // ── Cargar usuarios ──
-async function cargarUsuarios() {
+function _tarjetaUsuario(u) {
+    return '<div class="usuario-card" onclick="seleccionarUsuario(\'' + u.id + '\')">'
+      + '<div class="usuario-avatar" style="background:' + (u.color || '#2E6DA4') + '33;color:' + (u.color || '#2E6DA4') + '">' + (u.emoji || '👤') + '</div>'
+      + '<div class="usuario-nombre">' + esc(u.apodo || u.nombre) + '</div>'
+      + '<div class="usuario-rol">' + (u.rol === 'admin' ? 'Administrador' : u.rol === 'taller' ? 'Taller' : 'Técnico') + '</div>'
+      + '</div>';
+  }
+  // SIN SEÑAL se usa la lista de usuarios que este celular guardó la última vez que sí hubo conexión
+  // (antes, sin red no se podía iniciar sesión y, con el candado de módulos, quedaba fuera de todo).
+  function _usuariosDesdeCache(cont) {
+    try {
+      var c = JSON.parse(localStorage.getItem('barrcan_usuarios_cache') || 'null');
+      if (!c || !c.usuarios || !c.usuarios.length) return false;
+      USUARIOS = c.usuarios;
+      cont.innerHTML = USUARIOS.map(_tarjetaUsuario).join('')
+        + '<div style="grid-column:1/-1;text-align:center;color:rgba(255,255,255,.6);font-size:11px;margin-top:8px">Sin conexión — usuarios guardados en este celular</div>';
+      return true;
+    } catch (e) { return false; }
+  }
+  async function cargarUsuarios() {
   var cont = document.getElementById('usuarios-lista');
-  if (!sb()) { cont.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:rgba(255,255,255,.6);font-size:12px">Sin conexión</div>'; return; }
+  if (!sb()) { if (_usuariosDesdeCache(cont)) return; cont.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:rgba(255,255,255,.6);font-size:12px">Sin conexión</div>'; return; }
   try {
     var res = await sb().from('usuarios_pin').select('*').eq('activo', true).order('rol').order('nombre');
     if (res.error) throw res.error;
     USUARIOS = res.data || [];
     if (!USUARIOS.length) { cont.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:rgba(255,255,255,.6);font-size:12px">Sin usuarios configurados — corre el SQL primero</div>'; return; }
+    try { localStorage.setItem('barrcan_usuarios_cache', JSON.stringify({ t: Date.now(), usuarios: USUARIOS })); } catch (eC) {}
     cont.innerHTML = USUARIOS.map(function(u) {
       return '<div class="usuario-card" onclick="seleccionarUsuario(\'' + u.id + '\')">'
         + '<div class="usuario-avatar" style="background:' + (u.color || '#2E6DA4') + '33;color:' + (u.color || '#2E6DA4') + '">' + (u.emoji || '👤') + '</div>'
@@ -1065,7 +1089,8 @@ async function cargarUsuarios() {
         + '</div>';
     }).join('');
   } catch(e) {
-    cont.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:rgba(255,255,255,.75);font-size:11px;padding:0 20px;line-height:1.6">Error real: ' + esc(e.message || String(e)) + '<br><br><span style="cursor:pointer;text-decoration:underline;color:#C8923A" onclick="cargarUsuarios()">Reintentar</span></div>';
+if (_usuariosDesdeCache(cont)) return;
+        cont.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:rgba(255,255,255,.75);font-size:11px;padding:0 20px;line-height:1.6">Error real: ' + esc(e.message || String(e)) + '<br><br><span style="cursor:pointer;text-decoration:underline;color:#C8923A" onclick="cargarUsuarios()">Reintentar</span></div>';
     console.warn('[BarrCan] No se pudieron cargar usuarios:', e);
   }
 }
