@@ -8,6 +8,9 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · FIRMA DE PRESUPUESTO (página pública, sin PIN)
+  VERSION : v1.4
+  FECHA   : 2026-10-14
+  v1.4 - Muestra las imágenes por concepto del presupuesto (si las tiene).
   VERSION : v1.3
   FECHA   : 2026-10-14
   v1.3 - Muestra la nota del presupuesto (nota_documento).
@@ -99,6 +102,7 @@ function fechaHora(iso) { return new Date(iso).toLocaleString('es-MX', { timeZon
 function docHTML(conFirma) {
   var op = { total: parseFloat(P.monto) || 0, empresa: EMP.empresa, atencion: EMP.atencion };
   if (P.nota_documento) op.nota = P.nota_documento; // v1.3: nota del presupuesto
+  if (P.imagenes_concepto) op.imagenes = P.imagenes_concepto; // v1.4: imágenes por concepto
   if (parseFloat(P.abono_visita_monto) > 0) op.abonoVisita = { monto: parseFloat(P.abono_visita_monto), ref: P.abono_visita_ref || '' }; // v1.2: pago de visita descontado
   if (conFirma && P.firmado_at) op.firma = { nombre: P.firmado_por, png: P.firma_png, fecha: fechaHora(P.firmado_at), hash: P.firma_hash };
   if (P.firma_barrcan_png) op.firmaBarrcan = { nombre: P.firma_barrcan_por || 'BarrCan', png: P.firma_barrcan_png, fecha: fechaHora(P.firma_barrcan_at) }; // v1.1: firma de BarrCan
@@ -121,6 +125,8 @@ async function cargar() {
   } catch (e) { msg.innerHTML = '<b>No se pudo cargar el presupuesto.</b><br>Revise su conexión e intente de nuevo.'; return; }
   try { PIEZAS = JSON.parse(P.notas_internas || '[]'); } catch (e) { PIEZAS = []; }
   if (!Array.isArray(PIEZAS) || !PIEZAS.length) PIEZAS = [{ label: P.descripcion || 'Presupuesto', cantidad: 1, precio: parseFloat(P.monto) || 0 }];
+  // v1.4: imágenes por concepto (columna aparte: si todavía no existe en la base, simplemente no hay imágenes)
+  try { var ri = await Promise.race([sb().from('presupuestos_atrasados').select('imagenes_concepto').eq('id', P.id).maybeSingle(), new Promise(function (res) { setTimeout(function () { res({ error: 1 }); }, 4000); })]); if (!ri.error && ri.data && ri.data.imagenes_concepto) P.imagenes_concepto = ri.data.imagenes_concepto; } catch (eI) {}
   EMP = await BCDoc.datosCliente(P.folio, P.cliente);
   document.getElementById('folio').textContent = P.folio;
   document.getElementById('cliente').textContent = EMP.empresa || P.cliente || '';

@@ -9,6 +9,12 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.30
+  FECHA   : 2026-10-14
+  v3.30 - IMÁGENES POR CONCEPTO: botón "🖼️ Imágenes por concepto" en cada presupuesto. La imagen es por concepto
+    o diseño (no por medida); el esquema se queda y la imagen se agrega debajo. Subir (cámara/galería, se
+    reduce sola), usar la biblioteca o quitar. Lo que falte se completa solo desde la biblioteca al
+    imprimir o enviar a firma. Necesita la columna imagenes_concepto y la tabla biblioteca_imagenes.
   VERSIÓN : v3.29
   FECHA   : 2026-10-14
   v3.29 - CANDADO: sin sesión del día (PIN o huella en el portal) ya no abre; manda al portal y regresa aquí al entrar (modulos/acceso.js).
@@ -1700,7 +1706,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.29';
+var APP_VERSION = 'v3.30';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -2154,6 +2160,185 @@ function presIrModuloElegido(modulo) {
   location.href = destino;
 }
 
+// ══════════════════════════════════════════════════════════════
+// IMÁGENES POR CONCEPTO (v3.30)
+// Regla: la imagen es por CONCEPTO o DISEÑO, no por medida (si solo cambian las medidas sirve la misma; se
+// sube otra cuando es un diseño distinto). El esquema dibujado SIEMPRE se queda y la imagen se AGREGA debajo.
+// Se guardan en presupuestos_atrasados.imagenes_concepto = { clave: [{url, titulo}] } (por presupuesto) y se
+// reutilizan desde la biblioteca (tabla biblioteca_imagenes). Archivos: Storage, bucket público "renders".
+// Si la columna/tabla todavía no existen en la base, todo esto se desactiva solo, sin romper nada.
+// ══════════════════════════════════════════════════════════════
+var IMG_BUCKET = 'renders', IMG_ID = null, IMG_LIB = [], IMG_ERR = '';
+// Con señal débil estas consultas no deben retrasar la impresión: máximo 4 s y se sigue sin imágenes
+function imgConTiempo(consulta) { return Promise.race([consulta, new Promise(function(res) { setTimeout(function() { res({ error: { message: 'sin conexión' } }); }, 4000); })]); }
+function imgPres() { return PRES_CACHE.filter(function(x) { return x.id === IMG_ID; })[0]; }
+function imgConceptos(p) {
+  var piezas = []; try { piezas = JSON.parse(p.notas_internas || '[]'); } catch (e) {}
+  if (!Array.isArray(piezas)) piezas = [];
+  var m = {}, orden = [];
+  piezas.forEach(function(it) {
+    var c = (window.BCDoc && window.BCDoc.conceptoDe) ? window.BCDoc.conceptoDe(it) : null;
+    if (!c) return;
+    if (!m[c.clave]) { m[c.clave] = { clave: c.clave, nombre: c.nombre, cantidad: 0 }; orden.push(c.clave); }
+    m[c.clave].cantidad += parseInt(it.cantidad, 10) || 1;
+  });
+  return orden.map(function(k) { return m[k]; });
+}
+async function imgLeerMapa(p) {
+  IMG_ERR = '';
+  if (!sb()) { IMG_ERR = 'sin conexión'; return p.imagenes_concepto || {}; }
+  try {
+    var r = await imgConTiempo(sb().from('presupuestos_atrasados').select('imagenes_concepto').eq('id', p.id).maybeSingle());
+    if (r.error) throw r.error;
+    p.imagenes_concepto = (r.data && r.data.imagenes_concepto) || {};
+  } catch (e) { IMG_ERR = e.message || String(e); }
+  return p.imagenes_concepto || {};
+}
+async function imgCargarBiblioteca() {
+  if (!sb()) return IMG_LIB;
+  try {
+    var r = await imgConTiempo(sb().from('biblioteca_imagenes').select('id,concepto,concepto_nombre,titulo,url').eq('activo', true).order('created_at', { ascending: false }).limit(500));
+    if (!r.error && r.data) IMG_LIB = r.data;
+  } catch (e) {}
+  return IMG_LIB;
+}
+async function imgGuardarMapa(p, mapa) {
+  var r = await sb().from('presupuestos_atrasados').update({ imagenes_concepto: mapa }).eq('id', p.id);
+  if (r.error) throw r.error;
+  p.imagenes_concepto = mapa;
+}
+// Para imprimir y enviar a firma: lo que falte se completa solo desde la biblioteca (lo que el presupuesto ya tiene se queda)
+async function presImagenesParaDoc(p) {
+  var mapa = {};
+  try {
+    mapa = JSON.parse(JSON.stringify((await imgLeerMapa(p)) || {}));
+    if (IMG_ERR) return mapa;
+    var faltan = imgConceptos(p).filter(function(c) { return !(mapa[c.clave] && mapa[c.clave].length); });
+    if (faltan.length) {
+      await imgCargarBiblioteca();
+      var cambio = false;
+      faltan.forEach(function(c) {
+        var hit = IMG_LIB.filter(function(x) { return x.concepto === c.clave; })[0];
+        if (hit) { mapa[c.clave] = [{ url: hit.url, titulo: hit.titulo || '' }]; cambio = true; }
+      });
+      if (cambio) { try { await imgGuardarMapa(p, mapa); } catch (e) { console.warn('[BarrCan] No se pudieron guardar las imágenes del presupuesto:', e.message); } }
+    }
+  } catch (e) { console.warn('[BarrCan] imágenes por concepto:', e.message); }
+  return mapa;
+}
+function imgReducir(file, maxLado, calidad) {
+  return new Promise(function(res, rej) {
+    var fr = new FileReader();
+    fr.onload = function() {
+      var im = new Image();
+      im.onload = function() {
+        var k = Math.min(1, maxLado / Math.max(im.width, im.height));
+        var c = document.createElement('canvas'); c.width = Math.max(1, Math.round(im.width * k)); c.height = Math.max(1, Math.round(im.height * k));
+        var g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, c.width, c.height); g.drawImage(im, 0, 0, c.width, c.height);
+        c.toBlob(function(b) { if (b) res(b); else rej(new Error('No se pudo reducir la imagen')); }, 'image/jpeg', calidad);
+      };
+      im.onerror = function() { rej(new Error('La imagen no es válida')); };
+      im.src = fr.result;
+    };
+    fr.onerror = function() { rej(new Error('No se pudo leer la imagen')); };
+    fr.readAsDataURL(file);
+  });
+}
+function presImagenes(idStr) {
+  IMG_ID = idStr;
+  var p = imgPres(); if (!p) { toast('No se encontró ese presupuesto'); return; }
+  if (!window.BCDoc || !window.BCDoc.conceptoDe) { toast('Actualiza la página para usar las imágenes'); return; }
+  var ov = document.getElementById('img-overlay');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'img-overlay'; ov.style.cssText = 'position:fixed;inset:0;background:rgba(27,58,92,.6);z-index:2500;display:flex;align-items:flex-end;justify-content:center'; document.body.appendChild(ov); }
+  ov.style.display = 'flex'; document.body.style.overflow = 'hidden';
+  ov.innerHTML = '<div style="background:#fff;border-radius:16px 16px 0 0;padding:18px;width:100%;max-width:560px;color:#1B3A5C;font-size:13px">Cargando…</div>';
+  Promise.all([imgLeerMapa(p), imgCargarBiblioteca()]).then(imgRender);
+}
+function imgCerrar() { var ov = document.getElementById('img-overlay'); if (ov) ov.style.display = 'none'; var lb = document.getElementById('imglib-overlay'); if (lb) lb.remove(); document.body.style.overflow = ''; }
+function imgRender() {
+  var ov = document.getElementById('img-overlay'), p = imgPres(); if (!ov || !p) return;
+  var cab = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div style="font-weight:800;font-size:15px">🖼️ Imágenes · ' + esc(p.folio || '') + '</div><button onclick="imgCerrar()" style="border:none;background:none;font-size:20px;color:#1B3A5C">✕</button></div>';
+  if (IMG_ERR) {
+    ov.innerHTML = '<div style="background:#fff;border-radius:16px 16px 0 0;padding:18px;width:100%;max-width:560px;color:#1B3A5C;font-size:13px">' + cab
+      + '<div style="background:#FEF9E7;border:1.5px solid #E67E22;border-radius:8px;padding:10px 12px;line-height:1.5">' + (IMG_ERR === 'sin conexión' ? 'Las imágenes necesitan conexión.' : 'Todavía no está lista la base para las imágenes (falta crear una columna y una tabla). Cuando se ejecute el SQL pendiente, esta pantalla funciona sola.') + '</div></div>';
+    return;
+  }
+  var mapa = p.imagenes_concepto || {}, conceptos = imgConceptos(p);
+  var miniatura = function(m, extra) { return '<div style="position:relative;width:86px;flex-shrink:0"><img src="' + esc(m.url) + '" style="width:86px;height:64px;object-fit:contain;border:1px solid #dfe5ec;border-radius:6px;background:#fafafa">' + (extra || '') + '</div>'; };
+  var cuerpo = conceptos.length ? conceptos.map(function(c) {
+    var lst = mapa[c.clave] || [];
+    var sug = lst.length ? [] : IMG_LIB.filter(function(x) { return x.concepto === c.clave; }).slice(0, 3);
+    return '<div style="border:1.5px solid #e3e8ee;border-radius:10px;padding:10px;margin-bottom:10px">'
+      + '<div style="font-weight:700;margin-bottom:6px">' + esc(c.nombre) + ' <span style="font-weight:400;color:#888">(' + c.cantidad + (c.cantidad === 1 ? ' pieza' : ' piezas') + ')</span></div>'
+      + (lst.length ? '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">' + lst.map(function(m, i) { return miniatura(m, '<button onclick="imgQuitar(\'' + c.clave + '\',' + i + ')" title="Quitar" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:11px;border:none;background:#C0392B;color:#fff;font-size:12px">✕</button>'); }).join('') + '</div>'
+         : '<div style="color:#888;font-size:12px;margin-bottom:8px">Sin imagen. Se muestra solo el esquema dibujado.</div>')
+      + (sug.length ? '<div style="font-size:11px;color:#8E44AD;font-weight:700;margin-bottom:4px">Sugerida de la biblioteca</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">' + sug.map(function(m) { return '<div style="text-align:center">' + miniatura(m) + '<button onclick="imgAgregarDeBiblioteca(\'' + c.clave + '\',\'' + m.id + '\')" style="margin-top:3px;padding:3px 10px;border-radius:6px;border:1.5px solid #8E44AD;background:#fff;color:#8E44AD;font-size:11px;font-weight:700">Usar</button></div>'; }).join('') + '</div>' : '')
+      + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
+      + '<label style="padding:8px 12px;border-radius:8px;background:#1B3A5C;color:#fff;font-size:12px;font-weight:700;cursor:pointer">📷 Subir imagen<input type="file" accept="image/*" style="display:none" onchange="imgSubir(\'' + c.clave + '\',this)"></label>'
+      + '<button onclick="imgAbrirBiblioteca(\'' + c.clave + '\')" style="padding:8px 12px;border-radius:8px;border:1.5px solid #1B3A5C;background:#fff;color:#1B3A5C;font-size:12px;font-weight:700">📚 Biblioteca</button>'
+      + '</div></div>';
+  }).join('') : '<div style="color:#888">Este presupuesto no tiene conceptos con imagen.</div>';
+  ov.innerHTML = '<div style="background:#fff;border-radius:16px 16px 0 0;padding:18px;width:100%;max-width:560px;max-height:88vh;overflow:auto;color:#1B3A5C;font-size:13px">' + cab
+    + '<div style="color:#666;font-size:11.5px;line-height:1.5;margin-bottom:10px">La imagen es por <b>concepto o diseño</b>, no por medida: si solo cambian las medidas sirve la misma. El esquema dibujado se queda; la imagen se agrega debajo.</div>'
+    + cuerpo
+    + '<label style="display:flex;gap:8px;align-items:center;font-size:12px;margin-top:4px"><input type="checkbox" id="img-chk-lib" checked> Guardar en la biblioteca lo que suba (para reutilizarlo)</label></div>';
+}
+async function imgSubir(clave, input) {
+  var p = imgPres(), file = input.files && input.files[0]; input.value = '';
+  if (!p || !file) return;
+  if (!sb()) { toast('Subir imágenes necesita conexión'); return; }
+  var c = imgConceptos(p).filter(function(x) { return x.clave === clave; })[0]; if (!c) return;
+  var mapa = JSON.parse(JSON.stringify(p.imagenes_concepto || {})); mapa[clave] = mapa[clave] || [];
+  if (mapa[clave].length >= 3) { toast('Máximo 3 imágenes por concepto'); return; }
+  try {
+    toast('Subiendo imagen…');
+    var blob = await imgReducir(file, 1100, 0.82);
+    var ruta = 'conceptos/' + clave + '_' + Date.now() + '.jpg';
+    var up = await sb().storage.from(IMG_BUCKET).upload(ruta, blob, { contentType: 'image/jpeg' });
+    if (up.error) throw up.error;
+    var url = sb().storage.from(IMG_BUCKET).getPublicUrl(ruta).data.publicUrl;
+    mapa[clave].push({ url: url, titulo: '' });
+    await imgGuardarMapa(p, mapa);
+    var chk = document.getElementById('img-chk-lib');
+    if (chk && chk.checked) {
+      var ins = await sb().from('biblioteca_imagenes').insert([{ concepto: clave, concepto_nombre: c.nombre, titulo: '', url: url, ruta: ruta }]).select('id,concepto,concepto_nombre,titulo,url');
+      if (!ins.error && ins.data && ins.data[0]) IMG_LIB.unshift(ins.data[0]);
+    }
+    toast('✅ Imagen agregada'); imgRender();
+  } catch (e) { toast('No se pudo subir: ' + (e.message || e)); }
+}
+async function imgQuitar(clave, i) {
+  var p = imgPres(); if (!p) return;
+  var mapa = JSON.parse(JSON.stringify(p.imagenes_concepto || {}));
+  if (!mapa[clave]) return; mapa[clave].splice(i, 1); if (!mapa[clave].length) delete mapa[clave];
+  try { await imgGuardarMapa(p, mapa); imgRender(); } catch (e) { toast('No se pudo quitar: ' + e.message); }
+}
+async function imgAgregarDeBiblioteca(clave, idImg) {
+  var p = imgPres(), m = IMG_LIB.filter(function(x) { return String(x.id) === String(idImg); })[0]; if (!p || !m) return;
+  var mapa = JSON.parse(JSON.stringify(p.imagenes_concepto || {})); mapa[clave] = mapa[clave] || [];
+  if (mapa[clave].some(function(x) { return x.url === m.url; })) { toast('Esa imagen ya está en este concepto'); return; }
+  if (mapa[clave].length >= 3) { toast('Máximo 3 imágenes por concepto'); return; }
+  mapa[clave].push({ url: m.url, titulo: m.titulo || '' });
+  try { await imgGuardarMapa(p, mapa); var lb = document.getElementById('imglib-overlay'); if (lb) lb.remove(); toast('✅ Imagen agregada'); imgRender(); } catch (e) { toast('No se pudo agregar: ' + e.message); }
+}
+function imgAbrirBiblioteca(clave) {
+  var lb = document.getElementById('imglib-overlay'); if (lb) lb.remove();
+  lb = document.createElement('div'); lb.id = 'imglib-overlay';
+  lb.style.cssText = 'position:fixed;inset:0;background:rgba(27,58,92,.7);z-index:2600;display:flex;align-items:flex-end;justify-content:center';
+  document.body.appendChild(lb);
+  var pintar = function(q) {
+    var t = String(q || '').toLowerCase().trim();
+    var lst = IMG_LIB.filter(function(x) { return !t || (String(x.concepto_nombre || x.concepto) + ' ' + String(x.titulo || '')).toLowerCase().indexOf(t) >= 0; });
+    document.getElementById('imglib-grid').innerHTML = lst.length ? lst.map(function(x) {
+      return '<div onclick="imgAgregarDeBiblioteca(\'' + clave + '\',\'' + x.id + '\')" style="width:30%;cursor:pointer;text-align:center"><img src="' + esc(x.url) + '" style="width:100%;height:80px;object-fit:contain;border:1px solid #dfe5ec;border-radius:6px;background:#fafafa"><div style="font-size:10.5px;color:#555;margin-top:2px">' + esc(x.concepto_nombre || x.concepto) + '</div></div>';
+    }).join('') : '<div style="color:#888;padding:10px">La biblioteca está vacía o no hay coincidencias. Sube una imagen y marca "Guardar en la biblioteca".</div>';
+  };
+  lb.innerHTML = '<div style="background:#fff;border-radius:16px 16px 0 0;padding:16px;width:100%;max-width:560px;max-height:85vh;overflow:auto;color:#1B3A5C"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-weight:800">📚 Biblioteca de imágenes</div><button onclick="document.getElementById(\'imglib-overlay\').remove()" style="border:none;background:none;font-size:20px;color:#1B3A5C">✕</button></div>'
+    + '<input id="imglib-q" placeholder="Buscar (ej. baño, mosquitero, corrediza)" style="width:100%;padding:9px;border:1.5px solid #d5dce4;border-radius:8px;margin-bottom:10px;font-size:13px"><div id="imglib-grid" style="display:flex;flex-wrap:wrap;gap:8px"></div></div>';
+  document.getElementById('imglib-q').addEventListener('input', function() { pintar(this.value); });
+  pintar('');
+}
+
 // ── Tarjetas normales vs. tarjetas de la cola de sincronización ────
 function presBotonesNormales(idStr) {
   return '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:5px">'
@@ -2163,7 +2348,8 @@ function presBotonesNormales(idStr) {
     + '<button onclick="presCrearOT(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(200,146,58,0.08);border:1.5px solid rgba(200,146,58,0.3);border-radius:8px;color:var(--gold);font-size:9.5px;font-weight:700;cursor:pointer">OT</button>'
     + '<button onclick="presVerProgreso(\'' + idStr + '\')" style="padding:7px 2px;background:rgba(142,68,173,0.08);border:1.5px solid rgba(142,68,173,0.3);border-radius:8px;color:#8E44AD;font-size:9.5px;font-weight:700;cursor:pointer">Progreso</button>'
     + '</div>'
-    + '<button onclick="presImprimir(\'' + idStr + '\')" style="width:100%;margin-top:5px;padding:7px 2px;background:rgba(27,58,92,0.06);border:1.5px solid rgba(27,58,92,0.2);border-radius:8px;color:var(--navy);font-size:9.5px;font-weight:700;cursor:pointer">&#128424; Reimprimir presupuesto</button>' + '<button onclick="presEnviarFirma(\'' + idStr + '\')" style="width:100%;margin-top:5px;padding:8px 2px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.35);border-radius:8px;color:var(--green);font-size:10.5px;font-weight:700;cursor:pointer">' + presTextoBotonFirma(idStr) + '</button>'
+    + '<button onclick="presImprimir(\'' + idStr + '\')" style="width:100%;margin-top:5px;padding:7px 2px;background:rgba(27,58,92,0.06);border:1.5px solid rgba(27,58,92,0.2);border-radius:8px;color:var(--navy);font-size:9.5px;font-weight:700;cursor:pointer">&#128424; Reimprimir presupuesto</button>'
+    + '<button onclick="presImagenes(\'' + idStr + '\')" style="width:100%;margin-top:5px;padding:7px 2px;background:rgba(142,68,173,0.07);border:1.5px solid rgba(142,68,173,0.3);border-radius:8px;color:#8E44AD;font-size:9.5px;font-weight:700;cursor:pointer">🖼️ Imágenes por concepto</button>' + '<button onclick="presEnviarFirma(\'' + idStr + '\')" style="width:100%;margin-top:5px;padding:8px 2px;background:rgba(39,174,96,0.08);border:1.5px solid rgba(39,174,96,0.35);border-radius:8px;color:var(--green);font-size:10.5px;font-weight:700;cursor:pointer">' + presTextoBotonFirma(idStr) + '</button>'
     + '<button onclick=\"presFirmarBarrcan(\'' + idStr + '\')\" style=\"width:100%;margin-top:5px;padding:8px 2px;background:rgba(27,58,92,0.06);border:1.5px solid rgba(27,58,92,0.3);border-radius:8px;color:var(--navy);font-size:10.5px;font-weight:700;cursor:pointer\">✍️ Firmar por BarrCan</button>' + presBotonVisita(idStr);
 }
 
@@ -2401,6 +2587,7 @@ async function presAplicarPagoVisita(idStr, soloSiHay) {
 async function presEnviarFirma(idStr) {
   var p = PRES_CACHE.filter(function(x) { return x.id === idStr; })[0];
   if (!p) { toast('No se encontró ese presupuesto'); return; }
+  try { await presImagenesParaDoc(p); } catch (eIm) {} // v3.30: completa desde la biblioteca las imágenes que falten antes de enviar
   var tel = String(p.tel || '').replace(/\D/g, '');
   if (tel.length === 10) tel = '52' + tel;
   // v3.25: la LIGA vive en la base, no en este dispositivo. Antes se generaba una
@@ -2467,6 +2654,7 @@ async function presImprimir(idStr) {
   var emp = window.BCDoc.datosCliente ? await window.BCDoc.datosCliente(p.folio, p.cliente) : {};
   var html = window.BCDoc.generar(piezas, p.folio || '', p.cliente || '', p.dir || '', fecha,
     { total: parseFloat(p.monto) || 0, empresa: emp.empresa, atencion: emp.atencion,
+      imagenes: await presImagenesParaDoc(p),
       nota: p.nota_documento || '',
       abonoVisita: parseFloat(p.abono_visita_monto) > 0 ? { monto: parseFloat(p.abono_visita_monto), ref: p.abono_visita_ref || '' } : null,
       firmaBarrcan: p.firma_barrcan_png ? { nombre: p.firma_barrcan_por || 'BarrCan', png: p.firma_barrcan_png, fecha: new Date(p.firma_barrcan_at).toLocaleString('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'long', timeStyle: 'short' }) } : null,

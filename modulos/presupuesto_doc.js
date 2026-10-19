@@ -1,5 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 // BarrCan · DOCUMENTO OFICIAL DE PRESUPUESTO (compartido)
+// VERSION : v1.10   FECHA : 2026-10-14
+// v1.10 - Imágenes por CONCEPTO/diseño en cada partida (opciones.imagenes = {clave:[{url,titulo}]}):
+//   se agregan debajo del esquema, que se queda. BCDoc.conceptoDe(partida) da la clave.
 // VERSION : v1.9   FECHA : 2026-10-14
 // v1.9 - Nota del presupuesto: opciones.nota se imprime como "Nota: ..." antes del cierre.
 // VERSION : v1.8   FECHA : 2026-10-13
@@ -173,6 +176,21 @@ function snDiagramaCorredizo(resultado) {
     + '</div>';
 }
 
+// v1.10: CONCEPTO o DISEÑO de una partida (no depende de medidas ni de color) = clave de sus imágenes
+function bcConceptoDe(it) {
+  var r = (it && it.resultado) || {};
+  if (r.tipo && /^(costos_obra|ajuste_tarifa|descuento)$/.test(r.tipo)) return null;
+  var base = String(r.sistema || r.sistemaNombre || (it && it.label) || '').trim();
+  if (!base) return null;
+  var nombre = base
+    .replace(/\b\d{2,4}\s*[x×]\s*\d{2,4}\s*(mm|cm)?\b/gi, '')
+    .replace(/\s+/g, ' ').replace(/[\s·—–\-,:]+$/, '')
+    .replace(/\s+(BLANCO|NATURAL|NEGRO|CHAMPAGNE|BRONCE|ANODIZADO|MATE)\s*$/i, '') // solo el color al FINAL; dentro del nombre del diseño se respeta
+    .replace(/[\s·—–\-,:]+$/, '').trim();
+  var clave = nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return clave ? { clave: clave, nombre: nombre } : null;
+}
+
 function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opciones) {
   opciones = opciones || {};
   var fechaStr = fecha.toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
@@ -188,6 +206,17 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
     // recta, Esc-6mm-Tem.jpg para escuadra) con las medidas reales de
     // ESTA pieza, igual que la muestra de presupuesto del proyecto.
     var diagrama = snDiagramaCorredizo(it.resultado);
+    // v1.10: imágenes del CONCEPTO (el esquema se queda; las imágenes se agregan debajo)
+    var imgsConcepto = '';
+    if (opciones.imagenes) {
+      var cc = bcConceptoDe(it), lst = cc ? opciones.imagenes[cc.clave] : null;
+      if (Array.isArray(lst) && lst.length) {
+        imgsConcepto = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;padding-left:4px;page-break-inside:avoid">' + lst.slice(0, 3).map(function (m) {
+          return '<div style="flex:1 1 46%;max-width:48%"><img src="' + esc(m.url) + '" style="width:100%;max-height:170px;object-fit:contain;border:1px solid #e3e7ec;border-radius:6px;background:#fff" onerror="this.parentNode.style.display=\'none\'">'
+            + (m.titulo ? '<div style="font-size:8pt;color:#888;text-align:center;margin-top:2px">' + esc(m.titulo) + '</div>' : '') + '</div>';
+        }).join('') + '</div>';
+      }
+    }
     return '<div style="padding:6px 0;border-bottom:1px solid #eee;font-size:11pt">'
       + '<div style="display:flex;justify-content:space-between">'
       + '<span>' + (idx + 1) + '. ' + esc(it.label) + detalle + '</span>'
@@ -195,6 +224,7 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
           ? '<span style="font-weight:700;white-space:nowrap;padding-left:12px;color:#27AE60">\u2212$' + fmt(-parseFloat(it.precio)) + '</span></div>'
           : '<span style="font-weight:700;white-space:nowrap;padding-left:12px">$' + fmt(it.precio) + '</span></div>')
       + diagrama
+      + imgsConcepto
       + '</div>';
   }).join('');
   return '<!DOCTYPE html><html lang=es><head><meta charset=UTF-8><meta name=viewport content=width=device-width>'
@@ -332,5 +362,5 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
       return { empresa: String(f.empresa).trim(), atencion: f.nombre };
     } catch (e) { return {}; }
   }
-  window.BCDoc = { version: 'v1.9', generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo, diagramaSvg: bcDiagramaSvg, esquema: bcEsquemaDeSistema, datosCliente: datosCliente };
+  window.BCDoc = { version: 'v1.10', conceptoDe: bcConceptoDe, generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo, diagramaSvg: bcDiagramaSvg, esquema: bcEsquemaDeSistema, datosCliente: datosCliente };
 })();
