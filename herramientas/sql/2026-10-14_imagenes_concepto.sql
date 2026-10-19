@@ -18,3 +18,8 @@ alter table barrcan.biblioteca_imagenes enable row level security;
 drop policy if exists anon_all_biblioteca_imagenes on barrcan.biblioteca_imagenes;
 create policy anon_all_biblioteca_imagenes on barrcan.biblioteca_imagenes for all to anon using (true) with check (true);
 grant all on barrcan.biblioteca_imagenes to anon, authenticated, service_role;
+
+-- ══ PARTE 2: poder VER la lista de renders desde Historial ══
+-- Sin esta política, la lista del almacenamiento sale vacía aunque las imágenes existan.
+drop policy if exists "renders lectura publica" on storage.objects;
+create policy "renders lectura publica" on storage.objects for select to anon using (bucket_id = 'renders');

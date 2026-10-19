@@ -9,6 +9,11 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.31
+  FECHA   : 2026-10-14
+  v3.31 - Los RENDERS de Render IA se pueden agregar como imagen de un concepto del presupuesto (botón
+    "🎨 Renders"): lista los recientes (los de este folio primero), se reducen a JPEG ligero y se
+    suben igual que una foto. Requiere permiso de lectura del bucket renders (SQL parte 2).
   VERSIÓN : v3.30
   FECHA   : 2026-10-14
   v3.30 - IMÁGENES POR CONCEPTO: botón "🖼️ Imágenes por concepto" en cada presupuesto. La imagen es por concepto
@@ -1706,7 +1711,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.30';
+var APP_VERSION = 'v3.31';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -2276,6 +2281,7 @@ function imgRender() {
       + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
       + '<label style="padding:8px 12px;border-radius:8px;background:#1B3A5C;color:#fff;font-size:12px;font-weight:700;cursor:pointer">📷 Subir imagen<input type="file" accept="image/*" style="display:none" onchange="imgSubir(\'' + c.clave + '\',this)"></label>'
       + '<button onclick="imgAbrirBiblioteca(\'' + c.clave + '\')" style="padding:8px 12px;border-radius:8px;border:1.5px solid #1B3A5C;background:#fff;color:#1B3A5C;font-size:12px;font-weight:700">📚 Biblioteca</button>'
+      + '<button onclick="imgAbrirRenders(\'' + c.clave + '\')" style="padding:8px 12px;border-radius:8px;border:1.5px solid #8E44AD;background:#fff;color:#8E44AD;font-size:12px;font-weight:700">🎨 Renders</button>'
       + '</div></div>';
   }).join('') : '<div style="color:#888">Este presupuesto no tiene conceptos con imagen.</div>';
   ov.innerHTML = '<div style="background:#fff;border-radius:16px 16px 0 0;padding:18px;width:100%;max-width:560px;max-height:88vh;overflow:auto;color:#1B3A5C;font-size:13px">' + cab
@@ -2284,7 +2290,11 @@ function imgRender() {
     + '<label style="display:flex;gap:8px;align-items:center;font-size:12px;margin-top:4px"><input type="checkbox" id="img-chk-lib" checked> Guardar en la biblioteca lo que suba (para reutilizarlo)</label></div>';
 }
 async function imgSubir(clave, input) {
-  var p = imgPres(), file = input.files && input.files[0]; input.value = '';
+  var file = input.files && input.files[0]; input.value = '';
+  if (file) await imgAgregarArchivo(clave, file);
+}
+async function imgAgregarArchivo(clave, file) {
+  var p = imgPres();
   if (!p || !file) return;
   if (!sb()) { toast('Subir imágenes necesita conexión'); return; }
   var c = imgConceptos(p).filter(function(x) { return x.clave === clave; })[0]; if (!c) return;
@@ -2321,6 +2331,68 @@ async function imgAgregarDeBiblioteca(clave, idImg) {
   mapa[clave].push({ url: m.url, titulo: m.titulo || '' });
   try { await imgGuardarMapa(p, mapa); var lb = document.getElementById('imglib-overlay'); if (lb) lb.remove(); toast('✅ Imagen agregada'); imgRender(); } catch (e) { toast('No se pudo agregar: ' + e.message); }
 }
+// ── Renders de Render IA (bucket "renders") como imágenes del presupuesto ──
+// Render IA guarda los PNG sin ligarlos a una partida, y busca el folio en la tabla antigua "cotizaciones",
+// así que aquí se listan TODOS los renders recientes (los de este folio primero) y se elige a qué concepto va.
+var IMG_RENDERS = [], IMG_RENDERS_VIS = [];
+async function imgCargarRenders() {
+  IMG_RENDERS = [];
+  try {
+    var r = await imgConTiempo(sb().storage.from(IMG_BUCKET).list('', { limit: 120, sortBy: { column: 'created_at', order: 'desc' } }));
+    if (r.error) throw r.error;
+    IMG_RENDERS = (r.data || []).filter(function(o) { return o && o.name && /\.(png|jpe?g|webp)$/i.test(o.name); });
+    return '';
+  } catch (e) { return e.message || String(e); }
+}
+function imgEtiquetaRender(o) {
+  var n = String(o.name || '').replace(/\.(png|jpe?g|webp)$/i, '').replace(/_\d{10,}$/, '');
+  var f = o.created_at ? new Date(o.created_at).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' }) : '';
+  return (/^inspiracion/i.test(n) ? 'Inspiración' : n) + (f ? ' · ' + f : '');
+}
+function imgAbrirRenders(clave) {
+  var p = imgPres(); if (!p) return;
+  var lb = document.getElementById('imglib-overlay'); if (lb) lb.remove();
+  lb = document.createElement('div'); lb.id = 'imglib-overlay';
+  lb.style.cssText = 'position:fixed;inset:0;background:rgba(27,58,92,.7);z-index:2600;display:flex;align-items:flex-end;justify-content:center';
+  document.body.appendChild(lb);
+  lb.innerHTML = '<div style="background:#fff;border-radius:16px 16px 0 0;padding:16px;width:100%;max-width:560px;max-height:85vh;overflow:auto;color:#1B3A5C"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><div style="font-weight:800">🎨 Renders (Render IA)</div><button onclick="document.getElementById(\'imglib-overlay\').remove()" style="border:none;background:none;font-size:20px;color:#1B3A5C">✕</button></div>'
+    + '<input id="imglib-q" placeholder="Buscar por folio o fecha" style="width:100%;padding:9px;border:1.5px solid #d5dce4;border-radius:8px;margin-bottom:10px;font-size:13px"><div id="imglib-grid" style="display:flex;flex-wrap:wrap;gap:8px"><div style="color:#888;padding:10px">Cargando renders…</div></div></div>';
+  var folio = String(p.folio || '');
+  var pintar = function(q) {
+    var t = String(q || '').toLowerCase().trim();
+    var lst = IMG_RENDERS.filter(function(o) { return !t || (imgEtiquetaRender(o) + ' ' + o.name).toLowerCase().indexOf(t) >= 0; });
+    lst.sort(function(a, b) { return (String(b.name).indexOf(folio) === 0 ? 1 : 0) - (String(a.name).indexOf(folio) === 0 ? 1 : 0); }); // los de este folio primero
+    IMG_RENDERS_VIS = lst;
+    var g = document.getElementById('imglib-grid'); if (!g) return;
+    g.innerHTML = lst.length ? lst.map(function(o, i) {
+      var url = sb().storage.from(IMG_BUCKET).getPublicUrl(o.name).data.publicUrl;
+      var esFolio = String(o.name).indexOf(folio) === 0;
+      return '<div onclick="imgUsarRender(\'' + clave + '\',' + i + ')" style="width:30%;cursor:pointer;text-align:center"><img loading="lazy" src="' + esc(url) + '" style="width:100%;height:80px;object-fit:contain;border:' + (esFolio ? '2px solid #8E44AD' : '1px solid #dfe5ec') + ';border-radius:6px;background:#fafafa"><div style="font-size:10.5px;color:' + (esFolio ? '#8E44AD' : '#555') + ';margin-top:2px">' + esc(imgEtiquetaRender(o)) + '</div></div>';
+    }).join('') : '<div style="color:#888;padding:10px">No hay renders para mostrar.</div>';
+  };
+  imgCargarRenders().then(function(err) {
+    if (err) { var g = document.getElementById('imglib-grid'); if (g) g.innerHTML = '<div style="background:#FEF9E7;border:1.5px solid #E67E22;border-radius:8px;padding:10px 12px;line-height:1.5;font-size:12.5px">No se pudo leer la lista de renders (' + esc(err) + '). Falta permitir la lectura del almacenamiento: ejecuta el SQL pendiente (parte 2).</div>'; return; }
+    pintar('');
+    var q = document.getElementById('imglib-q'); if (q) q.addEventListener('input', function() { pintar(this.value); });
+  });
+}
+async function imgUsarRender(clave, i) {
+  var o = IMG_RENDERS_VIS[i], p = imgPres(); if (!o || !p) return;
+  var lb = document.getElementById('imglib-overlay'); if (lb) lb.remove();
+  var url = sb().storage.from(IMG_BUCKET).getPublicUrl(o.name).data.publicUrl;
+  toast('Preparando imagen…');
+  try {
+    var resp = await fetch(url); if (!resp.ok) throw new Error('no se pudo descargar');
+    await imgAgregarArchivo(clave, await resp.blob()); // se reduce y se sube como JPEG ligero (el render original pesa mucho para el documento)
+  } catch (e) {
+    // Si no se puede reducir, se usa tal cual (pesa más, pero funciona)
+    var mapa = JSON.parse(JSON.stringify(p.imagenes_concepto || {})); mapa[clave] = mapa[clave] || [];
+    if (mapa[clave].length >= 3) { toast('Máximo 3 imágenes por concepto'); return; }
+    mapa[clave].push({ url: url, titulo: '' });
+    try { await imgGuardarMapa(p, mapa); toast('✅ Render agregado (sin reducir)'); imgRender(); } catch (e2) { toast('No se pudo agregar: ' + e2.message); }
+  }
+}
+
 function imgAbrirBiblioteca(clave) {
   var lb = document.getElementById('imglib-overlay'); if (lb) lb.remove();
   lb = document.createElement('div'); lb.id = 'imglib-overlay';
