@@ -8,6 +8,12 @@
 <script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN &middot; MODULO: ENTREGAS DE PRODUCTO (standalone)
+  VERSION : v3.67.0
+  FECHA   : 2026-10-15
+  v3.67.0 - Un presupuesto NO aparecía en la lista del cliente (caso real CACN-183): la lista solo mostraba 4
+    estados (no 'entregado' ni 'liquidado'), buscaba por el nombre tal cual (acentos, comas) y
+    ordenaba del más viejo. Ahora incluye entregado/liquidado (con etiqueta), limpia el nombre,
+    ordena del más nuevo y agrega un campo "🔎 ¿No aparece?" que busca por folio, número o cliente.
   VERSION : v3.66.1
   FECHA   : 2026-10-14
   v3.66.1 - CANDADO: sin sesión del día (PIN o huella en el portal) ya no abre; manda al portal y regresa aquí al entrar (modulos/acceso.js).
@@ -1847,6 +1853,8 @@ body{min-height:100vh}
           <select id="ent-folio-select" class="form-select" onchange="entSelPresupuesto()" style="font-family:monospace;font-size:12px">
             <option value="">&mdash; Selecciona presupuesto &mdash;</option>
           </select>
+          <input type="text" id="ent-folio-buscar" class="form-input" placeholder="🔎 ¿No aparece? Escribe el folio o número (ej. 183)" oninput="entBuscarFolio(this.value)" autocomplete="off" style="margin-top:6px;font-size:12px">
+          <div id="ent-folio-buscar-info" style="font-size:11px;color:#888;margin-top:3px"></div>
           <input type="hidden" id="ent-folio">
         </div>
       </div>
@@ -2495,7 +2503,7 @@ async function entCargarTecnicosDinamico() {
   }
 }
 
-var APP_VERSION = 'v3.66.1';
+var APP_VERSION = 'v3.67.0';
 function detectarConexion() {
   var b    = document.getElementById('conn-status');
   var wrap = document.querySelector('.offline-badge');
@@ -2725,7 +2733,9 @@ function entCargarPresupuestos(nombreCliente, numCliente) {
   sel.innerHTML = '<option value="">&mdash; Selecciona presupuesto &mdash;</option>';
   document.getElementById('ent-folio').value = '';
   document.getElementById('ent-saldo-info').style.display = 'none';
-  var estados = ['activo','aprobado','en_produccion','pendiente_entrega'];
+  // v3.67: también 'entregado' y 'liquidado' (antes un folio ya entregado/liquidado NO salía y no se podía hacer su reporte)
+  var estados = ['activo','aprobado','en_produccion','pendiente_entrega','entregado','liquidado'];
+  var nomLimpio = String(nombreCliente || '').replace(/[%,()*]/g, ' ').replace(/\s+/g, ' ').trim(); // comas/paréntesis rompían el filtro
   var local = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]')
     .filter(function(p) { return estados.indexOf(p.estado) >= 0; });
   if (nombreCliente || numCliente) {
@@ -2738,16 +2748,16 @@ function entCargarPresupuestos(nombreCliente, numCliente) {
   local.forEach(function(p) {
     var o = document.createElement('option');
     o.value = p.folio || '';
-    o.textContent = (p.folio || '') + ' -- ' + (p.descripcion || '').slice(0, 40);
+    o.textContent = (p.folio || '') + ' -- ' + (p.descripcion || '').slice(0, 40) + entEtiquetaEstado(p);
     o.dataset.p = JSON.stringify(p);
     sel.appendChild(o);
   });
   if (!sb()) return;
   var query = sb().from('presupuestos_atrasados')
     .select('*')
-    .in('estado', estados).order('folio', { ascending: true }).limit(50);
-  if (numCliente) query = query.or('cliente.ilike.%' + nombreCliente + '%,folio.ilike.%-' + numCliente);
-  else if (nombreCliente) query = query.ilike('cliente', '%' + nombreCliente + '%');
+    .in('estado', estados).order('folio', { ascending: false }).limit(50);
+  if (numCliente) query = query.or('cliente.ilike.%' + nomLimpio + '%,folio.ilike.%-' + numCliente);
+  else if (nomLimpio) query = query.ilike('cliente', '%' + nomLimpio + '%');
   query.then(function(res) {
     if (res.error) {
       console.warn('[BarrCan] Error al consultar presupuestos_atrasados:', res.error);
@@ -2756,14 +2766,14 @@ function entCargarPresupuestos(nombreCliente, numCliente) {
     }
     if (!res.data || !res.data.length) {
       console.log('[BarrCan] Sin presupuestos en Supabase para "' + (nombreCliente || '(todos)') + '" con estados', estados);
-      if (!local.length) sel.innerHTML = '<option value="">Sin presupuestos activos para este cliente</option>';
+      if (!local.length) sel.innerHTML = '<option value="">Sin presupuestos para este cliente — busca por folio abajo</option>';
       return;
     }
     sel.innerHTML = '<option value="">&mdash; Selecciona presupuesto &mdash;</option>';
     res.data.forEach(function(p) {
       var o = document.createElement('option');
       o.value = p.folio || '';
-      o.textContent = (p.folio || '') + ' -- ' + (p.descripcion || '').slice(0, 40);
+      o.textContent = (p.folio || '') + ' -- ' + (p.descripcion || '').slice(0, 40) + entEtiquetaEstado(p);
       o.dataset.p = JSON.stringify(p);
       sel.appendChild(o);
     });
@@ -2775,6 +2785,44 @@ function entCargarPresupuestos(nombreCliente, numCliente) {
     console.warn('[BarrCan] Excepción de red buscando presupuestos:', e.message);
     if (!local.length) sel.innerHTML = '<option value="">&#9888; Sin conexi\u00f3n al buscar presupuestos</option>';
   });
+}
+
+var _entBuscarT = null;
+function entEtiquetaEstado(p) { return p && p.estado === 'entregado' ? ' [entregado]' : (p && p.estado === 'liquidado' ? ' [liquidado]' : ''); }
+// v3.67: búsqueda directa por folio/número/cliente, sin depender de cómo esté escrito el nombre del cliente
+function entBuscarFolio(txt) {
+  clearTimeout(_entBuscarT);
+  var q = String(txt || '').replace(/[%,()*]/g, ' ').replace(/\s+/g, ' ').trim();
+  var info = document.getElementById('ent-folio-buscar-info'), sel = document.getElementById('ent-folio-select');
+  if (!sel) return;
+  if (q.length < 2) { if (info) info.textContent = ''; return; }
+  var pintar = function(lista, nota) {
+    sel.innerHTML = '<option value="">&mdash; Selecciona presupuesto &mdash;</option>';
+    lista.forEach(function(p) {
+      var o = document.createElement('option');
+      o.value = p.folio || '';
+      o.textContent = (p.folio || '') + ' -- ' + (p.cliente || '').slice(0, 22) + ' -- ' + (p.descripcion || '').slice(0, 28) + entEtiquetaEstado(p);
+      o.dataset.p = JSON.stringify(p);
+      sel.appendChild(o);
+    });
+    if (info) info.textContent = lista.length ? (lista.length + ' resultado(s)' + (nota || '')) : 'Sin resultados' + (nota || '');
+    if (lista.length === 1) { sel.selectedIndex = 1; entSelPresupuesto(); }
+  };
+  _entBuscarT = setTimeout(async function() {
+    var low = q.toLowerCase();
+    var local = [];
+    try { local = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]'); } catch (e) {}
+    local = local.filter(function(p) { return p.estado !== 'declinado' && ((p.folio || '').toLowerCase().indexOf(low) >= 0 || (p.cliente || '').toLowerCase().indexOf(low) >= 0); }).slice(0, 15);
+    if (!sb() || !SYNC.online) { pintar(local, ' (sin conexión: solo los ya descargados)'); return; }
+    if (info) info.textContent = 'Buscando…';
+    try {
+      var r = await sb().from('presupuestos_atrasados').select('*')
+        .or('folio.ilike.%' + q + '%,cliente.ilike.%' + q + '%').neq('estado', 'declinado')
+        .order('folio', { ascending: false }).limit(15);
+      if (r.error) throw r.error;
+      pintar((r.data || []).filter(function(p) { return !p.eliminado; }));
+    } catch (e) { pintar(local, ' (no se pudo consultar la base: ' + (e.message || e) + ')'); }
+  }, 350);
 }
 
 function entSelPresupuesto() {
@@ -2793,6 +2841,9 @@ function entSelPresupuesto() {
   var p = {};
   try { p = JSON.parse(opt.dataset.p || '{}'); } catch(e) {}
   document.getElementById('ent-folio').value = p.folio || sel.value;
+  // v3.67: si no se eligió cliente (búsqueda directa por folio), se toman nombre y teléfono del presupuesto
+  var _cEl = document.getElementById('ent-cliente'); if (_cEl && !_cEl.value && p.cliente) _cEl.value = p.cliente;
+  var _tEl = document.getElementById('ent-tel'); if (_tEl && !_tEl.value && p.tel) _tEl.value = p.tel;
   entStandDetectar(); // v3.66: folios STAN → fases del stand
 
   // Si el folio tiene piezas capturadas por separado (vía +Piezas /
