@@ -8,6 +8,11 @@
 <title>BarrCan · Render IA</title>
 <!--
   BARRCAN · MÓDULO: RENDER IA (standalone)
+  VERSIÓN : v1.3.2
+  FECHA   : 2026-10-15
+  v1.3.2 - La clave de Gemini (solo en este dispositivo) ahora pide al navegador no descartar los datos del
+    sitio (storage.persist) y el cuadro de configuración explica de dónde sacarla y que use el mismo
+    proyecto con facturación.
   VERSIÓN : v1.3.1
   FECHA   : 2026-10-14
   v1.3.1 - CANDADO: sin sesión del día (PIN o huella en el portal) ya no abre; manda al portal y regresa aquí al entrar (modulos/acceso.js).
@@ -286,7 +291,7 @@ input[type=file] { display:none; }
     <input type="password" id="cfg-apikey" class="form-input" placeholder="AIza...">
     <div class="config-help">
       Se guarda solo en este dispositivo (localStorage), no se sube a ningún servidor de BarrCan.
-      Consíguela gratis en aistudio.google.com/apikey. Ojo: es visible en el código del navegador —
+      Consíguela en aistudio.google.com/apikey (usa el MISMO proyecto que tiene la facturación/prepago; el modelo de imagen es de pago). Guarda una copia en tu gestor de contraseñas: si el navegador borra los datos del sitio, hay que volver a pegarla. Ojo: es visible en el código del navegador —
       cuando el uso crezca, conviene moverla a una función proxy (Supabase Edge Function).
     </div>
     <button class="config-close" onclick="guardarConfig()">Guardar</button>
@@ -308,7 +313,7 @@ function sb() {
   return _sbClient;
 }
 
-var APP_VERSION = 'v1.3.1';
+var APP_VERSION = 'v1.3.2';
 
 // ── Conexión ─────────────────────────────────────────────────────
 var SYNC = { online: navigator.onLine };
@@ -352,8 +357,10 @@ function abrirConfig() {
 function guardarConfig() {
   var k = document.getElementById('cfg-apikey').value.trim();
   if (k) localStorage.setItem('barrcan_gemini_key', k);
+  // v1.3.2: se pide al navegador que NO descarte los datos de este sitio (la clave vive solo en este dispositivo)
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
   document.getElementById('config-ov').classList.remove('visible');
-  toast('✓ Configuración guardada');
+  toast(k ? '✓ Clave guardada en este dispositivo' : '✓ Configuración guardada');
 }
 
 // ── Modo ─────────────────────────────────────────────────────────

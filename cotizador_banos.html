@@ -9,6 +9,11 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v3.15.0
+  FECHA   : 2026-10-15
+  v3.15.0 - VARIAS PIEZAS EN UN SOLO PRESUPUESTO: al inicio se elige 1, 2 o 3 piezas; se agregan una por una (en
+    cualquier pestaña) y se guarda UNA vez: un folio, letra A. Antes había que volver a Historial (+Piezas)
+    y cada vez la letra subía (A, B, C). El código promocional se aplica a cada pieza.
   VERSION : v3.14
   FECHA   : 2026-10-14
   v3.14 - CANDADO: sin sesión del día (PIN o huella en el portal) ya no abre; manda al portal y regresa aquí al entrar (modulos/acceso.js).
@@ -464,6 +469,18 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
     <div id="promo-resultado" style="font-size:11.5px;margin-top:8px"></div>
   </div>
   <p class="section-sub">Canceles frameless &middot; Bacalar &middot; Escuadra aluminio</p>
+
+  <!-- PIEZAS DEL PRESUPUESTO (v3.15.0): 1 a 3 piezas en UN solo folio -->
+  <div class="card" id="pz-panel" style="margin-bottom:12px;border:1.5px solid rgba(46,109,164,.35)">
+    <div class="wizard-title">🧮 ¿Cuántas piezas lleva este presupuesto?</div>
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <button type="button" id="pz-n-1" onclick="cbPzSetN(1)" style="flex:1;padding:10px 0;border-radius:8px;border:1.5px solid var(--gray-300);background:#fff;font-weight:800;font-size:15px;cursor:pointer">1</button>
+      <button type="button" id="pz-n-2" onclick="cbPzSetN(2)" style="flex:1;padding:10px 0;border-radius:8px;border:1.5px solid var(--gray-300);background:#fff;font-weight:800;font-size:15px;cursor:pointer">2</button>
+      <button type="button" id="pz-n-3" onclick="cbPzSetN(3)" style="flex:1;padding:10px 0;border-radius:8px;border:1.5px solid var(--gray-300);background:#fff;font-weight:800;font-size:15px;cursor:pointer">3</button>
+    </div>
+    <div id="pz-estado" style="font-size:12px;color:var(--gray-500)"></div>
+    <div id="pz-lista"></div>
+  </div>
 
   <!-- TABS DE LÍNEA -->
   <div class="tabs">
@@ -1340,7 +1357,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v3.14';
+var APP_VERSION = 'v3.15.0';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -2615,6 +2632,45 @@ function cbCalcEscuadra() {
 }
 
 // ── GUARDAR PRESUPUESTO ───────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+// VARIAS PIEZAS EN UN SOLO PRESUPUESTO (v3.15.0)
+// Antes: se guardaba 1 pieza y las demás se agregaban desde Historial (+Piezas), y cada vez la letra del
+// folio subía (A → B → C). Ahora se elige 1, 2 o 3 piezas al inicio, se van agregando una por una (en
+// cualquier pestaña) y se guarda UNA sola vez: un folio, letra A, todas las piezas.
+// ══════════════════════════════════════════════════════════════
+var CB_PZ_TOTAL = 1, CB_PZ_ACUM = [];
+function cbPzSetN(n) {
+  if (CB_PZ_ACUM.length > n) { toast('Ya hay ' + CB_PZ_ACUM.length + ' piezas capturadas: quita alguna antes de bajar el número'); return; }
+  CB_PZ_TOTAL = n; cbPzUI();
+}
+function cbPzQuitar(i) { CB_PZ_ACUM.splice(i, 1); cbPzUI(); }
+function cbPzSiguiente() {
+  CB_RESULTADO = null; // la pieza siguiente se calcula de nuevo
+  ['fl-resultado', 'bc-resultado', 'esc-resultado', 'cc-resultado', 'ap-resultado', 'ap-corte-card'].forEach(function(id) { var e = document.getElementById(id); if (e) e.style.display = 'none'; });
+  try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
+}
+function cbPzUI() {
+  [1, 2, 3].forEach(function(k) {
+    var b = document.getElementById('pz-n-' + k); if (!b) return;
+    var on = k === CB_PZ_TOTAL;
+    b.style.background = on ? 'var(--navy)' : '#fff'; b.style.color = on ? '#fff' : 'var(--navy)'; b.style.borderColor = on ? 'var(--navy)' : 'var(--gray-300)';
+  });
+  var x = CB_PZ_ACUM.length + 1, st = document.getElementById('pz-estado');
+  if (st) st.textContent = (CB_PZ_TOTAL === 1 && !CB_PZ_ACUM.length)
+    ? 'Una sola pieza: se guarda al terminar. Si son más, elige 2 o 3.'
+    : 'Estás capturando la pieza ' + Math.min(x, CB_PZ_TOTAL) + ' de ' + CB_PZ_TOTAL + '. Calcula, y toca el botón de abajo para agregarla; al final se guarda todo en un solo folio.';
+  var ls = document.getElementById('pz-lista');
+  if (ls) ls.innerHTML = CB_PZ_ACUM.map(function(pz, i) {
+    return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--gray-200);font-size:12px"><div>✅ <b>' + (i + 1) + '.</b> ' + esc(pz.label) + '</div><div style="white-space:nowrap"><b>' + fmt(pz.precio) + '</b> <button type="button" onclick="cbPzQuitar(' + i + ')" style="border:none;background:none;color:#C0392B;font-size:16px;cursor:pointer">✕</button></div></div>';
+  }).join('') + (CB_PZ_ACUM.length ? '<div style="text-align:right;font-size:12px;font-weight:700;margin-top:4px">Suma de las piezas: ' + fmt(CB_PZ_ACUM.reduce(function(a, p) { return a + p.precio; }, 0)) + '</div>' : '');
+  document.querySelectorAll('button[onclick^="cbGuardarPresupuesto("]').forEach(function(b) {
+    if (b.dataset.orig === undefined) b.dataset.orig = b.textContent;
+    if (CB_PZ_TOTAL === 1 && !CB_PZ_ACUM.length) b.textContent = b.dataset.orig;
+    else if (x < CB_PZ_TOTAL) b.textContent = '➕ Agregar pieza ' + x + ' de ' + CB_PZ_TOTAL;
+    else b.textContent = '💾 Guardar presupuesto (' + CB_PZ_TOTAL + ' piezas)';
+  });
+}
+
 async function cbGuardarPresupuesto(tipo) {
   if (!CB_RESULTADO) { toast('Primero calcula el presupuesto'); return; }
 
@@ -2628,6 +2684,18 @@ async function cbGuardarPresupuesto(tipo) {
     (CB_RESULTADO.L ? CB_RESULTADO.L + 'x' + CB_RESULTADO.H + 'mm' : '') +
     (CB_RESULTADO.m2Vidrio ? ' · ' + CB_RESULTADO.m2Vidrio + ' m²' : '');
   var precioNueva = Math.round(CB_RESULTADO.precioFinal);
+
+  // v3.15.0: varias piezas en un solo folio
+  if (CB_PZ_TOTAL > 1 || CB_PZ_ACUM.length) {
+    CB_PZ_ACUM.push({ label: descNueva, cantidad: 1, precioUnitario: precioNueva, precio: precioNueva, resultado: CB_RESULTADO });
+    if (CB_PZ_ACUM.length < CB_PZ_TOTAL) {
+      toast('✅ Pieza ' + CB_PZ_ACUM.length + ' de ' + CB_PZ_TOTAL + ' agregada · captura la siguiente');
+      cbPzSiguiente(); cbPzUI(); return;
+    }
+    var todas = CB_PZ_ACUM; CB_PZ_ACUM = []; CB_PZ_TOTAL = 1; cbPzUI();
+    await cbGuardarConPiezas(cliente, tel, todas, clienteId, telId);
+    return;
+  }
 
   await cbGuardarConPieza(cliente, tel, descNueva, precioNueva, CB_RESULTADO, clienteId, telId);
 }
@@ -2704,20 +2772,30 @@ async function promoValidar() {
   } catch (e) { resDiv.innerHTML = '<span style="color:var(--red)">Error: ' + e.message + '</span>'; }
 }
 
+// Una sola pieza (flujo de siempre): envoltorio del núcleo de varias piezas
 async function cbGuardarConPieza(cliente, tel, descNueva, precioNueva, resultadoNueva, clienteId, telId) {
-  // Si hay un código promocional válido aplicado, se descuenta del
-  // precio final ANTES de armar el folio -- así monto/saldo/documento
-  // ya reflejan el precio real que va a pagar el cliente, con la
-  // rebaja explicada en la descripción para que quede claro por qué.
-  var precioOriginal = precioNueva;
+  return cbGuardarConPiezas(cliente, tel, [{ label: descNueva, cantidad: 1, precioUnitario: precioNueva, precio: precioNueva, resultado: resultadoNueva }], clienteId, telId);
+}
+
+// Núcleo (v3.15.0): guarda UNA o VARIAS piezas en un solo folio (o las agrega, de una vez, a un folio que se continúa)
+async function cbGuardarConPiezas(cliente, tel, nuevas, clienteId, telId) {
+  nuevas = nuevas.map(function(pz) { return Object.assign({}, pz); });
+  // Si hay un código promocional válido aplicado, se descuenta de CADA pieza ANTES de armar el folio -- así
+  // monto/saldo/documento ya reflejan el precio real que va a pagar el cliente, con la rebaja explicada.
   if (PROMO_APLICADO) {
-    precioNueva = Math.round(precioNueva * (1 - PROMO_APLICADO.descuento_pct / 100));
-    descNueva = descNueva + ' [Código ' + PROMO_APLICADO.codigo + ': -' + PROMO_APLICADO.descuento_pct + '% -- antes $' + fmt(precioOriginal) + ']';
+    nuevas.forEach(function(pz) {
+      var precioOriginal = pz.precio;
+      var conDescuento = Math.round(precioOriginal * (1 - PROMO_APLICADO.descuento_pct / 100));
+      pz.label = pz.label + ' [Código ' + PROMO_APLICADO.codigo + ': -' + PROMO_APLICADO.descuento_pct + '% -- antes $' + fmt(precioOriginal) + ']';
+      pz.precio = conDescuento; pz.precioUnitario = conDescuento;
+    });
     if (sb()) sb().from('codigos_promocionales').select('veces_usado').eq('codigo', PROMO_APLICADO.codigo).limit(1).then(function(r) {
       var actual = (r.data && r.data[0] && r.data[0].veces_usado) || 0;
       sb().from('codigos_promocionales').update({ veces_usado: actual + 1 }).eq('codigo', PROMO_APLICADO.codigo);
     });
   }
+  var sumaNuevas = nuevas.reduce(function(a, pz) { return a + pz.precio; }, 0);
+  var descNuevas = nuevas.length === 1 ? nuevas[0].label : nuevas.map(function(pz) { return pz.label; }).join(' + ').slice(0, 200);
 
   var hoy = new Date();
   var yy = String(hoy.getFullYear()).slice(-2), mm = String(hoy.getMonth()+1).padStart(2,'0'), dd = String(hoy.getDate()).padStart(2,'0');
@@ -2734,17 +2812,17 @@ async function cbGuardarConPieza(cliente, tel, descNueva, precioNueva, resultado
   if (esActualizacion) {
     folio = snBumpRevisionFolio(CONTINUANDO_FOLIO.folio);
     var existentes = snPiezasExistentesNormalizadas(CONTINUANDO_FOLIO);
-    piezas = existentes.concat([{ label: descNueva, cantidad: 1, precioUnitario: precioNueva, precio: precioNueva, resultado: resultadoNueva }]);
-    montoFinal = Math.round((CONTINUANDO_FOLIO.monto || 0) + precioNueva);
-    saldoFinal = Math.round((CONTINUANDO_FOLIO.saldo || 0) + precioNueva);
-    desc = ((CONTINUANDO_FOLIO.descripcion || '') + ' + ' + descNueva).slice(0, 200);
+    piezas = existentes.concat(nuevas);
+    montoFinal = Math.round((CONTINUANDO_FOLIO.monto || 0) + sumaNuevas);
+    saldoFinal = Math.round((CONTINUANDO_FOLIO.saldo || 0) + sumaNuevas);
+    desc = ((CONTINUANDO_FOLIO.descripcion || '') + ' + ' + descNuevas).slice(0, 200);
   } else {
     var numCliente = await snObtenerNumCliente();
     folio = 'CACN-' + numFolio + 'A-' + yy + mm + dd + '-' + numCliente;
-    piezas = [{ label: descNueva, cantidad: 1, precioUnitario: precioNueva, precio: precioNueva, resultado: resultadoNueva }];
-    montoFinal = precioNueva;
-    saldoFinal = precioNueva;
-    desc = descNueva;
+    piezas = nuevas;
+    montoFinal = sumaNuevas;
+    saldoFinal = sumaNuevas;
+    desc = descNuevas;
   }
 
   var payload = {
@@ -3000,6 +3078,7 @@ document.addEventListener('DOMContentLoaded', function() {
   // Si se llegó aquí desde historial.html con "+ Agregar piezas", carga
   // el folio existente para sumarle la próxima pieza que se calcule.
   snCargarContinuarFolio();
+  cbPzUI();
   ccCargarRecalculoPieza();
   ccCargarRecalculoUnidad();
 });
