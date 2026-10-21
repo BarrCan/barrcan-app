@@ -9,6 +9,11 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.32.0
+  FECHA   : 2026-10-15
+  v3.32.0 - AGREGAR CONCEPTOS al presupuesto: en el editor, "➕ Agregar concepto" (descripción, cantidad y precio unitario) para
+    un presupuesto nuevo o existente; el Monto y el Saldo se ajustan solos. Las imágenes de cada concepto se
+    agregan después con 🖼️ Imágenes por concepto.
   VERSIÓN : v3.31
   FECHA   : 2026-10-14
   v3.31 - Los RENDERS de Render IA se pueden agregar como imagen de un concepto del presupuesto (botón
@@ -1650,6 +1655,16 @@ body{min-height:100vh}
       </div>
       <div id="pres-conceptos-lista"></div>
       <div id="pres-conceptos-vacio" style="display:none;font-size:12px;color:var(--gray-400);padding:8px 0">Este presupuesto no tiene piezas con concepto guardado individualmente.</div>
+      <div style="border:1.5px dashed var(--gray-300);border-radius:10px;padding:10px;margin-top:8px">
+        <div style="font-size:12px;font-weight:700;margin-bottom:6px">➕ Agregar concepto</div>
+        <textarea id="pres-nc-desc" class="form-input" rows="2" style="resize:none;font-size:13px" placeholder="Descripción (ej. Cancel de baño fijo + puerta 90x180 cm, vidrio 9 mm)"></textarea>
+        <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+          <input type="number" id="pres-nc-cant" class="form-input" min="1" value="1" title="Cantidad" style="width:64px;text-align:center">
+          <input type="number" id="pres-nc-precio" class="form-input" min="0" step="1" placeholder="Precio unitario $" style="flex:1">
+          <button type="button" onclick="presConceptoAgregar()" style="padding:10px 14px;background:var(--navy);color:#fff;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">Agregar</button>
+        </div>
+        <div style="font-size:10.5px;color:var(--gray-400);margin-top:6px;line-height:1.4">Cada concepto lleva su costo y el Monto se ajusta solo. Las imágenes de cada concepto se agregan después de guardar, con el botón 🖼️ Imágenes por concepto.</div>
+      </div>
     </div>
 
     <label class="form-label">Estado actual</label>
@@ -1711,7 +1726,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.31';
+var APP_VERSION = 'v3.32.0';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -3075,6 +3090,28 @@ function presConceptoEditar(idx, campo, valor) {
   } else {
     PRES_CONCEPTOS[idx][campo] = valor;
   }
+}
+
+// v3.32.0: agregar un concepto nuevo (con su costo) a un presupuesto, nuevo o existente. El Monto y el Saldo se
+// ajustan solos (como al cambiar una cantidad). Las imágenes se agregan después con 🖼️ Imágenes por concepto.
+function presConceptoAgregar() {
+  var d = document.getElementById('pres-nc-desc'), c = document.getElementById('pres-nc-cant'), pr = document.getElementById('pres-nc-precio');
+  var desc = (d.value || '').trim(), cant = Math.max(1, parseInt(c.value, 10) || 1), pu = parseFloat(pr.value) || 0;
+  if (!desc) { toast('Escribe la descripción del concepto'); return; }
+  if (!(pu > 0)) { toast('Escribe el precio del concepto'); return; }
+  var precio = Math.round(pu * cant);
+  var m = document.getElementById('pres-monto'), montoActual = parseFloat(m.value) || 0;
+  if (PRES_EDITANDO_ID && !PRES_CONCEPTOS.length && montoActual > 0 &&
+      !confirm('Este presupuesto tiene un monto de $' + fmt(montoActual) + ' sin conceptos individuales.\n\nAceptar = el concepto nuevo SE SUMA a ese monto.\nCancelar = no agregar.')) return;
+  PRES_CONCEPTOS.push({ label: desc, cantidad: cant, precioUnitario: pu, precio: precio, resultado: null, unidades: null });
+  // Presupuesto nuevo: el Monto es la suma de sus conceptos. Existente: el concepto se suma al Monto actual.
+  m.value = PRES_EDITANDO_ID ? Math.round(montoActual + precio) : PRES_CONCEPTOS.reduce(function(a, p) { return a + (parseFloat(p.precio) || 0); }, 0);
+  presMontoCambio();
+  var dEl = document.getElementById('pres-desc');
+  if (dEl && !dEl.value.trim()) dEl.value = PRES_CONCEPTOS.map(function(p) { return p.label; }).join(' + ').slice(0, 200);
+  d.value = ''; c.value = '1'; pr.value = '';
+  presDibujarConceptos();
+  toast('✅ Concepto agregado · $' + fmt(precio) + ' — Monto ajustado');
 }
 
 function presConceptoQuitar(idx) {

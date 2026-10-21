@@ -9,6 +9,10 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v3.16.0
+  FECHA   : 2026-10-15
+  v3.16.0 - VARIOS CONCEPTOS EN "Otro / Ampliación": cada concepto con su costo, "➕ Agregar este concepto y capturar otro"
+    suma todos en UN folio (letra A); se pueden mezclar con piezas calculadas. El panel de piezas llega a 5.
   VERSION : v3.15.0
   FECHA   : 2026-10-15
   v3.15.0 - VARIAS PIEZAS EN UN SOLO PRESUPUESTO: al inicio se elige 1, 2 o 3 piezas; se agregan una por una (en
@@ -477,6 +481,8 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
       <button type="button" id="pz-n-1" onclick="cbPzSetN(1)" style="flex:1;padding:10px 0;border-radius:8px;border:1.5px solid var(--gray-300);background:#fff;font-weight:800;font-size:15px;cursor:pointer">1</button>
       <button type="button" id="pz-n-2" onclick="cbPzSetN(2)" style="flex:1;padding:10px 0;border-radius:8px;border:1.5px solid var(--gray-300);background:#fff;font-weight:800;font-size:15px;cursor:pointer">2</button>
       <button type="button" id="pz-n-3" onclick="cbPzSetN(3)" style="flex:1;padding:10px 0;border-radius:8px;border:1.5px solid var(--gray-300);background:#fff;font-weight:800;font-size:15px;cursor:pointer">3</button>
+      <button type="button" id="pz-n-4" onclick="cbPzSetN(4)" style="flex:1;padding:10px 0;border-radius:8px;border:1.5px solid var(--gray-300);background:#fff;font-weight:800;font-size:15px;cursor:pointer">4</button>
+      <button type="button" id="pz-n-5" onclick="cbPzSetN(5)" style="flex:1;padding:10px 0;border-radius:8px;border:1.5px solid var(--gray-300);background:#fff;font-weight:800;font-size:15px;cursor:pointer">5</button>
     </div>
     <div id="pz-estado" style="font-size:12px;color:var(--gray-500)"></div>
     <div id="pz-lista"></div>
@@ -1080,6 +1086,8 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
       </div>
       <input type="text" class="form-input" id="otro-cliente" list="sn-clientes-datalist" placeholder="Nombre del cliente *" oninput="snAutocompletarCliente('otro')" style="margin-top:8px">
       <input type="text" class="form-input" id="otro-tel" placeholder="Teléfono">
+      <div id="otro-acum" style="font-size:12px;color:var(--navy);margin-top:8px"></div>
+      <button class="btn" style="margin-top:8px;border:1.5px solid var(--navy);color:var(--navy);background:#fff;font-weight:700" onclick="cbManualAgregar()">➕ Agregar este concepto y capturar otro</button>
       <button class="btn btn-gold" onclick="cbGuardarManual()">Guardar y generar folio CACN</button>
     </div>
   </div>
@@ -1357,7 +1365,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v3.15.0';
+var APP_VERSION = 'v3.16.0';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -2650,7 +2658,7 @@ function cbPzSiguiente() {
   try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch (e) {}
 }
 function cbPzUI() {
-  [1, 2, 3].forEach(function(k) {
+  [1, 2, 3, 4, 5].forEach(function(k) {
     var b = document.getElementById('pz-n-' + k); if (!b) return;
     var on = k === CB_PZ_TOTAL;
     b.style.background = on ? 'var(--navy)' : '#fff'; b.style.color = on ? '#fff' : 'var(--navy)'; b.style.borderColor = on ? 'var(--navy)' : 'var(--gray-300)';
@@ -2663,6 +2671,8 @@ function cbPzUI() {
   if (ls) ls.innerHTML = CB_PZ_ACUM.map(function(pz, i) {
     return '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--gray-200);font-size:12px"><div>✅ <b>' + (i + 1) + '.</b> ' + esc(pz.label) + '</div><div style="white-space:nowrap"><b>' + fmt(pz.precio) + '</b> <button type="button" onclick="cbPzQuitar(' + i + ')" style="border:none;background:none;color:#C0392B;font-size:16px;cursor:pointer">✕</button></div></div>';
   }).join('') + (CB_PZ_ACUM.length ? '<div style="text-align:right;font-size:12px;font-weight:700;margin-top:4px">Suma de las piezas: ' + fmt(CB_PZ_ACUM.reduce(function(a, p) { return a + p.precio; }, 0)) + '</div>' : '');
+  var ac = document.getElementById('otro-acum');
+  if (ac) ac.innerHTML = CB_PZ_ACUM.length ? ('🧾 Llevas <b>' + CB_PZ_ACUM.length + '</b> concepto(s) agregado(s): <b>' + fmt(CB_PZ_ACUM.reduce(function(a, p) { return a + p.precio; }, 0)) + '</b> — al guardar se incluyen todos en el mismo folio.') : '';
   document.querySelectorAll('button[onclick^="cbGuardarPresupuesto("]').forEach(function(b) {
     if (b.dataset.orig === undefined) b.dataset.orig = b.textContent;
     if (CB_PZ_TOTAL === 1 && !CB_PZ_ACUM.length) b.textContent = b.dataset.orig;
@@ -2705,16 +2715,50 @@ async function cbGuardarPresupuesto(tipo) {
 // otra pieza (mismo folio-bump si viene de "+Piezas", mismo
 // documento, mismo historial) -- la diferencia es que no hay
 // "resultado" calculado detrás, solo texto libre.
+// v3.16.0: varios conceptos, cada uno con su costo, en UN solo folio. "➕ Agregar este concepto" los va juntando
+// (se pueden mezclar con piezas calculadas del panel de arriba) y "Guardar" los guarda todos con la letra A.
+// Las imágenes de cada concepto se agregan después desde Historial (🖼️ Imágenes por concepto).
+function cbManualLeer() {
+  return {
+    cliente: document.getElementById('otro-cliente').value.trim(),
+    tel: document.getElementById('otro-tel').value.trim(),
+    desc: document.getElementById('otro-descripcion').value.trim(),
+    precio: parseFloat(document.getElementById('otro-precio').value) || 0
+  };
+}
+function cbManualAgregar() {
+  var d = cbManualLeer();
+  if (!d.cliente) { toast('Ingresa el nombre del cliente'); return; }
+  if (!d.desc) { toast('Falta la descripción del concepto'); return; }
+  if (!d.precio || d.precio <= 0) { toast('Falta el precio de este concepto'); return; }
+  var pr = Math.round(d.precio);
+  CB_PZ_ACUM.push({ label: d.desc, cantidad: 1, precioUnitario: pr, precio: pr, resultado: null });
+  document.getElementById('otro-descripcion').value = '';
+  document.getElementById('otro-precio').value = '';
+  toast('✅ Concepto ' + CB_PZ_ACUM.length + ' agregado · captura el siguiente o guarda');
+  cbPzUI();
+}
 async function cbGuardarManual() {
-  var cliente = document.getElementById('otro-cliente').value.trim();
-  var tel = document.getElementById('otro-tel').value.trim();
-  var desc = document.getElementById('otro-descripcion').value.trim();
-  var precio = parseFloat(document.getElementById('otro-precio').value) || 0;
-  if (!cliente) { toast('Ingresa el nombre del cliente'); return; }
-  if (!desc) { toast('Falta la descripción del trabajo'); return; }
-  if (!precio || precio <= 0) { toast('Falta el precio final'); return; }
+  var d = cbManualLeer();
+  if (!d.cliente) { toast('Ingresa el nombre del cliente'); return; }
+  var hayAcum = CB_PZ_ACUM.length > 0, hayActual = !!d.desc || d.precio > 0;
+  if (hayAcum) {
+    // Se guardan TODOS los conceptos agregados (+ el que esté escrito ahora, si está completo)
+    if (hayActual) {
+      if (!d.desc) { toast('Falta la descripción del concepto'); return; }
+      if (!d.precio || d.precio <= 0) { toast('Falta el precio de este concepto'); return; }
+      CB_PZ_ACUM.push({ label: d.desc, cantidad: 1, precioUnitario: Math.round(d.precio), precio: Math.round(d.precio), resultado: null });
+    }
+    var todas = CB_PZ_ACUM; CB_PZ_ACUM = []; CB_PZ_TOTAL = 1; cbPzUI();
+    await cbGuardarConPiezas(d.cliente, d.tel, todas, 'otro-cliente', 'otro-tel');
+    document.getElementById('otro-descripcion').value = '';
+    document.getElementById('otro-precio').value = '';
+    return;
+  }
+  if (!d.desc) { toast('Falta la descripción del trabajo'); return; }
+  if (!d.precio || d.precio <= 0) { toast('Falta el precio final'); return; }
 
-  await cbGuardarConPieza(cliente, tel, desc, Math.round(precio), null, 'otro-cliente', 'otro-tel');
+  await cbGuardarConPieza(d.cliente, d.tel, d.desc, Math.round(d.precio), null, 'otro-cliente', 'otro-tel');
   document.getElementById('otro-descripcion').value = '';
   document.getElementById('otro-precio').value = '';
 }
