@@ -7,6 +7,18 @@
 <title>BarrCan &middot; Mensajes</title>
 <!--
   BARRCAN · MODULO: MENSAJES LISTOS (standalone)
+  VERSION : v1.3
+  FECHA   : 2026-10-22
+  v1.3 - RECUPERADO Y PUBLICADO: 7 categorías (Primer contacto, Visita, Ventas, Seguimiento, Cobranza,
+    Entrega, Postventa) y 26 plantillas. Cada una tiene versión de USTED (default, clientes nuevos) y de TÚ
+    (clientes frecuentes), con interruptor arriba. Variables nuevas: {saludo} (según la hora), {firma},
+    {costo_visita}, {datos_pago}, {incluye}, {fecha}, {alt}, {anticipo}, {liga_garantia}, {liga_resena}.
+    Lo que no se puede llenar solo queda entre [corchetes] y el módulo avisa antes de abrir WhatsApp.
+    Datos de pago/reseña/firma se guardan en el dispositivo (no en el código, porque el repo es público).
+    FIX: {fecha} ya no se rellena con la fecha de HOY (en "Confirmar instalación" quedaba como fecha de
+    instalación). FIX: ya no ofrece presupuestos eliminados. FIX: al borrar la búsqueda se limpia el folio.
+    NOTA: este contenido se construyó el 9-oct en otro chat como "v1.2", pero solo se entregó como archivo
+    y nunca se publicó; el número v1.2 lo tomó el candado. Por eso aquí queda como v1.3.
   VERSION : v1.2
   FECHA   : 2026-10-14
   v1.2 - CANDADO: sin sesión del día (PIN o huella en el portal) ya no abre; manda al portal y regresa aquí al entrar (modulos/acceso.js).
@@ -81,6 +93,10 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--off
 .btn-outline { background:none; border:1.5px solid var(--gray-200); color:var(--gray-600); }
 textarea.form-input { resize:vertical; min-height:130px; line-height:1.5; font-size:13.5px; }
 datalist {}
+.tono-row { display:flex; align-items:center; gap:6px; margin-bottom:10px; font-size:11.5px; color:var(--gray-600); }
+.cfg-sum { font-size:12.5px; font-weight:700; color:var(--navy); cursor:pointer; }
+.msj-aviso { display:none; margin-top:10px; padding:8px 10px; border-radius:8px; background:rgba(192,57,43,.08); color:var(--red); font-size:11.5px; line-height:1.4; }
+.plantilla-cuando { font-size:11px; color:var(--gray-400); line-height:1.4; }
 </style>
 </head>
 <body>
@@ -102,7 +118,26 @@ datalist {}
       <input type="text" class="form-input" id="msj-folio-buscar" list="msj-folios-datalist" placeholder="Escribe folio o nombre del cliente…" oninput="msjBuscarFolio()">
       <datalist id="msj-folios-datalist"></datalist>
       <div id="msj-folio-seleccionado" style="display:none;margin-top:8px;padding:8px 10px;background:var(--off-white);border-radius:8px;font-size:11.5px;color:var(--gray-600)"></div>
+      <label class="form-label" style="margin-top:10px">Nombre del cliente <span style="color:var(--gray-400);font-weight:400">(solo si aún no tiene folio, ej. primer contacto)</span></label>
+      <input type="text" class="form-input" id="msj-nombre-manual" placeholder="Ej: Ing. Raymundo" autocomplete="off">
     </div>
+
+    <details class="wizard-card" id="msj-cfg-card">
+      <summary class="cfg-sum">⚙️ Mis datos para los mensajes</summary>
+      <div style="margin-top:12px">
+        <label class="form-label">Datos de pago <span style="color:var(--gray-400);font-weight:400">(se guardan solo en este dispositivo)</span></label>
+        <textarea class="form-input" id="msj-cfg-pago" style="min-height:80px" placeholder="Titular, banco, cuenta y CLABE"></textarea>
+        <label class="form-label" style="margin-top:10px">Costo de la visita de medición ($)</label>
+        <input type="text" class="form-input" id="msj-cfg-costo" inputmode="numeric" placeholder="500">
+        <label class="form-label" style="margin-top:10px">Liga para dejar reseña</label>
+        <input type="text" class="form-input" id="msj-cfg-resena" placeholder="https://g.page/...">
+        <label class="form-label" style="margin-top:10px">Tu nombre en los mensajes</label>
+        <input type="text" class="form-input" id="msj-cfg-firma" placeholder="Mauricio">
+        <button type="button" class="btn btn-navy" style="width:100%;margin-top:12px" onclick="msjCfgGuardar()">Guardar mis datos</button>
+      </div>
+    </details>
+
+    <div class="tono-row" id="msj-tono"></div>
 
     <div class="cat-tabs" id="msj-cat-tabs"></div>
     <div id="msj-lista-plantillas"></div>
@@ -119,7 +154,8 @@ datalist {}
     <input type="text" class="form-input" id="msj-tel" placeholder="Ej: 5512345678" style="margin-bottom:12px" inputmode="tel">
 
     <label class="form-label">Mensaje <span style="color:var(--gray-400);font-weight:400">(edítalo si hace falta)</span></label>
-    <textarea class="form-input" id="msj-texto"></textarea>
+    <textarea class="form-input" id="msj-texto" oninput="msjActualizarAviso()"></textarea>
+    <div class="msj-aviso" id="msj-aviso"></div>
 
     <div style="display:flex;gap:8px;margin-top:14px">
       <button type="button" class="btn btn-outline" style="flex:1" onclick="msjCopiar()">📋 Copiar</button>
@@ -129,7 +165,7 @@ datalist {}
 </div>
 
 <script>
-var APP_VERSION = 'v1.2';
+var APP_VERSION = 'v1.3';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sbClient=null;
@@ -147,38 +183,407 @@ function fmt(n){return Number(n||0).toLocaleString('es-MX',{minimumFractionDigit
 function toast(msg,dur){dur=dur||2600;var el=document.getElementById('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1B3A5C;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;z-index:9999;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90vw;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';document.body.appendChild(el);}el.textContent=msg;el.style.opacity='1';clearTimeout(el._t);el._t=setTimeout(function(){el.style.opacity='0';},dur);}
 
 // ── Plantillas ────────────────────────────────────────────────────
+// Cada plantilla: { cat, titulo, cuando, u: texto de USTED, t: texto de TÚ }
+// Variables que se llenan solas: {cliente} {folio} {monto} {saldo} {saludo}
+//   {firma} {costo_visita} {datos_pago} {incluye} {liga_garantia} {liga_resena}
+// Variables que quedan entre [corchetes] para escribirlas a mano:
+//   {fecha} {alt} {anticipo}
+function T() { return Array.prototype.slice.call(arguments).join('\n'); }
+
+var MSJ_LIGA_GARANTIA = 'https://barrcan.github.io/barrcan-app/garantia_publica.html';
+
 var MSJ_CATEGORIAS = {
-  ventas: { emoji: '📋', nombre: 'Ventas' },
-  pagos: { emoji: '💰', nombre: 'Pagos' },
-  entrega: { emoji: '🚚', nombre: 'Entrega' },
-  postventa: { emoji: '⭐', nombre: 'Postventa' }
+  contacto:    { emoji: '👋', nombre: 'Primer contacto' },
+  visita:      { emoji: '📍', nombre: 'Visita' },
+  ventas:      { emoji: '📋', nombre: 'Ventas' },
+  seguimiento: { emoji: '🔔', nombre: 'Seguimiento' },
+  pagos:       { emoji: '💰', nombre: 'Cobranza' },
+  entrega:     { emoji: '🚚', nombre: 'Entrega' },
+  postventa:   { emoji: '⭐', nombre: 'Postventa' }
 };
 
 var MSJ_PLANTILLAS = [
-  { cat: 'ventas', titulo: 'Enviar cotización',
-    texto: 'Hola {cliente}, te comparto tu cotización folio {folio} por ${monto}. Cualquier duda quedo a tus órdenes 😊' },
-  { cat: 'ventas', titulo: 'Seguimiento a cotización sin respuesta',
-    texto: 'Hola {cliente}, ¿cómo estás? Solo para saber si tuviste oportunidad de revisar la cotización que te envié (folio {folio}). Quedo atento a tus comentarios 🙂' },
+
+  // ═══ PRIMER CONTACTO ═══
+  { cat: 'contacto', titulo: 'Primer contacto con recomendación',
+    cuando: 'Llega por un referido y aún no sabes qué necesita',
+    u: T("{saludo}, {cliente}. Mucho gusto, gracias por la confianza y qué bueno que nos recomendaron. 😊",
+         "",
+         "Soy {firma}, de BarrCan: fabricamos e instalamos canceles de vidrio templado y aluminio a la medida.",
+         "",
+         "Para orientarle mejor con su proyecto, ¿me podría compartir?",
+         "1. ¿Es cancel de baño (regadera o tina) u otro espacio?",
+         "2. Una foto y las medidas aproximadas de ancho y alto.",
+         "3. ¿Para cuándo le gustaría tenerlo instalado?",
+         "",
+         "Con eso le doy una idea del costo, o si prefiere pasamos a su domicilio a tomar medidas para cotizarle exacto. ¿Qué le parece?"),
+    t: T("{saludo}, {cliente}. Mucho gusto, gracias por la confianza y qué bueno que nos recomendaron. 😊",
+         "",
+         "Soy {firma}, de BarrCan: fabricamos e instalamos canceles de vidrio templado y aluminio a la medida.",
+         "",
+         "Para orientarte mejor con tu proyecto, ¿me puedes compartir?",
+         "1. ¿Es cancel de baño (regadera o tina) u otro espacio?",
+         "2. Una foto y las medidas aproximadas de ancho y alto.",
+         "3. ¿Para cuándo te gustaría tenerlo instalado?",
+         "",
+         "Con eso te doy una idea del costo, o si prefieres pasamos a tu domicilio a tomar medidas para cotizarte exacto. ¿Qué te parece?") },
+
+  { cat: 'contacto', titulo: 'Primer contacto sin recomendación',
+    cuando: 'Te escribe por Facebook, Google, letrero, etc.',
+    u: T("{saludo}, {cliente}. Mucho gusto y gracias por escribirnos. 😊",
+         "",
+         "Soy {firma}, de BarrCan: fabricamos e instalamos canceles de vidrio templado y aluminio a la medida.",
+         "",
+         "Para orientarle mejor con su proyecto, ¿me podría compartir?",
+         "1. ¿Es cancel de baño (regadera o tina) u otro espacio?",
+         "2. Una foto y las medidas aproximadas de ancho y alto.",
+         "3. ¿Para cuándo le gustaría tenerlo instalado?",
+         "",
+         "Con eso le doy una idea del costo, o si prefiere pasamos a su domicilio a tomar medidas para cotizarle exacto. ¿Qué le parece?"),
+    t: T("{saludo}, {cliente}. Mucho gusto y gracias por escribirnos. 😊",
+         "",
+         "Soy {firma}, de BarrCan: fabricamos e instalamos canceles de vidrio templado y aluminio a la medida.",
+         "",
+         "Para orientarte mejor con tu proyecto, ¿me puedes compartir?",
+         "1. ¿Es cancel de baño (regadera o tina) u otro espacio?",
+         "2. Una foto y las medidas aproximadas de ancho y alto.",
+         "3. ¿Para cuándo te gustaría tenerlo instalado?",
+         "",
+         "Con eso te doy una idea del costo, o si prefieres pasamos a tu domicilio a tomar medidas para cotizarte exacto. ¿Qué te parece?") },
+
+  { cat: 'contacto', titulo: 'Forma de trabajo (visita con costo abonable)',
+    cuando: 'Cliente nuevo que pide visita; el costo se abona si compra',
+    u: T("Con gusto le explico cómo trabajamos para que tenga todo claro:",
+         "",
+         "1. Pasamos a su domicilio a tomar medidas exactas y revisar el espacio (muros, nivel, desagüe), para que quede perfecto y sin sorpresas.",
+         "2. Le enviamos su presupuesto por escrito, con todo incluido: {incluye}.",
+         "3. Con un anticipo apartamos fecha, fabricamos a la medida e instalamos.",
+         "",
+         "La visita de medición tiene un costo de {costo_visita}, pero si decide trabajar con nosotros se lo abonamos al total. Así no paga nada extra. 😊",
+         "",
+         "¿Le parece bien? Si gusta, le propongo día y horario para pasar."),
+    t: T("Con gusto te explico cómo trabajamos para que tengas todo claro:",
+         "",
+         "1. Pasamos a tu domicilio a tomar medidas exactas y revisar el espacio (muros, nivel, desagüe), para que quede perfecto y sin sorpresas.",
+         "2. Te enviamos tu presupuesto por escrito, con todo incluido: {incluye}.",
+         "3. Con un anticipo apartamos fecha, fabricamos a la medida e instalamos.",
+         "",
+         "La visita de medición tiene un costo de {costo_visita}, pero si decides trabajar con nosotros te lo abonamos al total. Así no pagas nada extra. 😊",
+         "",
+         "¿Te parece bien? Si gustas, te propongo día y horario para pasar.") },
+
+  { cat: 'contacto', titulo: 'Forma de trabajo (visita sin costo)',
+    cuando: 'Cliente frecuente o venta casi segura',
+    u: T("Con gusto le explico cómo trabajamos para que tenga todo claro:",
+         "",
+         "1. Pasamos a su domicilio, sin costo, a tomar medidas exactas y revisar el espacio (muros, nivel, desagüe), para que quede perfecto y sin sorpresas.",
+         "2. Le enviamos su presupuesto por escrito, con todo incluido: {incluye}.",
+         "3. Si le conviene, con un anticipo apartamos fecha, fabricamos a la medida e instalamos.",
+         "",
+         "¿Le parece bien? Si gusta, le propongo día y horario para pasar."),
+    t: T("Con gusto te explico cómo trabajamos para que tengas todo claro:",
+         "",
+         "1. Pasamos a tu domicilio, sin costo, a tomar medidas exactas y revisar el espacio (muros, nivel, desagüe), para que quede perfecto y sin sorpresas.",
+         "2. Te enviamos tu presupuesto por escrito, con todo incluido: {incluye}.",
+         "3. Si te conviene, con un anticipo apartamos fecha, fabricamos a la medida e instalamos.",
+         "",
+         "¿Te parece bien? Si gustas, te propongo día y horario para pasar.") },
+
+  // ═══ VISITA ═══
+  { cat: 'visita', titulo: 'Proponer fecha de visita',
+    cuando: 'Ya aceptó la visita; dale dos opciones concretas',
+    u: T("Con mucho gusto. Para la visita le propongo {fecha}, o si le acomoda más, {alt}. ¿Cuál le queda mejor?",
+         "",
+         "Y por favor me confirma su dirección completa y alguna referencia para llegar sin problema."),
+    t: T("Con mucho gusto. Para la visita te propongo {fecha}, o si te acomoda más, {alt}. ¿Cuál te queda mejor?",
+         "",
+         "Y por favor me confirmas tu dirección completa y alguna referencia para llegar sin problema.") },
+
+  { cat: 'visita', titulo: 'Datos de pago de la visita',
+    cuando: 'Visita con costo: manda esto junto con la fecha',
+    u: T("Para apartar la visita, estos son los datos de depósito:",
+         "{datos_pago}",
+         "",
+         "Monto de la visita: {costo_visita}, que se abona al total si decide trabajar con nosotros.",
+         "",
+         "En cuanto me envíe su comprobante confirmamos el horario. Si requiere factura, me comparte sus datos fiscales."),
+    t: T("Para apartar la visita, estos son los datos de depósito:",
+         "{datos_pago}",
+         "",
+         "Monto de la visita: {costo_visita}, que se abona al total si decides trabajar con nosotros.",
+         "",
+         "En cuanto me envíes tu comprobante confirmamos el horario. Si requieres factura, me compartes tus datos fiscales.") },
+
+  { cat: 'visita', titulo: 'Disculpa por demora y fecha (visita ya pagada)',
+    cuando: 'El cliente ya pagó la visita y tardaste en agendarla',
+    u: T("{saludo}, {cliente}. Una disculpa por la demora en darle fecha para su visita: mi agenda se complicó y quería asegurarle un horario en el que pudiera atenderle con calma.",
+         "",
+         "Tengo disponible {fecha}. ¿Le funciona? Si no, con gusto busco otra opción.",
+         "",
+         "¡Gracias por su paciencia!"),
+    t: T("{saludo}, {cliente}. Una disculpa por la demora en darte fecha para tu visita: mi agenda se complicó y quería asegurarte un horario en el que pudiera atenderte con calma.",
+         "",
+         "Tengo disponible {fecha}. ¿Te funciona? Si no, con gusto busco otra opción.",
+         "",
+         "¡Gracias por tu paciencia!") },
+
+  { cat: 'visita', titulo: 'Confirmar visita (día anterior)',
+    cuando: 'La tarde antes de la visita, para que no te dejen plantado',
+    u: T("{saludo}, {cliente}. Le recuerdo que mañana {fecha} paso a su domicilio para la visita de medición. ¿Sigue bien para usted?",
+         "",
+         "Si surge cualquier cambio, me avisa con confianza. ¡Hasta mañana!"),
+    t: T("{saludo}, {cliente}. Te recuerdo que mañana {fecha} paso a tu domicilio para la visita de medición. ¿Sigue bien para ti?",
+         "",
+         "Si surge cualquier cambio, me avisas con confianza. ¡Hasta mañana!") },
+
+  // ═══ VENTAS ═══
+  { cat: 'ventas', titulo: 'Enviar presupuesto',
+    cuando: 'Al mandar el PDF del presupuesto',
+    u: T("{saludo}, {cliente}. Le comparto su presupuesto folio {folio} por {monto}, que incluye {incluye}.",
+         "",
+         "Cualquier duda sobre alcances, acabados o tiempos con gusto se la resuelvo. Con un anticipo apartamos fecha de fabricación e instalación.",
+         "",
+         "Quedo atento a sus comentarios. 😊"),
+    t: T("Hola {cliente}, te comparto tu presupuesto folio {folio} por {monto}, que incluye {incluye}.",
+         "",
+         "Cualquier duda con los alcances, acabados o tiempos te la resuelvo. Con un anticipo apartamos fecha de fabricación e instalación.",
+         "",
+         "Quedo atento a tus comentarios 😊") },
+
+  { cat: 'ventas', titulo: 'Cliente aceptó: solicitar anticipo',
+    cuando: 'Dijo que sí; cierra con datos de pago y siguiente paso',
+    u: T("Excelente, {cliente}, gracias por su confianza. Para apartar fecha de fabricación e instalación del folio {folio} solicito un anticipo de {anticipo}.",
+         "",
+         "Datos de depósito:",
+         "{datos_pago}",
+         "",
+         "Cuando haga el pago me envía su comprobante y coordinamos la toma de medidas finales. Si requiere factura, me comparte sus datos fiscales."),
+    t: T("Excelente, {cliente}, gracias por tu confianza. Para apartar fecha de fabricación e instalación del folio {folio} solicito un anticipo de {anticipo}.",
+         "",
+         "Datos de depósito:",
+         "{datos_pago}",
+         "",
+         "Cuando hagas el pago me envías tu comprobante y coordinamos la toma de medidas finales. Si requieres factura, me compartes tus datos fiscales.") },
+
+  // ═══ SEGUIMIENTO ═══
+  { cat: 'seguimiento', titulo: '1er seguimiento (a los 2-3 días)',
+    cuando: 'Mandaste presupuesto y no ha contestado; toque ligero',
+    u: T("{saludo}, {cliente}, ¿cómo está? Espero que muy bien. 😊",
+         "",
+         "Le escribo para saber si pudo revisar el presupuesto folio {folio}. Si hay algo que quiera ajustar (medidas, acabados o cantidades), dígame y lo vemos para que quede como lo necesita.",
+         "",
+         "Quedo al pendiente. ¡Gracias!"),
+    t: T("Hola {cliente}, ¿cómo estás? Espero que muy bien. 😊",
+         "",
+         "Te escribo para saber si pudiste revisar el presupuesto folio {folio}. Si hay algo que quieras ajustar (medidas, acabados o cantidades), dímelo y lo vemos para que quede como lo necesitas.",
+         "",
+         "Quedo al pendiente. ¡Gracias!") },
+
+  { cat: 'seguimiento', titulo: '2º seguimiento con siguiente paso (5-7 días)',
+    cuando: 'Sigue sin responder; propón avanzar con anticipo',
+    u: T("{saludo}, {cliente}. Le doy seguimiento a su presupuesto folio {folio} para ver si le interesa avanzar.",
+         "",
+         "Si ya lo tiene decidido, con su anticipo apartamos fecha de fabricación e instalación y agendamos la toma de medidas finales. Si algo le hace dudar (alcance, acabados, tiempos o forma de pago), dígame con confianza y lo ajustamos.",
+         "",
+         "¿Cómo lo ve para avanzar esta semana?"),
+    t: T("Hola {cliente}, te doy seguimiento a tu presupuesto folio {folio} para ver si te late avanzar.",
+         "",
+         "Si ya lo tienes decidido, con tu anticipo apartamos fecha de fabricación e instalación y agendamos la toma de medidas finales. Si algo te hace dudar (alcance, acabados, tiempos o forma de pago), dime con confianza y lo ajustamos.",
+         "",
+         "¿Cómo lo ves para avanzar esta semana?") },
+
+  { cat: 'seguimiento', titulo: 'Seguimiento al anticipo prometido',
+    cuando: 'Dijo que haría el anticipo "esta semana" y no ha llegado',
+    u: T("{saludo}, {cliente}, ¿cómo está? Espero que muy bien. 😊",
+         "",
+         "Le escribo para ver cómo va lo del anticipo del folio {folio} que comentó programar. Si necesita los datos de pago o tiene alguna duda del presupuesto, con gusto le apoyo.",
+         "",
+         "En cuanto lo tengamos, agendamos la fecha de fabricación y la toma de medidas finales. ¡Gracias por su tiempo!"),
+    t: T("Hola {cliente}, ¿cómo estás? Espero que muy bien. 😊",
+         "",
+         "Te escribo para ver cómo va lo del anticipo del folio {folio} que comentaste programar. Si necesitas los datos de pago o tienes alguna duda del presupuesto, con gusto te apoyo.",
+         "",
+         "En cuanto lo tengamos, agendamos la fecha de fabricación y la toma de medidas finales. ¡Gracias por tu tiempo!") },
+
+  { cat: 'seguimiento', titulo: 'Cierre amable (último mensaje)',
+    cuando: 'Tercer intento sin respuesta; deja la puerta abierta',
+    u: T("{saludo}, {cliente}. No quiero ser insistente, así que este es mi último mensaje sobre el presupuesto folio {folio}.",
+         "",
+         "Si por ahora no es el momento o decidió otra opción, no hay problema, se lo agradezco mucho. Si más adelante quiere retomarlo, con gusto lo atendemos.",
+         "",
+         "¡Excelente día!"),
+    t: T("Hola {cliente}. No quiero ser insistente, así que este es mi último mensaje sobre el presupuesto folio {folio}.",
+         "",
+         "Si por ahora no es el momento o decidiste otra opción, no hay problema, te lo agradezco mucho. Si más adelante quieres retomarlo, con gusto te atendemos.",
+         "",
+         "¡Excelente día!") },
+
+  // ═══ COBRANZA ═══
   { cat: 'pagos', titulo: 'Confirmar anticipo recibido',
-    texto: '¡Gracias {cliente}! Confirmamos tu anticipo del folio {folio}. En cuanto tengamos fecha de instalación te avisamos.' },
+    cuando: 'Cuando entra el anticipo',
+    u: T("¡Gracias, {cliente}! Confirmamos su anticipo del folio {folio}. Con eso queda apartado su proyecto.",
+         "",
+         "En cuanto tengamos fecha de instalación le avisamos."),
+    t: T("¡Gracias {cliente}! Confirmamos tu anticipo del folio {folio}. En cuanto tengamos fecha de instalación te avisamos.") },
+
   { cat: 'pagos', titulo: 'Recordatorio de segundo pago',
-    texto: 'Hola {cliente}, te recuerdo que para poder agendar la instalación de tu folio {folio} necesitamos el segundo pago. Cualquier duda, aquí estoy 🙋' },
-  { cat: 'pagos', titulo: 'Recordatorio de saldo pendiente',
-    texto: 'Hola {cliente}, te comparto que tu folio {folio} tiene un saldo pendiente de ${saldo}. Quedo atento para coordinar el pago.' },
+    cuando: 'Antes de agendar instalación, falta el segundo pago',
+    u: T("{saludo}, {cliente}. Le recuerdo que para poder agendar la instalación de su folio {folio} necesitamos el segundo pago.",
+         "",
+         "Datos de depósito:",
+         "{datos_pago}",
+         "",
+         "Cualquier duda, aquí estoy. 🙋"),
+    t: T("Hola {cliente}, te recuerdo que para poder agendar la instalación de tu folio {folio} necesitamos el segundo pago.",
+         "",
+         "Datos de depósito:",
+         "{datos_pago}",
+         "",
+         "Cualquier duda, aquí estoy 🙋") },
+
+  { cat: 'pagos', titulo: 'Recordatorio amable de saldo',
+    cuando: 'Primer aviso de saldo pendiente',
+    u: T("{saludo}, {cliente}, ¿cómo está? Le escribo para recordarle amablemente que el folio {folio} tiene un saldo pendiente de {saldo}.",
+         "",
+         "Datos de depósito:",
+         "{datos_pago}",
+         "",
+         "Cuando realice el pago me envía su comprobante para emitirle su recibo. Si ya lo realizó, por favor ignore este mensaje y disculpe la molestia. ¡Gracias!"),
+    t: T("Hola {cliente}, ¿cómo estás? Te recuerdo amablemente que tu folio {folio} tiene un saldo pendiente de {saldo}.",
+         "",
+         "Datos de depósito:",
+         "{datos_pago}",
+         "",
+         "Cuando hagas el pago me mandas tu comprobante para emitirte tu recibo. Si ya lo hiciste, ignora este mensaje y disculpa la molestia. ¡Gracias!") },
+
+  { cat: 'pagos', titulo: 'Segundo aviso de saldo',
+    cuando: 'Pasaron varios días del primer aviso; pide fecha de pago',
+    u: T("{saludo}, {cliente}. Le doy seguimiento al saldo de {saldo} del folio {folio}, que sigue pendiente.",
+         "",
+         "¿Me podría confirmar en qué fecha lo estaría liquidando? Si hay algún inconveniente, prefiero que lo platiquemos para encontrar una solución.",
+         "",
+         "Datos de depósito:",
+         "{datos_pago}"),
+    t: T("Hola {cliente}. Te doy seguimiento al saldo de {saldo} del folio {folio}, que sigue pendiente.",
+         "",
+         "¿Me puedes confirmar en qué fecha lo estarías liquidando? Si hay algún inconveniente, prefiero que lo platiquemos para encontrar una solución.",
+         "",
+         "Datos de depósito:",
+         "{datos_pago}") },
+
+  { cat: 'pagos', titulo: 'Último aviso de saldo',
+    cuando: 'Sin respuesta ante dos avisos; firme pero respetuoso',
+    u: T("{saludo}, {cliente}. El saldo de {saldo} del folio {folio} lleva varios días pendiente y necesito regularizarlo.",
+         "",
+         "Le pido me confirme hoy la fecha exacta de pago. De no tener respuesta, tendré que pausar cualquier servicio adicional programado hasta que se liquide.",
+         "",
+         "Agradezco su pronta respuesta."),
+    t: T("Hola {cliente}. El saldo de {saldo} del folio {folio} lleva varios días pendiente y necesito regularizarlo.",
+         "",
+         "Te pido me confirmes hoy la fecha exacta de pago. De no tener respuesta, tendré que pausar cualquier servicio adicional programado hasta que se liquide.",
+         "",
+         "Agradezco tu pronta respuesta.") },
+
+  { cat: 'pagos', titulo: 'Pago de liquidación recibido',
+    cuando: 'Cuando entra el pago final',
+    u: T("Recibimos su pago, {cliente}, muchas gracias. Su folio {folio} queda liquidado. 🙌",
+         "",
+         "Si requiere factura, me comparte sus datos fiscales. Quedo a sus órdenes."),
+    t: T("Recibimos tu pago, {cliente}, muchas gracias. Tu folio {folio} queda liquidado. 🙌",
+         "",
+         "Si requieres factura, me compartes tus datos fiscales. Quedo a tus órdenes.") },
+
+  // ═══ ENTREGA ═══
   { cat: 'entrega', titulo: 'Confirmar fecha de instalación',
-    texto: 'Hola {cliente}, confirmamos tu instalación del folio {folio} para el día {fecha}. Cualquier cambio, avísanos con tiempo 🙏' },
+    cuando: 'Al agendar la instalación',
+    u: T("{saludo}, {cliente}. Confirmamos la instalación de su folio {folio} para {fecha}. Si surge algún cambio, le pido me avise con tiempo. 🙏"),
+    t: T("Hola {cliente}, confirmamos tu instalación del folio {folio} para {fecha}. Cualquier cambio, avísanos con tiempo 🙏") },
+
+  { cat: 'entrega', titulo: 'Instalación mañana (recordatorio)',
+    cuando: 'La tarde antes de instalar',
+    u: T("{saludo}, {cliente}. Le recuerdo que mañana {fecha} nuestro equipo pasa a instalar su folio {folio}.",
+         "",
+         "Le pedimos tener el área despejada y que haya alguien para recibirnos. Si hay cualquier cambio, avíseme por favor."),
+    t: T("Hola {cliente}, te recuerdo que mañana {fecha} nuestro equipo pasa a instalar tu folio {folio}.",
+         "",
+         "Te pedimos tener el área despejada y que haya alguien para recibirnos. Si hay cualquier cambio, avísame por favor.") },
+
   { cat: 'entrega', titulo: 'Aviso: material listo',
-    texto: 'Hola {cliente}, tu material del folio {folio} ya está listo. Coordinamos fecha de entrega/instalación cuando gustes.' },
+    cuando: 'Terminó la fabricación',
+    u: T("{saludo}, {cliente}. Su material del folio {folio} ya está listo. Coordinamos fecha de entrega e instalación cuando le acomode."),
+    t: T("Hola {cliente}, tu material del folio {folio} ya está listo. Coordinamos fecha de entrega/instalación cuando gustes.") },
+
   { cat: 'entrega', titulo: 'Aviso de ajuste de fecha',
-    texto: 'Hola {cliente}, te escribo para avisarte que tu instalación del folio {folio} va a tener un pequeño ajuste de fecha. Te contacto en cuanto tenga el nuevo día para coordinar contigo.' },
+    cuando: 'Tienes que mover una instalación',
+    u: T("{saludo}, {cliente}. Le escribo para avisarle que su instalación del folio {folio} tendrá un pequeño ajuste de fecha. Una disculpa por la molestia; le contacto en cuanto tenga el nuevo día para coordinar con usted."),
+    t: T("Hola {cliente}, te escribo para avisarte que tu instalación del folio {folio} va a tener un pequeño ajuste de fecha. Te contacto en cuanto tenga el nuevo día para coordinar contigo.") },
+
+  // ═══ POSTVENTA ═══
   { cat: 'postventa', titulo: 'Agradecimiento + garantía',
-    texto: '¡Gracias por tu confianza, {cliente}! Tu folio {folio} cuenta con garantía -- cualquier detalle, aquí estamos para apoyarte.' },
+    cuando: 'Al terminar la instalación',
+    u: T("¡Gracias por su confianza, {cliente}! Su proyecto folio {folio} cuenta con garantía.",
+         "",
+         "Si llega a presentar cualquier detalle, puede reportarlo aquí y le damos seguimiento: {liga_garantia}",
+         "",
+         "Quedo a sus órdenes."),
+    t: T("¡Gracias por tu confianza, {cliente}! Tu folio {folio} cuenta con garantía.",
+         "",
+         "Si llega a presentar cualquier detalle, repórtalo aquí y te damos seguimiento: {liga_garantia}",
+         "",
+         "Aquí estamos para apoyarte.") },
+
   { cat: 'postventa', titulo: 'Solicitar reseña',
-    texto: 'Hola {cliente}, nos encantaría que compartieras tu experiencia con nosotros dejando una reseña. ¡Gracias por confiar en BarrCan! 🙌' }
+    cuando: '2-3 días después de instalar, con el cliente contento',
+    u: T("{cliente}, nos encantaría saber cómo le fue con su proyecto. Si quedó contento, nos ayudaría muchísimo con una reseña: {liga_resena}",
+         "",
+         "¡Gracias por confiar en BarrCan! 🙌"),
+    t: T("Hola {cliente}, nos encantaría que compartieras tu experiencia con nosotros. Si quedaste contento, nos ayudas muchísimo con una reseña: {liga_resena}",
+         "",
+         "¡Gracias por confiar en BarrCan! 🙌") }
 ];
 
 var MSJ_FOLIO_SEL = null; // {folio, cliente, tel, monto, saldo}
-var MSJ_CAT_ACTIVA = 'ventas';
+var MSJ_CAT_ACTIVA = 'contacto';
+var MSJ_TONO = 'u';       // 'u' = usted, 't' = tú
+try { MSJ_TONO = localStorage.getItem('barrcan_msj_tono') === 't' ? 't' : 'u'; } catch (e) {}
+
+// ── Mis datos (se guardan en el dispositivo, no en el código) ─────
+function msjCfgLeer() {
+  try { return JSON.parse(localStorage.getItem('barrcan_msj_cfg') || '{}') || {}; }
+  catch (e) { return {}; }
+}
+function msjCfgCargar() {
+  var c = msjCfgLeer();
+  document.getElementById('msj-cfg-pago').value = c.pago || '';
+  document.getElementById('msj-cfg-costo').value = c.costo || '500';
+  document.getElementById('msj-cfg-resena').value = c.resena || '';
+  document.getElementById('msj-cfg-firma').value = c.firma || 'Mauricio';
+}
+function msjCfgGuardar() {
+  var c = {
+    pago: document.getElementById('msj-cfg-pago').value.trim(),
+    costo: document.getElementById('msj-cfg-costo').value.replace(/[^\d.]/g, ''),
+    resena: document.getElementById('msj-cfg-resena').value.trim(),
+    firma: document.getElementById('msj-cfg-firma').value.trim()
+  };
+  try { localStorage.setItem('barrcan_msj_cfg', JSON.stringify(c)); toast('✅ Datos guardados en este dispositivo'); }
+  catch (e) { toast('⚠️ No se pudo guardar en este dispositivo'); }
+}
+
+// ── Tratamiento usted / tú ────────────────────────────────────────
+function msjRenderTono() {
+  var cont = document.getElementById('msj-tono');
+  cont.innerHTML = '<span>Tratamiento:</span>'
+    + '<button type="button" class="cat-tab' + (MSJ_TONO === 'u' ? ' active' : '') + '" onclick="msjSetTono(\'u\')">Usted</button>'
+    + '<button type="button" class="cat-tab' + (MSJ_TONO === 't' ? ' active' : '') + '" onclick="msjSetTono(\'t\')">Tú</button>';
+}
+function msjSetTono(t) {
+  MSJ_TONO = t;
+  try { localStorage.setItem('barrcan_msj_tono', t); } catch (e) {}
+  msjRenderTono();
+  msjRenderLista();
+}
+function msjTextoPlantilla(p) { return (MSJ_TONO === 't' ? p.t : p.u) || p.u; }
 
 function msjRenderTabs() {
   var cont = document.getElementById('msj-cat-tabs');
@@ -197,22 +602,29 @@ function msjCambiarCat(cat) {
 function msjRenderLista() {
   var cont = document.getElementById('msj-lista-plantillas');
   var items = MSJ_PLANTILLAS.filter(function(p) { return p.cat === MSJ_CAT_ACTIVA; });
-  cont.innerHTML = items.map(function(p, i) {
+  cont.innerHTML = items.map(function(p) {
     var idx = MSJ_PLANTILLAS.indexOf(p);
     return '<div class="plantilla-card" onclick="msjAbrirPlantilla(' + idx + ')">'
       + '<div class="plantilla-titulo">' + esc(p.titulo) + '</div>'
-      + '<div class="plantilla-preview">' + esc(p.texto.slice(0, 90)) + (p.texto.length > 90 ? '…' : '') + '</div>'
+      + '<div class="plantilla-cuando">' + esc(p.cuando || '') + '</div>'
       + '</div>';
   }).join('');
 }
 
 async function msjBuscarFolio() {
   var q = (document.getElementById('msj-folio-buscar').value || '').trim();
+  if (q.length === 0) {
+    MSJ_FOLIO_SEL = null;
+    document.getElementById('msj-folio-seleccionado').style.display = 'none';
+    document.getElementById('msj-folios-datalist').innerHTML = '';
+    return;
+  }
   if (q.length < 2 || !sb()) return;
   try {
-    var res = await sb().from('presupuestos_atrasados').select('folio,cliente,tel,monto,saldo')
+    var res = await sb().from('presupuestos_atrasados').select('folio,cliente,tel,monto,saldo,eliminado')
       .or('folio.ilike.%' + q + '%,cliente.ilike.%' + q + '%').limit(20);
     if (res.error) return;
+    res.data = (res.data || []).filter(function(p) { return !p.eliminado; });
     document.getElementById('msj-folios-datalist').innerHTML = (res.data || [])
       .map(function(p) { return '<option value="' + esc(p.folio) + ' — ' + esc(p.cliente) + '">'; }).join('');
 
@@ -226,24 +638,75 @@ async function msjBuscarFolio() {
   } catch (e) { console.warn('[BarrCan] Error buscando folio:', e.message); }
 }
 
+function msjSaludo() {
+  var h = new Date().getHours();
+  if (h < 12) return 'Buen día';
+  if (h < 19) return 'Buenas tardes';
+  return 'Buenas noches';
+}
+
+function msjMoney(n) {
+  if (n === undefined || n === null || n === '' || isNaN(Number(n))) return '';
+  return '$' + fmt(n);
+}
+
+// Lo que no se puede llenar solo queda entre [corchetes] para escribirlo a mano
+var MSJ_MARCADORES = {
+  cliente: '[cliente]', folio: '[folio]', monto: '[monto]', saldo: '[saldo]',
+  datos_pago: '[datos de pago]', fecha: '[fecha y hora]', alt: '[fecha alterna]',
+  anticipo: '[monto del anticipo]', liga_resena: '[liga de reseña]'
+};
+
 function msjRellenar(texto) {
-  var hoy = new Date();
-  var fechaTxt = hoy.toLocaleDateString('es-MX', { day: 'numeric', month: 'long' });
   var d = MSJ_FOLIO_SEL || {};
-  return texto
-    .replace(/{cliente}/g, d.cliente || '[cliente]')
-    .replace(/{folio}/g, d.folio || '[folio]')
-    .replace(/{monto}/g, (d.monto !== undefined && d.monto !== null) ? fmt(d.monto) : '[monto]')
-    .replace(/{saldo}/g, (d.saldo !== undefined && d.saldo !== null) ? fmt(d.saldo) : '[saldo]')
-    .replace(/{fecha}/g, fechaTxt);
+  var cfg = msjCfgLeer();
+  var manual = (document.getElementById('msj-nombre-manual').value || '').trim();
+  var costo = cfg.costo ? Number(cfg.costo) : 500;
+  var vals = {
+    cliente: d.cliente || manual || '',
+    folio: d.folio || '',
+    monto: msjMoney(d.monto),
+    saldo: (Number(d.saldo) > 0) ? msjMoney(d.saldo) : '',
+    saludo: msjSaludo(),
+    firma: cfg.firma || 'Mauricio',
+    costo_visita: msjMoney(costo > 0 ? costo : 500),
+    datos_pago: cfg.pago || '',
+    liga_garantia: MSJ_LIGA_GARANTIA,
+    liga_resena: cfg.resena || '',
+    incluye: 'fabricación, envío e instalación'
+  };
+  return texto.replace(/\{([a-z_]+)\}/g, function(m, k) {
+    if (vals[k]) return vals[k];
+    return MSJ_MARCADORES[k] || m;
+  });
+}
+
+// Avisa si todavía hay campos entre [corchetes]
+function msjCamposPendientes() {
+  var t = document.getElementById('msj-texto').value || '';
+  var m = t.match(/\[[^\]\n]{2,40}\]/g) || [];
+  var uniq = [];
+  m.forEach(function(x) { if (uniq.indexOf(x) < 0) uniq.push(x); });
+  return uniq;
+}
+function msjActualizarAviso() {
+  var el = document.getElementById('msj-aviso');
+  var p = msjCamposPendientes();
+  if (p.length) {
+    el.style.display = 'block';
+    el.textContent = '⚠️ Todavía falta llenar: ' + p.join(', ');
+  } else {
+    el.style.display = 'none';
+  }
 }
 
 function msjAbrirPlantilla(idx) {
   var p = MSJ_PLANTILLAS[idx];
   document.getElementById('msj-modal-titulo').textContent = p.titulo;
-  document.getElementById('msj-texto').value = msjRellenar(p.texto);
+  document.getElementById('msj-texto').value = msjRellenar(msjTextoPlantilla(p));
   document.getElementById('msj-tel').value = (MSJ_FOLIO_SEL && MSJ_FOLIO_SEL.tel) ? MSJ_FOLIO_SEL.tel.replace(/\D/g, '') : '';
   document.getElementById('msj-modal').classList.add('visible');
+  msjActualizarAviso();
 }
 
 function msjCerrarModal() {
@@ -263,12 +726,16 @@ function msjAbrirWhatsapp() {
   var tel = (document.getElementById('msj-tel').value || '').replace(/\D/g, '');
   var txt = document.getElementById('msj-texto').value;
   if (!tel || tel.length < 10) { toast('⚠️ Falta un teléfono válido (10 dígitos)'); return; }
+  var pend = msjCamposPendientes();
+  if (pend.length && !confirm('Todavía hay campos sin llenar: ' + pend.join(', ') + '\n\n¿Abrir WhatsApp así?')) return;
   var telConLada = tel.length === 10 ? '52' + tel : tel;
   window.open('https://wa.me/' + telConLada + '?text=' + encodeURIComponent(txt), '_blank');
 }
 
 document.addEventListener('DOMContentLoaded', function() {
   detectarConexion();
+  msjCfgCargar();
+  msjRenderTono();
   msjRenderTabs();
   msjRenderLista();
 });
