@@ -7,6 +7,14 @@
 <title>BarrCan &middot; Mensajes</title>
 <!--
   BARRCAN · MODULO: MENSAJES LISTOS (standalone)
+  VERSION : v1.5
+  FECHA   : 2026-10-22
+  v1.5 - CLIENTE → PRESUPUESTO SIN ESCRIBIR: lista desplegable de clientes registrados (con buscador que la
+    acorta); al elegir uno, la lista de presupuestos se acorta a los suyos y se llenan nombre, teléfono, correo,
+    folio, monto y saldo. Fecha y hora con selector (salen como se dicen: "el sábado 24 de octubre a las 10:30
+    de la mañana"), hora sola para los recordatorios de "mañana", y el anticipo se sugiere en 50% del presupuesto.
+    Nuevo botón de CORREO (mailto) junto a WhatsApp y Copiar. Sin señal usa los clientes y presupuestos ya
+    descargados en el dispositivo. La búsqueda por folio sigue disponible para clientes nuevos.
   VERSION : v1.4
   FECHA   : 2026-10-22
   v1.4 - TONO MÁS NATURAL: las 26 plantillas (usted y tú) se reescribieron para sonar a una persona escribiendo
@@ -83,6 +91,9 @@ html, body { height:100%; font-family:'DM Sans',sans-serif; background:var(--off
 .form-label { display:block; font-size:11px; font-weight:600; color:var(--gray-600); margin-bottom:5px; }
 .form-input { width:100%; padding:10px 12px; border:1.5px solid var(--gray-200); border-radius:var(--radius-sm); font-family:'DM Sans',sans-serif; font-size:14px; color:var(--navy); background:var(--off-white); box-sizing:border-box; }
 .form-input:focus { outline:none; border-color:var(--blue); background:#fff; }
+.form-select { width:100%; padding:10px 12px; border:1.5px solid var(--gray-200); border-radius:var(--radius-sm); font-family:'DM Sans',sans-serif; font-size:14px; color:var(--navy); background:var(--off-white); box-sizing:border-box; }
+.form-select:disabled { opacity:.55; }
+.campo-fila { margin-bottom:10px; }
 .cat-tabs { display:flex; gap:6px; overflow-x:auto; margin-bottom:14px; padding-bottom:2px; }
 .cat-tab { flex-shrink:0; padding:8px 14px; border-radius:20px; border:1.5px solid var(--gray-200); background:#fff; font-size:12px; font-weight:600; color:var(--gray-600); cursor:pointer; white-space:nowrap; }
 .cat-tab.active { background:var(--navy); color:#fff; border-color:var(--navy); }
@@ -117,15 +128,27 @@ datalist {}
 
   <div class="content">
     <div class="section-title">💬 Mensajes listos</div>
-    <div class="section-sub">Elige un folio (opcional) y una plantilla -- se llena sola, la revisas y la mandas.</div>
+    <div class="section-sub">Elige al cliente y su presupuesto, luego la plantilla: se llena sola, solo pones fecha y hora. La mandas por WhatsApp, correo o la copias.</div>
 
     <div class="wizard-card">
-      <label class="form-label">Folio / cliente <span style="color:var(--gray-400);font-weight:400">(opcional -- si no eliges, se queda con [cliente] genérico)</span></label>
-      <input type="text" class="form-input" id="msj-folio-buscar" list="msj-folios-datalist" placeholder="Escribe folio o nombre del cliente…" oninput="msjBuscarFolio()">
-      <datalist id="msj-folios-datalist"></datalist>
-      <div id="msj-folio-seleccionado" style="display:none;margin-top:8px;padding:8px 10px;background:var(--off-white);border-radius:8px;font-size:11.5px;color:var(--gray-600)"></div>
-      <label class="form-label" style="margin-top:10px">Nombre del cliente <span style="color:var(--gray-400);font-weight:400">(solo si aún no tiene folio, ej. primer contacto)</span></label>
+      <label class="form-label">Cliente</label>
+      <input type="text" class="form-input" id="msj-cli-filtro" placeholder="🔎 Escribe para acortar la lista…" oninput="msjFiltrarClientes()" autocomplete="off" style="margin-bottom:6px">
+      <select class="form-select" id="msj-cli-select" onchange="msjElegirCliente()"><option value="">— Elige al cliente —</option></select>
+
+      <label class="form-label" style="margin-top:10px">Presupuesto <span style="color:var(--gray-400);font-weight:400">(se acorta a los de ese cliente; opcional)</span></label>
+      <select class="form-select" id="msj-pres-select" onchange="msjElegirPresupuesto()" disabled><option value="">— Primero elige al cliente —</option></select>
+      <div id="msj-folio-seleccionado" style="display:none;margin-top:8px;padding:8px 10px;background:var(--off-white);border-radius:8px;font-size:11.5px;color:var(--gray-600);line-height:1.5"></div>
+
+      <label class="form-label" style="margin-top:10px">Nombre en el mensaje <span style="color:var(--gray-400);font-weight:400">(se llena solo; cámbialo si quieres)</span></label>
       <input type="text" class="form-input" id="msj-nombre-manual" placeholder="Ej: Ing. Raymundo" autocomplete="off">
+
+      <details style="margin-top:12px">
+        <summary class="cfg-sum" style="font-size:11.5px;font-weight:600">¿Cliente nuevo sin registro, o prefieres buscar por folio?</summary>
+        <label class="form-label" style="margin-top:8px">Folio / cliente <span style="color:var(--gray-400);font-weight:400">(opcional)</span></label>
+        <input type="text" class="form-input" id="msj-folio-buscar" list="msj-folios-datalist" placeholder="Escribe folio o nombre del cliente…" oninput="msjBuscarFolio()">
+        <datalist id="msj-folios-datalist"></datalist>
+        <div style="font-size:10.5px;color:var(--gray-400);margin-top:4px">Si es un cliente nuevo, solo escribe su nombre arriba en "Nombre en el mensaje".</div>
+      </details>
     </div>
 
     <details class="wizard-card" id="msj-cfg-card">
@@ -159,19 +182,25 @@ datalist {}
     <label class="form-label">Teléfono del cliente <span style="color:var(--gray-400);font-weight:400">(10 dígitos, sin espacios)</span></label>
     <input type="text" class="form-input" id="msj-tel" placeholder="Ej: 5512345678" style="margin-bottom:12px" inputmode="tel">
 
+    <label class="form-label">Correo del cliente <span style="color:var(--gray-400);font-weight:400">(solo si lo mandas por correo)</span></label>
+    <input type="email" class="form-input" id="msj-email" placeholder="cliente@correo.com" style="margin-bottom:12px" inputmode="email" autocomplete="off">
+
+    <div id="msj-campos"></div>
+
     <label class="form-label">Mensaje <span style="color:var(--gray-400);font-weight:400">(edítalo si hace falta)</span></label>
     <textarea class="form-input" id="msj-texto" oninput="msjActualizarAviso()"></textarea>
     <div class="msj-aviso" id="msj-aviso"></div>
 
     <div style="display:flex;gap:8px;margin-top:14px">
       <button type="button" class="btn btn-outline" style="flex:1" onclick="msjCopiar()">📋 Copiar</button>
-      <button type="button" class="btn btn-primary" style="flex:1.4" onclick="msjAbrirWhatsapp()">💬 Abrir WhatsApp</button>
+      <button type="button" class="btn btn-outline" style="flex:1" onclick="msjCorreo()">✉️ Correo</button>
+      <button type="button" class="btn btn-primary" style="flex:1.4" onclick="msjAbrirWhatsapp()">💬 WhatsApp</button>
     </div>
   </div>
 </div>
 
 <script>
-var APP_VERSION = 'v1.4';
+var APP_VERSION = 'v1.5';
 var SB_URL='https://rmngjtzupukhylxlgcww.supabase.co';
 var SB_KEY='sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 var _sbClient=null;
@@ -262,10 +291,10 @@ var MSJ_PLANTILLAS = [
   // ═══ VISITA ═══
   { cat: 'visita', titulo: 'Proponer fecha de visita',
     cuando: 'Ya aceptó la visita; dale dos opciones concretas',
-    u: T("Perfecto. ¿Le queda bien {fecha}? Si no, también puedo {alt}.",
+    u: T("Perfecto. ¿Le queda bien {fecha}? Si no, también me queda {alt}.",
          "",
          "Me confirma por favor su dirección completa y alguna referencia para llegar sin problema."),
-    t: T("Perfecto. ¿Te queda bien {fecha}? Si no, también puedo {alt}.",
+    t: T("Perfecto. ¿Te queda bien {fecha}? Si no, también me queda {alt}.",
          "",
          "Me confirmas tu dirección completa y alguna referencia para llegar sin problema.") },
 
@@ -299,8 +328,8 @@ var MSJ_PLANTILLAS = [
 
   { cat: 'visita', titulo: 'Confirmar visita (día anterior)',
     cuando: 'La tarde antes de la visita, para que no te dejen plantado',
-    u: T("{saludo}, {cliente}. Le recuerdo que mañana {fecha} paso a su domicilio a tomar medidas, ¿sigue bien para usted? Si le surge algo, me avisa sin problema."),
-    t: T("{saludo}, {cliente}. Te recuerdo que mañana {fecha} paso a tu domicilio a tomar medidas, ¿sigue bien para ti? Si te surge algo, me avisas sin problema.") },
+    u: T("{saludo}, {cliente}. Le recuerdo que mañana {hora} paso a su domicilio a tomar medidas, ¿sigue bien para usted? Si le surge algo, me avisa sin problema."),
+    t: T("{saludo}, {cliente}. Te recuerdo que mañana {hora} paso a tu domicilio a tomar medidas, ¿sigue bien para ti? Si te surge algo, me avisas sin problema.") },
 
   // ═══ VENTAS ═══
   { cat: 'ventas', titulo: 'Enviar presupuesto',
@@ -429,8 +458,8 @@ var MSJ_PLANTILLAS = [
 
   { cat: 'entrega', titulo: 'Instalación mañana (recordatorio)',
     cuando: 'La tarde antes de instalar',
-    u: T("{saludo}, {cliente}. Le recuerdo que mañana {fecha} nuestro equipo pasa a instalar su folio {folio}. Si puede dejar el área despejada y que haya alguien para recibirnos, se lo agradezco. Y si hay cualquier cambio, me avisa."),
-    t: T("Hola {cliente}, te recuerdo que mañana {fecha} nuestro equipo pasa a instalar tu folio {folio}. Si puedes dejar el área despejada y que haya alguien para recibirnos, te lo agradezco. Y si hay cualquier cambio, avísame.") },
+    u: T("{saludo}, {cliente}. Le recuerdo que mañana {hora} nuestro equipo pasa a instalar su folio {folio}. Si puede dejar el área despejada y que haya alguien para recibirnos, se lo agradezco. Y si hay cualquier cambio, me avisa."),
+    t: T("Hola {cliente}, te recuerdo que mañana {hora} nuestro equipo pasa a instalar tu folio {folio}. Si puedes dejar el área despejada y que haya alguien para recibirnos, te lo agradezco. Y si hay cualquier cambio, avísame.") },
 
   { cat: 'entrega', titulo: 'Aviso: material listo',
     cuando: 'Terminó la fabricación',
@@ -574,7 +603,7 @@ function msjMoney(n) {
 var MSJ_MARCADORES = {
   cliente: '[cliente]', folio: '[folio]', monto: '[monto]', saldo: '[saldo]',
   datos_pago: '[datos de pago]', fecha: '[fecha y hora]', alt: '[fecha alterna]',
-  anticipo: '[monto del anticipo]', liga_resena: '[liga de reseña]'
+  anticipo: '[monto del anticipo]', hora: '[hora]', liga_resena: '[liga de reseña]'
 };
 
 function msjRellenar(texto) {
@@ -583,11 +612,12 @@ function msjRellenar(texto) {
   var manual = (document.getElementById('msj-nombre-manual').value || '').trim();
   var costo = cfg.costo ? Number(cfg.costo) : 500;
   var vals = {
-    cliente: d.cliente || manual || '',
+    cliente: manual || d.cliente || '',
     folio: d.folio || '',
     monto: msjMoney(d.monto),
     saldo: (Number(d.saldo) > 0) ? msjMoney(d.saldo) : '',
     saludo: msjSaludo(),
+    fecha: MSJ_CAMPOS.fecha, alt: MSJ_CAMPOS.alt, hora: MSJ_CAMPOS.hora, anticipo: MSJ_CAMPOS.anticipo,
     firma: cfg.firma || 'Mauricio',
     costo_visita: msjMoney(costo > 0 ? costo : 500),
     datos_pago: cfg.pago || '',
@@ -620,11 +650,168 @@ function msjActualizarAviso() {
   }
 }
 
+// ══════════════════════════════════════════════════════════════
+// CLIENTE → PRESUPUESTO, FECHAS Y CORREO (v1.5)
+// Se elige al cliente registrado, y la lista de presupuestos se acorta a los suyos. Nombre, teléfono, correo, folio,
+// monto y saldo se llenan solos; solo se pone fecha y hora (con selector) y, si aplica, el anticipo.
+// ══════════════════════════════════════════════════════════════
+var MSJ_CLIENTES = [], MSJ_CLI_SEL = null, MSJ_PRES = [];
+var MSJ_CAMPOS = { fecha: '', alt: '', hora: '', anticipo: '' };
+var MSJ_ACTUAL = {};   // lo que cada variable muestra HOY en el texto del mensaje (marcador o valor elegido)
+
+function msjNorm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }
+
+async function msjCargarClientes() {
+  var lst = [];
+  try {
+    if (!sb() || !navigator.onLine) throw new Error('sin conexión');
+    var r = await sb().from('clientes').select('*').order('nombre');
+    if (r.error) throw r.error;
+    lst = r.data || [];
+    try { localStorage.setItem('barrcan_msj_clientes', JSON.stringify(lst)); } catch (e) {}
+  } catch (e) {
+    try { lst = JSON.parse(localStorage.getItem('barrcan_msj_clientes') || '[]'); } catch (e2) {}
+  }
+  MSJ_CLIENTES = lst.filter(function(c) { return c && c.nombre && c.activo !== false; });
+  msjFiltrarClientes();
+}
+function msjFiltrarClientes() {
+  var t = msjNorm((document.getElementById('msj-cli-filtro').value || '').trim()), sel = document.getElementById('msj-cli-select');
+  var actual = sel.value;
+  var lst = MSJ_CLIENTES.filter(function(c) { return !t || msjNorm(c.nombre + ' ' + (c.num_cliente || '') + ' ' + (c.empresa || '')).indexOf(t) >= 0; });
+  sel.innerHTML = '<option value="">— Elige al cliente (' + lst.length + ') —</option>' + lst.map(function(c) {
+    return '<option value="' + esc(String(c.id)) + '">' + esc(c.nombre) + (c.num_cliente ? ' · ' + esc(String(c.num_cliente)) : '') + '</option>';
+  }).join('');
+  if (actual && lst.some(function(c) { return String(c.id) === actual; })) sel.value = actual;
+  else if (t && lst.length === 1) { sel.value = String(lst[0].id); msjElegirCliente(); }  // si queda uno solo, se elige solo
+}
+// "Sra. María Antonieta Badillo" → "Sra. María" · "Aurora Dantes Rodríguez" → "Aurora"
+function msjNombreCorto(n) {
+  var s = String(n || '').trim().replace(/\s+/g, ' ');
+  var m = s.match(/^(sra|sr|srita|ing|arq|lic|dr|dra)\.?\s+(.+)$/i);
+  var resto = m ? m[2] : s;
+  var primero = resto.split(' ')[0];
+  return (m ? m[1].charAt(0).toUpperCase() + m[1].slice(1).toLowerCase() + '. ' : '') + primero;
+}
+async function msjPresupuestosDe(c) {
+  var nom = String(c.nombre || '').replace(/[%,()*]/g, ' ').replace(/\s+/g, ' ').trim();
+  var num = String(c.num_cliente || '').replace(/[%,()*]/g, '').trim();
+  var lista = [];
+  try {
+    if (!sb() || !navigator.onLine) throw new Error('sin conexión');
+    var q = sb().from('presupuestos_atrasados').select('folio,cliente,tel,monto,saldo,estado,eliminado,descripcion')
+      .order('folio', { ascending: false }).limit(40);
+    q = num ? q.or('cliente.ilike.%' + nom + '%,folio.ilike.%-' + num) : q.ilike('cliente', '%' + nom + '%');
+    var r = await q; if (r.error) throw r.error;
+    lista = r.data || [];
+  } catch (e) {
+    try {   // sin señal: los presupuestos ya descargados en este dispositivo
+      var loc = JSON.parse(localStorage.getItem('barrcan_presupuestos_cache') || '[]');
+      lista = loc.filter(function(p) { return msjNorm(p.cliente).indexOf(msjNorm(nom)) >= 0 || (num && String(p.folio || '').slice(-(num.length + 1)) === '-' + num); });
+    } catch (e2) {}
+  }
+  return lista.filter(function(p) { return !p.eliminado && p.estado !== 'declinado'; });
+}
+async function msjElegirCliente() {
+  var id = document.getElementById('msj-cli-select').value, sel = document.getElementById('msj-pres-select');
+  var c = MSJ_CLIENTES.filter(function(x) { return String(x.id) === id; })[0] || null;
+  MSJ_CLI_SEL = c; MSJ_PRES = [];
+  var info = document.getElementById('msj-folio-seleccionado');
+  if (!c) {
+    sel.innerHTML = '<option value="">— Primero elige al cliente —</option>'; sel.disabled = true;
+    MSJ_FOLIO_SEL = null; info.style.display = 'none'; document.getElementById('msj-nombre-manual').value = ''; return;
+  }
+  document.getElementById('msj-nombre-manual').value = msjNombreCorto(c.nombre);
+  sel.disabled = false; sel.innerHTML = '<option value="">Buscando presupuestos…</option>';
+  var lista = await msjPresupuestosDe(c);
+  if (MSJ_CLI_SEL !== c) return;  // eligió otro cliente mientras tanto
+  MSJ_PRES = lista;
+  sel.innerHTML = lista.length
+    ? '<option value="">— Sin presupuesto (solo el cliente) —</option>' + lista.map(function(p, i) {
+        return '<option value="' + i + '">' + esc(p.folio) + ' · ' + msjMoney(p.monto) + (Number(p.saldo) > 0 ? ' · saldo ' + msjMoney(p.saldo) : '') + ' · ' + esc(p.estado || '') + '</option>';
+      }).join('')
+    : '<option value="">Sin presupuestos (primer contacto)</option>';
+  if (lista.length === 1) sel.value = '0';   // si solo tiene uno, se elige solo
+  msjElegirPresupuesto();
+}
+function msjElegirPresupuesto() {
+  var c = MSJ_CLI_SEL; if (!c) return;
+  var v = document.getElementById('msj-pres-select').value;
+  var p = (v !== '' && MSJ_PRES[Number(v)]) || null;
+  var tel = String((p && p.tel) || c.movil || c.telefono || '').trim();
+  MSJ_FOLIO_SEL = Object.assign({}, p || {}, { cliente: c.nombre, tel: tel, email: c.email || c.correo || '' });
+  var info = document.getElementById('msj-folio-seleccionado'); info.style.display = 'block';
+  info.innerHTML = '✅ <b>' + esc(c.nombre) + '</b>'
+    + (tel ? ' · 📱 ' + esc(tel) : ' · <span style="color:var(--red)">sin teléfono guardado</span>')
+    + (MSJ_FOLIO_SEL.email ? ' · ✉️ ' + esc(MSJ_FOLIO_SEL.email) : '')
+    + (p ? '<br>📄 ' + esc(p.folio) + ' · ' + msjMoney(p.monto) + (Number(p.saldo) > 0 ? ' · saldo ' + msjMoney(p.saldo) : ' · sin saldo') : '');
+}
+
+// ── Fechas y horas con selector (en español, como se dicen) ──
+function msjFmtHora(hhmm) {   // "a las 10:30 de la mañana" · "a la 1:00 de la tarde" · "a las 7:00 de la noche"
+  if (!hhmm) return '';
+  var h = parseInt(hhmm.slice(0, 2), 10), m = hhmm.slice(3, 5);
+  if (isNaN(h)) return '';
+  var h12 = h % 12 || 12;
+  var parte = (h === 12 && m === '00') ? 'del día' : (h >= 19 ? 'de la noche' : (h >= 12 ? 'de la tarde' : 'de la mañana'));
+  return (h12 === 1 ? 'a la ' : 'a las ') + h12 + ':' + m + ' ' + parte;
+}
+function msjFmtFecha(v) {   // v = 'AAAA-MM-DDTHH:MM'  →  "el sábado 24 de octubre a las 10:30 de la mañana"
+  if (!v) return '';
+  var d = new Date(v); if (isNaN(d.getTime())) return '';
+  var dia = d.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }).replace(',', '');
+  var hora = msjFmtHora(String(v).slice(11, 16));
+  return 'el ' + dia + (hora ? ' ' + hora : '');
+}
+var MSJ_CAMPOS_DEF = [
+  { k: 'fecha',    etiqueta: 'Fecha y hora',                tipo: 'datetime-local' },
+  { k: 'alt',      etiqueta: 'Fecha y hora alterna',        tipo: 'datetime-local' },
+  { k: 'hora',     etiqueta: 'Hora',                        tipo: 'time' },
+  { k: 'anticipo', etiqueta: 'Monto del anticipo ($)',      tipo: 'number' }
+];
+// Muestra solo los campos que esa plantilla necesita; al cambiarlos se actualiza el texto sin borrar lo que hayas editado
+function msjArmarCampos(plantillaTxt) {
+  var cont = document.getElementById('msj-campos');
+  MSJ_CAMPOS = { fecha: '', alt: '', hora: '', anticipo: '' };
+  MSJ_ACTUAL = {}; Object.keys(MSJ_MARCADORES).forEach(function(k) { MSJ_ACTUAL[k] = MSJ_MARCADORES[k]; });
+  var usados = MSJ_CAMPOS_DEF.filter(function(d) { return plantillaTxt.indexOf('{' + d.k + '}') >= 0; });
+  cont.innerHTML = usados.map(function(d) {
+    return '<div class="campo-fila"><label class="form-label">' + d.etiqueta + (d.k === 'alt' ? ' <span style="color:var(--gray-400);font-weight:400">(opcional)</span>' : '') + '</label>'
+      + '<input type="' + d.tipo + '" class="form-input" id="msj-c-' + d.k + '"' + (d.tipo === 'number' ? ' inputmode="numeric" min="0" step="1" placeholder="Ej: 4250"' : '') + ' oninput="msjCampoCambio(\'' + d.k + '\')" onchange="msjCampoCambio(\'' + d.k + '\')"></div>';
+  }).join('');
+  // El anticipo se sugiere en 50% del presupuesto elegido (se puede cambiar)
+  var ant = document.getElementById('msj-c-anticipo');
+  if (ant && MSJ_FOLIO_SEL && Number(MSJ_FOLIO_SEL.monto) > 0) { ant.value = Math.round(Number(MSJ_FOLIO_SEL.monto) * 0.5); msjCampoCambio('anticipo'); }
+}
+function msjCampoCambio(k) {
+  var el = document.getElementById('msj-c-' + k), v = el ? el.value : '', nuevo = '';
+  if (k === 'hora') nuevo = msjFmtHora(v);
+  else if (k === 'anticipo') nuevo = parseFloat(v) > 0 ? '$' + fmt(parseFloat(v)) : '';
+  else nuevo = msjFmtFecha(v);
+  var ta = document.getElementById('msj-texto'), prev = MSJ_ACTUAL[k], reemplazo = nuevo || MSJ_MARCADORES[k];
+  if (prev && prev !== reemplazo) ta.value = ta.value.split(prev).join(reemplazo);
+  MSJ_ACTUAL[k] = reemplazo; MSJ_CAMPOS[k] = nuevo;
+  msjActualizarAviso();
+}
+
+function msjCorreo() {
+  var txt = document.getElementById('msj-texto').value, em = (document.getElementById('msj-email').value || '').trim();
+  var pend = msjCamposPendientes();
+  if (pend.length && !confirm('Todavía hay campos sin llenar: ' + pend.join(', ') + '\n\n¿Abrir el correo así?')) return;
+  var folio = MSJ_FOLIO_SEL && MSJ_FOLIO_SEL.folio;
+  var asunto = 'BarrCan' + (folio ? ' · folio ' + folio : '');
+  window.open('mailto:' + em + '?subject=' + encodeURIComponent(asunto) + '&body=' + encodeURIComponent(txt), '_self');
+}
+
 function msjAbrirPlantilla(idx) {
   var p = MSJ_PLANTILLAS[idx];
   document.getElementById('msj-modal-titulo').textContent = p.titulo;
-  document.getElementById('msj-texto').value = msjRellenar(msjTextoPlantilla(p));
+  var base = msjTextoPlantilla(p);
+  msjArmarCampos(base);
+  document.getElementById('msj-texto').value = msjRellenar(base);
+  if (MSJ_CAMPOS.anticipo) { MSJ_ACTUAL.anticipo = MSJ_CAMPOS.anticipo; }
   document.getElementById('msj-tel').value = (MSJ_FOLIO_SEL && MSJ_FOLIO_SEL.tel) ? MSJ_FOLIO_SEL.tel.replace(/\D/g, '') : '';
+  document.getElementById('msj-email').value = (MSJ_FOLIO_SEL && MSJ_FOLIO_SEL.email) || '';
   document.getElementById('msj-modal').classList.add('visible');
   msjActualizarAviso();
 }
@@ -654,6 +841,7 @@ function msjAbrirWhatsapp() {
 
 document.addEventListener('DOMContentLoaded', function() {
   detectarConexion();
+  msjCargarClientes();
   msjCfgCargar();
   msjRenderTono();
   msjRenderTabs();
