@@ -7,6 +7,11 @@
 <title>BarrCan · Configuración de Costos</title>
 <!--
   BARRCAN · MÓDULO: CONFIGURACIÓN DE COSTOS (config.html)
+  VERSION : v1.11
+  FECHA   : 2026-10-23
+  v1.11 - Nuevo recargo "Esmerilado" (% sobre el precio del vidrio, cualquier espesor; 23% de arranque) en Vidrio especial,
+    y "Vidrio 4mm" editable (380 de arranque). Los campos nuevos nacen con su valor de arranque para que "Guardar y
+    sincronizar" no guarde un 0 si todavía no existen en la base.
   VERSION : v1.10
   FECHA   : 2026-10-14
   v1.10 - CANDADO: sin sesión del día (PIN o huella en el portal) ya no abre; manda al portal y regresa aquí al entrar (modulos/acceso.js).
@@ -217,7 +222,7 @@ html, body { min-height:100%; font-family:'DM Sans',sans-serif; background:var(-
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
-const APP_VERSION = 'v1.10';
+const APP_VERSION = 'v1.11';
 const SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co';
 const SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 let _sb = null;
@@ -252,6 +257,7 @@ const CAMPOS = [
   { grupo:'grupo-aluminio', clave:'cargo_piso',     label:'Cargo por piso (instalación en altura)', unidad:'$' },
   { grupo:'grupo-aluminio', clave:'cargo_campo',    label:'Cargo por visita/traslado a campo', unidad:'$' },
 
+  { grupo:'grupo-vidrio', clave:'vid_4mm',  label:'Vidrio 4mm',  unidad:'$', defecto: 380 },
   { grupo:'grupo-vidrio', clave:'vid_6mm',  label:'Vidrio 6mm',  unidad:'$' },
   { grupo:'grupo-vidrio', clave:'vid_8mm',  label:'Vidrio 8mm',  unidad:'$' },
   { grupo:'grupo-vidrio', clave:'vid_9mm',  label:'Vidrio 9mm',  unidad:'$' },
@@ -263,6 +269,7 @@ const CAMPOS = [
   { grupo:'grupo-vidrio-especial', clave:'pct_filtrasol', label:'Filtrasol', unidad:'%' },
   { grupo:'grupo-vidrio-especial', clave:'pct_bronce',    label:'Bronce',    unidad:'%' },
   { grupo:'grupo-vidrio-especial', clave:'pct_azul',      label:'Azul',      unidad:'%' },
+  { grupo:'grupo-vidrio-especial', clave:'pct_esmerilado', label:'Esmerilado (cualquier espesor)', unidad:'%', defecto: 23 },
 
   { grupo:'grupo-espejos', clave:'esp_canto_pulido', label:'Canto Pulido',        unidad:'$' },
   { grupo:'grupo-espejos', clave:'esp_bastidor',     label:'Con Bastidor',        unidad:'$' },
@@ -329,7 +336,7 @@ function construirUI() {
       `<div class="campo-row">
         <div class="campo-label">${c.label}</div>
         <div class="campo-input-wrap">
-          <input type="number" step="0.01" class="campo-input" id="cfg-${c.clave}">
+          <input type="number" step="0.01" class="campo-input" id="cfg-${c.clave}"${c.defecto != null ? ' value="' + c.defecto + '"' : ''}>
           <div class="campo-unidad">${c.unidad}</div>
         </div>
       </div>`

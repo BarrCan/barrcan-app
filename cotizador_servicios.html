@@ -194,6 +194,14 @@
     - Se agregó una verificación automática (script de comparación
       onclick/onchange vs. window.expuestas) para detectar esto antes
       de publicar, no solo revisando a ojo.
+  VERSION : v1.22.0
+  FECHA   : 2026-10-23
+  v1.22.0 - "Cambio de vidrio (a medida)" ahora sirve para CUALQUIER vidrio: cada ventana lleva su espesor (4, 6, 8,
+    10 o 12 mm) y su acabado (esmerilado, claro, verde, filtrasol, bronce o azul). El precio por m² sale del módulo
+    de precios (Config): el del espesor + el recargo del acabado; el esmerilado suma el % configurado (23% de
+    arranque) sobre cualquier espesor. Hay un "precio por m² manual" opcional que lo sustituye. Reemplaza a "Cambio
+    de Vidrio Roto" en las tarjetas de Mantenimiento. Se agregaron a la página los campos ocultos de recargo por
+    acabado (cfg-pct-*) para leerlos de Config.
   VERSION : v1.21.0
   FECHA   : 2026-10-23
   v1.21.0 - NUEVO "Cambio de vidrio esmerilado (a medida)" (Mantenimiento): una obra con
@@ -1993,6 +2001,11 @@ body{background:var(--off-white)}
     <input type="hidden" id="cfg-vid-10"      value="620">
     <input type="hidden" id="cfg-vid-12"      value="720">
     <input type="hidden" id="cfg-vid-24"      value="950">
+    <input type="hidden" id="cfg-pct-verde"       value="6">
+    <input type="hidden" id="cfg-pct-filtrasol"   value="7">
+    <input type="hidden" id="cfg-pct-bronce"      value="9">
+    <input type="hidden" id="cfg-pct-azul"        value="11">
+    <input type="hidden" id="cfg-pct-esmerilado"  value="23">
     <input type="hidden" id="cfg-pel-esm-venta" value="350">
     <input type="hidden" id="cfg-pel-esm-costo" value="150">
     <input type="hidden" id="cfg-pel-fil-venta" value="390">
@@ -2308,8 +2321,8 @@ body{background:var(--off-white)}
         <div id="vm-filas"></div>
         <button type="button" onclick="servVidrioAgregarFila()" style="width:100%;padding:9px;background:#fff;border:1.5px dashed rgba(200,146,58,0.6);border-radius:8px;color:var(--navy);font-size:12px;font-weight:700;margin-bottom:10px">➕ Agregar otra ventana</button>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div><label class="form-label">Vidrio ($ por m²)</label>
-            <input type="number" id="vm-precio-m2" class="form-input" min="0" inputmode="decimal" oninput="servVidrioActualizar()"></div>
+          <div><label class="form-label">Precio por m² manual (opcional)</label>
+            <input type="number" id="vm-precio-manual" class="form-input" min="0" inputmode="decimal" placeholder="usa el módulo de precios" oninput="servVidrioActualizar()"></div>
           <div><label class="form-label">Calza ($ c/u)</label>
             <input type="number" id="vm-calza-precio" class="form-input" min="0" inputmode="decimal" oninput="servVidrioActualizar()"></div>
           <div><label class="form-label">Silicón ($ por tubo)</label>
@@ -2318,7 +2331,7 @@ body{background:var(--off-white)}
             <input type="number" id="vm-tubos" class="form-input" min="0" step="0.5" inputmode="decimal" oninput="servVidrioTubos()"></div>
         </div>
         <div id="vm-detalle" style="font-size:11px;color:var(--gray-600);margin-top:8px;line-height:1.5"></div>
-        <div style="font-size:10.5px;color:var(--gray-400);margin-top:6px;line-height:1.45">Una fila por ventana: en m² pon la suma de todas sus piezas. La mano de obra, el traslado y la complejidad (arriba) se capturan una sola vez para toda la obra; el silicón también. Todo se reparte entre las ventanas según sus m² y cada ventana queda como un concepto del presupuesto.</div>
+        <div style="font-size:10.5px;color:var(--gray-400);margin-top:6px;line-height:1.45">Una fila por ventana: en m² pon la suma de todas sus piezas. El precio del vidrio sale del módulo de precios según el espesor y el acabado (el esmerilado suma su % sobre cualquier espesor). La mano de obra, el traslado y la complejidad (arriba) se capturan una sola vez para toda la obra; el silicón también. Todo se reparte entre las ventanas según sus m² y cada ventana queda como un concepto del presupuesto.</div>
       </div>
         <div class="form-group" id="serv-grp-cant">
           <label class="form-label" id="serv-label-cant">Cantidad</label>
@@ -2713,10 +2726,10 @@ const DB = {
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
-      id:"MANT_VIDRIO_MEDIDA", nombre:"Cambio de vidrio esmerilado (a medida)", serie:"Mantenimiento", emoji:"🪟",
-      categorias:['ventana','bano'], vidrioMedida:true,
+      id:"MANT_VIDRIO_MEDIDA", nombre:"Cambio de vidrio (a medida)", serie:"Mantenimiento", emoji:"🪟",
+      categorias:['ventana','bano','puerta'], vidrioMedida:true,
       tipo:"Servicio", esServicio:true, precioBase:0, unidad:'ventana',
-      desc:'Suministro y colocación de vidrio esmerilado en ventanas existentes (herrería o aluminio). Capturas cada ventana (piezas y m²); el vidrio, las calzas y el silicón se calculan solos y la mano de obra y el traslado se reparten entre las ventanas. Cada ventana queda como un concepto.',
+      desc:'Suministro y colocación de vidrio en ventanas existentes (esmerilado, claro o de color; 4 a 12 mm). Capturas cada ventana (piezas, m², espesor y acabado): el vidrio sale del módulo de precios, y las calzas y el silicón se calculan solos. La mano de obra y el traslado se reparten entre las ventanas. Cada ventana queda como un concepto.',
       holgura:0, factorGIF:1.15, perfiles:{}, herrajes:[], formulas:{cortes:[],vidrio:{}}
     },
     {
@@ -2976,7 +2989,7 @@ const CONFIG_DEFAULTS = {
   'cfg-vid-9': 580, 'cfg-vid-10': 620, 'cfg-vid-12': 720, 'cfg-vid-24': 950,
   // Recargos vidrio especial
   'cfg-pct-verde': 6, 'cfg-pct-filtrasol': 7,
-  'cfg-pct-bronce': 9, 'cfg-pct-azul': 11,
+  'cfg-pct-bronce': 9, 'cfg-pct-azul': 11, 'cfg-pct-esmerilado': 23,
   // Película
   'cfg-pel-esm-venta': 350, 'cfg-pel-esm-costo': 150,
   'cfg-pel-fil-venta': 390, 'cfg-pel-fil-costo': 180,
@@ -3026,6 +3039,7 @@ const SB_CONFIG_MAPA = {
   'margen_mant_pct': 'cfg-margen-mant',
   'merma_pct':     'cfg-merma',      'precio_al_kg':  'cfg-precio-al',
   'cargo_piso':    'cfg-cargo-piso', 'cargo_campo':   'cfg-cargo-campo',
+  'vid_4mm':       'cfg-vid-4',      'pct_esmerilado': 'cfg-pct-esmerilado',
   'vid_6mm':       'cfg-vid-6',      'vid_8mm':       'cfg-vid-8',
   'vid_9mm':       'cfg-vid-9',      'vid_10mm':      'cfg-vid-10',
   'vid_12mm':      'cfg-vid-12',     'vid_24mm':      'cfg-vid-24',
@@ -4097,7 +4111,7 @@ const FAMILIAS_NACIONAL = [
           'MANT_CANCEL_LIMPIEZA','MANT_CANCEL_SELLADO','MANT_CANCEL_HULES','MANT_CANCEL_BISAGRAS',
           'MANT_BANO_LAMINA_POLIETILENO','MANT_BANO_GOMA_SEGURIDAD',
           'MANT_CAMBIO_BROCHES','MANT_VENTANA_CHAPA','MANT_PUERTA_CALCE','MANT_PUERTA_CHAPA_PESADA','MANT_PUERTA_CHAPA_LIGERA',
-          'MANT_PUERTA_PIVOTE','MANT_PUERTA_JUNQUILLO','MANT_VIDRIO_MEDIDA','MANT_VIDRIO_ROTO']
+          'MANT_PUERTA_PIVOTE','MANT_PUERTA_JUNQUILLO','MANT_VIDRIO_MEDIDA']
   },
   {
     id: 'instalacion',
@@ -4151,7 +4165,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v1.21.0';
+const APP_VERSION = 'v1.22.0';
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
@@ -4792,7 +4806,7 @@ const SN_PRECIO_TARJETA = {
   MANT_PUERTA_CHAPA_LIGERA: '$180-280 mat.',
   MANT_PUERTA_PIVOTE:     '$250-350 mat.',
   MANT_PUERTA_JUNQUILLO:  '$35/m mat.',
-  MANT_VIDRIO_MEDIDA:     'Por ventana (a medida)',
+  MANT_VIDRIO_MEDIDA:     'Cualquier vidrio, por ventana',
   MANT_VIDRIO_ROTO:       'Cotizar',
   GTIA_ESTANDAR:          '20% · Ded.$1,100',
   GTIA_PREMIUM:           '35% · Ded.$1,400'
@@ -5628,14 +5642,23 @@ function servicioCalcular() {
   switchTab('resultado');
 }
 
-// == CAMBIO DE VIDRIO ESMERILADO A MEDIDA (v1.21.0, 23-oct-2026) ==
-// Varias ventanas en una sola obra. Cada ventana es un concepto del presupuesto.
-// Mano de obra, traslado y silic\u00f3n se capturan UNA vez para toda la obra y se
-// reparten entre las ventanas seg\u00fan sus m\u00b2. Precio = servPrecioMant (GA + utilidad + IVA),
-// igual que el resto de Mantenimiento.
+// == CAMBIO DE VIDRIO A MEDIDA (v1.22.0, 23-oct-2026) ==
+// Varias ventanas en una sola obra, de cualquier vidrio. Cada ventana es un concepto del presupuesto.
+// El precio por m2 sale del modulo de precios (Config): espesor + recargo del acabado (el esmerilado suma su %
+// sobre cualquier espesor). Mano de obra, traslado y silicon se capturan UNA vez para toda la obra y se reparten
+// entre las ventanas segun sus m2. Precio = servPrecioMant (GA + utilidad + IVA), como el resto de Mantenimiento.
 var VM_FILAS = [];
 var VM_TUBOS_MANUAL = false;
 var VM_LOTE = null;
+var VM_ESPESORES = [4, 6, 8, 10, 12];
+var VM_ACABADOS = {
+  esmerilado: { nombre: 'esmerilado', pct: 'cfg-pct-esmerilado' },
+  claro:      { nombre: 'claro',      pct: null },
+  verde:      { nombre: 'verde',      pct: 'cfg-pct-verde' },
+  filtrasol:  { nombre: 'filtrasol',  pct: 'cfg-pct-filtrasol' },
+  bronce:     { nombre: 'bronce',     pct: 'cfg-pct-bronce' },
+  azul:       { nombre: 'azul',       pct: 'cfg-pct-azul' }
+};
 
 function servVidrioNum(id) {
   var el = document.getElementById(id);
@@ -5643,11 +5666,21 @@ function servVidrioNum(id) {
   return (isFinite(v) && v >= 0) ? v : 0;
 }
 
+// Precio por m2 de un espesor y acabado, tomado del modulo de precios
+function servVidrioPrecioM2(esp, acab) {
+  var manual = servVidrioNum('vm-precio-manual');
+  if (manual > 0) return { base: manual, pct: 0, precio: manual, manual: true };
+  var base = servVidrioNum('cfg-vid-' + esp);
+  var a = VM_ACABADOS[acab] || VM_ACABADOS.esmerilado;
+  var pct = a.pct ? servVidrioNum(a.pct) : 0;
+  return { base: base, pct: pct, precio: base * (1 + pct / 100), manual: false };
+}
+
 function servVidrioReset() {
-  VM_FILAS = [{ nombre: 'Ventana 1', piezas: 1, m2: '', calzas: 2 }];
+  VM_FILAS = [{ nombre: 'Ventana 1', piezas: 1, m2: '', calzas: 2, esp: 6, acab: 'esmerilado' }];
   VM_TUBOS_MANUAL = false;
   VM_LOTE = null;
-  document.getElementById('vm-precio-m2').value = 550;
+  document.getElementById('vm-precio-manual').value = '';
   document.getElementById('vm-calza-precio').value = 10;
   document.getElementById('vm-silicon-precio').value = 120;
   document.getElementById('vm-tubos').value = 1;
@@ -5657,6 +5690,8 @@ function servVidrioReset() {
 
 function servVidrioRender() {
   var h = VM_FILAS.map(function(f, i) {
+    var optEsp = VM_ESPESORES.map(function(e) { return '<option value="' + e + '"' + (+f.esp === e ? ' selected' : '') + '>' + e + ' mm</option>'; }).join('');
+    var optAcab = Object.keys(VM_ACABADOS).map(function(k) { return '<option value="' + k + '"' + (f.acab === k ? ' selected' : '') + '>' + VM_ACABADOS[k].nombre.charAt(0).toUpperCase() + VM_ACABADOS[k].nombre.slice(1) + '</option>'; }).join('');
     return '<div style="background:#fff;border:1px solid rgba(200,146,58,0.35);border-radius:8px;padding:8px;margin-bottom:8px">'
       + '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
       + '<input type="text" class="form-input" style="flex:1;font-weight:700" data-i="' + i + '" data-k="nombre" value="' + esc(f.nombre) + '" oninput="servVidrioFila(this)">'
@@ -5667,7 +5702,13 @@ function servVidrioRender() {
       + '<div><label class="form-label">m\u00b2 (total)</label><input type="number" class="form-input" min="0" step="0.01" inputmode="decimal" data-i="' + i + '" data-k="m2" value="' + esc(f.m2) + '" oninput="servVidrioFila(this)"></div>'
       + '<div><label class="form-label">Calzas/pieza</label><select class="form-select" data-i="' + i + '" data-k="calzas" onchange="servVidrioFila(this)">'
       + '<option value="2"' + (+f.calzas === 2 ? ' selected' : '') + '>2</option><option value="4"' + (+f.calzas === 4 ? ' selected' : '') + '>4</option></select></div>'
-      + '</div></div>';
+      + '</div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1.2fr;gap:6px;margin-top:6px">'
+      + '<div><label class="form-label">Espesor</label><select class="form-select" data-i="' + i + '" data-k="esp" onchange="servVidrioFila(this)">' + optEsp + '</select></div>'
+      + '<div><label class="form-label">Acabado</label><select class="form-select" data-i="' + i + '" data-k="acab" onchange="servVidrioFila(this)">' + optAcab + '</select></div>'
+      + '</div>'
+      + '<div id="vm-pm2-' + i + '" style="font-size:10.5px;color:var(--gray-400);margin-top:4px"></div>'
+      + '</div>';
   }).join('');
   document.getElementById('vm-filas').innerHTML = h;
 }
@@ -5679,7 +5720,9 @@ function servVidrioFila(el) {
   servVidrioActualizar();
 }
 function servVidrioAgregarFila() {
-  VM_FILAS.push({ nombre: 'Ventana ' + (VM_FILAS.length + 1), piezas: 1, m2: '', calzas: 2 });
+  var ult = VM_FILAS[VM_FILAS.length - 1] || {};
+  // la ventana nueva arranca con el mismo vidrio que la anterior
+  VM_FILAS.push({ nombre: 'Ventana ' + (VM_FILAS.length + 1), piezas: 1, m2: '', calzas: 2, esp: ult.esp || 6, acab: ult.acab || 'esmerilado' });
   servVidrioRender();
   servVidrioActualizar();
 }
@@ -5693,17 +5736,19 @@ function servVidrioTubos() { VM_TUBOS_MANUAL = true; servVidrioActualizar(); }
 
 // Calcula todas las ventanas (sin tocar el carrito)
 function servVidrioCalcData() {
-  var precioM2 = servVidrioNum('vm-precio-m2'), precioTubo = servVidrioNum('vm-silicon-precio');
-  var precioCalza = servVidrioNum('vm-calza-precio'), tubos = servVidrioNum('vm-tubos');
+  var precioTubo = servVidrioNum('vm-silicon-precio'), precioCalza = servVidrioNum('vm-calza-precio'), tubos = servVidrioNum('vm-tubos');
   var complejidad = parseFloat(document.getElementById('serv-complejidad').value) || 1;
   var cargoTraslado = parseFloat(document.getElementById('serv-cargo-traslado').value) || 0;
   var moBase = parseFloat(document.getElementById('serv-mo-base').value) || 0;
   var filas = VM_FILAS.map(function(f, i) {
     return {
+      idx: i,
       nombre: String(f.nombre || '').trim() || ('Ventana ' + (i + 1)),
       piezas: Math.max(1, parseInt(f.piezas, 10) || 1),
       m2: parseFloat(f.m2) || 0,
-      calzasPz: parseInt(f.calzas, 10) === 4 ? 4 : 2
+      calzasPz: parseInt(f.calzas, 10) === 4 ? 4 : 2,
+      esp: parseInt(f.esp, 10) || 6,
+      acab: VM_ACABADOS[f.acab] ? f.acab : 'esmerilado'
     };
   }).filter(function(f) { return f.m2 > 0; });
   var m2Total = filas.reduce(function(a, f) { return a + f.m2; }, 0);
@@ -5711,8 +5756,10 @@ function servVidrioCalcData() {
   var total = 0;
   filas.forEach(function(f) {
     var parte = m2Total > 0 ? f.m2 / m2Total : 0;
+    var pr = servVidrioPrecioM2(f.esp, f.acab);
     f.parte = parte;
-    f.vidrio = f.m2 * precioM2;
+    f.precioM2 = pr.precio;
+    f.vidrio = f.m2 * pr.precio;
     f.nCalzas = f.piezas * f.calzasPz;
     f.calzas = f.nCalzas * precioCalza;
     f.silicon = tubos * precioTubo * parte;
@@ -5733,13 +5780,20 @@ function servVidrioActualizar() {
     var t = document.getElementById('vm-tubos');
     if (t) t.value = Math.max(1, n);
   }
+  // precio por m2 que se aplica a cada ventana (del modulo de precios)
+  VM_FILAS.forEach(function(f, i) {
+    var el = document.getElementById('vm-pm2-' + i); if (!el) return;
+    var pr = servVidrioPrecioM2(parseInt(f.esp, 10) || 6, VM_ACABADOS[f.acab] ? f.acab : 'esmerilado');
+    el.textContent = pr.manual ? 'Precio manual: $' + fmt(pr.precio) + '/m\u00b2'
+      : '$' + fmt(pr.precio) + '/m\u00b2 (' + fmt(pr.base) + (pr.pct ? ' + ' + pr.pct + '%' : '') + ')';
+  });
   var el = document.getElementById('vm-detalle');
   if (!el) return;
   var d = servVidrioCalcData();
   if (!d.filas.length) { el.innerHTML = 'Captura los m\u00b2 de cada ventana para ver el precio.'; return; }
   var sup = (typeof esSupremo === 'function') && esSupremo();
   var h = d.filas.map(function(f) {
-    return '<div style="padding:5px 0;border-top:1px solid rgba(0,0,0,0.06)"><b>' + esc(f.nombre) + '</b> \u00b7 ' + f.piezas + ' pza' + (f.piezas > 1 ? 's' : '') + ' \u00b7 ' + f.m2.toFixed(2) + ' m\u00b2 \u2192 <b>$' + fmt(f.precioFinal) + '</b>'
+    return '<div style="padding:5px 0;border-top:1px solid rgba(0,0,0,0.06)"><b>' + esc(f.nombre) + '</b> \u00b7 ' + f.piezas + ' pza' + (f.piezas > 1 ? 's' : '') + ' \u00b7 ' + f.m2.toFixed(2) + ' m\u00b2 \u00b7 ' + f.acab + ' ' + f.esp + ' mm \u2192 <b>$' + fmt(f.precioFinal) + '</b>'
       + (sup ? '<br><span style="color:var(--gray-400)">vidrio $' + fmt(f.vidrio) + ' \u00b7 calzas ' + f.nCalzas + ' $' + fmt(f.calzas) + ' \u00b7 silic\u00f3n $' + fmt(f.silicon) + ' \u00b7 M.O. $' + fmt(f.mo) + (f.traslado > 0 ? ' \u00b7 traslado $' + fmt(f.traslado) : '') + '</span>' : '')
       + '</div>';
   }).join('');
@@ -5752,21 +5806,22 @@ function servVidrioActualizar() {
 function servVidrioCalcular() {
   var d = servVidrioCalcData();
   if (!d.filas.length) { toast('\u26a0\ufe0f Captura los m\u00b2 de al menos una ventana'); return; }
-  // Si ya se calcul\u00f3 esta tanda, se reemplaza (no se duplica)
+  // Si ya se calculo esta tanda, se reemplaza (no se duplica)
   if (VM_LOTE) STATE.carrito = STATE.carrito.filter(function(it) { return !(it.resultado && it.resultado.lote === VM_LOTE); });
   VM_LOTE = 'vm_' + Date.now();
   var notasExtra = document.getElementById('serv-notas').value.trim();
   var avisoRiesgo = document.getElementById('serv-aviso-riesgo').checked;
   var items = d.filas.map(function(f) {
+    var vid = 'vidrio ' + f.acab + ' de ' + f.esp + ' mm';
     return {
       sistemaId: SERV_SISTEMA.id, sistemaNombre: SERV_SISTEMA.nombre, serie: SERV_SISTEMA.serie, tipo: SERV_SISTEMA.tipo,
       esServicio: true, servCantidad: 1, servUnidad: 'ventana', servPrecio: f.material,
-      servNotas: 'Suministro y colocaci\u00f3n de vidrio esmerilado: ' + f.nombre + ', ' + f.piezas + ' pieza(s), ' + f.m2.toFixed(2) + ' m\u00b2. Incluye retiro del vidrio anterior, silic\u00f3n, calzas y mano de obra.' + (notasExtra ? ' ' + notasExtra : ''),
+      servNotas: 'Suministro y colocaci\u00f3n de ' + vid + ': ' + f.nombre + ', ' + f.piezas + ' pieza(s), ' + f.m2.toFixed(2) + ' m\u00b2. Incluye retiro del vidrio anterior, silic\u00f3n, calzas y mano de obra.' + (notasExtra ? ' ' + notasExtra : ''),
       avisoRiesgo: avisoRiesgo, subtotalBase: f.material, complejidad: d.complejidad, cargoTraslado: f.traslado, moBase: f.mo,
       subtotal: f.material, gif: 0, ga: f.pm.ga, utilidad: f.pm.utilidad, ivaPct: f.pm.ivaPct, ivaMonto: f.pm.ivaMonto,
       precioFinal: f.precioFinal, esSinMargen: false,
-      etiqueta: 'Vidrio esmerilado \u00b7 ' + f.nombre + ' (' + f.piezas + ' pza' + (f.piezas > 1 ? 's' : '') + ', ' + f.m2.toFixed(2) + ' m\u00b2)',
-      firmaExtra: 'vm|' + f.nombre + '|' + f.m2 + '|' + f.piezas + '|' + f.precioFinal,
+      etiqueta: 'Vidrio ' + f.acab + ' ' + f.esp + ' mm \u00b7 ' + f.nombre + ' (' + f.piezas + ' pza' + (f.piezas > 1 ? 's' : '') + ', ' + f.m2.toFixed(2) + ' m\u00b2)',
+      firmaExtra: 'vm|' + f.nombre + '|' + f.acab + '|' + f.esp + '|' + f.m2 + '|' + f.piezas + '|' + f.precioFinal,
       lote: VM_LOTE
     };
   });
@@ -5774,7 +5829,7 @@ function servVidrioCalcular() {
   var ultimo = items[items.length - 1];
   STATE.ultimoResultado = ultimo;
   toast('\u2705 ' + items.length + ' ventana(s) \u00b7 total $' + fmt(d.total));
-  renderResultado(ultimo);   // agrega la \u00faltima ventana al carrito
+  renderResultado(ultimo);   // agrega la ultima ventana al carrito
   switchTab('resultado');
   snRenderPresupuesto();     // muestra el presupuesto con todas las ventanas
 }
