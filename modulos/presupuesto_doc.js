@@ -1,5 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 // BarrCan · DOCUMENTO OFICIAL DE PRESUPUESTO (compartido)
+// VERSION : v1.11   FECHA : 2026-10-23
+// v1.11 - Si un concepto lleva el traslado incluido en su precio (it.traslado), se imprime debajo "Incluye traslado y
+//   visitas a obra" (sin monto). Aplica a este documento, a firmar.html y a ver_doc.
 // VERSION : v1.10   FECHA : 2026-10-14
 // v1.10 - Imágenes por CONCEPTO/diseño en cada partida (opciones.imagenes = {clave:[{url,titulo}]}):
 //   se agregan debajo del esquema, que se queda. BCDoc.conceptoDe(partida) da la clave.
@@ -223,6 +226,7 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
       + (parseFloat(it.precio) < 0
           ? '<span style="font-weight:700;white-space:nowrap;padding-left:12px;color:#27AE60">\u2212$' + fmt(-parseFloat(it.precio)) + '</span></div>'
           : '<span style="font-weight:700;white-space:nowrap;padding-left:12px">$' + fmt(it.precio) + '</span></div>')
+      + (it.traslado && parseFloat(it.traslado.monto) > 0 ? '<div style="font-size:8.5pt;color:#777;margin-top:2px;padding-left:4px">Incluye traslado y visitas a obra</div>' : '')
       + diagrama
       + imgsConcepto
       + '</div>';
@@ -362,5 +366,5 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
       return { empresa: String(f.empresa).trim(), atencion: f.nombre };
     } catch (e) { return {}; }
   }
-  window.BCDoc = { version: 'v1.10', conceptoDe: bcConceptoDe, generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo, diagramaSvg: bcDiagramaSvg, esquema: bcEsquemaDeSistema, datosCliente: datosCliente };
+  window.BCDoc = { version: 'v1.11', conceptoDe: bcConceptoDe, generar: snGenerarDocumentoPresupuesto, diagrama: snDiagramaCorredizo, diagramaSvg: bcDiagramaSvg, esquema: bcEsquemaDeSistema, datosCliente: datosCliente };
 })();

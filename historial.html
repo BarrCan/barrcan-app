@@ -9,6 +9,13 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.33.0
+  FECHA   : 2026-10-23
+  v3.33.0 - TRASLADO INCLUIDO EN LOS CONCEPTOS: en 🚚 Costos de obra, "¿Cómo se cobra el traslado?" → "Renglón aparte" (como
+    antes) o "Incluido en conceptos": el costo se reparte entre los conceptos que marques, en proporción a su monto, y el
+    cliente solo ve precios finales con la nota "Incluye traslado y visitas a obra" (sin el monto). Si cambias la cantidad
+    o quitas un concepto, se va su parte proporcional. Si cambias o quitas MÁS DE 2 conceptos con traslado incluido sale un
+    aviso para repartir otra vez, pasar a renglón aparte o dejarlo así. La tarifa Familia sigue sin tocar el traslado.
   VERSIÓN : v3.32.0
   FECHA   : 2026-10-15
   v3.32.0 - AGREGAR CONCEPTOS al presupuesto: en el editor, "➕ Agregar concepto" (descripción, cantidad y precio unitario) para
@@ -1615,7 +1622,17 @@ body{min-height:100vh}
             <select id="obra-piso" class="form-input" onchange="obraRecalcular()" style="margin-bottom:0"><option value="0">PB</option><option value="1">1°</option><option value="2">2°</option><option value="3">3°</option><option value="4">4°</option><option value="5">5°+</option></select></div>
         </div>
         <div id="obra-desglose" style="font-size:11.5px;color:var(--navy);margin:10px 0 8px;line-height:1.6"></div>
-        <button type="button" onclick="obraAplicarCostos()" style="width:100%;padding:10px;border-radius:8px;border:none;background:var(--gold);color:#fff;font-size:12.5px;font-weight:700;cursor:pointer">➕ Sumar costos de obra al presupuesto</button>
+        <!-- v3.33.0: cómo se cobra el traslado -->
+        <div style="margin:10px 0 8px">
+          <label class="form-label" style="font-size:10.5px">¿Cómo se cobra el traslado?</label>
+          <div style="display:flex;gap:6px">
+            <button type="button" id="obra-modo-aparte" onclick="obraSetModo('aparte')" style="flex:1;padding:9px 4px;border-radius:8px;font-size:11.5px;font-weight:700;cursor:pointer">Renglón aparte</button>
+            <button type="button" id="obra-modo-incl" onclick="obraSetModo('incluido')" style="flex:1;padding:9px 4px;border-radius:8px;font-size:11.5px;font-weight:700;cursor:pointer">Incluido en conceptos</button>
+          </div>
+          <div id="obra-incl-lista" style="display:none;margin-top:8px"></div>
+          <div id="obra-incl-aviso" style="display:none;margin-top:8px;padding:9px 10px;border-radius:8px;background:rgba(230,126,34,0.10);border:1.5px solid rgba(230,126,34,0.35);font-size:11.5px;color:var(--navy);line-height:1.5"></div>
+        </div>
+        <button type="button" id="obra-btn-aplicar" onclick="obraAplicarCostos()" style="width:100%;padding:10px;border-radius:8px;border:none;background:var(--gold);color:#fff;font-size:12.5px;font-weight:700;cursor:pointer">➕ Sumar costos de obra al presupuesto</button>
         <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--gray-200)">
           <label class="form-label" style="font-size:10.5px">Tarifa</label>
           <div style="display:flex;gap:6px">
@@ -1726,7 +1743,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.32.0';
+var APP_VERSION = 'v3.33.0';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -2853,7 +2870,8 @@ function presRenderConceptos(notasInternasRaw) {
       precio: p.precio,
       precioUnitario: p.precioUnitario != null ? p.precioUnitario : p.precio,
       resultado: p.resultado,
-      unidades: Array.isArray(p.unidades) ? p.unidades : null
+      unidades: Array.isArray(p.unidades) ? p.unidades : null,
+      traslado: (p.traslado && typeof p.traslado === 'object') ? p.traslado : null // v3.33.0
     };
   });
   presDibujarConceptos();
@@ -2867,6 +2885,7 @@ function presDibujarConceptos() {
   if (!PRES_CONCEPTOS.length) {
     cont.innerHTML = '';
     if (vacio) vacio.style.display = 'block';
+    if (typeof obraDibujarLista === 'function') obraDibujarLista();
     return;
   }
   if (vacio) vacio.style.display = 'none';
@@ -2897,6 +2916,7 @@ function presDibujarConceptos() {
       + 'style="padding:6px 9px;background:rgba(192,57,43,0.08);border:1.5px solid rgba(192,57,43,0.25);border-radius:6px;color:#C0392B;cursor:pointer;flex-shrink:0">✕</button>'
       + '</div>';
   }).join('');
+  if (typeof obraDibujarLista === 'function') obraDibujarLista(); // v3.33.0
 }
 
 // ── Recalcular pieza Corredizo con los precios actuales ──────────
@@ -3081,6 +3101,8 @@ function presConceptoEditar(idx, campo, valor) {
     var precioAnt = parseFloat(pz.precio) || 0;
     pz.cantidad = cantNueva; pz.precioUnitario = pu;
     pz.precio = Math.round(pu * cantNueva);
+    var tAnt = obraTrasladoDe(pz); // v3.33.0: el traslado incluido crece o baja en proporción
+    if (tAnt > 0 && cantNueva !== cantAnt) { pz.traslado.monto = Math.round(tAnt * cantNueva / cantAnt); pz._cambioTraslado = true; obraRevisarCambios(); }
     if (pz.precio !== precioAnt) {
       var m = document.getElementById('pres-monto');
       if (m) { m.value = Math.round((parseFloat(m.value) || 0) + pz.precio - precioAnt); presMontoCambio(); }
@@ -3116,8 +3138,11 @@ function presConceptoAgregar() {
 
 function presConceptoQuitar(idx) {
   if (!confirm('¿Quitar este concepto del presupuesto? Recuerda ajustar el Monto/Saldo si hace falta.')) return;
+  var tQuit = obraTrasladoDe(PRES_CONCEPTOS[idx]);
   PRES_CONCEPTOS.splice(idx, 1);
+  if (tQuit > 0) OBRA_QUITADOS++; // v3.33.0: se va con su parte del traslado
   presDibujarConceptos();
+  if (tQuit > 0) obraRevisarCambios();
 }
 
 async function presEditar(id) {
@@ -3328,7 +3353,16 @@ function obraPrefill() {
     ids = { 'obra-cp': r.cp || '', 'obra-km': r.km, 'obra-min': r.min, 'obra-vmed': r.vmed, 'obra-vins': r.vins, 'obra-personas': r.personas, 'obra-piso': r.piso };
     if (r.lugar) OBRA_UBIC = { cp: r.cp, lugar: r.lugar };
   }
+  // v3.33.0: si el traslado va incluido en los conceptos, se reconstruye el panel con esos datos
+  var incl = null;
+  PRES_CONCEPTOS.forEach(function(p) { if (!incl && obraTrasladoDe(p) > 0) incl = p.traslado; });
+  if (i < 0 && incl) {
+    ids = { 'obra-cp': incl.cp || '', 'obra-km': incl.km, 'obra-min': incl.min, 'obra-vmed': incl.vmed, 'obra-vins': incl.vins, 'obra-personas': incl.personas, 'obra-piso': incl.piso };
+    if (incl.lugar) OBRA_UBIC = { cp: incl.cp, lugar: incl.lugar };
+  }
+  OBRA_CAMBIOS_RESET();
   Object.keys(ids).forEach(function(k) { var el = document.getElementById(k); if (el) el.value = ids[k]; });
+  obraSetModo((i < 0 && incl) ? 'incluido' : 'aparte');
   var lugar = document.getElementById('obra-lugar');
   if (lugar) { lugar.style.display = OBRA_UBIC ? 'block' : 'none'; lugar.textContent = OBRA_UBIC ? '📍 ' + OBRA_UBIC.lugar : ''; }
   var cuerpo = document.getElementById('obra-cuerpo'); if (cuerpo) cuerpo.style.display = 'none';
@@ -3417,7 +3451,7 @@ function obraRecalcular() {
   var el = document.getElementById('obra-desglose'); if (!el) return;
   var c = obraCalculo();
   var res = document.getElementById('obra-resumen');
-  var ya = obraBuscarConcepto('costos_obra') >= 0;
+  var ya = obraBuscarConcepto('costos_obra') >= 0 || obraHayIncluido();
   if (!c.km && !c.pisos) { el.innerHTML = '<span style="color:var(--gray-400)">Calcula la distancia o escribe los km para ver el costo.</span>'; if (res) res.textContent = ya ? '✓ incluido' : 'tocar para calcular'; return; }
   el.innerHTML = 'Por visita: $' + fmt(c.gasolina) + ' gasolina + $' + fmt(c.tiempo) + ' tiempo (' + c.personas + ' pers.) = <b>$' + fmt(c.porVisita) + '</b><br>'
     + c.visitas + ' visita(s) (' + c.vmed + ' medición + ' + c.vins + ' instalación): <b>$' + fmt(c.traslados) + '</b><br>'
@@ -3432,9 +3466,13 @@ function obraAjustarMonto(delta) {
   presMontoCambio();
 }
 
-function obraAplicarCostos() {
+function obraAplicarAparte() {
   var c = obraCalculo();
   if (!c.total) { toast('Primero calcula la distancia o escribe los km'); return; }
+  if (obraHayIncluido()) { // v3.33.0: no cobrarlo dos veces
+    var q = obraQuitarIncluido(); obraAjustarMonto(-q);
+    toast('Se quitó el traslado que iba dentro de los conceptos para no cobrarlo dos veces');
+  }
   var concepto = {
     label: 'Costos de obra: traslado (' + c.km + ' km i/v), ' + c.visitas + ' visita(s)' + (c.piso ? ', piso ' + c.piso : ''),
     cantidad: 1, precio: c.total, precioUnitario: c.total,
@@ -3450,6 +3488,147 @@ function obraAplicarCostos() {
   presDibujarConceptos(); obraRecalcular();
   toast(anterior ? '✅ Costos de obra actualizados ($' + fmt(c.total) + ')' : '✅ Costos de obra sumados: $' + fmt(c.total));
 }
+
+// ══ v3.33.0: TRASLADO INCLUIDO EN LOS CONCEPTOS ══
+// Alternativa al renglón aparte: el costo de obra se reparte (en proporción a su monto) entre los conceptos
+// marcados y queda DENTRO de su precio. Cada concepto guarda p.traslado = {monto, km, min, ...} para poder
+// quitarlo, repartirlo otra vez o reconstruir el panel. El documento del cliente solo muestra la nota
+// "Incluye traslado y visitas a obra", nunca el monto.
+var OBRA_MODO = 'aparte';
+var OBRA_QUITADOS = 0;      // conceptos con traslado incluido que se quitaron desde el último reparto
+var OBRA_AVISO_OFF = false; // "Dejar así": no insistir hasta el próximo reparto
+
+function obraEsCargo(p) { return !!(p && p.resultado && /^(costos_obra|ajuste_tarifa|descuento)$/.test(p.resultado.tipo)); }
+function obraTrasladoDe(p) { return (p && p.traslado) ? (parseFloat(p.traslado.monto) || 0) : 0; }
+function obraHayIncluido() { return PRES_CONCEPTOS.some(function(p) { return obraTrasladoDe(p) > 0; }); }
+function OBRA_CAMBIOS_RESET() {
+  OBRA_QUITADOS = 0; OBRA_AVISO_OFF = false;
+  PRES_CONCEPTOS.forEach(function(p) { delete p._cambioTraslado; });
+}
+function obraCambiosCuenta() {
+  return OBRA_QUITADOS + PRES_CONCEPTOS.filter(function(p) { return p._cambioTraslado && obraTrasladoDe(p) > 0; }).length;
+}
+
+function obraSetModo(m) {
+  OBRA_MODO = (m === 'incluido') ? 'incluido' : 'aparte';
+  [['obra-modo-aparte', 'aparte'], ['obra-modo-incl', 'incluido']].forEach(function(x) {
+    var b = document.getElementById(x[0]); if (!b) return;
+    var on = OBRA_MODO === x[1];
+    b.style.background = on ? 'var(--navy)' : 'transparent';
+    b.style.color = on ? '#fff' : 'var(--navy)';
+    b.style.border = '1.5px solid ' + (on ? 'var(--navy)' : 'var(--gray-200)');
+  });
+  var btn = document.getElementById('obra-btn-aplicar');
+  if (btn) btn.textContent = OBRA_MODO === 'incluido' ? '➕ Repartir en los conceptos marcados' : '➕ Sumar costos de obra al presupuesto';
+  obraDibujarLista();
+}
+
+function obraMarcar(i, v) { if (PRES_CONCEPTOS[i]) PRES_CONCEPTOS[i].llevaTraslado = !!v; }
+
+function obraDibujarLista() {
+  var el = document.getElementById('obra-incl-lista'); if (!el) return;
+  if (OBRA_MODO !== 'incluido') { el.style.display = 'none'; el.innerHTML = ''; obraPintarAviso(); return; }
+  var filas = [];
+  PRES_CONCEPTOS.forEach(function(p, i) {
+    if (obraEsCargo(p)) return;
+    var t = obraTrasladoDe(p);
+    filas.push('<label style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;font-size:11.5px;color:var(--navy);cursor:pointer">'
+      + '<input type="checkbox" ' + (p.llevaTraslado !== false ? 'checked ' : '') + 'onchange="obraMarcar(' + i + ', this.checked)" style="margin-top:2px;flex-shrink:0">'
+      + '<span style="flex:1;min-width:0">' + esc(String(p.label || ('Concepto ' + (i + 1))).slice(0, 70)) + '</span>'
+      + '<span style="white-space:nowrap;color:var(--gray-400)">' + (t > 0 ? 'incluye $' + fmt(t) : '$' + fmt(p.precio || 0)) + '</span></label>');
+  });
+  el.style.display = 'block';
+  el.innerHTML = filas.length
+    ? '<div style="font-size:10.5px;color:var(--gray-400);margin-bottom:2px">Marca los conceptos que llevan el traslado dentro de su precio:</div>' + filas.join('')
+    : '<div style="font-size:11px;color:var(--gray-400)">Todavía no hay conceptos a los que repartir el traslado.</div>';
+  obraPintarAviso();
+}
+
+// Saca de cada concepto el traslado que llevaba dentro. Devuelve el total quitado.
+function obraQuitarIncluido() {
+  var total = 0;
+  PRES_CONCEPTOS.forEach(function(p) {
+    var t = obraTrasladoDe(p);
+    if (t > 0) {
+      var cant = parseInt(p.cantidad, 10) || 1;
+      p.precio = Math.round((parseFloat(p.precio) || 0) - t);
+      p.precioUnitario = Math.round((p.precio / cant) * 100) / 100;
+      total += t;
+    }
+    delete p.traslado; delete p._cambioTraslado;
+  });
+  return total;
+}
+
+function obraAplicarIncluido() {
+  var c = obraCalculo();
+  if (!c.total) { toast('Primero calcula la distancia o escribe los km'); return; }
+  var marcados = PRES_CONCEPTOS.filter(function(p) { return !obraEsCargo(p) && p.llevaTraslado !== false; });
+  if (!marcados.length) { toast('Marca al menos un concepto que lleve el traslado'); return; }
+  var delta = 0;
+  var ia = obraBuscarConcepto('costos_obra');
+  if (ia >= 0) { delta -= parseFloat(PRES_CONCEPTOS[ia].precio) || 0; PRES_CONCEPTOS.splice(ia, 1); } // el renglón aparte se sustituye
+  delta -= obraQuitarIncluido(); // se reparte desde cero con lo que hay ahora
+  var bases = marcados.map(function(p) { return Math.max(0, parseFloat(p.precio) || 0); });
+  var sumB = bases.reduce(function(a, b) { return a + b; }, 0);
+  var partes = sumB > 0
+    ? bases.map(function(b) { return Math.round(c.total * b / sumB); })
+    : marcados.map(function() { return Math.round(c.total / marcados.length); });
+  var dif = c.total - partes.reduce(function(a, b) { return a + b; }, 0); // el residuo del redondeo lo lleva el más caro
+  if (dif) { var im = bases.indexOf(Math.max.apply(null, bases)); partes[im < 0 ? 0 : im] += dif; }
+  var cfg = JSON.parse(JSON.stringify(OBRA_CFG));
+  var cpEl = document.getElementById('obra-cp');
+  marcados.forEach(function(p, k) {
+    var cant = parseInt(p.cantidad, 10) || 1;
+    p.precio = Math.round((parseFloat(p.precio) || 0) + partes[k]);
+    p.precioUnitario = Math.round((p.precio / cant) * 100) / 100;
+    p.traslado = { monto: partes[k], total: c.total, km: c.km, min: c.min, vmed: c.vmed, vins: c.vins, personas: c.personas, piso: c.piso,
+      cp: OBRA_UBIC ? OBRA_UBIC.cp : (cpEl ? cpEl.value : ''), lugar: OBRA_UBIC ? OBRA_UBIC.lugar : '',
+      desglose: { gasolina: c.gasolina, tiempo: c.tiempo, traslados: c.traslados, pisos: c.pisos, iva: c.iva },
+      config: cfg, calculado: new Date().toISOString() };
+  });
+  delta += c.total;
+  OBRA_CAMBIOS_RESET();
+  obraAjustarMonto(delta);
+  presDibujarConceptos(); obraRecalcular();
+  toast('✅ Traslado de $' + fmt(c.total) + ' repartido en ' + marcados.length + ' concepto(s)');
+}
+
+function obraPasarAparte() {
+  var c = obraCalculo();
+  if (!c.total) { toast('Primero calcula la distancia o escribe los km'); return; }
+  var q = obraQuitarIncluido(); if (q) obraAjustarMonto(-q);
+  OBRA_CAMBIOS_RESET();
+  obraSetModo('aparte');
+  obraAplicarAparte();
+}
+
+function obraDejarAsi() { OBRA_AVISO_OFF = true; obraPintarAviso(); }
+
+// Más de 2 conceptos cambiados o quitados con traslado incluido: se ofrece decidir otra vez
+function obraRevisarCambios() {
+  if (obraCambiosCuenta() > 2 && !OBRA_AVISO_OFF) {
+    var cuerpo = document.getElementById('obra-cuerpo'); if (cuerpo) cuerpo.style.display = 'block';
+    obraSetModo('incluido');
+    toast('⚠️ Cambiaste más de 2 conceptos con traslado incluido — revisa 🚚 Costos de obra');
+  }
+  obraPintarAviso();
+}
+
+function obraPintarAviso() {
+  var el = document.getElementById('obra-incl-aviso'); if (!el) return;
+  var n = obraCambiosCuenta();
+  if (!(n > 2) || OBRA_AVISO_OFF || OBRA_MODO !== 'incluido') { el.style.display = 'none'; el.innerHTML = ''; return; }
+  var est = 'padding:7px 9px;border-radius:7px;font-size:11px;font-weight:700;cursor:pointer;';
+  el.style.display = 'block';
+  el.innerHTML = 'Cambiaste o quitaste <b>' + n + '</b> conceptos que llevaban traslado incluido: el reparto ya no refleja la obra. ¿Qué hacemos?'
+    + '<div style="display:flex;gap:6px;margin-top:7px;flex-wrap:wrap">'
+    + '<button type="button" onclick="obraAplicarIncluido()" style="' + est + 'border:none;background:var(--navy);color:#fff">Repartir otra vez</button>'
+    + '<button type="button" onclick="obraPasarAparte()" style="' + est + 'border:1.5px solid var(--navy);background:transparent;color:var(--navy)">Pasar a renglón aparte</button>'
+    + '<button type="button" onclick="obraDejarAsi()" style="' + est + 'border:1.5px solid var(--gray-200);background:transparent;color:var(--gray-400)">Dejar así</button></div>';
+}
+
+function obraAplicarCostos() { if (OBRA_MODO === 'incluido') obraAplicarIncluido(); else obraAplicarAparte(); }
 
 function obraTarifaActual() { return obraBuscarConcepto('ajuste_tarifa') >= 0 ? 'familia' : 'comercial'; }
 
@@ -3477,7 +3656,7 @@ async function obraTarifa(tipo) {
     toast('Tarifa comercial: se quitó el ajuste de familia');
   } else {
     var base = PRES_CONCEPTOS.reduce(function(s, p) {
-      return (p.resultado && /^(costos_obra|ajuste_tarifa|descuento)$/.test(p.resultado.tipo)) ? s : s + (parseFloat(p.precio) || 0);
+      return (p.resultado && /^(costos_obra|ajuste_tarifa|descuento)$/.test(p.resultado.tipo)) ? s : s + (parseFloat(p.precio) || 0) - obraTrasladoDe(p); // v3.33.0: el traslado incluido no entra a la tarifa
     }, 0);
     if (!base) { toast('No hay piezas con precio para aplicar la tarifa'); return; }
     var factor = (1 + OBRA_CFG.utilidad_familia_pct / 100) / (1 + OBRA_CFG.utilidad_pct / 100);
@@ -3547,7 +3726,7 @@ async function presGuardar() {
   };
   if (PRES_CONCEPTOS.length) {
     datos.notas_internas = JSON.stringify(PRES_CONCEPTOS.map(function(p) {
-      return { label: p.label, cantidad: p.cantidad || 1, precioUnitario: p.precioUnitario, precio: p.precio, resultado: p.resultado, unidades: p.unidades };
+      return { label: p.label, cantidad: p.cantidad || 1, precioUnitario: p.precioUnitario, precio: p.precio, resultado: p.resultado, unidades: p.unidades, traslado: p.traslado || undefined };
     }));
   }
 
