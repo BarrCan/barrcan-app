@@ -7,6 +7,11 @@
 <title>BarrCan · Configuración de Costos</title>
 <!--
   BARRCAN · MÓDULO: CONFIGURACIÓN DE COSTOS (config.html)
+  VERSION : v1.12
+  FECHA   : 2026-10-23
+  v1.12 - Nuevo grupo "Costos de obra (traslado)": costo por km, hora por persona (285 de arranque, igual que la de servicio) y
+    factor de tráfico (1.5). Antes vivían solo en la base y no se podían cambiar desde la app. Historial los lee al calcular
+    el traslado.
   VERSION : v1.11
   FECHA   : 2026-10-23
   v1.11 - Nuevo recargo "Esmerilado" (% sobre el precio del vidrio, cualquier espesor; 23% de arranque) en Vidrio especial,
@@ -181,6 +186,11 @@ html, body { min-height:100%; font-family:'DM Sans',sans-serif; background:var(-
     </div>
 
     <div class="grupo">
+      <div class="grupo-titulo">🚚 Costos de obra (traslado) — Historial</div>
+      <div id="grupo-obra"></div>
+    </div>
+
+    <div class="grupo">
       <div class="grupo-titulo">🪟 Vidrio — precio base por espesor ($/m²)</div>
       <div id="grupo-vidrio"></div>
     </div>
@@ -222,7 +232,7 @@ html, body { min-height:100%; font-family:'DM Sans',sans-serif; background:var(-
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
-const APP_VERSION = 'v1.11';
+const APP_VERSION = 'v1.12';
 const SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co';
 const SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I';
 let _sb = null;
@@ -256,6 +266,10 @@ const CAMPOS = [
   { grupo:'grupo-aluminio', clave:'precio_al_kg',   label:'Precio aluminio', unidad:'$/kg' },
   { grupo:'grupo-aluminio', clave:'cargo_piso',     label:'Cargo por piso (instalación en altura)', unidad:'$' },
   { grupo:'grupo-aluminio', clave:'cargo_campo',    label:'Cargo por visita/traslado a campo', unidad:'$' },
+
+  { grupo:'grupo-obra', clave:'obra_costo_km',        label:'Gasolina por km (ida y vuelta)',        unidad:'$/km', defecto: 5 },
+  { grupo:'grupo-obra', clave:'obra_hora_persona',    label:'Hora de traslado por persona',          unidad:'$/h',  defecto: 285 },
+  { grupo:'grupo-obra', clave:'obra_factor_trafico',  label:'Factor de tráfico (tiempo de traslado ×)', unidad:'×', defecto: 1.5 },
 
   { grupo:'grupo-vidrio', clave:'vid_4mm',  label:'Vidrio 4mm',  unidad:'$', defecto: 380 },
   { grupo:'grupo-vidrio', clave:'vid_6mm',  label:'Vidrio 6mm',  unidad:'$' },

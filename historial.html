@@ -9,6 +9,10 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.33.1
+  FECHA   : 2026-10-23
+  v3.33.1 - La hora de traslado por persona de arranque baja de $400 a $285 (la misma de servicio). Ahora se cambia en Config
+    (grupo Costos de obra); si la base ya tiene un valor guardado, manda ese hasta que lo cambies ahí.
   VERSIÓN : v3.33.0
   FECHA   : 2026-10-23
   v3.33.0 - TRASLADO INCLUIDO EN LOS CONCEPTOS: en 🚚 Costos de obra, "¿Cómo se cobra el traslado?" → "Renglón aparte" (como
@@ -1743,7 +1747,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.33.0';
+var APP_VERSION = 'v3.33.1';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -3316,7 +3320,7 @@ var PRES_PAGADO_REAL_EDICION = 0; // pagos ya reales del presupuesto que se est�
 // iva_pct. Distancia: OpenStreetMap (Nominatim + OSRM); si el servicio
 // no responde, se estima en línea recta ×1.4 o se captura a mano.
 // ══════════════════════════════════════════════════════════════
-var OBRA_CFG = { costo_km: 5, hora_persona: 400, factor_trafico: 1.5, cargo_piso: 150, utilidad_pct: 22, utilidad_familia_pct: 10, iva_pct: 16 };
+var OBRA_CFG = { costo_km: 5, hora_persona: 285, factor_trafico: 1.5, cargo_piso: 150, utilidad_pct: 22, utilidad_familia_pct: 10, iva_pct: 16 };
 var OBRA_CFG_CARGADA = false;
 var OBRA_UBIC = null; // { cp, lugar, lat, lon }
 
