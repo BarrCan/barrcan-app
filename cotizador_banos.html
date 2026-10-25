@@ -9,6 +9,13 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v3.17.0
+  FECHA   : 2026-10-24
+  v3.17.0 - ALU/POLIETILENO: MANO DE OBRA E INSTALACIÓN EDITABLES. Dos campos nuevos bajo Alto: "Mano de obra
+    (fabricación)" e "Instalación (IVA incl.)". Vacío = usa el valor de Config ($600 / $500, igual que antes);
+    escribir un número lo cambia solo para este cálculo (0 es válido: p. ej. envío por paquetería sin instalación).
+    No se modifica Config ni los módulos alupol_recto / alupol_escuadra. Nota bajo el desglose: perfiles, herrajes y
+    material se muestran con IVA de compras, el cálculo los usa sin IVA (por eso los renglones no suman el total).
   VERSION : v3.16.0
   FECHA   : 2026-10-15
   v3.16.0 - VARIOS CONCEPTOS EN "Otro / Ampliación": cada concepto con su costo, "➕ Agregar este concepto y capturar otro"
@@ -1006,6 +1013,18 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
         <input type="number" class="form-input" id="ap-alto" value="1800" inputmode="numeric">
       </div>
 
+      <div class="form-row">
+        <div>
+          <label class="form-label">Mano de obra fabricaci&oacute;n ($)</label>
+          <input type="number" class="form-input" id="ap-mdo" min="0" step="any" placeholder="Config" inputmode="decimal">
+        </div>
+        <div>
+          <label class="form-label">Instalaci&oacute;n, IVA incl. ($)</label>
+          <input type="number" class="form-input" id="ap-inst" min="0" step="any" placeholder="Config" inputmode="decimal">
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--gray-400);margin:-4px 0 10px">Vac&iacute;o = usa el valor de Config. Escribe 0 si no lleva instalaci&oacute;n (p. ej. env&iacute;o por paqueter&iacute;a).</div>
+
       <button class="btn btn-primary" onclick="apCalcular()">Calcular</button>
     </div>
 
@@ -1023,6 +1042,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
           <div class="desglose-row"><span>GA</span><span id="ap-d-ga">$0</span></div>
           <div class="desglose-row"><span>Utilidad</span><span id="ap-d-util">$0</span></div>
           <div class="desglose-row"><span>IVA</span><span id="ap-d-iva">$0</span></div>
+          <div style="font-size:10px;opacity:.7;margin-top:6px">Perfiles, herrajes y material se muestran con IVA de compras; el c&aacute;lculo los usa sin IVA, por eso los renglones no suman el total.</div>
         </div>
       </div>
 
@@ -1365,7 +1385,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v3.16.0';
+var APP_VERSION = 'v3.17.0';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -1500,10 +1520,17 @@ function apCalcularConModulo(clave) {
   var altoMm = parseFloat(document.getElementById('ap-alto').value) || 0;
   var largo2Mm = AP_TIPO === 'escuadra' ? (parseFloat(document.getElementById('ap-largo2').value) || 0) : 0;
 
+  // v3.17.0: mano de obra e instalación editables (vacío = Config; 0 es válido). Copia local: no toca ALU_PRECIOS.
+  var mdoTxt = (document.getElementById('ap-mdo').value || '').trim();
+  var instTxt = (document.getElementById('ap-inst').value || '').trim();
+  var preciosAp = Object.assign({}, ALU_PRECIOS);
+  if (mdoTxt !== '' && isFinite(parseFloat(mdoTxt)) && parseFloat(mdoTxt) >= 0) preciosAp.mdo = parseFloat(mdoTxt);
+  if (instTxt !== '' && isFinite(parseFloat(instTxt)) && parseFloat(instTxt) >= 0) preciosAp.instalacion = parseFloat(instTxt);
+
   var res = mod.calcular({
     largoMm: largoMm, altoMm: altoMm, largo2Mm: largo2Mm,
     color: AP_COLOR, nivel: AP_NIVEL,
-    precios: ALU_PRECIOS, // Recto y Escuadra lo usan completo
+    precios: preciosAp, // Recto y Escuadra lo usan completo
     pct: {
       gif_pct: ALU_PRECIOS.gif_pct, ga_pct: ALU_PRECIOS.ga_pct, util_pct: ALU_PRECIOS.util_pct,
       iva_compras_pct: ALU_PRECIOS.iva_compras_pct, iva_venta_pct: ALU_PRECIOS.iva_venta_pct
