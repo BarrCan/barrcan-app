@@ -9,6 +9,12 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.34.0
+  FECHA   : 2026-11-07
+  v3.34.0 - PRECIO EDITABLE POR CONCEPTO: en el editor, cada concepto ahora trae un campo de precio unitario (antes solo se
+    podía cambiar la descripción y la cantidad, y el precio salía como texto). precio = unitario x cantidad y el Monto se
+    ajusta con la diferencia; el Saldo se recalcula solo. Los cargos de obra (traslado, tarifa, descuento) no lo llevan.
+    Si el presupuesto ya está firmado por el cliente, avisa una vez que el monto firmado dejará de coincidir.
   VERSIÓN : v3.33.1
   FECHA   : 2026-10-23
   v3.33.1 - La hora de traslado por persona de arranque baja de $400 a $285 (la misma de servicio). Ahora se cambia en Config
@@ -1747,7 +1753,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.33.1';
+var APP_VERSION = 'v3.34.0';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -2908,11 +2914,14 @@ function presDibujarConceptos() {
     return '<div style="display:flex;gap:6px;align-items:flex-start;margin-bottom:8px">'
       + '<textarea class="form-input" rows="2" style="resize:none;font-size:13px" '
       + 'oninput="presConceptoEditar(' + i + ',\'label\',this.value)" placeholder="Descripción de esta pieza">' + esc(p.label) + '</textarea>'
-      + '<div style="display:flex;flex-direction:column;gap:4px;width:64px;flex-shrink:0">'
+      + '<div style="display:flex;flex-direction:column;gap:4px;width:92px;flex-shrink:0">'
       + '<input type="number" min="1" value="' + (p.cantidad || 1) + '" title="Cantidad" '
       + 'style="width:100%;padding:6px;border:1.5px solid var(--gray-200);border-radius:6px;font-size:12px;text-align:center" '
       + 'oninput="presConceptoEditar(' + i + ',\'cantidad\',this.value)">'
-      + '<div style="font-size:10px;color:var(--gray-400);text-align:center">$' + fmt(p.precio || 0) + '</div>'
+      + (esCargoObra ? '' : '<input type="number" min="0" step="any" inputmode="decimal" value="' + (p.precioUnitario != null ? p.precioUnitario : (p.precio || 0)) + '" title="Precio unitario $ (editable)" '
+        + 'style="width:100%;padding:6px;border:1.5px solid var(--gray-200);border-radius:6px;font-size:12px;text-align:center" '
+        + 'oninput="presConceptoEditar(' + i + ',\'precioUnitario\',this.value)">')
+      + '<div id="pres-pz-total-' + i + '" style="font-size:10px;color:var(--gray-400);text-align:center">$' + fmt(p.precio || 0) + '</div>'
       + '</div>'
       + btnRecalcular
       + btnUnidades
@@ -3112,6 +3121,27 @@ function presConceptoEditar(idx, campo, valor) {
       if (m) { m.value = Math.round((parseFloat(m.value) || 0) + pz.precio - precioAnt); presMontoCambio(); }
       presDibujarConceptos();
       toast('Cantidad ' + cantNueva + ' × $' + fmt(pu) + ' = $' + fmt(pz.precio) + ' — Monto ajustado');
+    }
+  } else if (campo === 'precioUnitario') {
+    // v3.34.0: precio unitario editable en cada concepto. precio = unitario x cantidad y el Monto se ajusta con la
+    // diferencia (el Saldo se recalcula solo en presMontoCambio). No se repinta la lista para no perder el foco al escribir.
+    var pz2 = PRES_CONCEPTOS[idx];
+    var cant2 = parseInt(pz2.cantidad, 10) || 1;
+    var puN = parseFloat(valor); if (isNaN(puN) || puN < 0) puN = 0;
+    var precioAnt2 = parseFloat(pz2.precio) || 0;
+    pz2.precioUnitario = puN;
+    pz2.precio = Math.round(puN * cant2);
+    if (pz2.precio !== precioAnt2) {
+      var m2 = document.getElementById('pres-monto');
+      if (m2) { m2.value = Math.round((parseFloat(m2.value) || 0) + pz2.precio - precioAnt2); presMontoCambio(); }
+    }
+    var tEl = document.getElementById('pres-pz-total-' + idx);
+    if (tEl) tEl.textContent = '$' + fmt(pz2.precio || 0);
+    // Aviso (una sola vez) si el presupuesto ya lo firmó el cliente: el monto firmado deja de coincidir.
+    var pFirm = (typeof PRES_CACHE !== 'undefined' && PRES_EDITANDO_ID) ? PRES_CACHE.filter(function(x) { return x.id === PRES_EDITANDO_ID; })[0] : null;
+    if (pFirm && pFirm.firmado_at && !window.__avisoFirmaPrecio) {
+      window.__avisoFirmaPrecio = true;
+      setTimeout(function() { alert('Este presupuesto ya está FIRMADO por el cliente (monto firmado: $' + fmt(pFirm.firma_monto || pFirm.monto || 0) + ').\n\nSi cambias montos, el documento firmado ya no coincide: pide su aceptación por escrito y sube la letra de revisión del folio.'); }, 60);
     }
   } else {
     PRES_CONCEPTOS[idx][campo] = valor;
