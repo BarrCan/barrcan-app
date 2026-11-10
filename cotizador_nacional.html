@@ -8,7 +8,16 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <script src="modulos/abrir_doc.js"></script>
 <!--
-  BARRCAN COTIZADOR NACIONAL v3.7.0
+  BARRCAN COTIZADOR NACIONAL v3.8.5  (la versión vigente es la constante APP_VERSION; este encabezado no se actualizó entre v3.7.1 y v3.8.4)
+  v3.8.5 - FIX de costo: Panorama 3 VENTANA (OX, OXXO, XOX, OXO, OX+Mosquitero) subvaluaba el aluminio.
+    Los perfiles de HOJA (cerco chapa, cerco traslape, zoclo y cabezal) tenían el mismo peso que en
+    Panorama 2, pero en el 3" son mucho más pesados. Pesos (kg/m) corregidos con el Excel de Mau
+    (Ventas_Nal 3, ventana 3" de 135x45; razones de costo 3"/2" por perfil):
+      marco 0.615 -> 0.579 | cerco chapa 0.442 -> 0.738 | cerco traslape 0.518 -> 0.751
+      zoclo hoja 0.510 -> 0.666 | cabezal hoja 0.390 -> 0.600 | riel marco sin cambio (0.654 ya coincidía).
+    Verificación a 135x45: aluminio de la app $604.51 -> $724.57 (Excel: $715.31). El precio final de la
+    ventana 3" sube ~7% a esa medida con la Config usada en la prueba. NO se tocaron las puertas
+    Panorama 3 ni el Panorama 2 (su aluminio ya coincidía con el Excel al centavo).
   v3.7.0 - Muestra visual junto a Acabado/Color y Espesor de Vidrio: en vez
     de solo texto en el dropdown, se ve un cuadrito con el color real
     (para vidrio) o la foto del acabado si ya está subida a
@@ -2809,12 +2818,12 @@ const DB = {
       id:"S3000_PANORAMA_V_OX", nombre:"Panorama 3 Ventana OX", serie:"Panorama 3", emoji:"🏗️",
       tipo:"Ventana Corrediza 2H (OX)", holgura:3, factorGIF:1.15,
       perfiles:{
-        "67826":{desc:"Cabezal y Jamba Marco",peso:0.615,pesoCGIF:0.707},
+        "67826":{desc:"Cabezal y Jamba Marco",peso:0.579,pesoCGIF:0.666},
         "69957":{desc:"Riel Inferior Marco",peso:0.654,pesoCGIF:0.752},
-        "67847":{desc:"Cerco Vertical Chapa",peso:0.442,pesoCGIF:0.508},
-        "67848":{desc:"Cerco Vertical Traslape",peso:0.518,pesoCGIF:0.596},
-        "67849":{desc:"Zoclo Inferior Hoja",peso:0.510,pesoCGIF:0.587},
-        "67850":{desc:"Cabezal Superior Hoja",peso:0.390,pesoCGIF:0.449}
+        "67847":{desc:"Cerco Vertical Chapa",peso:0.738,pesoCGIF:0.848},
+        "67848":{desc:"Cerco Vertical Traslape",peso:0.751,pesoCGIF:0.864},
+        "67849":{desc:"Zoclo Inferior Hoja",peso:0.666,pesoCGIF:0.766},
+        "67850":{desc:"Cabezal Superior Hoja",peso:0.600,pesoCGIF:0.690}
       },
       herrajes:[
         {cod:"CAR-3000",desc:"Carretilla S-3",cant:2.30,precio:95},
@@ -2869,12 +2878,12 @@ const DB = {
       id:"S3000_PANORAMA_V_OXXO", nombre:"Panorama 3 Ventana OXXO", serie:"Panorama 3", emoji:"🏗️",
       tipo:"Ventana Corrediza 4H (OXXO)", holgura:3, factorGIF:1.15,
       perfiles:{
-        "67826":{desc:"Cabezal y Jamba Marco",peso:0.615,pesoCGIF:0.707},
+        "67826":{desc:"Cabezal y Jamba Marco",peso:0.579,pesoCGIF:0.666},
         "69957":{desc:"Riel Inferior",peso:0.654,pesoCGIF:0.752},
-        "67847":{desc:"Cerco Chapa",peso:0.442,pesoCGIF:0.508},
-        "67848":{desc:"Cerco Traslape",peso:0.518,pesoCGIF:0.596},
-        "67849":{desc:"Zoclo Hoja",peso:0.510,pesoCGIF:0.587},
-        "67850":{desc:"Cabezal Hoja",peso:0.390,pesoCGIF:0.449},
+        "67847":{desc:"Cerco Chapa",peso:0.738,pesoCGIF:0.848},
+        "67848":{desc:"Cerco Traslape",peso:0.751,pesoCGIF:0.864},
+        "67849":{desc:"Zoclo Hoja",peso:0.666,pesoCGIF:0.766},
+        "67850":{desc:"Cabezal Hoja",peso:0.600,pesoCGIF:0.690},
         "68504":{desc:"Inversor Central S-3",peso:0.580,pesoCGIF:0.667}
       },
       herrajes:[
@@ -2901,12 +2910,12 @@ const DB = {
       id:"S3000_PANORAMA_V_XOX", nombre:"Panorama 3 Ventana XOX", serie:"Panorama 3", emoji:"🏗️",
       tipo:"Ventana Corrediza 3H (XOX)", holgura:3, factorGIF:1.15,
       perfiles:{
-        "67826":{desc:"Cabezal y Jamba Marco",peso:0.615,pesoCGIF:0.707},
+        "67826":{desc:"Cabezal y Jamba Marco",peso:0.579,pesoCGIF:0.666},
         "69957":{desc:"Riel Inferior",peso:0.654,pesoCGIF:0.752},
-        "67847":{desc:"Cerco Chapa",peso:0.442,pesoCGIF:0.508},
-        "67848":{desc:"Cerco Traslape",peso:0.518,pesoCGIF:0.596},
-        "67849":{desc:"Zoclo Hoja",peso:0.510,pesoCGIF:0.587},
-        "67850":{desc:"Cabezal Hoja",peso:0.390,pesoCGIF:0.449}
+        "67847":{desc:"Cerco Chapa",peso:0.738,pesoCGIF:0.848},
+        "67848":{desc:"Cerco Traslape",peso:0.751,pesoCGIF:0.864},
+        "67849":{desc:"Zoclo Hoja",peso:0.666,pesoCGIF:0.766},
+        "67850":{desc:"Cabezal Hoja",peso:0.600,pesoCGIF:0.690}
       },
       herrajes:[
         {cod:"CAR-3000",desc:"Carretilla S-3",cant:4.60,precio:95},
@@ -2931,12 +2940,12 @@ const DB = {
       id:"S3000_PANORAMA_V_OXO", nombre:"Panorama 3 Ventana OXO", serie:"Panorama 3", emoji:"🏗️",
       tipo:"Ventana Corrediza 3H (OXO)", holgura:3, factorGIF:1.15,
       perfiles:{
-        "67826":{desc:"Cabezal y Jamba Marco",peso:0.615,pesoCGIF:0.707},
+        "67826":{desc:"Cabezal y Jamba Marco",peso:0.579,pesoCGIF:0.666},
         "69957":{desc:"Riel Inferior",peso:0.654,pesoCGIF:0.752},
-        "67847":{desc:"Cerco Chapa",peso:0.442,pesoCGIF:0.508},
-        "67848":{desc:"Cerco Traslape",peso:0.518,pesoCGIF:0.596},
-        "67849":{desc:"Zoclo Hoja",peso:0.510,pesoCGIF:0.587},
-        "67850":{desc:"Cabezal Hoja",peso:0.390,pesoCGIF:0.449}
+        "67847":{desc:"Cerco Chapa",peso:0.738,pesoCGIF:0.848},
+        "67848":{desc:"Cerco Traslape",peso:0.751,pesoCGIF:0.864},
+        "67849":{desc:"Zoclo Hoja",peso:0.666,pesoCGIF:0.766},
+        "67850":{desc:"Cabezal Hoja",peso:0.600,pesoCGIF:0.690}
       },
       herrajes:[
         {cod:"CAR-3000",desc:"Carretilla S-3",cant:4.60,precio:95},
@@ -2993,12 +3002,12 @@ const DB = {
       id:"S3000_PANORAMA_V_OX_MOSQ", nombre:"Panorama 3 OX + Mosquitero", serie:"Panorama 3", emoji:"🏗️",
       tipo:"Ventana 3 OX c/Mosquitero", holgura:3, factorGIF:1.15,
       perfiles:{
-        "67826":{desc:"Cabezal y Jamba Marco",peso:0.615,pesoCGIF:0.707},
+        "67826":{desc:"Cabezal y Jamba Marco",peso:0.579,pesoCGIF:0.666},
         "69957":{desc:"Riel Inferior",peso:0.654,pesoCGIF:0.752},
-        "67847":{desc:"Cerco Chapa",peso:0.442,pesoCGIF:0.508},
-        "67848":{desc:"Cerco Traslape",peso:0.518,pesoCGIF:0.596},
-        "67849":{desc:"Zoclo Hoja",peso:0.510,pesoCGIF:0.587},
-        "67850":{desc:"Cabezal Hoja",peso:0.390,pesoCGIF:0.449},
+        "67847":{desc:"Cerco Chapa",peso:0.738,pesoCGIF:0.848},
+        "67848":{desc:"Cerco Traslape",peso:0.751,pesoCGIF:0.864},
+        "67849":{desc:"Zoclo Hoja",peso:0.666,pesoCGIF:0.766},
+        "67850":{desc:"Cabezal Hoja",peso:0.600,pesoCGIF:0.690},
         "11096":{desc:"Perfil Mosquitero S-3",peso:0.245,pesoCGIF:0.282}
       },
       herrajes:[
@@ -5441,7 +5450,7 @@ function sb(){
 }
 
 // ── Funciones auxiliares (del app base) ───────────────────────
-const APP_VERSION = 'v3.8.4'; // v3.8.3 (14-oct-2026): tela negra del mosquitero a $80/m (costo confirmado por Mau; la v3.8.2 la había bajado por error a $8)
+const APP_VERSION = 'v3.8.5'; // v3.8.5 (03-nov-2026): pesos de hoja de Panorama 3 ventana corregidos (ver encabezado). v3.8.3 (14-oct-2026): tela negra del mosquitero a $80/m (costo confirmado por Mau; la v3.8.2 la había bajado por error a $8)
 function cfg(id) { return parseFloat(document.getElementById(id)?.value) || 0; }
 // "Supremo" = únicamente MAU, igual que en barrcan_brain.html (nivelAcceso).
 // Por defecto (sin sesión, error de lectura, etc.) se asume NO supremo —
