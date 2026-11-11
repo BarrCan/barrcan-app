@@ -8,6 +8,21 @@
 <script src="modulos/abrir_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: PAGOS (standalone)
+  VERSIÓN : v4.40
+  FECHA   : 2026-11-10
+  v4.40 - CASCADA POR TRABAJO: el desglose deja de repartir cada pago en proporción y ahora dice QUÉ HACER con él, en orden:
+    1) IVA (se aparta), 2) material, 3) sueldos, 4) gastos fijos (GIF+GA), 5) ganancia libre. Cada pago llena esos rubros
+    en ese orden hasta cubrir lo que el presupuesto necesita, tomando en cuenta lo ya pagado antes. Muestra cuánto falta para
+    sueldos y gastos del trabajo y, en el primer pago, el ANTICIPO MÍNIMO que cubre material + sueldos + IVA. Sin presupuesto
+    seleccionado sigue el reparto proporcional de v4.39. Solo muestra: no guarda nada ni cambia cómo se registra el pago.
+  VERSIÓN : v4.39
+  FECHA   : 2026-11-10
+  v4.39 - DESGLOSE DEL PAGO: al capturar el monto, aparece "¿A dónde va este pago?" con el IVA incluido (para apartar), el
+    ingreso neto y su reparto en materiales, sueldos (mano de obra), gastos indirectos (GIF), administración (GA), otros cargos
+    directos y GANANCIA LIBRE. Si el presupuesto trae el desglose de sus costos (piezas de los cotizadores) el reparto es EXACTO;
+    si son conceptos escritos a mano usa tu estructura estándar de Config (iva_pct, gif_pct, ga_pct, utilidad_pct) y una
+    proporción de mano de obra (desglose_mdo_pct, 30% si no existe). Reserva de ISR opcional (desglose_isr_pct, 0% por defecto).
+    Solo muestra: no guarda nada nuevo ni cambia cómo se registra el pago.
   VERSIÓN : v4.38
   FECHA   : 2026-10-14
   v4.38 - CANDADO: sin sesión del día (PIN o huella en el portal) ya no abre; manda al portal y regresa aquí al entrar (modulos/acceso.js).
@@ -1169,7 +1184,7 @@ select.form-select { padding-right: 36px; cursor: pointer; }
         <div class="form-group">
           <label class="form-label">Monto de este pago *</label>
           <div class="input-unit">
-            <input type="number" id="pago-monto" class="form-input" placeholder="0" min="0" inputmode="decimal" oninput="actualizarSaldo(); pagoActualizarNetoML();">
+            <input type="number" id="pago-monto" class="form-input" placeholder="0" min="0" inputmode="decimal" oninput="actualizarSaldo(); pagoActualizarNetoML(); pagoActualizarDesglose();">
             <span class="input-unit-label">$</span>
           </div>
         </div>
@@ -1177,6 +1192,11 @@ select.form-select { padding-right: 36px; cursor: pointer; }
           <label class="form-label">Saldo pendiente <span id="saldo-real-badge" style="font-size:9px;color:var(--green);font-weight:400">(en vivo)</span></label>
           <div id="pago-saldo" class="pago-saldo-display">$0</div>
         </div>
+      </div>
+      <div id="pago-desglose" style="display:none;margin-top:10px;background:rgba(27,58,92,0.04);border:1.5px solid var(--gray-200);border-radius:10px;padding:12px">
+        <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:6px">¿Qué hago con este pago?</div>
+        <div id="pago-desglose-filas"></div>
+        <div id="pago-desglose-nota" style="font-size:10px;color:var(--gray-400);margin-top:8px;line-height:1.45"></div>
       </div>
       </div>
 
@@ -1359,7 +1379,7 @@ var SYNC = { online: navigator.onLine };
 window.addEventListener('online',  function() { SYNC.online = true;  detectarConexion(); pagosCargar(); pagoReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectarConexion(); });
 
-var APP_VERSION = 'v4.38';
+var APP_VERSION = 'v4.40';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' \u00b7 ' + APP_VERSION;
@@ -1632,6 +1652,7 @@ async function seleccionarPres() {
     s('pago-monto', montoSugerido);
 
     actualizarSaldo();
+    pagoActualizarDesglose();
 
     var pct = p.monto > 0 ? (parseFloat(document.getElementById('pago-ant').value) || 0) / p.monto : 0;
     var sc = document.getElementById('pago-concepto');
@@ -1647,6 +1668,7 @@ async function seleccionarPres() {
 
 function clearPres() {
   PRES_SEL = null;
+  pagoActualizarDesglose();
   document.getElementById('pago-pres').value = '';
   document.getElementById('pago-pres-card').classList.remove('visible');
 }
@@ -1881,6 +1903,199 @@ function pagoActualizarNetoML() {
   var comisionPct = parseFloat(comisionEl.value) || 0;
   var neto = monto * (1 - comisionPct / 100);
   netoEl.textContent = 'Neto real que te llega: $' + fmt(neto) + ' (comisión: $' + fmt(monto - neto) + ')';
+}
+
+// ── Desglose del pago (v4.39) y cascada por trabajo (v4.40) ───────────────
+var DESGLOSE_CFG = null;      // porcentajes (%) leídos de config_precios
+var DESGLOSE_CONC = {};       // presupuesto_id -> conceptos (cache)
+var DESGLOSE_SEQ = 0;         // evita que una respuesta lenta pise a una más nueva
+
+async function pagoDesgloseCfg() {
+  if (DESGLOSE_CFG) return DESGLOSE_CFG;
+  var c = { iva: 16, gif: 9, ga: 15.1, util: 22, mdo: 30, isr: 0 };
+  try {
+    if (sb()) {
+      var r = await sb().from('config_precios').select('clave,valor')
+        .in('clave', ['iva_pct', 'gif_pct', 'ga_pct', 'utilidad_pct', 'desglose_mdo_pct', 'desglose_isr_pct']);
+      if (!r.error && r.data) {
+        r.data.forEach(function(x) {
+          var v = parseFloat(x.valor); if (isNaN(v)) return;
+          if (x.clave === 'iva_pct') c.iva = v; else if (x.clave === 'gif_pct') c.gif = v; else if (x.clave === 'ga_pct') c.ga = v;
+          else if (x.clave === 'utilidad_pct') c.util = v; else if (x.clave === 'desglose_mdo_pct') c.mdo = v; else if (x.clave === 'desglose_isr_pct') c.isr = v;
+        });
+      }
+    }
+  } catch (e) { console.warn('[BarrCan] desglose: no se pudo leer config_precios', e); }
+  DESGLOSE_CFG = c; return c;
+}
+
+async function pagoDesgloseConceptos(id) {
+  if (Object.prototype.hasOwnProperty.call(DESGLOSE_CONC, id)) return DESGLOSE_CONC[id];
+  var lista = [];
+  try {
+    if (sb()) {
+      var r = await sb().from('presupuestos_atrasados').select('notas_internas').eq('id', id).maybeSingle();
+      if (!r.error && r.data && r.data.notas_internas) {
+        var j = JSON.parse(r.data.notas_internas);
+        if (Array.isArray(j)) lista = j;
+      }
+    }
+  } catch (e) { console.warn('[BarrCan] desglose: no se pudieron leer los conceptos', e); }
+  DESGLOSE_CONC[id] = lista; return lista;
+}
+
+// Proporción de cada rubro dentro del precio neto del presupuesto. Exacta si las piezas traen su desglose; si no, la estructura estándar.
+function pagoDesgloseShares(conceptos, cfg) {
+  var iva = cfg.iva / 100, u = cfg.util / 100, g = cfg.gif / 100, a = cfg.ga / 100, L = cfg.mdo / 100;
+  var base = (1 / (1 + u)) / (1 + g + a);   // precio = costo real x (1 + utilidad); costo real = base x (1 + GIF + GA)
+  var est = { mat: base * (1 - L), mdo: base * L, gif: base * g, ga: base * a, otros: 0, util: u / (1 + u) };
+  var tot = { mat: 0, mdo: 0, gif: 0, ga: 0, otros: 0, util: 0 }, netoPz = 0, exacto = 0;
+  (Array.isArray(conceptos) ? conceptos : []).forEach(function(e) {
+    var cant = parseFloat(e.cantidad) || 1;
+    var n = (parseFloat(e.precio) || 0) / (1 + iva);
+    if (!(n > 0)) return;
+    var r = e.resultado;
+    netoPz += n;
+    if (r && /^(costos_obra|ajuste_tarifa|descuento)$/.test(r.tipo || '')) { tot.otros += n; return; }
+    var detallada = r && r.utilidad != null && r.mdoTotal != null && (r.costoMaterialesNeto != null || r.costoMaterialesBruto != null);
+    if (detallada) {
+      var ivaC = parseFloat(r.ivaComprasPct); if (isNaN(ivaC)) ivaC = iva;
+      var mat = r.costoMaterialesNeto != null ? parseFloat(r.costoMaterialesNeto) : parseFloat(r.costoMaterialesBruto) / (1 + ivaC);
+      var c = { mat: mat * cant, mdo: (parseFloat(r.mdoTotal) || 0) * cant, gif: (parseFloat(r.gif) || 0) * cant,
+                ga: (parseFloat(r.ga) || 0) * cant, util: (parseFloat(r.utilidad) || 0) * cant };
+      var log = ((parseFloat(r.costoLogistica) || 0) + (parseFloat(r.costoVisita) || 0)) * cant;
+      tot.mat += c.mat; tot.mdo += c.mdo; tot.gif += c.gif; tot.ga += c.ga; tot.util += c.util;
+      tot.otros += log + Math.max(0, n - (c.mat + c.mdo + c.gif + c.ga + c.util + log)); // logística, instalación y traslado
+      exacto += n;
+    } else {
+      Object.keys(est).forEach(function(k) { tot[k] += est[k] * n; });
+    }
+  });
+  var share = {};
+  Object.keys(est).forEach(function(k) { share[k] = netoPz > 0 ? tot[k] / netoPz : est[k]; });
+  return { share: share, fExacto: netoPz > 0 ? exacto / netoPz : 0 };
+}
+
+// Reparto PROPORCIONAL de un pago (cuando no hay presupuesto seleccionado). Función pura.
+function pagoDesgloseCalc(monto, conceptos, cfg) {
+  var iva = cfg.iva / 100, neto = monto / (1 + iva), sh = pagoDesgloseShares(conceptos, cfg), share = sh.share;
+  var ivaR = Math.round(monto - neto), netoR = Math.round(monto) - ivaR;
+  var L1 = {}; ['mat', 'mdo', 'gif', 'ga', 'otros'].forEach(function(k) { L1[k] = Math.round(neto * share[k]); });
+  var gan = netoR - (L1.mat + L1.mdo + L1.gif + L1.ga + L1.otros);   // la ganancia absorbe el redondeo
+  var isr = cfg.isr > 0 ? Math.round(Math.max(0, gan) * cfg.isr / 100) : 0;
+  return { monto: Math.round(monto), iva: ivaR, neto: netoR, mat: L1.mat, mdo: L1.mdo, gif: L1.gif, ga: L1.ga, otros: L1.otros,
+           gan: gan, isr: isr, ganLibre: gan - isr, ivaAcred: Math.round(L1.mat * iva), fExacto: sh.fExacto };
+}
+
+// CASCADA POR TRABAJO: cada pago llena, en orden, material -> otros directos -> sueldos -> gastos fijos -> ganancia,
+// hasta cubrir lo que ESTE presupuesto necesita, descontando lo que ya se había pagado antes. Función pura.
+function pagoCascadaCalc(monto, pagadoAntes, total, conceptos, cfg) {
+  var iva = cfg.iva / 100, sh = pagoDesgloseShares(conceptos, cfg), s = sh.share, T = total / (1 + iva);
+  var meta = { mat: T * s.mat, otros: T * s.otros, mdo: T * s.mdo, fijos: T * (s.gif + s.ga), util: T * s.util };
+  var orden = ['mat', 'otros', 'mdo', 'fijos', 'util'];
+  function reparte(neto) {
+    var r = {}, resto = neto;
+    orden.forEach(function(k) { var a = Math.max(0, Math.min(resto, meta[k])); r[k] = a; resto -= a; });
+    if (resto > 0) r.util += resto;   // lo que sobre del trabajo es ganancia
+    return r;
+  }
+  var nAntes = Math.max(0, pagadoAntes) / (1 + iva), nEste = monto / (1 + iva);
+  var antes = reparte(nAntes), despues = reparte(nAntes + nEste);
+  var ivaR = Math.round(monto - nEste), netoR = Math.round(monto) - ivaR;
+  var d = {};
+  ['mat', 'otros', 'mdo', 'fijos'].forEach(function(k) { d[k] = Math.round(despues[k]) - Math.round(antes[k]); });
+  var resid = netoR - (d.mat + d.otros + d.mdo + d.fijos);
+  var utilReal = Math.round(despues.util) - Math.round(antes.util);
+  if (utilReal <= 0) {            // este pago no trae ganancia: el redondeo se absorbe en el rubro más grande
+    var mayor = 'mat'; ['otros', 'mdo', 'fijos'].forEach(function(k) { if (d[k] > d[mayor]) mayor = k; });
+    d[mayor] += resid; d.util = 0;
+  } else { d.util = resid; }       // con ganancia, la ganancia absorbe el redondeo
+  var falta = {};
+  ['mat', 'otros', 'mdo', 'fijos'].forEach(function(k) { falta[k] = Math.max(0, Math.round(meta[k] - despues[k])); });
+  falta.total = falta.mat + falta.otros + falta.mdo + falta.fijos;
+  var isr = cfg.isr > 0 ? Math.round(Math.max(0, d.util) * cfg.isr / 100) : 0;
+  var minBruto = Math.round((meta.mat + meta.otros + meta.mdo) * (1 + iva));   // anticipo que cubre material + sueldos + IVA
+  return { monto: Math.round(monto), iva: ivaR, d: d, falta: falta, isr: isr, ganLibre: d.util - isr,
+           minBruto: minBruto, minPct: total > 0 ? Math.round(minBruto / total * 100) : 0,
+           metaFijos: Math.round(meta.fijos), metaUtil: Math.round(meta.util),
+           ivaAcred: Math.round(meta.mat * iva * (monto / total)), fExacto: sh.fExacto };
+}
+
+function pagoDesgloseFila(txt, val, monto, o) {
+  o = o || {};
+  var pct = monto > 0 ? (val / monto * 100) : 0;
+  return '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:4px 0;' + (o.borde ? 'border-top:1px solid var(--gray-200);margin-top:4px;padding-top:8px;' : '') + '">'
+    + '<span style="font-size:' + (o.grande ? 13 : 12) + 'px;' + (o.negrita ? 'font-weight:700;' : '') + 'color:' + (o.color || 'var(--gray-600, #444)') + '">' + txt + '</span>'
+    + '<span style="white-space:nowrap"><span style="font-size:' + (o.grande ? 15 : 13) + 'px;font-weight:' + (o.negrita ? 800 : 600) + ';color:' + (o.color || 'inherit') + '">$' + fmt(val) + '</span>'
+    + ' <span style="font-size:10px;color:var(--gray-400)">' + pct.toFixed(1) + '%</span></span></div>';
+}
+
+function pagoNotaExacto(res, cfg) {
+  if (res.fExacto >= 0.99) return 'Reparto exacto con los costos guardados en este presupuesto.';
+  if (res.fExacto > 0) return 'Parte exacta (' + Math.round(res.fExacto * 100) + '% del presupuesto) y parte estimada con tu estructura estándar.';
+  return 'Estimado con tu estructura estándar: utilidad ' + cfg.util + '%, GIF ' + cfg.gif + '%, GA ' + cfg.ga + '% y mano de obra ' + cfg.mdo + '% del costo base.';
+}
+
+function pagoCascadaPintar(res, cfg) {
+  var m = res.monto, d = res.d, F = pagoDesgloseFila, h = '';
+  h += '<div style="font-size:11px;font-weight:700;color:#B9770E;margin:2px 0 2px">1. Muévelo hoy (no se gasta)</div>';
+  h += F('IVA: a tu cuenta o bolsillo del SAT', res.iva, m, { color: '#B9770E', negrita: true });
+  if (res.ganLibre > 0) h += F('Ganancia libre: a ahorro', res.ganLibre, m, { color: 'var(--green, #1E8449)', negrita: true });
+  if (res.isr > 0) h += F('Reserva de ISR (' + cfg.isr + '% de la ganancia)', res.isr, m, { color: '#B9770E' });
+  h += '<div style="font-size:11px;font-weight:700;color:var(--navy);margin:8px 0 2px;border-top:1px solid var(--gray-200);padding-top:8px">2. Para usar en este trabajo, en este orden</div>';
+  h += F('Material (proveedores)', d.mat, m);
+  if (d.otros > 0 || res.falta.otros > 0) h += F('Otros cargos directos (instalación, traslado)', d.otros, m);
+  h += F('Sueldos y mano de obra', d.mdo, m);
+  h += F('Gastos fijos (GIF ' + cfg.gif + '% + GA ' + cfg.ga + '%)', d.fijos, m);
+  var aviso = '';
+  if (res.falta.total > 0) {
+    var partes = [];
+    if (res.falta.mat > 0) partes.push('material $' + fmt(res.falta.mat));
+    if (res.falta.otros > 0) partes.push('otros cargos $' + fmt(res.falta.otros));
+    if (res.falta.mdo > 0) partes.push('sueldos $' + fmt(res.falta.mdo));
+    if (res.falta.fijos > 0) partes.push('gastos fijos $' + fmt(res.falta.fijos));
+    aviso = '<div style="margin-top:8px;padding:8px 10px;background:rgba(185,119,14,0.10);border:1px solid rgba(185,119,14,0.35);border-radius:8px;font-size:11px;line-height:1.45;color:#7E5109">'
+      + '<b>Este pago no cubre todo el trabajo:</b> faltan $' + fmt(res.falta.total) + ' (' + partes.join(', ') + ') que dependen del siguiente pago. Hasta entonces, ese dinero sale de tu bolsa o de otro trabajo.'
+      + (res.minPct > 0 ? ' <b>Anticipo mínimo sugerido: ' + res.minPct + '% (≈ $' + fmt(res.minBruto) + ')</b> para cubrir material, sueldos e IVA.' : '') + '</div>';
+  } else {
+    aviso = '<div style="margin-top:8px;padding:8px 10px;background:rgba(30,132,73,0.10);border:1px solid rgba(30,132,73,0.35);border-radius:8px;font-size:11px;line-height:1.45;color:#196F3D"><b>Con este pago el trabajo queda cubierto:</b> material, sueldos y gastos fijos, y lo que sobra es ganancia.</div>';
+  }
+  document.getElementById('pago-desglose-filas').innerHTML = h + aviso;
+  document.getElementById('pago-desglose-nota').textContent = pagoNotaExacto(res, cfg)
+    + ' El IVA a pagar baja con el IVA de tus compras de material (≈ $' + fmt(res.ivaAcred) + ' si tienes factura).' + (res.isr > 0 ? '' : ' No incluye ISR.');
+}
+
+function pagoDesglosePintar(res, cfg) {
+  var F = pagoDesgloseFila, m = res.monto, h = '';
+  h += '<div style="font-size:11px;color:var(--gray-400);margin-bottom:2px">Sin presupuesto elegido: reparto proporcional del pago.</div>';
+  h += F('IVA incluido (' + cfg.iva + '%): apartar', res.iva, m, { color: '#B9770E', negrita: true });
+  h += F('Ingreso neto sin IVA', res.neto, m, { negrita: true });
+  h += F('Materiales (proveedores)', res.mat, m);
+  h += F('Sueldos y mano de obra', res.mdo, m);
+  h += F('Gastos indirectos (GIF ' + cfg.gif + '%)', res.gif, m);
+  h += F('Administración (GA ' + cfg.ga + '%)', res.ga, m);
+  if (res.otros > 0) h += F('Otros cargos directos (instalación, traslado)', res.otros, m);
+  if (res.isr > 0) h += F('Reserva de ISR (' + cfg.isr + '% de la ganancia)', res.isr, m);
+  h += F('GANANCIA LIBRE', res.ganLibre, m, { negrita: true, grande: true, color: 'var(--green, #1E8449)', borde: true });
+  document.getElementById('pago-desglose-filas').innerHTML = h;
+  document.getElementById('pago-desglose-nota').textContent = pagoNotaExacto(res, cfg)
+    + ' El IVA a pagar baja con el IVA de tus compras de material (≈ $' + fmt(res.ivaAcred) + ' si tienes factura).' + (res.isr > 0 ? '' : ' No incluye ISR.');
+}
+
+async function pagoActualizarDesglose() {
+  var box = document.getElementById('pago-desglose'); if (!box) return;
+  var seq = ++DESGLOSE_SEQ;
+  var monto = parseFloat((document.getElementById('pago-monto') || {}).value) || 0;
+  if (!(monto > 0)) { box.style.display = 'none'; return; }
+  var cfg = await pagoDesgloseCfg();
+  var pres = (PRES_SEL && PRES_SEL.id) ? PRES_SEL : null;
+  var conceptos = pres ? await pagoDesgloseConceptos(pres.id) : [];
+  if (seq !== DESGLOSE_SEQ) return;
+  var total = parseFloat((document.getElementById('pago-total') || {}).value) || (pres ? parseFloat(pres.monto) : 0) || 0;
+  var antes = parseFloat((document.getElementById('pago-ant') || {}).value) || 0;
+  if (pres && total > 0) pagoCascadaPintar(pagoCascadaCalc(monto, antes, total, conceptos, cfg), cfg);
+  else pagoDesglosePintar(pagoDesgloseCalc(monto, conceptos, cfg), cfg);
+  box.style.display = 'block';
 }
 
 // ── Foto ──────────────────────────────────────────────────────────
@@ -3230,6 +3445,7 @@ function pagoReset() {
   document.getElementById('pago-pres-card').classList.remove('visible');
   document.getElementById('pago-pres').value = '';
   PRES_SEL = null;
+  pagoActualizarDesglose();
   PAGO_ADICIONALES = [];
   PAGO_MONTO_ORIGINAL = 0;
   var contAdic = document.getElementById('pago-adicionales-lista');
