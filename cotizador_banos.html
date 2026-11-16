@@ -9,6 +9,8 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · COTIZADOR: CANCELES DE BAÑO (standalone)
+  VERSION : v3.17.1
+  v3.17.1 - Cuenta de depósito TEMPORAL: Mercado Pago W (CLABE en lugar de Banorte/BBVA, que están bloqueadas). Para regresar a las cuentas anteriores, restaurar la versión previa de este archivo en GitHub.
   VERSION : v3.17.0
   FECHA   : 2026-10-24
   v3.17.0 - ALU/POLIETILENO: MANO DE OBRA E INSTALACIÓN EDITABLES. Dos campos nuevos bajo Alto: "Mano de obra
@@ -1314,15 +1316,9 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha) {
     + '</tbody></table>'
     + '<div style="display:flex;gap:16px;margin-bottom:12px">'
     + '<div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px">'
-    + '<div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">Banorte</div>'
+    + '<div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">Mercado Pago W (SPEI)</div>'
     + '<div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div>'
-    + '<div style="font-size:8.5pt;color:#333">Cuenta: 0672530766</div>'
-    + '<div style="font-size:8.5pt;color:#333">CLABE: 072180006725307668</div></div>'
-    + '<div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px">'
-    + '<div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">BBVA</div>'
-    + '<div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div>'
-    + '<div style="font-size:8.5pt;color:#333">Cuenta: 1512081906</div>'
-    + '<div style="font-size:8.5pt;color:#333">CLABE: 012180015120819061</div></div>'
+    + '<div style="font-size:8.5pt;color:#333">CLABE: 722969010986437805</div></div>'
     + '<div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px">'
     + '<div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">Titular</div>'
     + '<div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div>'
@@ -1385,7 +1381,7 @@ function sb() {
 var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); cbReintentarPendientes(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
-var APP_VERSION = 'v3.17.0';
+var APP_VERSION = 'v3.17.1';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');

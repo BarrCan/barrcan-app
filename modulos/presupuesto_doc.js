@@ -1,5 +1,7 @@
 // ══════════════════════════════════════════════════════════════
 // BarrCan · DOCUMENTO OFICIAL DE PRESUPUESTO (compartido)
+// VERSION : v1.12   FECHA : 2026-11-16
+// v1.12 - Cuenta de depósito TEMPORAL: Mercado Pago W (CLABE en lugar de Banorte/BBVA, que están bloqueadas). Para regresar a las cuentas anteriores, restaurar la versión previa de este archivo en GitHub.
 // VERSION : v1.11   FECHA : 2026-10-23
 // v1.11 - Si un concepto lleva el traslado incluido en su precio (it.traslado), se imprime debajo "Incluye traslado y
 //   visitas a obra" (sin monto). Aplica a este documento, a firmar.html y a ver_doc.
@@ -297,15 +299,9 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
     + '</tbody></table>'
     + '<div style="display:flex;gap:16px;margin-bottom:12px">'
     + '<div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px">'
-    + '<div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">Banorte</div>'
+    + '<div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">Mercado Pago W (SPEI)</div>'
     + '<div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div>'
-    + '<div style="font-size:8.5pt;color:#333">Cuenta: 0672530766</div>'
-    + '<div style="font-size:8.5pt;color:#333">CLABE: 072180006725307668</div></div>'
-    + '<div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px">'
-    + '<div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">BBVA</div>'
-    + '<div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div>'
-    + '<div style="font-size:8.5pt;color:#333">Cuenta: 1512081906</div>'
-    + '<div style="font-size:8.5pt;color:#333">CLABE: 012180015120819061</div></div>'
+    + '<div style="font-size:8.5pt;color:#333">CLABE: 722969010986437805</div></div>'
     + '<div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px">'
     + '<div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">Titular</div>'
     + '<div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div>'

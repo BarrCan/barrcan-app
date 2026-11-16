@@ -48,6 +48,7 @@
 //    por uno: si alguno falla, los demás sí quedan.
 
 // v12 (04-oct-2026): precarga modulos/presupuesto_doc.js (documento oficial).
+// v23 (16-nov-2026): cuenta de depósito temporal Mercado Pago W (presupuesto_doc v1.12, firmar v1.5, banos v3.17.1, cubiertas v1.6).
 // v13 (04-oct-2026): los .js locales (modulos/*.js, como el documento
 // oficial de presupuesto) ahora también son RED PRIMERO. Antes eran caché
 // primero: un cambio (ej. el correo de facturación) no se veía hasta la
@@ -60,7 +61,7 @@
 // v19 (11-oct-2026): se quita modulos/alupol_cor_luj_2h.js de la precarga (Corredizo Lujo eliminado).
 // v20 (14-oct-2026): páginas con parámetros sin señal (hoja de orden en blanco), página amable sin conexión y precarga de acceso.js.
 // v21 (14-oct-2026): librería de la base y html2pdf en caché propia que sobrevive a las versiones.
-const CACHE_VERSION = 'barrcan-v22'; // subir este número fuerza que TODOS los
+const CACHE_VERSION = 'barrcan-v23'; // subir este número fuerza que TODOS los
 // dispositivos descarten su caché vieja de una vez -- ya no debería
 // hacer falta subirlo por cada arreglo ahora que HTML es Network First,
 // pero sigue disponible por si algún día conviene un reinicio total.
