@@ -5,9 +5,12 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Firma de presupuesto</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="modulos/cuentas_deposito.js"></script>
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · FIRMA DE PRESUPUESTO (página pública, sin PIN)
+  VERSION : v1.6
+  v1.6 - Las cuentas de depósito salen de modulos/cuentas_deposito.js: solo se imprimen las marcadas como activas en Configuración (ya no hay que editar el archivo).
   VERSION : v1.5
   v1.5 - Cuenta de depósito TEMPORAL: Mercado Pago W (CLABE en lugar de Banorte/BBVA, que están bloqueadas). Para regresar a las cuentas anteriores, restaurar la versión previa de este archivo en GitHub.
   VERSION : v1.4
@@ -86,7 +89,7 @@
       <div class="nota" style="text-align:center;margin:4px 0 12px" id="firmado-info"></div>
       <div style="font-size:12px;color:var(--gris)">Anticipo para iniciar (50%)</div>
       <div class="monto" id="anticipo"></div>
-      <div class="banco"><b>Mercado Pago W</b> (transferencia SPEI) · Mauricio Barrera Espinosa<br>CLABE: 722969010986437805</div>
+      <div id="cuentas-deposito"><div class="banco"><b>Mercado Pago W</b> (transferencia SPEI) · Mauricio Barrera Espinosa<br>CLABE: 722969010986437805</div></div>
       <button class="b-wa" onclick="avisar()">📲 Enviar comprobante a BarrCan por WhatsApp</button>
       <button class="b-doc" onclick="verFirmado()">📄 Ver / descargar presupuesto firmado</button>
     </div>
@@ -94,6 +97,12 @@
 </main>
 <script>
 var SB_URL = 'https://rmngjtzupukhylxlgcww.supabase.co', SB_KEY = 'sb_publishable_udZ-NNvSLrSaDk2dBRPwMg_IQCZ4N2I', _sb = null;
+function pintarCuentas() {
+  var el = document.getElementById('cuentas-deposito');
+  if (el && window.BC_CUENTAS) el.innerHTML = BC_CUENTAS.htmlFirmar();
+}
+window.addEventListener('bc-cuentas-actualizadas', pintarCuentas);
+document.addEventListener('DOMContentLoaded', pintarCuentas);
 function sb() { if (!_sb && window.supabase) _sb = window.supabase.createClient(SB_URL, SB_KEY, { db: { schema: 'barrcan' }, auth: { persistSession: false } }); return _sb; }
 var TOKEN = new URLSearchParams(location.search).get('t') || '', P = null, EMP = {}, PIEZAS = [], hayTrazo = false;
 var WA_BARRCAN = '525615158415';

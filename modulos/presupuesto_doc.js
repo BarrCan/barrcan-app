@@ -1,5 +1,7 @@
 // ══════════════════════════════════════════════════════════════
 // BarrCan · DOCUMENTO OFICIAL DE PRESUPUESTO (compartido)
+// VERSION : v1.13   FECHA : 2026-11-17
+// v1.13 - Las cuentas de depósito salen de modulos/cuentas_deposito.js (solo las activas, elegibles en Configuración). Respaldo: Mercado Pago W.
 // VERSION : v1.12   FECHA : 2026-11-16
 // v1.12 - Cuenta de depósito TEMPORAL: Mercado Pago W (CLABE en lugar de Banorte/BBVA, que están bloqueadas). Para regresar a las cuentas anteriores, restaurar la versión previa de este archivo en GitHub.
 // VERSION : v1.11   FECHA : 2026-10-23
@@ -297,11 +299,8 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
     + '<tr style="background:#f5f7fa"><td>Segundo pago</td><td style="text-align:center">35 %</td><td>Al confirmar fecha de entrega e instalaci\u00f3n</td><td style="text-align:right;font-weight:700">$&nbsp;' + fmt(Math.max(0, a35 - u35)) + (u35 > 0 ? '<br><span style="font-size:7.5pt;font-weight:400;color:#27AE60">$' + fmt(a35) + ' menos $' + fmt(u35) + ' ya cubierto</span>' : '') + '</td></tr>'
     + '<tr style="background:#1B3A5C;color:white"><td style="color:white;font-weight:700;border-color:#1B3A5C">Liquidaci\u00f3n final</td><td style="color:white;text-align:center;border-color:#1B3A5C">15 %</td><td style="color:rgba(255,255,255,.85);border-color:#1B3A5C">A la entrega y conclusi\u00f3n total del trabajo</td><td style="color:#F1C40F;text-align:right;font-weight:700;border-color:#1B3A5C">$&nbsp;' + fmt(Math.max(0, a15 - u15)) + (u15 > 0 ? '<br><span style="font-size:7.5pt;font-weight:400;color:#9BE7B2">$' + fmt(a15) + ' menos $' + fmt(u15) + ' ya cubierto</span>' : '') + '</td></tr>'
     + '</tbody></table>'
-    + '<div style="display:flex;gap:16px;margin-bottom:12px">'
-    + '<div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px">'
-    + '<div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">Mercado Pago W (SPEI)</div>'
-    + '<div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div>'
-    + '<div style="font-size:8.5pt;color:#333">CLABE: 722969010986437805</div></div>'
+    + '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px">'
+    + (window.BC_CUENTAS ? BC_CUENTAS.htmlDoc() : '<div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px"><div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">Mercado Pago W (SPEI)</div><div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div><div style="font-size:8.5pt;color:#333">CLABE: 722969010986437805</div></div>')
     + '<div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px">'
     + '<div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">Titular</div>'
     + '<div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div>'
