@@ -10,6 +10,10 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.36.0
+  v3.36.0 - OPCIONES ALTERNATIVAS: cada concepto lleva un selector Común / Opción 1 / 2 / 3. Las opciones NO se suman: el documento muestra cada una con
+    su total y su calendario de pagos, y el Monto del presupuesto es el de la Opción 1 (o el de la elegida) hasta que el cliente elija en la liga de
+    firma. El descuento con opciones es en % y se aplica a cada opción por separado. Columna nueva: presupuestos_atrasados.opcion_elegida.
   VERSIÓN : v3.35.1
   FECHA   : 2026-11-17
   v3.35.1 - FIX: al aplicar un descuento a un presupuesto antiguo sin conceptos, la línea base salía como "Presupuesto" (CACN-196A) en vez de
@@ -1690,6 +1694,7 @@ body{min-height:100vh}
       <div style="font-size:10.5px;color:var(--gray-400);margin-bottom:8px;line-height:1.4">
         Esto es lo que aparece impreso en el documento que ve el cliente — edítalo si la descripción automática quedó muy simple. El precio se muestra solo de referencia; cambia el Monto/Saldo arriba si el total también cambió.
       </div>
+      <div style="font-size:10.5px;color:#7a5a1e;background:#FFF8EE;border:1px solid rgba(200,146,58,.35);border-radius:8px;padding:7px 9px;margin-bottom:8px;line-height:1.4">🔀 <b>Opciones alternativas:</b> si el cliente pidió 2 o más opciones que NO se suman, elige en cada concepto «Opción 1», «Opción 2»… Lo que sea de todas las opciones déjalo en «Común». El Monto será el de la Opción 1 hasta que el cliente elija en su liga de firma.</div>
       <div id="pres-conceptos-lista"></div>
       <div id="pres-conceptos-vacio" style="display:none;font-size:12px;color:var(--gray-400);padding:8px 0">Este presupuesto no tiene piezas con concepto guardado individualmente.</div>
       <div style="border:1.5px dashed var(--gray-300);border-radius:10px;padding:10px;margin-top:8px">
@@ -1773,7 +1778,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.35.1';
+var APP_VERSION = 'v3.36.0';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -1865,7 +1870,7 @@ async function presCargar() {
 
   try {
     var result = await sb().from('presupuestos_atrasados')
-      .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,fecha,anio_referencia,estado,notas_internas,modulo,created_at,firma_token,firmado_at,firmado_por,firma_png,firma_hash,firma_barrcan_png,firma_barrcan_at,firma_barrcan_por,abono_visita_monto,abono_visita_ref,abono_visita_pago_id,nota_documento')
+      .select('id,folio,cliente,tel,dir,monto,saldo,descripcion,fecha,anio_referencia,estado,notas_internas,modulo,created_at,opcion_elegida,firma_token,firmado_at,firmado_por,firma_png,firma_hash,firma_barrcan_png,firma_barrcan_at,firma_barrcan_por,abono_visita_monto,abono_visita_ref,abono_visita_pago_id,nota_documento')
       .order('folio', { ascending: true })
       .range(0, 499);
 
@@ -2004,6 +2009,7 @@ function presRenderLista(datos) {
       + '<div style="font-size:10px;color:var(--gray-400)">' + (p.fecha || '') + telStr + '</div>'
       + (p.firmado_at ? '<div style="font-size:10px;font-weight:700;color:var(--green);margin-top:2px">✅ Firmado ' + new Date(p.firmado_at).toLocaleDateString('es-MX', { timeZone: 'America/Mexico_City', day: '2-digit', month: 'short' }) + ' · ' + (p.firmado_por || '') + (p.firma_barrcan_at ? ' · BarrCan ✍️' : ' · <span style="color:#C0392B">falta firma BarrCan</span>') + '</div>'
          : (p.firma_token ? '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-top:2px">⏳ Firma enviada, pendiente</div>' : ''))
+      + presBadgeOpciones(p)
       + (parseFloat(p.abono_visita_monto) > 0 ? '<div style="font-size:10px;font-weight:700;color:var(--green);margin-top:2px">🧾 Visita −$' + fmt(p.abono_visita_monto) + ' aplicada</div>' : '')
       // v3.23: los cotizadores ya no cobran traslado por pieza -- avisar si un presupuesto abierto aún no tiene costos de obra
       + (p.estado === 'activo' && /^\s*\[/.test(p.notas_internas || '') && !/"tipo"\s*:\s*"costos_obra"/.test(p.notas_internas || '')
@@ -2760,9 +2766,10 @@ async function presEnviarFirma(idStr) {
   var liga = 'https://barrcan.github.io/barrcan-app/firmar.html?t=' + token;
   var nombre = String(p.cliente || '').trim();
   var monto = '$' + Number(p.monto || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  var texto = 'Hola' + (nombre ? ' ' + nombre : '') + ', le comparto su presupuesto ' + p.folio + ' por ' + monto + '.\n\n'
+  var conOpc = presBadgeOpciones(p) !== '';
+  var texto = 'Hola' + (nombre ? ' ' + nombre : '') + ', le comparto su presupuesto ' + p.folio + (conOpc ? ' con opciones para que elija la que prefiera' : ' por ' + monto) + '.\n\n'
     + 'Puede revisarlo y firmarlo desde su celular aquí:\n' + liga + '\n\n'
-    + 'Al firmar le aparecen los datos para el anticipo. Quedo a sus órdenes. — BarrCan';
+    + (conOpc ? 'Elija su opción y firme desde ahí. ' : '') + 'Al firmar le aparecen los datos para el anticipo. Quedo a sus órdenes. — BarrCan';
   var url = 'https://wa.me/' + (tel.length >= 12 ? tel : '') + '?text=' + encodeURIComponent(texto);
   var w = window.open(url, '_blank');
   if (!w) { try { await navigator.clipboard.writeText(liga); toast('Liga copiada -- pégala en WhatsApp'); } catch (e2) { prompt('Copia esta liga y mándala por WhatsApp:', liga); } }
@@ -2787,7 +2794,7 @@ async function presImprimir(idStr) {
   // v3.21: cliente de empresa -> "Cliente: EMPRESA" + "En atención a: ..."
   var emp = window.BCDoc.datosCliente ? await window.BCDoc.datosCliente(p.folio, p.cliente) : {};
   var html = window.BCDoc.generar(piezas, p.folio || '', p.cliente || '', p.dir || '', fecha,
-    { total: parseFloat(p.monto) || 0, empresa: emp.empresa, atencion: emp.atencion,
+    { total: parseFloat(p.monto) || 0, opcionElegida: p.opcion_elegida || null, empresa: emp.empresa, atencion: emp.atencion,
       imagenes: await presImagenesParaDoc(p),
       nota: p.nota_documento || '',
       abonoVisita: parseFloat(p.abono_visita_monto) > 0 ? { monto: parseFloat(p.abono_visita_monto), ref: p.abono_visita_ref || '' } : null,
@@ -2901,7 +2908,8 @@ function presRenderConceptos(notasInternasRaw) {
       precioUnitario: p.precioUnitario != null ? p.precioUnitario : p.precio,
       resultado: p.resultado,
       unidades: Array.isArray(p.unidades) ? p.unidades : null,
-      traslado: (p.traslado && typeof p.traslado === 'object') ? p.traslado : null // v3.33.0
+      traslado: (p.traslado && typeof p.traslado === 'object') ? p.traslado : null, // v3.33.0
+      opcion: parseInt(p.opcion, 10) > 0 ? parseInt(p.opcion, 10) : null // v3.36.0
     };
   });
   presDibujarConceptos();
@@ -2941,6 +2949,10 @@ function presDibujarConceptos() {
       + (esCargoObra ? '' : '<input type="number" min="0" step="any" inputmode="decimal" value="' + (p.precioUnitario != null ? p.precioUnitario : (p.precio || 0)) + '" title="Precio unitario $ (editable)" '
         + 'style="width:100%;padding:6px;border:1.5px solid var(--gray-200);border-radius:6px;font-size:12px;text-align:center" '
         + 'oninput="presConceptoEditar(' + i + ',\'precioUnitario\',this.value)">')
+      + (esCargoObra
+          ? (p.opcion ? '<div style="font-size:10px;color:var(--gold);text-align:center;font-weight:700">Opci\u00f3n ' + p.opcion + '</div>' : '')
+          : '<select onchange="presConceptoOpcion(' + i + ',this.value)" title="Opci\u00f3n alternativa (las opciones no se suman)" style="width:100%;padding:5px;border:1.5px solid var(--gray-200);border-radius:6px;font-size:11px;background:#fff">'
+            + ['', 1, 2, 3].map(function(o) { return '<option value="' + o + '"' + ((p.opcion || '') == o ? ' selected' : '') + '>' + (o ? 'Opci\u00f3n ' + o : 'Com\u00fan') + '</option>'; }).join('') + '</select>')
       + '<div id="pres-pz-total-' + i + '" style="font-size:10px;color:var(--gray-400);text-align:center">$' + fmt(p.precio || 0) + '</div>'
       + '</div>'
       + btnRecalcular
@@ -3166,6 +3178,7 @@ function presConceptoEditar(idx, campo, valor) {
   } else {
     PRES_CONCEPTOS[idx][campo] = valor;
   }
+  presOpcionesRecalcMonto(); // v3.36.0
 }
 
 // v3.32.0: agregar un concepto nuevo (con su costo) a un presupuesto, nuevo o existente. El Monto y el Saldo se
@@ -3186,16 +3199,78 @@ function presConceptoAgregar() {
   var dEl = document.getElementById('pres-desc');
   if (dEl && !dEl.value.trim()) dEl.value = PRES_CONCEPTOS.map(function(p) { return p.label; }).join(' + ').slice(0, 200);
   d.value = ''; c.value = '1'; pr.value = '';
+  presOpcionesRecalcMonto(); // v3.36.0
   presDibujarConceptos();
   toast('✅ Concepto agregado · $' + fmt(precio) + ' — Monto ajustado');
 }
 
 // v3.35.0: descuento como línea del presupuesto (el documento imprime los importes negativos en verde con signo menos).
+// ── v3.36.0: opciones alternativas ──
+function presOpcionIds() {
+  var ids = [];
+  PRES_CONCEPTOS.forEach(function(c) { var k = parseInt(c.opcion, 10); if (k > 0 && ids.indexOf(k) < 0) ids.push(k); });
+  return ids.sort(function(a, b) { return a - b; });
+}
+function presHayOpciones() { return presOpcionIds().length > 0; }
+function presOpcionesRecalcMonto() {
+  var ids = presOpcionIds();
+  if (!ids.length) return;
+  var pEd = (typeof PRES_CACHE !== 'undefined' && PRES_EDITANDO_ID) ? PRES_CACHE.filter(function(x) { return x.id === PRES_EDITANDO_ID; })[0] : null;
+  var ref = (pEd && pEd.opcion_elegida && ids.indexOf(parseInt(pEd.opcion_elegida, 10)) >= 0) ? parseInt(pEd.opcion_elegida, 10) : ids[0];
+  var m = document.getElementById('pres-monto');
+  if (!m) return;
+  var tot = PRES_CONCEPTOS.reduce(function(a, c) { var k = parseInt(c.opcion, 10) || 0; return (!k || k === ref) ? a + (parseFloat(c.precio) || 0) : a; }, 0);
+  m.value = Math.round(tot);
+  presMontoCambio();
+}
+function presConceptoOpcion(idx, v) {
+  if (!PRES_CONCEPTOS[idx]) return;
+  PRES_CONCEPTOS[idx].opcion = v ? parseInt(v, 10) : null;
+  var hayDesc = obraBuscarConcepto('descuento') >= 0;
+  presOpcionesRecalcMonto();
+  presDibujarConceptos();
+  toast(presHayOpciones() ? '🔀 Monto = Opción ' + presOpcionIds()[0] + ' + conceptos comunes' + (hayDesc ? ' · vuelve a aplicar el descuento' : '') : 'Sin opciones: el presupuesto suma todos los conceptos');
+}
+function presDescuentoOpciones(motivo, val) {
+  if (val >= 100) { toast('El porcentaje debe ser menor a 100'); return; }
+  var pFirm = (typeof PRES_CACHE !== 'undefined' && PRES_EDITANDO_ID) ? PRES_CACHE.filter(function(x) { return x.id === PRES_EDITANDO_ID; })[0] : null;
+  if (pFirm && pFirm.firmado_at && !confirm('Este presupuesto ya está FIRMADO por el cliente.\n\nSi aplicas el descuento, el documento firmado ya no coincide: pide su aceptación por escrito.\n\n¿Aplicar de todos modos?')) return;
+  PRES_CONCEPTOS = PRES_CONCEPTOS.filter(function(c) { return !(c.resultado && c.resultado.tipo === 'descuento'); });
+  var suma = function(f) { return PRES_CONCEPTOS.reduce(function(a, c) { return f(c) ? a + (parseFloat(c.precio) || 0) : a; }, 0); };
+  var comunes = suma(function(c) { return !(parseInt(c.opcion, 10) > 0); });
+  var resumen = [];
+  presOpcionIds().forEach(function(k) {
+    var base = Math.round(comunes + suma(function(c) { return parseInt(c.opcion, 10) === k; }));
+    var d = Math.round(base * val / 100);
+    if (d > 0 && d < base) {
+      PRES_CONCEPTOS.push({ label: motivo + ' (' + val + '%)', cantidad: 1, precio: -d, precioUnitario: -d, unidades: null, opcion: k,
+        resultado: { tipo: 'descuento', modo: 'pct', valor: val, base: base, motivo: motivo } });
+      resumen.push('Op.' + k + ' −$' + fmt(d));
+    }
+  });
+  presOpcionesRecalcMonto();
+  document.getElementById('pres-dc-valor').value = '';
+  presDibujarConceptos();
+  toast('🏷️ ' + val + '% aplicado a cada opción · ' + resumen.join(' · '));
+}
+
+function presBadgeOpciones(p) {
+  var arr = []; try { arr = JSON.parse(p.notas_internas || '[]'); } catch (e) {}
+  var ids = [];
+  (Array.isArray(arr) ? arr : []).forEach(function(c) { var k = parseInt(c && c.opcion, 10); if (k > 0 && ids.indexOf(k) < 0) ids.push(k); });
+  if (!ids.length) return '';
+  return '<div style="font-size:10px;font-weight:700;color:var(--gold);margin-top:2px">🔀 ' + ids.length + ' opciones · ' + (p.opcion_elegida ? 'elegida: Opción ' + p.opcion_elegida : 'pendiente de elegir') + '</div>';
+}
+
 function presDescuentoAplicar() {
   var motivo = (document.getElementById('pres-dc-motivo').value || '').trim() || 'Descuento';
   var modo = document.getElementById('pres-dc-modo').value;
   var val = parseFloat(document.getElementById('pres-dc-valor').value) || 0;
   if (!(val > 0)) { toast('Escribe el porcentaje o el monto del descuento'); return; }
+  if (presHayOpciones()) {
+    if (modo !== 'pct') { toast('Con opciones alternativas el descuento es en %: se aplica a cada opción'); return; }
+    return presDescuentoOpciones(motivo, val);
+  }
   var m = document.getElementById('pres-monto'), montoActual = parseFloat(m.value) || 0;
   var i = obraBuscarConcepto('descuento');
   var anterior = i >= 0 ? (parseFloat(PRES_CONCEPTOS[i].precio) || 0) : 0; // negativo
@@ -3228,6 +3303,7 @@ function presConceptoQuitar(idx) {
   PRES_CONCEPTOS.splice(idx, 1);
   if (pQuit && pQuit.resultado && pQuit.resultado.tipo === 'descuento') obraAjustarMonto(-(parseFloat(pQuit.precio) || 0)); // v3.35.0: al quitar el descuento el Monto regresa
   if (tQuit > 0) OBRA_QUITADOS++; // v3.33.0: se va con su parte del traslado
+  presOpcionesRecalcMonto(); // v3.36.0
   presDibujarConceptos();
   if (tQuit > 0) obraRevisarCambios();
 }
@@ -3813,7 +3889,7 @@ async function presGuardar() {
   };
   if (PRES_CONCEPTOS.length) {
     datos.notas_internas = JSON.stringify(PRES_CONCEPTOS.map(function(p) {
-      return { label: p.label, cantidad: p.cantidad || 1, precioUnitario: p.precioUnitario, precio: p.precio, resultado: p.resultado, unidades: p.unidades, traslado: p.traslado || undefined };
+      return { label: p.label, cantidad: p.cantidad || 1, precioUnitario: p.precioUnitario, precio: p.precio, resultado: p.resultado, unidades: p.unidades, traslado: p.traslado || undefined, opcion: p.opcion || undefined };
     }));
   }
 

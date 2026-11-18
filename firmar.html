@@ -9,6 +9,9 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · FIRMA DE PRESUPUESTO (página pública, sin PIN)
+  VERSION : v1.7
+  v1.7 - OPCIONES ALTERNATIVAS: si el presupuesto trae opciones que no se suman, el cliente elige UNA antes de firmar; se guarda opcion_elegida,
+    el monto y saldo quedan con el total de la opción elegida, y la huella digital incluye la opción. El documento firmado imprime solo esa opción.
   VERSION : v1.6
   v1.6 - Las cuentas de depósito salen de modulos/cuentas_deposito.js: solo se imprimen las marcadas como activas en Configuración (ya no hay que editar el archivo).
   VERSION : v1.5
@@ -71,7 +74,8 @@
     </div>
 
     <div class="card" id="panel-firma">
-      <div style="font-size:12px;color:var(--gris)">Total del presupuesto</div>
+      <div id="opc-box" style="display:none;margin-bottom:12px"></div>
+      <div style="font-size:12px;color:var(--gris)" id="total-lbl">Total del presupuesto</div>
       <div class="monto" id="total"></div>
       <label for="nombre">Nombre completo de quien acepta</label>
       <input type="text" id="nombre" autocomplete="name" placeholder="Nombre y apellidos">
@@ -104,6 +108,7 @@ function pintarCuentas() {
 window.addEventListener('bc-cuentas-actualizadas', pintarCuentas);
 document.addEventListener('DOMContentLoaded', pintarCuentas);
 function sb() { if (!_sb && window.supabase) _sb = window.supabase.createClient(SB_URL, SB_KEY, { db: { schema: 'barrcan' }, auth: { persistSession: false } }); return _sb; }
+var OPC_IDS = [], OPC_TOT = {}, OPC_SEL = null;
 var TOKEN = new URLSearchParams(location.search).get('t') || '', P = null, EMP = {}, PIEZAS = [], hayTrazo = false;
 var WA_BARRCAN = '525615158415';
 function money(n) { return '$' + Number(n || 0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
@@ -111,6 +116,7 @@ function fechaDe(p) { var f = String(p.fecha || '').split('-'); return f.length 
 function fechaHora(iso) { return new Date(iso).toLocaleString('es-MX', { timeZone: 'America/Mexico_City', dateStyle: 'long', timeStyle: 'short' }); }
 function docHTML(conFirma) {
   var op = { total: parseFloat(P.monto) || 0, empresa: EMP.empresa, atencion: EMP.atencion };
+  if (P.opcion_elegida) op.opcionElegida = P.opcion_elegida; // v1.7
   if (P.nota_documento) op.nota = P.nota_documento; // v1.3: nota del presupuesto
   if (P.imagenes_concepto) op.imagenes = P.imagenes_concepto; // v1.4: imágenes por concepto
   if (parseFloat(P.abono_visita_monto) > 0) op.abonoVisita = { monto: parseFloat(P.abono_visita_monto), ref: P.abono_visita_ref || '' }; // v1.2: pago de visita descontado
@@ -127,7 +133,7 @@ async function cargar() {
   if (!/^[A-Za-z0-9]{20,}$/.test(TOKEN)) { msg.innerHTML = '<b>Liga no válida.</b><br>Pida a BarrCan que se la envíe de nuevo.'; return; }
   try {
     var r = await sb().from('presupuestos_atrasados')
-      .select('id,folio,cliente,dir,fecha,monto,notas_internas,descripcion,firmado_at,firmado_por,firma_png,firma_hash,firma_barrcan_png,firma_barrcan_at,firma_barrcan_por,abono_visita_monto,abono_visita_ref,nota_documento,eliminado')
+      .select('id,folio,cliente,dir,fecha,monto,notas_internas,descripcion,firmado_at,firmado_por,firma_png,firma_hash,firma_barrcan_png,firma_barrcan_at,firma_barrcan_por,abono_visita_monto,abono_visita_ref,nota_documento,opcion_elegida,eliminado')
       .eq('firma_token', TOKEN).limit(1);
     if (r.error) throw r.error;
     P = (r.data || [])[0];
@@ -135,6 +141,12 @@ async function cargar() {
   } catch (e) { msg.innerHTML = '<b>No se pudo cargar el presupuesto.</b><br>Revise su conexión e intente de nuevo.'; return; }
   try { PIEZAS = JSON.parse(P.notas_internas || '[]'); } catch (e) { PIEZAS = []; }
   if (!Array.isArray(PIEZAS) || !PIEZAS.length) PIEZAS = [{ label: P.descripcion || 'Presupuesto', cantidad: 1, precio: parseFloat(P.monto) || 0 }];
+  // v1.7: opciones alternativas
+  OPC_IDS = []; OPC_TOT = {};
+  PIEZAS.forEach(function (it) { var k = parseInt(it.opcion, 10); if (k > 0 && OPC_IDS.indexOf(k) < 0) OPC_IDS.push(k); });
+  OPC_IDS.sort(function (a, b) { return a - b; });
+  var sumaP = function (f) { return PIEZAS.reduce(function (a, it) { return f(it) ? a + (parseFloat(it.precio) || 0) : a; }, 0); };
+  OPC_IDS.forEach(function (k) { OPC_TOT[k] = sumaP(function (it) { var o = parseInt(it.opcion, 10) || 0; return !o || o === k; }); });
   // v1.4: imágenes por concepto (columna aparte: si todavía no existe en la base, simplemente no hay imágenes)
   try { var ri = await Promise.race([sb().from('presupuestos_atrasados').select('imagenes_concepto').eq('id', P.id).maybeSingle(), new Promise(function (res) { setTimeout(function () { res({ error: 1 }); }, 4000); })]); if (!ri.error && ri.data && ri.data.imagenes_concepto) P.imagenes_concepto = ri.data.imagenes_concepto; } catch (eI) {}
   EMP = await BCDoc.datosCliente(P.folio, P.cliente);
@@ -144,10 +156,22 @@ async function cargar() {
   document.getElementById('total').textContent = money(Math.max(0, (parseFloat(P.monto) || 0) - abonoV));
   document.getElementById('anticipo').textContent = money(Math.max(0, (parseFloat(P.monto) || 0) * 0.5 - abonoV));
   if (abonoV > 0) { var nt = document.createElement('div'); nt.style.cssText = 'font-size:11.5px;color:#27AE60;margin-top:2px'; nt.textContent = 'Ya descontamos su pago de visita de ' + money(abonoV); document.getElementById('total').insertAdjacentElement('afterend', nt); }
+  if (OPC_IDS.length && !P.opcion_elegida) { // v1.7: el cliente elige UNA opción antes de firmar
+    document.getElementById('total-lbl').textContent = 'Total de la opción que elija';
+    document.getElementById('total').textContent = 'Elija una opción';
+    var ob = document.getElementById('opc-box'); ob.style.display = 'block';
+    ob.innerHTML = '<div style="font-size:13px;font-weight:800;margin-bottom:6px">Este presupuesto tiene opciones. Elija UNA:</div>'
+      + OPC_IDS.map(function (k) { return '<label style="display:flex;align-items:center;gap:10px;border:1.5px solid #D5DCE3;border-radius:10px;padding:10px;margin-bottom:6px;font-weight:700"><input type="radio" name="opc" value="' + k + '" onchange="elegirOpcion(' + k + ')" style="width:20px;height:20px"> <span style="flex:1">Opción ' + k + '</span><span>' + money(OPC_TOT[k]) + '</span></label>'; }).join('');
+  }
   if (!document.getElementById('nombre').value) document.getElementById('nombre').value = (EMP.atencion || P.cliente || '').replace(/^(arq|ing|lic|sr|sra|srita)\.?\s+/i, '');
   msg.style.display = 'none'; document.getElementById('contenido').style.display = 'block';
   mostrarDoc(); prepararLienzo();
   if (P.firmado_at) mostrarListo();
+}
+function elegirOpcion(k) {
+  OPC_SEL = k;
+  var abonoV = parseFloat(P.abono_visita_monto) > 0 ? parseFloat(P.abono_visita_monto) : 0;
+  document.getElementById('total').textContent = money(Math.max(0, OPC_TOT[k] - abonoV));
 }
 // ── Lienzo de firma ──
 var CV, CTX;
@@ -164,7 +188,9 @@ function prepararLienzo() {
 }
 function limpiar() { CTX.clearRect(0, 0, CV.width, CV.height); hayTrazo = false; }
 async function huella() {
-  var txt = JSON.stringify({ folio: P.folio, monto: String(P.monto), partidas: P.notas_internas || '' });
+  var obj = { folio: P.folio, monto: String(P.monto), partidas: P.notas_internas || '' };
+  if (P.opcion_elegida) obj.opcion = P.opcion_elegida; // v1.7: solo cuando hay opciones (los demás presupuestos conservan su huella igual)
+  var txt = JSON.stringify(obj);
   var b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(txt));
   return Array.from(new Uint8Array(b)).map(function (x) { return x.toString(16).padStart(2, '0'); }).join('');
 }
@@ -172,21 +198,33 @@ async function firmar() {
   var nombre = document.getElementById('nombre').value.trim();
   if (nombre.length < 4) { alert('Escriba su nombre completo.'); return; }
   if (!hayTrazo) { alert('Firme dentro del recuadro con el dedo.'); return; }
+  if (OPC_IDS.length && !P.opcion_elegida && !OPC_SEL) { alert('Elija una de las opciones antes de firmar.'); return; }
   if (!document.getElementById('acepto').checked) { alert('Marque la casilla para aceptar el presupuesto y sus condiciones.'); return; }
   var btn = document.getElementById('btn-firmar'); btn.disabled = true; btn.textContent = 'Guardando firma…';
+  var prevMonto = P.monto, prevOpc = P.opcion_elegida;
   try {
+    var extra = {};
+    if (OPC_IDS.length && !P.opcion_elegida) { // v1.7: monto y saldo quedan con la opción elegida
+      var totOpc = OPC_TOT[OPC_SEL], pagado = 0;
+      try { var rp = await sb().from('pagos').select('monto').eq('presupuesto_id', P.id); if (!rp.error) pagado = (rp.data || []).reduce(function (a, x) { return a + (parseFloat(x.monto) || 0); }, 0); } catch (e0) {}
+      P.opcion_elegida = OPC_SEL; P.monto = totOpc;
+      extra = { opcion_elegida: OPC_SEL, monto: totOpc, saldo: Math.max(0, totOpc - pagado) };
+    }
     var datos = { firmado_at: new Date().toISOString(), firmado_por: nombre, firma_png: CV.toDataURL('image/png'),
       firma_hash: await huella(), firma_agente: navigator.userAgent.slice(0, 300), firma_monto: parseFloat(P.monto) || 0 };
+    Object.assign(datos, extra);
     var r = await sb().from('presupuestos_atrasados').update(datos).eq('firma_token', TOKEN).is('firmado_at', null).select('id');
     if (r.error) throw r.error;
     if (!r.data || !r.data.length) throw new Error('Este presupuesto ya había sido firmado.');
     Object.assign(P, datos); mostrarDoc(); mostrarListo();
     window.scrollTo({ top: document.getElementById('panel-listo').offsetTop - 10, behavior: 'smooth' });
-  } catch (e) { alert('No se pudo guardar la firma: ' + e.message); btn.disabled = false; btn.textContent = '✍️ Firmar y aceptar presupuesto'; }
+  } catch (e) { P.monto = prevMonto; P.opcion_elegida = prevOpc; alert('No se pudo guardar la firma: ' + e.message); btn.disabled = false; btn.textContent = '✍️ Firmar y aceptar presupuesto'; }
 }
 function mostrarListo() {
   document.getElementById('panel-firma').style.display = 'none';
   document.getElementById('panel-listo').style.display = 'block';
+  var abV0 = parseFloat(P.abono_visita_monto) > 0 ? parseFloat(P.abono_visita_monto) : 0;
+  document.getElementById('anticipo').textContent = money(Math.max(0, (parseFloat(P.monto) || 0) * 0.5 - abV0)); // v1.7
   document.getElementById('firmado-info').textContent = 'Firmado por ' + P.firmado_por + ' · ' + fechaHora(P.firmado_at);
 }
 function avisar() {

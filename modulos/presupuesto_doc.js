@@ -1,5 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 // BarrCan · DOCUMENTO OFICIAL DE PRESUPUESTO (compartido)
+// VERSION : v1.14   FECHA : 2026-11-17
+// v1.14 - OPCIONES ALTERNATIVAS: si un concepto trae it.opcion (1, 2, 3...), el documento muestra cada opción con su total y su calendario de pagos, SIN sumarlas
+//   (los conceptos sin opción son comunes a todas). Si opciones.opcionElegida está definida, imprime solo los conceptos comunes + los de esa opción.
 // VERSION : v1.13   FECHA : 2026-11-17
 // v1.13 - Las cuentas de depósito salen de modulos/cuentas_deposito.js (solo las activas, elegibles en Configuración). Respaldo: Mercado Pago W.
 // VERSION : v1.12   FECHA : 2026-11-16
@@ -201,11 +204,23 @@ function bcConceptoDe(it) {
 function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opciones) {
   opciones = opciones || {};
   var fechaStr = fecha.toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' });
+  // v1.14: opciones alternativas
+  var opcIds = [];
+  items.forEach(function (it) { var k = parseInt(it.opcion, 10); if (k > 0 && opcIds.indexOf(k) < 0) opcIds.push(k); });
+  opcIds.sort(function (a, b) { return a - b; });
+  var opcElegida = parseInt(opciones.opcionElegida, 10) || null;
+  var hayOpc = opcIds.length > 0 && !opcElegida;
+  if (opcIds.length && opcElegida) items = items.filter(function (it) { var k = parseInt(it.opcion, 10); return !k || k === opcElegida; });
+  var opcDeIt = function (it) { return parseInt(it.opcion, 10) || 0; };
+  var sumaIt = function (arr) { return arr.reduce(function (a, it) { return a + (parseFloat(it.precio) || 0); }, 0); };
+  var comunes = items.filter(function (it) { return !opcDeIt(it); });
+  var totalesOpc = {};
+  opcIds.forEach(function (k) { totalesOpc[k] = sumaIt(comunes) + sumaIt(items.filter(function (it) { return opcDeIt(it) === k; })); });
   var total = opciones.total != null ? opciones.total : items.reduce(function(a, it){ return a + (parseFloat(it.precio) || 0); }, 0);
   var abonoV = (opciones.abonoVisita && parseFloat(opciones.abonoVisita.monto) > 0) ? parseFloat(opciones.abonoVisita.monto) : 0; // v1.6: pago de visita ya recibido
   var a50 = total * 0.50, a35 = total * 0.35, a15 = total * 0.15, cred = abonoV;
   var u50 = Math.min(cred, a50); cred -= u50; var u35 = Math.min(cred, a35); cred -= u35; var u15 = Math.min(cred, a15); // v1.7: si el adelanto excede el anticipo, el excedente baja el 2° pago y luego la liquidación
-  var lista = items.map(function(it, idx) {
+  function listaDe(arr, inicio) { return arr.map(function(it, idx0) { var idx = inicio + idx0;
     var cant = it.cantidad || 1;
     var detalle = cant > 1 ? ' <span style="color:#888;font-size:9pt">(' + cant + ' pzas \u00d7 $' + fmt(it.precioUnitario != null ? it.precioUnitario : (it.precio / cant)) + ')</span>' : '';
     // Diagrama técnico de referencia para piezas del sistema Corredizo
@@ -234,7 +249,36 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
       + diagrama
       + imgsConcepto
       + '</div>';
-  }).join('');
+  }).join(''); }
+  var opcHdr = function (t) { return '<div style="margin:14px 0 2px;padding:5px 8px;background:#1B3A5C;color:#fff;font-size:10pt;font-weight:700;letter-spacing:.5px;border-radius:4px">' + t + '</div>'; };
+  var lista;
+  if (hayOpc) {
+    lista = ''; var nCont = 0;
+    if (comunes.length) { lista += opcHdr('CONCEPTOS COMUNES A TODAS LAS OPCIONES') + listaDe(comunes, 0); nCont = comunes.length; }
+    opcIds.forEach(function (k) {
+      var grupo = items.filter(function (it) { return opcDeIt(it) === k; });
+      lista += opcHdr('OPCI\u00d3N ' + k) + listaDe(grupo, nCont)
+        + '<div style="text-align:right;padding:6px 0 2px;font-size:11pt;font-weight:900;color:#1B3A5C">Total Opci\u00f3n ' + k + '&nbsp;&nbsp;$' + fmt(totalesOpc[k]) + '</div>';
+      nCont += grupo.length;
+    });
+  } else {
+    lista = listaDe(items, 0);
+    if (opcIds.length && opcElegida) lista = '<div style="margin:0 0 6px;padding:5px 8px;background:#EAF6EE;color:#1E7B3C;font-size:9.5pt;font-weight:700;border-radius:4px">Opci\u00f3n elegida por el cliente: Opci\u00f3n ' + opcElegida + '</div>' + lista;
+  }
+  var opcNotaHTML = '<div style="margin-top:12px;padding:9px 12px;border:1.5px solid #C8923A;border-radius:6px;background:#FFF8EE;font-size:9.5pt;color:#1B3A5C;line-height:1.45"><strong>Opciones alternativas:</strong> usted elige UNA. Los totales de cada opci\u00f3n <strong>no se suman</strong>. Al firmar indicar\u00e1 la opci\u00f3n elegida y el presupuesto quedar\u00e1 con su monto.'
+    + (abonoV > 0 ? '<br>El pago de visita ya recibido ($' + fmt(abonoV) + ') se descuenta de la opci\u00f3n que elija.' : '') + '</div>';
+  function tablaPagos(tot) {
+    var a50 = tot * 0.50, a35 = tot * 0.35, a15 = tot * 0.15, cred = abonoV;
+    var u50 = Math.min(cred, a50); cred -= u50; var u35 = Math.min(cred, a35); cred -= u35; var u15 = Math.min(cred, a15);
+    return '<table style="margin-bottom:12px"><thead><tr><th>Concepto</th><th style="text-align:center;width:100px">Porcentaje</th><th>Momento de pago</th><th style="text-align:right;width:110px">Monto</th></tr></thead><tbody>'
+      + '<tr><td>Anticipo inicial</td><td style="text-align:center">50 %</td><td>Al aprobar y firmar el presupuesto' + (abonoV > 0 ? '<br><span style="font-size:8pt;color:#27AE60">$' + fmt(a50) + ' menos $' + fmt(u50) + ' del pago de visita ya recibido</span>' : '') + '</td><td style="text-align:right;font-weight:700">$&nbsp;' + fmt(Math.max(0, a50 - u50)) + '</td></tr>'
+      + '<tr style="background:#f5f7fa"><td>Segundo pago</td><td style="text-align:center">35 %</td><td>Al confirmar fecha de entrega e instalaci\u00f3n</td><td style="text-align:right;font-weight:700">$&nbsp;' + fmt(Math.max(0, a35 - u35)) + (u35 > 0 ? '<br><span style="font-size:7.5pt;font-weight:400;color:#27AE60">$' + fmt(a35) + ' menos $' + fmt(u35) + ' ya cubierto</span>' : '') + '</td></tr>'
+      + '<tr style="background:#1B3A5C;color:white"><td style="color:white;font-weight:700;border-color:#1B3A5C">Liquidaci\u00f3n final</td><td style="color:white;text-align:center;border-color:#1B3A5C">15 %</td><td style="color:rgba(255,255,255,.85);border-color:#1B3A5C">A la entrega y conclusi\u00f3n total del trabajo</td><td style="color:#F1C40F;text-align:right;font-weight:700;border-color:#1B3A5C">$&nbsp;' + fmt(Math.max(0, a15 - u15)) + (u15 > 0 ? '<br><span style="font-size:7.5pt;font-weight:400;color:#9BE7B2">$' + fmt(a15) + ' menos $' + fmt(u15) + ' ya cubierto</span>' : '') + '</td></tr>'
+      + '</tbody></table>';
+  }
+  var pagosHTML = hayOpc
+    ? opcIds.map(function (k) { return '<div style="font-size:10pt;font-weight:700;color:#1B3A5C;margin:10px 0 4px">Opci\u00f3n ' + k + ' \u2014 Total $' + fmt(totalesOpc[k]) + '</div>' + tablaPagos(totalesOpc[k]); }).join('')
+    : tablaPagos(total);
   return '<!DOCTYPE html><html lang=es><head><meta charset=UTF-8><meta name=viewport content=width=device-width>'
     + '<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10pt;color:#1B3A5C;background:#fff}'
     + '.pg{max-width:620px;margin:0 auto;padding:0 0 80px}.pg-body{padding:16px 22px}'
@@ -255,7 +299,7 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
     + (opciones.empresa ? '<div style="font-size:10.5pt;margin-bottom:2px">En atenci\u00f3n a: <strong>' + esc(opciones.atencion || cliente) + '</strong></div>' : '')
     + (dir ? '<div style="font-size:10pt;color:#666;margin-bottom:14px">' + esc(dir) + '</div>' : '<div style="margin-bottom:14px"></div>')
     + lista
-    + (abonoV > 0
+    + (hayOpc ? opcNotaHTML : abonoV > 0
         ? '<div style="padding-top:12px;text-align:right;color:#1B3A5C">'
           + '<div style="font-size:10.5pt">Total del presupuesto&nbsp;&nbsp;<strong>$' + fmt(total) + '</strong></div>'
           + '<div style="font-size:10.5pt;color:#27AE60">Pago de visita descontado' + (opciones.abonoVisita.ref ? ' <span style="color:#888;font-size:8.5pt">(' + esc(opciones.abonoVisita.ref) + ')</span>' : '') + '&nbsp;&nbsp;<strong>\u2212$' + fmt(abonoV) + '</strong></div>'
@@ -294,11 +338,7 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
     + '<div class="page-break">'
     + '<h2>2. Pol\u00edtica de pagos</h2>'
     + '<p style="font-size:9pt;color:#333;margin-bottom:10px">Al aprobar formalmente el presupuesto, el cliente acepta las siguientes condiciones de pago:</p>'
-    + '<table style="margin-bottom:12px"><thead><tr><th>Concepto</th><th style="text-align:center;width:100px">Porcentaje</th><th>Momento de pago</th><th style="text-align:right;width:110px">Monto</th></tr></thead><tbody>'
-    + '<tr><td>Anticipo inicial</td><td style="text-align:center">50 %</td><td>Al aprobar y firmar el presupuesto' + (abonoV > 0 ? '<br><span style="font-size:8pt;color:#27AE60">$' + fmt(a50) + ' menos $' + fmt(u50) + ' del pago de visita ya recibido</span>' : '') + '</td><td style="text-align:right;font-weight:700">$&nbsp;' + fmt(Math.max(0, a50 - u50)) + '</td></tr>'
-    + '<tr style="background:#f5f7fa"><td>Segundo pago</td><td style="text-align:center">35 %</td><td>Al confirmar fecha de entrega e instalaci\u00f3n</td><td style="text-align:right;font-weight:700">$&nbsp;' + fmt(Math.max(0, a35 - u35)) + (u35 > 0 ? '<br><span style="font-size:7.5pt;font-weight:400;color:#27AE60">$' + fmt(a35) + ' menos $' + fmt(u35) + ' ya cubierto</span>' : '') + '</td></tr>'
-    + '<tr style="background:#1B3A5C;color:white"><td style="color:white;font-weight:700;border-color:#1B3A5C">Liquidaci\u00f3n final</td><td style="color:white;text-align:center;border-color:#1B3A5C">15 %</td><td style="color:rgba(255,255,255,.85);border-color:#1B3A5C">A la entrega y conclusi\u00f3n total del trabajo</td><td style="color:#F1C40F;text-align:right;font-weight:700;border-color:#1B3A5C">$&nbsp;' + fmt(Math.max(0, a15 - u15)) + (u15 > 0 ? '<br><span style="font-size:7.5pt;font-weight:400;color:#9BE7B2">$' + fmt(a15) + ' menos $' + fmt(u15) + ' ya cubierto</span>' : '') + '</td></tr>'
-    + '</tbody></table>'
+    + pagosHTML
     + '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px">'
     + (window.BC_CUENTAS ? BC_CUENTAS.htmlDoc() : '<div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px"><div style="font-size:9pt;font-weight:700;color:#1B3A5C;margin-bottom:4px">Mercado Pago W (SPEI)</div><div style="font-size:8.5pt;color:#333">Mauricio Barrera Espinosa</div><div style="font-size:8.5pt;color:#333">CLABE: 722969010986437805</div></div>')
     + '<div style="flex:1;border:1px solid #ddd;border-radius:4px;padding:10px 14px">'
