@@ -10,6 +10,11 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.35.0
+  FECHA   : 2026-11-17
+  v3.35.0 - DESCUENTO DENTRO DEL PRESUPUESTO: en el editor, "🏷️ Aplicar descuento" (porcentaje o monto, con motivo, ej. "Descuento Buen Fin")
+    agrega una línea negativa que el documento imprime en verde con signo menos, y ajusta el Monto y el Saldo solos. Solo hay un
+    descuento por presupuesto: si se vuelve a aplicar, reemplaza al anterior. Al quitar la línea, el Monto regresa.
   VERSIÓN : v3.34.0
   FECHA   : 2026-11-07
   v3.34.0 - PRECIO EDITABLE POR CONCEPTO: en el editor, cada concepto ahora trae un campo de precio unitario (antes solo se
@@ -1693,6 +1698,16 @@ body{min-height:100vh}
         </div>
         <div style="font-size:10.5px;color:var(--gray-400);margin-top:6px;line-height:1.4">Cada concepto lleva su costo y el Monto se ajusta solo. Las imágenes de cada concepto se agregan después de guardar, con el botón 🖼️ Imágenes por concepto.</div>
       </div>
+      <div style="border:1.5px dashed var(--gray-300);border-radius:10px;padding:10px;margin-top:8px">
+        <div style="font-size:12px;font-weight:700;margin-bottom:6px">🏷️ Aplicar descuento</div>
+        <input type="text" id="pres-dc-motivo" class="form-input" value="Descuento Buen Fin" placeholder="Motivo (se imprime en el presupuesto)" style="font-size:13px">
+        <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+          <select id="pres-dc-modo" class="form-input" style="width:96px"><option value="pct">%</option><option value="monto">$ monto</option></select>
+          <input type="number" id="pres-dc-valor" class="form-input" min="0" step="any" inputmode="decimal" placeholder="Ej. 10" style="flex:1">
+          <button type="button" onclick="presDescuentoAplicar()" style="padding:10px 14px;background:var(--gold);color:#fff;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer">Aplicar</button>
+        </div>
+        <div style="font-size:10.5px;color:var(--gray-400);margin-top:6px;line-height:1.4">Se calcula sobre el Monto total actual (con IVA) y sale como una línea en verde con signo menos. Solo hay un descuento por presupuesto: si lo aplicas otra vez, reemplaza al anterior. Si después cambias precios, vuelve a aplicarlo. Se quita con la ✕ de su línea.</div>
+      </div>
     </div>
 
     <label class="form-label">Estado actual</label>
@@ -1754,7 +1769,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.34.0';
+var APP_VERSION = 'v3.35.0';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -3171,10 +3186,42 @@ function presConceptoAgregar() {
   toast('✅ Concepto agregado · $' + fmt(precio) + ' — Monto ajustado');
 }
 
+// v3.35.0: descuento como línea del presupuesto (el documento imprime los importes negativos en verde con signo menos).
+function presDescuentoAplicar() {
+  var motivo = (document.getElementById('pres-dc-motivo').value || '').trim() || 'Descuento';
+  var modo = document.getElementById('pres-dc-modo').value;
+  var val = parseFloat(document.getElementById('pres-dc-valor').value) || 0;
+  if (!(val > 0)) { toast('Escribe el porcentaje o el monto del descuento'); return; }
+  var m = document.getElementById('pres-monto'), montoActual = parseFloat(m.value) || 0;
+  var i = obraBuscarConcepto('descuento');
+  var anterior = i >= 0 ? (parseFloat(PRES_CONCEPTOS[i].precio) || 0) : 0; // negativo
+  var base = Math.round(montoActual - anterior); // monto sin el descuento anterior
+  if (!(base > 0)) { toast('Primero captura el Monto o los conceptos del presupuesto'); return; }
+  if (modo === 'pct' && val >= 100) { toast('El porcentaje debe ser menor a 100'); return; }
+  var desc = modo === 'pct' ? Math.round(base * val / 100) : Math.round(val);
+  if (desc >= base) { toast('El descuento no puede ser igual o mayor al monto ($' + fmt(base) + ')'); return; }
+  var pFirm = (typeof PRES_CACHE !== 'undefined' && PRES_EDITANDO_ID) ? PRES_CACHE.filter(function(x) { return x.id === PRES_EDITANDO_ID; })[0] : null;
+  if (pFirm && pFirm.firmado_at && !confirm('Este presupuesto ya está FIRMADO por el cliente ($' + fmt(pFirm.firma_monto || pFirm.monto || 0) + ').\n\nSi aplicas el descuento, el documento firmado ya no coincide: pide su aceptación por escrito.\n\n¿Aplicar de todos modos?')) return;
+  if (!PRES_CONCEPTOS.length) { // presupuesto antiguo sin conceptos: se conserva su descripción como línea base
+    var dEl = document.getElementById('pres-desc');
+    PRES_CONCEPTOS.push({ label: (dEl && dEl.value.trim()) || 'Presupuesto', cantidad: 1, precioUnitario: montoActual, precio: montoActual, resultado: null, unidades: null });
+  }
+  if (i >= 0) PRES_CONCEPTOS.splice(i, 1);
+  var etiqueta = motivo + (modo === 'pct' ? ' (' + val + '%)' : '');
+  PRES_CONCEPTOS.push({ label: etiqueta, cantidad: 1, precio: -desc, precioUnitario: -desc, unidades: null,
+    resultado: { tipo: 'descuento', modo: modo, valor: val, base: base, motivo: motivo } });
+  obraAjustarMonto(-desc - anterior);
+  document.getElementById('pres-dc-valor').value = '';
+  presDibujarConceptos();
+  toast('🏷️ Descuento de $' + fmt(desc) + ' aplicado · Monto nuevo $' + fmt(base - desc));
+}
+
 function presConceptoQuitar(idx) {
   if (!confirm('¿Quitar este concepto del presupuesto? Recuerda ajustar el Monto/Saldo si hace falta.')) return;
   var tQuit = obraTrasladoDe(PRES_CONCEPTOS[idx]);
+  var pQuit = PRES_CONCEPTOS[idx];
   PRES_CONCEPTOS.splice(idx, 1);
+  if (pQuit && pQuit.resultado && pQuit.resultado.tipo === 'descuento') obraAjustarMonto(-(parseFloat(pQuit.precio) || 0)); // v3.35.0: al quitar el descuento el Monto regresa
   if (tQuit > 0) OBRA_QUITADOS++; // v3.33.0: se va con su parte del traslado
   presDibujarConceptos();
   if (tQuit > 0) obraRevisarCambios();
