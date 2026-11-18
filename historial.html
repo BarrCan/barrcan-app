@@ -10,6 +10,10 @@
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · MÓDULO: HISTORIAL (standalone)
+  VERSIÓN : v3.35.1
+  FECHA   : 2026-11-17
+  v3.35.1 - FIX: al aplicar un descuento a un presupuesto antiguo sin conceptos, la línea base salía como "Presupuesto" (CACN-196A) en vez de
+    su descripción. Ahora usa la descripción guardada del presupuesto.
   VERSIÓN : v3.35.0
   FECHA   : 2026-11-17
   v3.35.0 - DESCUENTO DENTRO DEL PRESUPUESTO: en el editor, "🏷️ Aplicar descuento" (porcentaje o monto, con motivo, ej. "Descuento Buen Fin")
@@ -1769,7 +1773,7 @@ window.addEventListener('offline', function() {
 
 // detectarConexion: igual que en la app principal
 // registra listeners Y actualiza el badge inmediatamente
-var APP_VERSION = 'v3.35.0';
+var APP_VERSION = 'v3.35.1';
 function detectarConexion() {
   var badge = document.getElementById('conn-status');
   if (badge) badge.textContent = (navigator.onLine ? 'Online' : 'Offline-First') + ' · ' + APP_VERSION;
@@ -3204,7 +3208,8 @@ function presDescuentoAplicar() {
   if (pFirm && pFirm.firmado_at && !confirm('Este presupuesto ya está FIRMADO por el cliente ($' + fmt(pFirm.firma_monto || pFirm.monto || 0) + ').\n\nSi aplicas el descuento, el documento firmado ya no coincide: pide su aceptación por escrito.\n\n¿Aplicar de todos modos?')) return;
   if (!PRES_CONCEPTOS.length) { // presupuesto antiguo sin conceptos: se conserva su descripción como línea base
     var dEl = document.getElementById('pres-desc');
-    PRES_CONCEPTOS.push({ label: (dEl && dEl.value.trim()) || 'Presupuesto', cantidad: 1, precioUnitario: montoActual, precio: montoActual, resultado: null, unidades: null });
+    var pBase = (typeof PRES_CACHE !== 'undefined' && PRES_EDITANDO_ID) ? PRES_CACHE.filter(function(x) { return x.id === PRES_EDITANDO_ID; })[0] : null;
+    PRES_CONCEPTOS.push({ label: (dEl && dEl.value.trim()) || (pBase && String(pBase.descripcion || '').trim()) || 'Presupuesto', cantidad: 1, precioUnitario: montoActual, precio: montoActual, resultado: null, unidades: null });
   }
   if (i >= 0) PRES_CONCEPTOS.splice(i, 1);
   var etiqueta = motivo + (modo === 'pct' ? ' (' + val + '%)' : '');
