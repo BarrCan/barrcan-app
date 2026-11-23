@@ -7,6 +7,12 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.25
+  FECHA   : 2026-11-23
+  v1.25 - NUEVA PESTAÑA "🛣️ Casetas": captura rápida de tickets de caseta (plaza, importe, fecha, folio, código de facturación y foto) en vez del
+    formulario largo. Recuerda la última tarifa de cada plaza, deja "⧉ Repetir" para la vuelta, y lista las casetas POR FACTURAR con los días que
+    quedan (los tickets piden facturar dentro del mes de emisión). Se guardan como CASETAS con con_comprobante=false (origen ticket_caseta);
+    al llegar el CFDI se marcan "✅ Facturada" para que no cuenten doble.
   VERSION : v1.24
   FECHA   : 2026-10-14
   v1.24 - CANDADO: sin sesión del día (PIN o huella en el portal) ya no abre; manda al portal y regresa aquí al entrar (modulos/acceso.js).
@@ -406,6 +412,7 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
   <!-- TABS -->
   <div class="tabs">
     <button class="tab-btn active" onclick="cmpTab(this,'facturas')">Facturas</button>
+    <button class="tab-btn" onclick="cmpTab(this,'casetas')">🛣️ Casetas</button>
     <button class="tab-btn" onclick="cmpTab(this,'inventario')">Inventario</button>
     <button class="tab-btn" onclick="cmpTab(this,'herramientas')">🧰 Herramientas</button>
     <button class="tab-btn" onclick="cmpTab(this,'precios')">Precios hist.</button>
@@ -478,6 +485,42 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
   </div>
 
   <!-- TAB: INVENTARIO -->
+  <!-- TAB: CASETAS (v1.25) -->
+  <div id="tab-casetas" style="display:none">
+    <div class="card">
+      <div class="card-title">🛣️ Captura rápida de caseta</div>
+      <label style="font-size:12px;font-weight:600;color:var(--navy);display:block;margin-bottom:4px">Plaza de cobro</label>
+      <input type="text" class="form-input" id="cas-plaza" list="cas-plazas" placeholder="Ej. Cuitláhuac" onchange="casPlazaCambio()" style="margin-bottom:10px">
+      <datalist id="cas-plazas"></datalist>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <div style="flex:1"><label style="font-size:12px;font-weight:600;color:var(--navy);display:block;margin-bottom:4px">Importe $</label>
+          <input type="number" class="form-input" id="cas-importe" inputmode="decimal" step="any" placeholder="195.00" style="margin-bottom:0"></div>
+        <div style="flex:1"><label style="font-size:12px;font-weight:600;color:var(--navy);display:block;margin-bottom:4px">Fecha</label>
+          <input type="date" class="form-input" id="cas-fecha" style="margin-bottom:0"></div>
+        <div style="width:92px"><label style="font-size:12px;font-weight:600;color:var(--navy);display:block;margin-bottom:4px">Hora</label>
+          <input type="time" class="form-input" id="cas-hora" style="margin-bottom:0;padding-left:6px;padding-right:4px"></div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <div style="flex:1"><label style="font-size:12px;font-weight:600;color:var(--navy);display:block;margin-bottom:4px">Folio del ticket</label>
+          <input type="text" class="form-input" id="cas-folio" placeholder="3748779" style="margin-bottom:0"></div>
+        <div style="flex:1.4"><label style="font-size:12px;font-weight:600;color:var(--navy);display:block;margin-bottom:4px">Código de facturación</label>
+          <input type="text" class="form-input" id="cas-codigo" placeholder="CCDK QB26 HZBV 70MI H0" style="margin-bottom:0;text-transform:uppercase"></div>
+      </div>
+      <label style="font-size:12px;font-weight:600;color:var(--navy);display:block;margin-bottom:4px">Obra o viaje (opcional)</label>
+      <input type="text" class="form-input" id="cas-obra" list="mc-obra-lista" placeholder="Folio de la obra" style="margin-bottom:10px">
+      <input type="file" id="cas-foto" accept="image/*" capture="environment" style="display:none" onchange="casFotoElegida(this)">
+      <button type="button" onclick="document.getElementById('cas-foto').click()" style="width:100%;padding:10px;border:1.5px dashed var(--gray-200);background:var(--off-white);color:var(--gray-600);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer">📷 Foto del ticket (el papel térmico se borra con el tiempo)</button>
+      <div id="cas-foto-nombre" style="font-size:11px;color:var(--green);margin:4px 0 10px"></div>
+      <button type="button" id="cas-btn" onclick="casGuardar()" style="width:100%;padding:13px;background:var(--navy);color:#fff;border:none;border-radius:10px;font-weight:800;font-size:14px;cursor:pointer">💾 Guardar caseta</button>
+      <div style="font-size:10.5px;color:var(--gray-400);margin-top:6px;line-height:1.4">Después de guardar se queda la plaza, el importe, la fecha y la obra para capturar la vuelta o la siguiente más rápido. Se guarda como CASETAS, sin comprobante, hasta que la factures.</div>
+    </div>
+    <div class="card">
+      <div class="card-title">🧾 Por facturar</div>
+      <div id="cas-resumen" style="font-size:12px;color:var(--gray-600);margin-bottom:8px"></div>
+      <div id="cas-lista"></div>
+    </div>
+  </div>
+
   <div id="tab-inventario" style="display:none">
     <div class="card">
       <div class="card-title">
@@ -861,7 +904,7 @@ var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
 
-var APP_VERSION = 'v1.24';
+var APP_VERSION = 'v1.25';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -902,16 +945,153 @@ var MC_PDF_FILE = null;     // archivo PDF seleccionado en modo manual
 function cmpTab(btn, tab) {
   document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
   btn.classList.add('active');
-  var tabs = ['facturas','inventario','herramientas','precios','proveedores','recurrentes','asignar'];
+  var tabs = ['facturas','casetas','inventario','herramientas','precios','proveedores','recurrentes','asignar'];
   tabs.forEach(function(t) {
     var el = document.getElementById('tab-' + t);
     if (el) el.style.display = t === tab ? 'block' : 'none';
   });
+  if (tab === 'casetas')                             casInit();
   if (tab === 'inventario' && !INV_CACHE.length)     cmpCargarInventario();
   if (tab === 'herramientas' && !HRR_CACHE.length)   cmpCargarHerramientas();
   if (tab === 'proveedores' && !PROV_CACHE.length)   cmpCargarProveedores();
   if (tab === 'recurrentes')                         cmpCargarRecurrentes();
   if (tab === 'asignar')                             cmpCargarAsignar();
+}
+
+// ═══ v1.25 · CASETAS ═══════════════════════════════════════════
+var CAS_CACHE = [], CAS_PLAZAS = {}, CAS_FOTO = null;
+function casHoy() { return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' }); }
+function casInit() {
+  var f = document.getElementById('cas-fecha');
+  if (f && !f.value) f.value = casHoy();
+  casCargar();
+}
+function casPlazaDe(r) { return String(r.proveedor || '').replace(/^Caseta\s*·\s*/i, '').trim(); }
+function casPlazaCambio() {
+  var pl = document.getElementById('cas-plaza').value.trim(), imp = document.getElementById('cas-importe');
+  if (pl && CAS_PLAZAS[pl] != null && !imp.value) imp.value = CAS_PLAZAS[pl]; // última tarifa de esa plaza
+}
+function casFotoElegida(inp) {
+  CAS_FOTO = inp.files && inp.files[0] ? inp.files[0] : null;
+  document.getElementById('cas-foto-nombre').textContent = CAS_FOTO ? '✓ ' + CAS_FOTO.name : '';
+}
+// Reduce la foto (máx. 1600 px, JPEG) para no llenar el almacenamiento.
+function casReducirFoto(file) {
+  return new Promise(function(resolve) {
+    var img = new Image(), url = URL.createObjectURL(file);
+    img.onload = function() {
+      var k = Math.min(1, 1600 / Math.max(img.width, img.height));
+      var c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      c.toBlob(function(b) { resolve(b || file); }, 'image/jpeg', 0.82);
+    };
+    img.onerror = function() { URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+function casFinMes(fechaISO) { // último día del mes de emisión
+  var p = String(fechaISO).split('-'); var y = +p[0], m = +p[1];
+  var d = new Date(Date.UTC(y, m, 0)); return d.toISOString().slice(0, 10);
+}
+function casDias(finISO) {
+  var a = new Date(casHoy() + 'T00:00:00Z'), b = new Date(finISO + 'T00:00:00Z');
+  return Math.round((b - a) / 86400000);
+}
+function casCodigoDe(r) { var m = /Cód\. fact\.:\s*([A-Z0-9 ]+)/i.exec(r.descripcion || ''); return m ? m[1].trim() : ''; }
+async function casCargar() {
+  var res = await sb().from('facturas_recibidas')
+    .select('id,fecha,proveedor,folio_factura,total,descripcion,folio_obra,archivo_url,con_comprobante,estado_fiscal,origen')
+    .eq('categoria', 'CASETAS').order('fecha', { ascending: false }).order('created_at', { ascending: false }).limit(200);
+  if (res.error) { toast('No se pudieron cargar las casetas: ' + res.error.message); return; }
+  CAS_CACHE = res.data || [];
+  CAS_PLAZAS = {};
+  CAS_CACHE.forEach(function(r) { if (r.origen === 'ticket_caseta') { var pl = casPlazaDe(r); if (pl && CAS_PLAZAS[pl] == null) CAS_PLAZAS[pl] = r.total; } });
+  document.getElementById('cas-plazas').innerHTML = Object.keys(CAS_PLAZAS).map(function(pl) { return '<option value="' + esc(pl) + '">'; }).join('');
+  casRender();
+}
+function casRender() {
+  var pend = CAS_CACHE.filter(function(r) { return r.origen === 'ticket_caseta' && r.con_comprobante === false && r.estado_fiscal !== 'cancelada'; });
+  var tot = pend.reduce(function(a, r) { return a + (parseFloat(r.total) || 0); }, 0);
+  document.getElementById('cas-resumen').innerHTML = pend.length
+    ? '<b>' + pend.length + '</b> caseta' + (pend.length > 1 ? 's' : '') + ' por facturar · <b>' + fmt(tot) + '</b>. Cuando llegue el CFDI, toca «✅ Facturada» para que no cuente doble.'
+    : 'No tienes casetas por facturar. 🎉';
+  document.getElementById('cas-lista').innerHTML = pend.map(function(r) {
+    var fin = casFinMes(r.fecha), d = casDias(fin), cod = casCodigoDe(r);
+    var color = d < 0 ? '#C0392B' : (d <= 5 ? '#E67E22' : 'var(--gray-600)');
+    var aviso = d < 0 ? '⚠️ Ya pasó el mes de emisión (' + fin.split('-').reverse().join('/') + '): confirma si aún te la facturan'
+      : 'Facturar antes del ' + fin.split('-').reverse().join('/') + ' (' + (d === 0 ? 'HOY' : d + ' día' + (d === 1 ? '' : 's')) + ')';
+    return '<div style="padding:10px 0;border-bottom:1px solid var(--gray-200)">'
+      + '<div style="display:flex;justify-content:space-between;gap:8px"><div style="font-weight:700;font-size:13px;color:var(--navy)">' + esc(casPlazaDe(r)) + '</div><div style="font-weight:800">' + fmt(r.total) + '</div></div>'
+      + '<div style="font-size:11px;color:var(--gray-400)">' + esc(r.fecha) + (r.folio_factura ? ' · Folio ' + esc(r.folio_factura) : '') + (r.folio_obra ? ' · ' + esc(r.folio_obra) : '') + '</div>'
+      + (cod ? '<div style="font-size:11px;color:var(--gray-600);font-family:monospace">Cód. fact.: ' + esc(cod) + '</div>' : '')
+      + '<div style="font-size:11px;font-weight:700;color:' + color + ';margin-top:2px">' + aviso + '</div>'
+      + '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">'
+      + '<button onclick="casFacturada(\'' + r.id + '\')" style="padding:6px 10px;border:none;border-radius:8px;background:var(--green);color:#fff;font-size:11px;font-weight:700;cursor:pointer">✅ Facturada</button>'
+      + '<button onclick="casRepetir(\'' + r.id + '\')" style="padding:6px 10px;border:1.5px solid var(--gray-200);border-radius:8px;background:#fff;font-size:11px;font-weight:700;cursor:pointer">⧉ Repetir</button>'
+      + (r.archivo_url ? '<button onclick="casVerFoto(\'' + r.id + '\')" style="padding:6px 10px;border:1.5px solid var(--gray-200);border-radius:8px;background:#fff;font-size:11px;font-weight:700;cursor:pointer">📷 Foto</button>' : '')
+      + '</div></div>';
+  }).join('');
+}
+async function casGuardar() {
+  var plaza = document.getElementById('cas-plaza').value.trim();
+  var importe = parseFloat(document.getElementById('cas-importe').value);
+  var fecha = document.getElementById('cas-fecha').value;
+  var hora = document.getElementById('cas-hora').value;
+  var folio = document.getElementById('cas-folio').value.trim();
+  var codigo = document.getElementById('cas-codigo').value.trim().toUpperCase();
+  var obra = document.getElementById('cas-obra').value.trim() || null;
+  if (!plaza) { toast('Falta la plaza de cobro'); return; }
+  if (!(importe > 0)) { toast('Falta el importe'); return; }
+  if (!fecha) { toast('Falta la fecha'); return; }
+  var dup = CAS_CACHE.some(function(r) { return folio && r.folio_factura === folio && casPlazaDe(r).toLowerCase() === plaza.toLowerCase() && r.fecha === fecha; });
+  if (dup && !confirm('Ya hay una caseta de ' + plaza + ' con el folio ' + folio + ' en esa fecha. ¿Guardarla otra vez?')) return;
+  var btn = document.getElementById('cas-btn'); btn.disabled = true; btn.textContent = 'Guardando…';
+  try {
+    var archivo_url = null, archivo_nombre = null;
+    if (CAS_FOTO) {
+      var blob = await casReducirFoto(CAS_FOTO);
+      var path = 'casetas/' + Date.now() + '_' + (folio || 'ticket').replace(/[^a-zA-Z0-9._-]/g, '_') + '.jpg';
+      var up = await sb().storage.from('facturas').upload(path, blob, { contentType: 'image/jpeg', upsert: true });
+      if (up.error) toast('No se pudo subir la foto, se guarda sin ella: ' + up.error.message);
+      else { archivo_url = path; archivo_nombre = 'ticket_' + plaza + '.jpg'; }
+    }
+    var desc = 'Ticket de caseta · ' + plaza + (hora ? ' · ' + hora : '') + (codigo ? ' · Cód. fact.: ' + codigo : '');
+    var ins = await sb().from('facturas_recibidas').insert([{
+      fecha: fecha, proveedor: 'Caseta · ' + plaza, folio_factura: folio || null, categoria: 'CASETAS',
+      total: importe, moneda: 'MXN', procesada: true, origen: 'ticket_caseta', con_comprobante: false,
+      descripcion: desc, folio_obra: obra, archivo_url: archivo_url, archivo_nombre: archivo_nombre
+    }]);
+    if (ins.error) throw ins.error;
+    toast('✅ Caseta guardada · ' + plaza + ' ' + fmt(importe));
+    // se quedan plaza, importe, fecha y obra: la vuelta o la siguiente caseta es más rápida
+    ['cas-hora', 'cas-folio', 'cas-codigo'].forEach(function(id) { document.getElementById(id).value = ''; });
+    document.getElementById('cas-foto').value = ''; CAS_FOTO = null; document.getElementById('cas-foto-nombre').textContent = '';
+    await casCargar();
+  } catch (e) { toast('No se pudo guardar: ' + e.message); }
+  btn.disabled = false; btn.textContent = '💾 Guardar caseta';
+}
+function casRepetir(id) {
+  var r = CAS_CACHE.filter(function(x) { return x.id === id; })[0]; if (!r) return;
+  document.getElementById('cas-plaza').value = casPlazaDe(r);
+  document.getElementById('cas-importe').value = r.total;
+  document.getElementById('cas-obra').value = r.folio_obra || '';
+  document.getElementById('cas-fecha').value = casHoy();
+  ['cas-hora', 'cas-folio', 'cas-codigo'].forEach(function(x) { document.getElementById(x).value = ''; });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  toast('Datos copiados: captura el folio del ticket de la vuelta y guarda');
+}
+async function casFacturada(id) {
+  if (!confirm('¿Ya tienes el CFDI de esta caseta?\n\nEste ticket dejará de contar como gasto (el CFDI que llega por el Motor lo reemplaza). Si el CFDI aún no llega, espera antes de marcarla.')) return;
+  var res = await sb().from('facturas_recibidas').update({ estado_fiscal: 'cancelada', nota_fiscal: 'Ticket sustituido por su CFDI (ya facturada)' }).eq('id', id);
+  if (res.error) { toast('No se pudo actualizar: ' + res.error.message); return; }
+  toast('✅ Marcada como facturada'); casCargar();
+}
+async function casVerFoto(id) {
+  var r = CAS_CACHE.filter(function(x) { return x.id === id; })[0]; if (!r || !r.archivo_url) return;
+  var res = await sb().storage.from('facturas').createSignedUrl(r.archivo_url, 300);
+  if (res.error || !res.data) { toast('No se pudo abrir la foto: ' + (res.error ? res.error.message : '')); return; }
+  window.open(res.data.signedUrl, '_blank');
 }
 
 // ── Catbadge ─────────────────────────────────────────────────
