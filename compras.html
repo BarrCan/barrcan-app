@@ -7,6 +7,9 @@
 <title>BarrCan · Compras</title>
 <!--
   BARRCAN · MODULO: COMPRAS (standalone)
+  VERSION : v1.26
+  FECHA   : 2026-11-23
+  v1.26 - Casetas: campo "Vehículo" (camioneta 1 / camioneta 2 de 2 ejes). La tarifa recordada ahora es por plaza + vehículo.
   VERSION : v1.25
   FECHA   : 2026-11-23
   v1.25 - NUEVA PESTAÑA "🛣️ Casetas": captura rápida de tickets de caseta (plaza, importe, fecha, folio, código de facturación y foto) en vez del
@@ -492,6 +495,9 @@ body{font-family:'DM Sans',system-ui,sans-serif;background:var(--off-white);colo
       <label style="font-size:12px;font-weight:600;color:var(--navy);display:block;margin-bottom:4px">Plaza de cobro</label>
       <input type="text" class="form-input" id="cas-plaza" list="cas-plazas" placeholder="Ej. Cuitláhuac" onchange="casPlazaCambio()" style="margin-bottom:10px">
       <datalist id="cas-plazas"></datalist>
+      <label style="font-size:12px;font-weight:600;color:var(--navy);display:block;margin-bottom:4px">Vehículo</label>
+      <input type="text" class="form-input" id="cas-veh" list="cas-vehs" placeholder="Camioneta 1" onchange="casPlazaCambio()" style="margin-bottom:10px">
+      <datalist id="cas-vehs"></datalist>
       <div style="display:flex;gap:8px;margin-bottom:10px">
         <div style="flex:1"><label style="font-size:12px;font-weight:600;color:var(--navy);display:block;margin-bottom:4px">Importe $</label>
           <input type="number" class="form-input" id="cas-importe" inputmode="decimal" step="any" placeholder="195.00" style="margin-bottom:0"></div>
@@ -904,7 +910,7 @@ var SYNC = { online: true };
 window.addEventListener('online',  function() { SYNC.online = true;  detectar(); });
 window.addEventListener('offline', function() { SYNC.online = false; detectar(); });
 
-var APP_VERSION = 'v1.25';
+var APP_VERSION = 'v1.26';
 function detectar() {
   var dot = document.getElementById('conn-dot');
   var txt = document.getElementById('conn-status');
@@ -969,7 +975,8 @@ function casInit() {
 function casPlazaDe(r) { return String(r.proveedor || '').replace(/^Caseta\s*·\s*/i, '').trim(); }
 function casPlazaCambio() {
   var pl = document.getElementById('cas-plaza').value.trim(), imp = document.getElementById('cas-importe');
-  if (pl && CAS_PLAZAS[pl] != null && !imp.value) imp.value = CAS_PLAZAS[pl]; // última tarifa de esa plaza
+  var k = pl + '|' + document.getElementById('cas-veh').value.trim();
+  if (pl && CAS_PLAZAS[k] != null) imp.value = CAS_PLAZAS[k]; // última tarifa de esa plaza
 }
 function casFotoElegida(inp) {
   CAS_FOTO = inp.files && inp.files[0] ? inp.files[0] : null;
@@ -998,6 +1005,7 @@ function casDias(finISO) {
   var a = new Date(casHoy() + 'T00:00:00Z'), b = new Date(finISO + 'T00:00:00Z');
   return Math.round((b - a) / 86400000);
 }
+function casVehDe(r) { var m = /Veh:\s*([^·]+)/i.exec(r.descripcion || ''); return m ? m[1].trim() : ''; }
 function casCodigoDe(r) { var m = /Cód\. fact\.:\s*([A-Z0-9 ]+)/i.exec(r.descripcion || ''); return m ? m[1].trim() : ''; }
 async function casCargar() {
   var res = await sb().from('facturas_recibidas')
@@ -1006,7 +1014,9 @@ async function casCargar() {
   if (res.error) { toast('No se pudieron cargar las casetas: ' + res.error.message); return; }
   CAS_CACHE = res.data || [];
   CAS_PLAZAS = {};
-  CAS_CACHE.forEach(function(r) { if (r.origen === 'ticket_caseta') { var pl = casPlazaDe(r); if (pl && CAS_PLAZAS[pl] == null) CAS_PLAZAS[pl] = r.total; } });
+  CAS_CACHE.forEach(function(r) { if (r.origen === 'ticket_caseta') { var pl = casPlazaDe(r); var k = pl + '|' + casVehDe(r); if (pl && CAS_PLAZAS[k] == null) CAS_PLAZAS[k] = r.total; } });
+  var vs = {'Camioneta 1':1,'Camioneta 2 (2 ejes)':1}; CAS_CACHE.forEach(function(r){ var v=casVehDe(r); if(v) vs[v]=1; });
+  document.getElementById('cas-vehs').innerHTML = Object.keys(vs).map(function(v){ return '<option value="'+esc(v)+'">'; }).join('');
   document.getElementById('cas-plazas').innerHTML = Object.keys(CAS_PLAZAS).map(function(pl) { return '<option value="' + esc(pl) + '">'; }).join('');
   casRender();
 }
@@ -1023,7 +1033,7 @@ function casRender() {
       : 'Facturar antes del ' + fin.split('-').reverse().join('/') + ' (' + (d === 0 ? 'HOY' : d + ' día' + (d === 1 ? '' : 's')) + ')';
     return '<div style="padding:10px 0;border-bottom:1px solid var(--gray-200)">'
       + '<div style="display:flex;justify-content:space-between;gap:8px"><div style="font-weight:700;font-size:13px;color:var(--navy)">' + esc(casPlazaDe(r)) + '</div><div style="font-weight:800">' + fmt(r.total) + '</div></div>'
-      + '<div style="font-size:11px;color:var(--gray-400)">' + esc(r.fecha) + (r.folio_factura ? ' · Folio ' + esc(r.folio_factura) : '') + (r.folio_obra ? ' · ' + esc(r.folio_obra) : '') + '</div>'
+      + '<div style="font-size:11px;color:var(--gray-400)">' + esc(r.fecha) + (casVehDe(r) ? ' · ' + esc(casVehDe(r)) : '') + (r.folio_factura ? ' · Folio ' + esc(r.folio_factura) : '') + (r.folio_obra ? ' · ' + esc(r.folio_obra) : '') + '</div>'
       + (cod ? '<div style="font-size:11px;color:var(--gray-600);font-family:monospace">Cód. fact.: ' + esc(cod) + '</div>' : '')
       + '<div style="font-size:11px;font-weight:700;color:' + color + ';margin-top:2px">' + aviso + '</div>'
       + '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">'
@@ -1041,6 +1051,7 @@ async function casGuardar() {
   var folio = document.getElementById('cas-folio').value.trim();
   var codigo = document.getElementById('cas-codigo').value.trim().toUpperCase();
   var obra = document.getElementById('cas-obra').value.trim() || null;
+  var veh = document.getElementById('cas-veh').value.trim();
   if (!plaza) { toast('Falta la plaza de cobro'); return; }
   if (!(importe > 0)) { toast('Falta el importe'); return; }
   if (!fecha) { toast('Falta la fecha'); return; }
@@ -1056,7 +1067,7 @@ async function casGuardar() {
       if (up.error) toast('No se pudo subir la foto, se guarda sin ella: ' + up.error.message);
       else { archivo_url = path; archivo_nombre = 'ticket_' + plaza + '.jpg'; }
     }
-    var desc = 'Ticket de caseta · ' + plaza + (hora ? ' · ' + hora : '') + (codigo ? ' · Cód. fact.: ' + codigo : '');
+    var desc = 'Ticket de caseta · ' + plaza + (hora ? ' · ' + hora : '') + (veh ? ' · Veh: ' + veh : '') + (codigo ? ' · Cód. fact.: ' + codigo : '');
     var ins = await sb().from('facturas_recibidas').insert([{
       fecha: fecha, proveedor: 'Caseta · ' + plaza, folio_factura: folio || null, categoria: 'CASETAS',
       total: importe, moneda: 'MXN', procesada: true, origen: 'ticket_caseta', con_comprobante: false,
@@ -1075,6 +1086,7 @@ function casRepetir(id) {
   var r = CAS_CACHE.filter(function(x) { return x.id === id; })[0]; if (!r) return;
   document.getElementById('cas-plaza').value = casPlazaDe(r);
   document.getElementById('cas-importe').value = r.total;
+  document.getElementById('cas-veh').value = casVehDe(r);
   document.getElementById('cas-obra').value = r.folio_obra || '';
   document.getElementById('cas-fecha').value = casHoy();
   ['cas-hora', 'cas-folio', 'cas-codigo'].forEach(function(x) { document.getElementById(x).value = ''; });

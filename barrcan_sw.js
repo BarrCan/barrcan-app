@@ -65,7 +65,7 @@
 // v19 (11-oct-2026): se quita modulos/alupol_cor_luj_2h.js de la precarga (Corredizo Lujo eliminado).
 // v20 (14-oct-2026): páginas con parámetros sin señal (hoja de orden en blanco), página amable sin conexión y precarga de acceso.js.
 // v21 (14-oct-2026): librería de la base y html2pdf en caché propia que sobrevive a las versiones.
-const CACHE_VERSION = 'barrcan-v28'; // subir este número fuerza que TODOS los
+const CACHE_VERSION = 'barrcan-v29'; // subir este número fuerza que TODOS los
 // dispositivos descarten su caché vieja de una vez -- ya no debería
 // hacer falta subirlo por cada arreglo ahora que HTML es Network First,
 // pero sigue disponible por si algún día conviene un reinicio total.
