@@ -5,10 +5,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>BarrCan · Firma de presupuesto</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>if(!window.supabase){document.write('<script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.min.js"><\/script>');}</script>
 <script src="modulos/cuentas_deposito.js"></script>
 <script src="modulos/presupuesto_doc.js"></script>
 <!--
   BARRCAN · FIRMA DE PRESUPUESTO (página pública, sin PIN)
+  VERSION : v1.8
+  v1.8 - Más robusta en celulares con mala señal/bloqueos: si la librería de Supabase no baja del CDN principal se reintenta con un espejo (unpkg); si tras 15 s sigue cargando, muestra aviso con botón de WhatsApp y "Reintentar" en lugar de quedarse en blanco.
   VERSION : v1.7
   v1.7 - OPCIONES ALTERNATIVAS: si el presupuesto trae opciones que no se suman, el cliente elige UNA antes de firmar; se guarda opcion_elegida,
     el monto y saldo quedan con el total de la opción elegida, y la huella digital incluye la opción. El documento firmado imprime solo esa opción.
@@ -237,6 +240,14 @@ function verFirmado() {
   if (!w) { alert('Permita ventanas emergentes para ver el documento.'); return; }
   w.document.write(docHTML(true)); w.document.close();
 }
+setTimeout(function () { // v1.8: si a los 15 s sigue "Cargando", avisar con salida
+  var m = document.getElementById('msg');
+  if (m && m.style.display !== 'none' && /Cargando/.test(m.textContent)) {
+    m.innerHTML = '<b>Está tardando más de lo normal.</b><br>Revise su señal e intente de nuevo, o ábrala en Chrome/Safari.<br><br>'
+      + '<button onclick="location.reload()" style="padding:10px 16px;border:0;border-radius:8px;background:#1B2A4A;color:#fff;font-weight:700">Reintentar</button> '
+      + '<a href="https://wa.me/' + WA_BARRCAN + '" style="display:inline-block;padding:10px 16px;border-radius:8px;background:#25D366;color:#fff;font-weight:700;text-decoration:none">Escribir a BarrCan</a>';
+  }
+}, 15000);
 cargar();
 </script>
 </body>
