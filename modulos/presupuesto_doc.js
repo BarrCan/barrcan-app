@@ -1,5 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 // BarrCan · DOCUMENTO OFICIAL DE PRESUPUESTO (compartido)
+// VERSION : v1.15   FECHA : 2026-11-24
+// v1.15 - ACEPTACIÓN POR PAGO DE ANTICIPO más clara: la cláusula 8 ahora cita el folio, dice que autoriza el inicio de medición/fabricación y que surte efectos aunque no se firme
+//   el documento; y se repite en un recuadro visible junto al calendario de pagos (antes solo estaba en la página 2). Conserva la excepción de visita previa.
 // VERSION : v1.14   FECHA : 2026-11-17
 // v1.14 - OPCIONES ALTERNATIVAS: si un concepto trae it.opcion (1, 2, 3...), el documento muestra cada opción con su total y su calendario de pagos, SIN sumarlas
 //   (los conceptos sin opción son comunes a todas). Si opciones.opcionElegida está definida, imprime solo los conceptos comunes + los de esa opción.
@@ -322,7 +325,7 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
     + '<li><strong>Cambios y modificaciones:</strong> Este presupuesto quedar\u00e1 sin efecto ante cualquier cambio en modulaci\u00f3n, dimensiones, cantidades, colores, materiales o especificaciones de los elementos descritos. Toda modificaci\u00f3n requerir\u00e1 la emisi\u00f3n de un nuevo presupuesto actualizado.</li>'
     + '<li><strong>Trabajos con material existente:</strong> La manipulaci\u00f3n de material preexistente (vidrios, espejos, perfiles, herrajes) se realiza sin responsabilidad por da\u00f1os accidentales. En caso de rotura o da\u00f1o, BarrCan no asumir\u00e1 el costo de reposici\u00f3n; el trabajo de restauraci\u00f3n se cotizar\u00e1 por separado.</li>'
     + '<li><strong>Almacenamiento de material:</strong> El material retirado que deba resguardarse para uso posterior tendr\u00e1 un periodo sin costo de hasta <strong>5 d\u00edas h\u00e1biles</strong>. A partir del quinto d\u00eda se aplicar\u00e1 un cargo de <strong>$80 MXN por d\u00eda natural</strong>. Consulte la Secci\u00f3n 3 para condiciones completas.</li>'
-    + '<li><strong>Aceptaci\u00f3n por dep\u00f3sito:</strong> El dep\u00f3sito del anticipo implica la aceptaci\u00f3n plena de todas las condiciones descritas en este presupuesto. (En casos con visita de asesoramiento previo, se requerir\u00e1 confirmaci\u00f3n expresa del cliente, dado que el costo de dicha visita se acredita al anticipo inicial.)</li>'
+    + '<li><strong>Aceptaci\u00f3n por dep\u00f3sito:</strong> La realizaci\u00f3n del pago del anticipo con referencia al folio de este presupuesto implica que el cliente conoce y acepta el alcance, precio, condiciones y garant\u00eda aqu\u00ed descritos, y autoriza a BarrCan a iniciar la medici\u00f3n y fabricaci\u00f3n. Esta aceptaci\u00f3n surte efectos aunque el documento no haya sido firmado. (En casos con visita de asesoramiento previo, se requerir\u00e1 confirmaci\u00f3n expresa del cliente, dado que el costo de dicha visita se acredita al anticipo inicial.)</li>'
     + '<li><strong>Pol\u00edtica de reembolso:</strong> En caso de cancelaci\u00f3n del proyecto se retendr\u00e1 el <strong>25% del costo total</strong> por gastos administrativos y asesoramiento. Si la cancelaci\u00f3n ocurre antes de iniciar fabricaci\u00f3n, se devolver\u00e1 el material adquirido y la diferencia econ\u00f3mica, descontando el 25% y el costo de materiales comprados. Si la fabricaci\u00f3n ya inici\u00f3, no procede reembolso en efectivo; se entregar\u00e1 el material en el estado en que se encuentre como finiquito total.</li>'
     + '</ol>'
     + '<h2>Trabajos no comprendidos en este presupuesto</h2>'
@@ -337,6 +340,7 @@ function snGenerarDocumentoPresupuesto(items, folio, cliente, dir, fecha, opcion
     // ═══ PÁGINA 3: PAGOS + DATOS BANCARIOS + ALMACENAMIENTO ═══
     + '<div class="page-break">'
     + '<h2>2. Pol\u00edtica de pagos</h2>'
+    + '<div style="border:1.5px solid #1B2A4A;background:#F3F6FA;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:9pt;line-height:1.5;color:#1B2A4A"><strong>ACEPTACI\u00d3N POR PAGO DE ANTICIPO.</strong> El pago del anticipo con referencia al folio de este presupuesto implica que el cliente conoce y acepta el alcance, precio, condiciones y garant\u00eda aqu\u00ed descritos, y autoriza a BarrCan a iniciar la medici\u00f3n y fabricaci\u00f3n, aunque el documento no haya sido firmado.</div>'
     + '<p style="font-size:9pt;color:#333;margin-bottom:10px">Al aprobar formalmente el presupuesto, el cliente acepta las siguientes condiciones de pago:</p>'
     + pagosHTML
     + '<div style="display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px">'
